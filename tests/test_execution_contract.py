@@ -38,6 +38,59 @@ def test_live_web_contract_requires_search_after_temporal_anchor_only():
     assert evaluated["missing"] == ["web_search"]
 
 
+def test_skill_execution_contract_requires_primary_tool_result():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_workspace_command",
+                    "args": {"cwd": ".focus_agent/skills/stocks"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"ok": true, "symbol": "601020.SS"}',
+            tool_call_id="skill-1",
+        ),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command", "web_search"],
+        skill_execution_plan={
+            "selected_skill_ids": ["stocks"],
+            "primary_tools": ["run_workspace_command"],
+            "supporting_tools": ["web_search"],
+            "runtime_cwds": {"stocks": ".focus_agent/skills/stocks"},
+            "policy_override": "execution",
+        },
+    )
+
+    missing = evaluate_execution_contract(
+        contract,
+        tool_results_seen=[],
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command", "web_search"],
+    )
+    satisfied = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command", "web_search"],
+    )
+
+    assert contract["policy"] == "skill_execution"
+    assert contract["required_tools"] == ["run_workspace_command"]
+    assert missing["status"] == "missing_required_tools"
+    assert satisfied["status"] == "satisfied"
+    assert verify_answer_against_evidence(
+        answer="华钰矿业行情来自 stocks Skill。",
+        contract=satisfied,
+        evidence_ledger=[],
+    )["status"] == "verified"
+
+
 def test_answer_verifier_flags_leader_visit_contradiction():
     messages = [
         AIMessage(content="", tool_calls=[{"id": "search-1", "name": "web_search", "args": {}}]),

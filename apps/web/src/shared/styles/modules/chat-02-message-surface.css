@@ -211,6 +211,8 @@
 	height: 100%;
 	padding: 0;
 	overflow: hidden;
+	/* The inner history owns scrolling; keep this shell from being scrolled by scrollIntoView. */
+	overflow: clip;
 	display: flex;
 	border-radius: 26px;
 	border: 1px solid var(--fa-border-subtle);

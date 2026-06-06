@@ -532,6 +532,10 @@ _SKILL_DISCOVERY_ACTION_MARKERS = (
     "装一下",
     "添加",
     "加入",
+    "使用",
+    "启用",
+    "加载",
+    "采用",
     "搜索",
     "查一下",
     "查下",
@@ -555,6 +559,44 @@ _SKILL_DISCOVERY_ACTION_MARKERS = (
     "use",
     "workflow",
 )
+_SKILL_EXECUTION_ACTION_MARKERS = (
+    "使用",
+    "启用",
+    "加载",
+    "采用",
+    "调用",
+    "use",
+    "activate",
+    "load",
+    "apply",
+    "invoke",
+)
+_SKILL_TASK_EXECUTION_MARKERS = (
+    "看一下",
+    "看一看",
+    "查看",
+    "查询",
+    "分析",
+    "处理",
+    "获取",
+    "拉取",
+    "运行",
+    "执行",
+    "计算",
+    "比较",
+    "生成",
+    "排查",
+    "活动情况",
+    "analyze",
+    "fetch",
+    "get",
+    "run",
+    "execute",
+    "query",
+    "check",
+    "compare",
+    "generate",
+)
 _SKILL_INSTALL_ACTION_MARKERS = (
     "安装",
     "装一下",
@@ -566,7 +608,9 @@ _SKILL_INSTALL_ACTION_MARKERS = (
 
 
 _SKILL_DISCOVERY_SEARCH_ACTION_MARKERS = tuple(
-    marker for marker in _SKILL_DISCOVERY_ACTION_MARKERS if marker not in {"调用", "use"}
+    marker
+    for marker in _SKILL_DISCOVERY_ACTION_MARKERS
+    if marker not in set(_SKILL_EXECUTION_ACTION_MARKERS)
 )
 _SKILL_DISCOVERY_TOOL_MARKERS = (
     "skills_search",
@@ -707,3 +751,20 @@ def _skill_discovery_should_prefer_search(text: str) -> bool:
     subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
     search_action_hits = _matched_markers(text, _SKILL_DISCOVERY_SEARCH_ACTION_MARKERS)
     return bool(phrase_hits or (subject_hits and search_action_hits))
+
+
+def _active_skill_execution_hits(text: str) -> tuple[str, ...]:
+    if _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS):
+        return ()
+    action_hits = _matched_markers(text, _SKILL_EXECUTION_ACTION_MARKERS)
+    subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
+    task_hits = _matched_markers(text, _SKILL_TASK_EXECUTION_MARKERS)
+    if action_hits and subject_hits and task_hits:
+        return tuple(dict.fromkeys((*action_hits, *subject_hits, *task_hits)))
+    return ()
+
+
+def _active_skill_task_execution_hits(text: str) -> tuple[str, ...]:
+    if _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS):
+        return ()
+    return _matched_markers(text, _SKILL_TASK_EXECUTION_MARKERS)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from types import SimpleNamespace
 from typing import Any
 
@@ -119,6 +119,74 @@ def json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _turn_metadata_from_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    active_skill_ids = _normalize_string_list(
+        value.get("active_skill_ids") or value.get("skill_ids")
+    )
+    prompt_mode = str(value.get("prompt_mode") or "").strip()
+    selection_source = str(value.get("selection_source") or "").strip()
+    matched_triggers = _normalize_string_list(value.get("matched_triggers"))
+    metadata: dict[str, Any] = {}
+    if active_skill_ids:
+        metadata["active_skill_ids"] = active_skill_ids
+    if prompt_mode:
+        metadata["prompt_mode"] = prompt_mode
+    if selection_source:
+        metadata["selection_source"] = selection_source
+    if matched_triggers:
+        metadata["matched_triggers"] = matched_triggers
+    confidence = value.get("confidence")
+    if isinstance(confidence, (int, float)) and confidence > 0:
+        metadata["confidence"] = round(float(confidence), 4)
+    for key in ("skill_execution_plan", "execution_contract", "answer_verification"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            metadata[key] = json_safe(dict(nested))
+    return metadata
+
+
+def _message_turn_metadata(message: Any) -> dict[str, Any]:
+    if isinstance(message, dict):
+        direct = _turn_metadata_from_mapping(message.get("turn_metadata"))
+        if direct:
+            return direct
+        additional_kwargs = message.get("additional_kwargs")
+        if isinstance(additional_kwargs, Mapping):
+            focus_agent = _turn_metadata_from_mapping(additional_kwargs.get("focus_agent"))
+            if focus_agent:
+                return focus_agent
+            direct = _turn_metadata_from_mapping(additional_kwargs.get("turn_metadata"))
+            if direct:
+                return direct
+        return _turn_metadata_from_mapping(message.get("focus_agent"))
+
+    additional_kwargs = getattr(message, "additional_kwargs", None)
+    if isinstance(additional_kwargs, Mapping):
+        focus_agent = _turn_metadata_from_mapping(additional_kwargs.get("focus_agent"))
+        if focus_agent:
+            return focus_agent
+        direct = _turn_metadata_from_mapping(additional_kwargs.get("turn_metadata"))
+        if direct:
+            return direct
+    return {}
+
+
 def sse_frame(*, event: str, data: dict[str, Any]) -> str:
     payload = json.dumps(json_safe(data), ensure_ascii=False)
     lines = [f"event: {event}"]
@@ -146,6 +214,12 @@ def serialize_message(message: Any) -> dict[str, Any]:
         if is_tool_message_type(message_type):
             payload["tool_call_id"] = message.get("tool_call_id")
             payload["status"] = message.get("status")
+        turn_metadata = _message_turn_metadata(message)
+        if turn_metadata:
+            payload["turn_metadata"] = turn_metadata
+        metadata = _message_metadata(message)
+        if metadata:
+            payload["metadata"] = metadata
         return payload
 
     tool_calls = getattr(message, "tool_calls", None)
@@ -163,7 +237,32 @@ def serialize_message(message: Any) -> dict[str, Any]:
     if is_tool_message_type(message_type):
         payload["tool_call_id"] = getattr(message, "tool_call_id", None)
         payload["status"] = getattr(message, "status", None)
+    turn_metadata = _message_turn_metadata(message)
+    if turn_metadata:
+        payload["turn_metadata"] = turn_metadata
+    metadata = _message_metadata(message)
+    if metadata:
+        payload["metadata"] = metadata
     return payload
+
+
+def _message_metadata(message: Any) -> dict[str, Any] | None:
+    if isinstance(message, dict):
+        metadata = message.get("metadata")
+        if isinstance(metadata, Mapping):
+            return json_safe(dict(metadata))
+        response_metadata = message.get("response_metadata")
+    else:
+        response_metadata = getattr(message, "response_metadata", None)
+    if not isinstance(response_metadata, Mapping):
+        return None
+    focus_agent_metadata = response_metadata.get("focus_agent")
+    if isinstance(focus_agent_metadata, Mapping):
+        nested_metadata = focus_agent_metadata.get("metadata")
+        if isinstance(nested_metadata, Mapping):
+            return json_safe(dict(nested_metadata))
+        return json_safe(dict(focus_agent_metadata))
+    return None
 
 
 def _thread_state_visible_message(message: Any) -> dict[str, Any] | None:
@@ -196,7 +295,28 @@ def _is_followed_by_tool_activity_before_next_user(
     return False
 
 
-def thread_state_messages(messages: list[Any], *, limit: int) -> list[dict[str, Any]]:
+def _turn_metadata_from_plan_meta(plan_meta: Any) -> dict[str, Any]:
+    if not isinstance(plan_meta, Mapping):
+        return {}
+    metadata: dict[str, Any] = {}
+    intent_plan = plan_meta.get("tool_intent_plan")
+    if isinstance(intent_plan, Mapping):
+        skill_execution_plan = intent_plan.get("skill_execution_plan")
+        if isinstance(skill_execution_plan, Mapping):
+            metadata["skill_execution_plan"] = json_safe(dict(skill_execution_plan))
+    for key in ("execution_contract", "answer_verification"):
+        nested = plan_meta.get(key)
+        if isinstance(nested, Mapping):
+            metadata[key] = json_safe(dict(nested))
+    return metadata
+
+
+def thread_state_messages(
+    messages: list[Any],
+    *,
+    limit: int,
+    turn_metadata: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     if not messages:
         return []
     payloads: list[dict[str, Any]] = []
@@ -213,6 +333,18 @@ def thread_state_messages(messages: list[Any], *, limit: int) -> list[dict[str, 
             ):
                 continue
             payloads.append(payload)
+    if turn_metadata:
+        for payload in reversed(payloads):
+            if not is_ai_message_type(payload.get("type")):
+                continue
+            existing = payload.get("turn_metadata")
+            if not isinstance(existing, Mapping):
+                existing = {}
+            payload["turn_metadata"] = {
+                **json_safe(dict(turn_metadata)),
+                **json_safe(dict(existing)),
+            }
+            break
     return payloads
 
 
@@ -296,7 +428,11 @@ def response_payload(
         "merge_decision": values.get("merge_decision"),
         "merge_queue": values.get("merge_queue", []),
         "active_skill_ids": values.get("active_skill_ids", []),
-        "messages": thread_state_messages(thread_messages, limit=message_limit),
+        "messages": thread_state_messages(
+            thread_messages,
+            limit=message_limit,
+            turn_metadata=_turn_metadata_from_plan_meta(values.get("plan_meta")),
+        ),
         "interrupts": [getattr(item, "value", item) for item in interrupts],
         "branch_actions": branch_actions,
         "trace": build_invoke_config(

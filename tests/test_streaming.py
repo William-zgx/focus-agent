@@ -476,6 +476,22 @@ def test_extract_visible_text_delta_ignores_chinese_tool_deliberation():
     assert looks_like_stream_visible_text_artifact(chunk.content)
 
 
+def test_extract_visible_text_delta_ignores_tool_req_protocol():
+    chunk = DummyChunk(
+        content=(
+            '<tool_req name="run_shell_command">\n'
+            '<arg name="command" string="true">python3 scripts/stocks_client.py quote '
+            "601020.SS</arg>\n"
+            '<arg name="timeout" string="false">30</arg>\n'
+            "</tool_req>"
+        )
+    )
+    assert extract_visible_text_delta(chunk) == ""
+    assert looks_like_stream_visible_text_artifact(chunk.content)
+    assert looks_like_potential_textual_tool_call_prefix("<tool_req name")
+    assert looks_like_potential_textual_tool_call_prefix("<arg name")
+
+
 def test_core_tool_protocol_flags_chinese_tool_deliberation_fragments():
     assert looks_like_textual_tool_call_artifact(
         "和 websearch。我因为不满意搜索结果而犹豫和重复调用，这是不对的。"

@@ -6650,6 +6650,12 @@
     },
     "AdminConfigSkillResponse": {
       "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "capability_requirements": {
           "items": {
             "type": "string"
@@ -6669,6 +6675,12 @@
         "description": {
           "type": "string"
         },
+        "domains": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "enabled": {
           "default": true,
           "type": "boolean"
@@ -6676,6 +6688,18 @@
         "install_state": {
           "default": "installed",
           "type": "string"
+        },
+        "intents": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "localized_triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "path": {
           "type": "string"
@@ -8875,9 +8899,33 @@
     },
     "AgentSkillCatalogItemResponse": {
       "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "description": {
           "default": "",
           "type": "string"
+        },
+        "domains": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "intents": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "localized_triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "path": {
           "anyOf": [
@@ -16117,6 +16165,83 @@
       ],
       "type": "object"
     },
+    "ThreadActiveSkillResponse": {
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "install_state": {
+          "default": "",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "prompt_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommended_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skill_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "default": "",
+          "type": "string"
+        },
+        "source_type": {
+          "default": "",
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trust_level": {
+          "default": "",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "skill_id",
+        "name"
+      ],
+      "type": "object"
+    },
     "ThreadContextCompactRequest": {
       "properties": {
         "trigger": {
@@ -16136,6 +16261,12 @@
         "active_skill_ids": {
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "active_skills": {
+          "items": {
+            "$ref": "#/components/schemas/ThreadActiveSkillResponse"
           },
           "type": "array"
         },
@@ -16221,8 +16352,15 @@
         },
         "messages": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadMessageResponse"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },
@@ -16281,6 +16419,161 @@
       ],
       "type": "object"
     },
+    "ThreadMessageMetadata": {
+      "properties": {
+        "active_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "active_skills": {
+          "items": {
+            "$ref": "#/components/schemas/ThreadActiveSkillResponse"
+          },
+          "type": "array"
+        },
+        "skill_selection": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ThreadMessageSkillSelectionMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ThreadMessageResponse": {
+      "additionalProperties": true,
+      "properties": {
+        "content": {
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ThreadMessageMetadata"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_calls": {
+          "title": "Tool Calls"
+        },
+        "turn_metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "type": "string"
+        },
+        "usage_metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "ThreadMessageSkillSelectionMetadata": {
+      "properties": {
+        "confidence": {
+          "default": 0.0,
+          "type": "number"
+        },
+        "matched_triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prompt_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "default": "",
+          "type": "string"
+        },
+        "selection_source": {
+          "default": "none",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ThreadResolutionResponse": {
       "properties": {
         "branch_id": {
@@ -16326,6 +16619,12 @@
         "active_skill_ids": {
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "active_skills": {
+          "items": {
+            "$ref": "#/components/schemas/ThreadActiveSkillResponse"
           },
           "type": "array"
         },
@@ -16411,8 +16710,15 @@
         },
         "messages": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadMessageResponse"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },

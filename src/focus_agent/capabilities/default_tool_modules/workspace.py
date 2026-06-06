@@ -8,7 +8,7 @@ import shlex
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from langchain.tools import tool
@@ -74,6 +74,8 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
     ".yml": "YAML",
 }
 _UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
+_FOCUS_HOME_FOCUS_AGENT_PARTS = PurePosixPath("/home/focus/.focus_agent").parts
+_FOCUS_HOME_SKILLS_PARTS = PurePosixPath("/home/focus/.focus_agent/skills").parts
 
 
 def _language_for_path(path: Path) -> str:
@@ -91,6 +93,45 @@ def _resolve_workspace_path(*, raw_path: str, workspace_root: Path) -> Path:
         resolved.relative_to(workspace_root)
     except ValueError as exc:
         raise ValueError(f"Path must stay within workspace root: {workspace_root}") from exc
+    return resolved
+
+
+def _resolve_workspace_command_cwd(*, raw_cwd: object, workspace_root: Path) -> Path:
+    cwd_text = "." if raw_cwd is None else str(raw_cwd)
+    if not cwd_text.strip():
+        raise ValueError("cwd must not be empty.")
+    repaired = _resolve_focus_home_skill_cwd(raw_cwd=cwd_text, workspace_root=workspace_root)
+    if repaired is not None:
+        return repaired
+    return _resolve_workspace_path(raw_path=cwd_text, workspace_root=workspace_root)
+
+
+def _resolve_focus_home_skill_cwd(*, raw_cwd: str, workspace_root: Path) -> Path | None:
+    parts = PurePosixPath(raw_cwd).parts
+    if parts[: len(_FOCUS_HOME_FOCUS_AGENT_PARTS)] != _FOCUS_HOME_FOCUS_AGENT_PARTS:
+        return None
+    if parts[: len(_FOCUS_HOME_SKILLS_PARTS)] != _FOCUS_HOME_SKILLS_PARTS:
+        raise ValueError(
+            "Skill cwd must start with /home/focus/.focus_agent/skills/<id>."
+        )
+    relative_parts = parts[len(_FOCUS_HOME_SKILLS_PARTS) :]
+    if not relative_parts:
+        raise ValueError("Skill cwd must include a non-empty skill id.")
+    if any(part == ".." for part in relative_parts):
+        raise ValueError("Skill cwd must not contain '..'.")
+
+    skill_id = relative_parts[0]
+    if not skill_id:
+        raise ValueError("Skill cwd must include a non-empty skill id.")
+
+    skill_root = workspace_root / ".focus_agent" / "skills" / skill_id
+    target = workspace_root / ".focus_agent" / "skills" / Path(*relative_parts)
+    resolved = target.resolve()
+    try:
+        resolved.relative_to(skill_root)
+        resolved.relative_to(workspace_root)
+    except ValueError as exc:
+        raise ValueError("Skill cwd must not escape the workspace skill directory.") from exc
     return resolved
 
 
@@ -231,6 +272,44 @@ def build_workspace_tools(
     tool_catalog: Any,
     emit_tool_event: Callable[..., None],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    def _trusted_skill_script_command_allowed(
+        command: list[str],
+        *,
+        working_dir: Path,
+    ) -> bool:
+        base = Path(command[0]).name
+        if base not in {"python", "python3"} and not base.startswith("python3."):
+            return False
+        if len(command) < 2:
+            return False
+        script_arg = command[1].strip()
+        if not script_arg or script_arg.startswith("-"):
+            return False
+        try:
+            skill_relative = working_dir.relative_to(workspace_root)
+        except ValueError:
+            return False
+        if len(skill_relative.parts) < 3 or skill_relative.parts[:2] != (
+            ".focus_agent",
+            "skills",
+        ):
+            return False
+        script_path = (
+            Path(script_arg).expanduser()
+            if Path(script_arg).is_absolute()
+            else working_dir / script_arg
+        ).resolve()
+        try:
+            script_relative = script_path.relative_to(working_dir)
+            script_path.relative_to(workspace_root)
+        except ValueError:
+            return False
+        return (
+            script_relative.parts[:1] == ("scripts",)
+            and script_path.suffix == ".py"
+            and script_path.is_file()
+        )
+
     def _validate_read_file_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "path")
         start_line = int(args.get("start_line", 1))
@@ -246,8 +325,18 @@ def build_workspace_tools(
     def _validate_apply_patch_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "patch")
 
+    def _normalize_run_workspace_command_args(args: dict[str, Any]) -> tuple[list[str], Path, str]:
+        normalized_command = normalize_command(args.get("command"))
+        working_dir = _resolve_workspace_command_cwd(
+            raw_cwd=args.get("cwd", "."), workspace_root=workspace_root
+        )
+        normalized_cwd = _coerce_relative_posix(working_dir, workspace_root)
+        args["command"] = normalized_command
+        args["cwd"] = normalized_cwd
+        return normalized_command, working_dir, normalized_cwd
+
     def _validate_run_workspace_command_args(args: dict[str, Any]) -> None:
-        normalize_command(args.get("command"))
+        _normalize_run_workspace_command_args(args)
 
     def _resolve_workspace_command_path(raw_path: str) -> Path:
         return _resolve_workspace_path(raw_path=raw_path, workspace_root=workspace_root)
@@ -553,21 +642,28 @@ def build_workspace_tools(
     ) -> str:
         """Run an allowlisted workspace command without a shell."""
         tool_name = "run_workspace_command"
-        normalized_command = normalize_command(command)
-        emit_tool_event(tool_name=tool_name, stage="start", command=normalized_command, cwd=cwd)
+        args = {"command": command, "cwd": cwd}
+        normalized_command, working_dir, normalized_cwd = _normalize_run_workspace_command_args(args)
+        emit_tool_event(
+            tool_name=tool_name, stage="start", command=normalized_command, cwd=normalized_cwd
+        )
         try:
-            working_dir = _resolve_workspace_path(raw_path=cwd, workspace_root=workspace_root)
             if not working_dir.exists():
-                raise FileNotFoundError(cwd)
+                raise FileNotFoundError(normalized_cwd)
             if not working_dir.is_dir():
-                raise NotADirectoryError(cwd)
+                raise NotADirectoryError(normalized_cwd)
             allowed_commands = allowed_command_names(
                 tool_catalog.run_workspace_command.allowed_commands
             )
-            if not workspace_command_allowed(normalized_command, allowed_commands):
+            if not workspace_command_allowed(
+                normalized_command, allowed_commands
+            ) and not _trusted_skill_script_command_allowed(
+                normalized_command,
+                working_dir=working_dir,
+            ):
                 raise ValueError(
                     "command is not allowlisted; pass argv for a supported test, lint, "
-                    "build, or check command."
+                    "build, check, or trusted local skill script command."
                 )
             validate_command_paths(
                 normalized_command, resolve_path=_resolve_workspace_command_path
@@ -618,7 +714,7 @@ def build_workspace_tools(
             stderr_truncated = len(stderr) > capped_output_chars
             payload = {
                 "command": normalized_command,
-                "cwd": _coerce_relative_posix(working_dir, workspace_root),
+                "cwd": normalized_cwd,
                 "exit_code": returncode,
                 "timed_out": timed_out,
                 "timeout_seconds": capped_timeout,
@@ -636,7 +732,7 @@ def build_workspace_tools(
                 stage="error",
                 error=str(exc),
                 command=normalized_command,
-                cwd=cwd,
+                cwd=normalized_cwd,
             )
             raise
 

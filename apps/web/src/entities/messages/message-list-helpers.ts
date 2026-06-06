@@ -135,25 +135,19 @@ export function failureText(failed: RunFailedPayload, isChineseUi: boolean) {
 		: `This turn failed.\n\n${message}`;
 }
 
-export function toolActivityTitle(toolNames: string[], isChineseUi: boolean) {
-	if (toolNames.length === 0) {
-		return isChineseUi ? "处理过程" : "Processing";
-	}
-	if (toolNames.length === 1) {
-		return isChineseUi ? `已调用 ${toolNames[0]}` : `Used ${toolNames[0]}`;
-	}
-	return isChineseUi
-		? `已调用 ${toolNames.length} 个工具`
-		: `Used ${toolNames.length} tools`;
+export function toolActivityTitle(_toolNames: string[], isChineseUi: boolean) {
+	return isChineseUi ? "本轮处理" : "Run activity";
 }
 
 export function toolActivityNote(toolNames: string[], isChineseUi: boolean) {
 	if (toolNames.length > 1) {
-		return toolNames.join(" · ");
+		return isChineseUi
+			? "已合并本轮工具调用，展开查看时间线和详情。"
+			: "This run's tool calls are merged. Expand for timeline and details.";
 	}
 	return isChineseUi
-		? "默认折叠，可展开查看处理步骤。"
-		: "Folded by default. Expand for processing details.";
+		? "默认折叠，可展开查看时间线和详情。"
+		: "Folded by default. Expand for timeline and details.";
 }
 
 export function toolDetailsToggleLabel(isChineseUi: boolean, isOpen: boolean) {
@@ -168,7 +162,7 @@ export function toolSummaryLabel(isChineseUi: boolean) {
 }
 
 export function toolLabel(isChineseUi: boolean) {
-	return isChineseUi ? "工具" : "Tool";
+	return isChineseUi ? "本轮" : "Run";
 }
 
 export function processingStepsSummaryLabel(

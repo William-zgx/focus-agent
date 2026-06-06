@@ -78,6 +78,7 @@ def _chinese_semantic_search_terms(query: str, *, location_scope: str) -> list[s
     if location_scope:
         terms.append(location_scope)
     domain_term_count = 0
+    fallback = _strip_chinese_search_filler(query)
 
     if _contains_any(query, ("国家大事", "国内大事", "重大事件", "重大新闻")):
         if not location_scope and not _contains_any(
@@ -94,17 +95,21 @@ def _chinese_semantic_search_terms(query: str, *, location_scope: str) -> list[s
         terms.append("天气")
         domain_term_count += 1
     if _contains_any(query, ("股价", "股票", "行情", "走势", "波动", "大盘", "沪指", "A股")):
-        if _contains_any(query, ("A股", "大盘", "沪指", "上证", "深证", "创业板")):
+        is_index_query = _contains_any(query, ("大盘", "沪指", "上证", "深证", "创业板"))
+        if is_index_query:
             terms.extend(["A股", "大盘", "表现"])
             domain_term_count += 3
         else:
+            if fallback:
+                terms.extend(fallback.split())
+            if _contains_any(query, ("A股",)):
+                terms.append("A股")
             terms.extend(["股价", "行情"])
-            domain_term_count += 2
+            domain_term_count += 3
     if _contains_any(query, ("汇率", "美元", "人民币", "日元", "欧元")):
         terms.append("汇率")
         domain_term_count += 1
 
-    fallback = _strip_chinese_search_filler(query)
     if fallback and domain_term_count == 0:
         terms.extend(fallback.split())
     return [term for term in terms if term]
@@ -143,6 +148,7 @@ def _strip_chinese_search_filler(query: str) -> str:
     text = re.sub(
         r"(?:今天|明天|昨天|本周|这周|近一周|最近一周|过去一周|最近|近期|当前|现在)", " ", text
     )
+    text = re.sub(r"(?:在A股|于A股)", " A股 ", text, flags=re.IGNORECASE)
     text = re.sub(
         r"(?:帮我|请|麻烦|查一下|查下|搜一下|搜索|看一下|看看|告诉我|列出|给我|一下)", " ", text
     )

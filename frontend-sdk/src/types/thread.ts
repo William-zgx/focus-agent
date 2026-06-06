@@ -83,6 +83,50 @@ export interface ThreadContextCompactRequest {
 	trigger?: ThreadContextCompactTrigger;
 }
 
+export interface ThreadActiveSkillResponse {
+	skill_id: string;
+	name: string;
+	description: string;
+	enabled: boolean;
+	triggers: string[];
+	aliases: string[];
+	recommended_tools: string[];
+	prompt_mode?: string | null;
+	source_id: string;
+	source_type: string;
+	version?: string | null;
+	trust_level: string;
+	install_state: string;
+}
+
+export interface ThreadMessageSkillSelectionMetadata {
+	selection_source: string;
+	matched_triggers: string[];
+	confidence: number;
+	rationale: string;
+	prompt_mode?: string | null;
+}
+
+export interface ThreadMessageMetadata {
+	active_skill_ids: string[];
+	active_skills: ThreadActiveSkillResponse[];
+	skill_selection?: ThreadMessageSkillSelectionMetadata | null;
+}
+
+export interface ThreadMessageResponse {
+	type: string;
+	content: string;
+	tool_calls?: unknown;
+	name?: string | null;
+	id?: string | null;
+	usage_metadata?: Record<string, unknown> | null;
+	tool_call_id?: string | null;
+	status?: string | null;
+	turn_metadata?: Record<string, unknown> | null;
+	metadata?: ThreadMessageMetadata | Record<string, unknown> | null;
+	[key: string]: unknown;
+}
+
 export interface ThreadStateResponse {
 	thread_id: string;
 	root_thread_id: string;
@@ -95,7 +139,8 @@ export interface ThreadStateResponse {
 	merge_decision?: Record<string, unknown> | null;
 	merge_queue: FocusAgentImportedConclusion[];
 	active_skill_ids: string[];
-	messages: Array<Record<string, unknown>>;
+	active_skills: ThreadActiveSkillResponse[];
+	messages: Array<ThreadMessageResponse | Record<string, unknown>>;
 	interrupts: unknown[];
 	branch_actions: FocusAgentBranchActionProposal[];
 	branch_decision_summary?: FocusAgentBranchDecisionSummary | null;

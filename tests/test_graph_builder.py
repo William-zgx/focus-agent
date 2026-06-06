@@ -10,6 +10,7 @@ from focus_agent.capabilities.tool_router import build_tool_route_plan
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
+from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
 from focus_agent.engine.graph_builder import (
     _canonicalize_tool_call_args,
     _classify_turn_tool_policy,
@@ -842,6 +843,17 @@ def test_detects_textual_tool_call_artifacts():
     )
     assert _looks_like_textual_tool_call_artifact(AIMessage(content="</tool_call>"))
     assert _looks_like_textual_tool_call_artifact(
+        AIMessage(
+            content=(
+                '<tool_req name="run_shell_command">\n'
+                '<arg name="command" string="true">cd /home/focus/.focus_agent/skills/stocks '
+                "&& python3 scripts/stocks_client.py quote 601020.SS</arg>\n"
+                '<arg name="timeout" string="false">30</arg>\n'
+                "</tool_req>"
+            )
+        )
+    )
+    assert _looks_like_textual_tool_call_artifact(
         AIMessage(content="[web_fetch] 尝试获取沪指本周逐日行情数据，请稍等。")
     )
     assert _looks_like_textual_tool_call_artifact(
@@ -994,6 +1006,23 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     tool_config_lookup = build_tool_intent_plan(
         "请查证 src/focus_agent/capabilities/tool_manifest.py 中 skill_install 的 allowed_roles"
     )
+    chinese_skill_use_prompts = [
+        "请使用本周股票相关的 Skill 帮我分析走势",
+        "请加载股票相关技能",
+        "请采用 SQL Skill 处理一下这个查询",
+        "请启用当前 SQL 能力",
+    ]
+    chinese_skill_use_plans = [
+        build_tool_intent_plan(prompt) for prompt in chinese_skill_use_prompts
+    ]
+    active_stock_skill_execution = build_tool_intent_plan(
+        "请使用本周股票相关的 Skill 帮我分析走势",
+        active_skill_ids=["stocks"],
+    )
+    active_stock_skill_prefix_task = build_tool_intent_plan(
+        "看一下本周南网能源的活动情况",
+        active_skill_ids=["stocks"],
+    )
 
     assert plan.policy == "workspace_lookup"
     assert plan.preferred_first_tool == "skills_search"
@@ -1039,6 +1068,21 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
         assert skill_lookup.policy == "workspace_lookup"
         assert skill_lookup.preferred_first_tool == "skills_search"
         assert skill_lookup.allowed_toolsets == ["skill"]
+    for prompt, skill_lookup in zip(chinese_skill_use_prompts, chinese_skill_use_plans):
+        assert skill_lookup.policy == "workspace_lookup"
+        assert skill_lookup.preferred_first_tool == "skills_search"
+        assert skill_lookup.preferred_first_args == {"query": prompt}
+        assert skill_lookup.allowed_toolsets == ["skill"]
+        assert "skill" not in skill_lookup.denied_toolsets
+        assert "skill_discovery_signal" in skill_lookup.reason_codes
+        assert skill_lookup.temporal_anchor_required is False
+    for skill_execution in (active_stock_skill_execution, active_stock_skill_prefix_task):
+        assert skill_execution.policy == "execution"
+        assert skill_execution.source == "skill:active_execution"
+        assert skill_execution.preferred_first_tool is None
+        assert skill_execution.preferred_first_args == {}
+        assert skill_execution.allowed_toolsets == []
+        assert "active_skill_execution" in skill_execution.reason_codes
     assert code_lookup.policy == "workspace_lookup"
     assert code_lookup.preferred_first_tool == "search_code"
     assert code_lookup.allowed_toolsets == ["workspace"]
@@ -1415,6 +1459,21 @@ def test_graph_rewrites_temporal_news_query_before_live_web_search(monkeypatch):
     assert "今天有什么国家大事发生吗" not in search_query
     assert "原始查询" not in search_query
     assert web_calls == [search_query]
+
+
+def test_temporal_rewrite_preserves_chinese_stock_entity_for_a_share_scope():
+    args = _temporal_live_web_search_args(
+        {"query": "南网能源在A股近一周表现如何？"},
+        fallback_query="南网能源在A股近一周表现如何？",
+        current_utc_time="2026-06-06T12:00:00Z",
+    )
+
+    query = args["query"]
+    assert "2026-05-31" in query
+    assert "2026-06-06" in query
+    assert "南网能源" in query
+    assert "A股" in query
+    assert "大盘" not in query
 
 
 def test_graph_rewrites_english_temporal_weather_query_with_location(monkeypatch):
@@ -2146,6 +2205,84 @@ def test_graph_routes_skill_discovery_requests_to_skills_search(monkeypatch):
     assert result.value["tool_route_plan"]["role"] == "skill_scout"
 
 
+def test_graph_routes_chinese_explicit_skill_use_with_live_signals_to_skills_search(
+    monkeypatch,
+):
+    captured = {"bound_tools": []}
+    skill_queries = []
+    search_calls = 0
+    web_calls = 0
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="可以用 stock-analysis skill。")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def skills_search(query: str) -> str:
+        """Search installed skills."""
+        skill_queries.append(query)
+        return '{"results":[{"skill_id":"stock-analysis"}]}'
+
+    @tool
+    def search_code(query: str) -> str:
+        """Search repository code."""
+        nonlocal search_calls
+        search_calls += 1
+        return query
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        nonlocal web_calls
+        web_calls += 1
+        return query
+
+    prompt = "请使用本周股票相关的 Skill 帮我分析走势"
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        tool_registry=ToolRegistry(tools=(skills_search, search_code, web_search)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content=prompt)],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-chinese-skill-use"),
+        version="v2",
+    )
+
+    first_call = _first_tool_call(result.value["messages"])
+    assert first_call["name"] == "skills_search"
+    assert first_call["args"] == {"query": prompt}
+    assert captured["bound_tools"] == [["skills_search"]]
+    assert skill_queries == [prompt]
+    assert search_calls == 0
+    assert web_calls == 0
+    assert result.value["tool_intent_plan"]["allowed_toolsets"] == ["skill"]
+    assert "skill" not in result.value["tool_intent_plan"]["denied_toolsets"]
+    assert result.value["tool_route_plan"]["role"] == "skill_scout"
+
+
 def test_graph_routes_explicit_skill_tool_chain_to_skill_tools(monkeypatch):
     captured = {"bound_tools": []}
     skill_queries = []
@@ -2427,7 +2564,7 @@ def test_graph_does_not_auto_install_ambiguous_skill_search_result(monkeypatch):
 
 def test_graph_adds_active_skill_recommended_read_tools_to_main_chat(tmp_path, monkeypatch):
     skill_dir = tmp_path / "git-pr-workflow"
-    skill_dir.mkdir()
+    skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "\n".join(
             [
@@ -2496,6 +2633,216 @@ def test_graph_adds_active_skill_recommended_read_tools_to_main_chat(tmp_path, m
     )
 
     assert captured["bound_tools"] == [["search_code", "git_log"]]
+
+
+def test_graph_adds_active_skill_recommended_command_tools_for_execution(
+    tmp_path, monkeypatch
+):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: stocks",
+                "description: Fetch stock market data.",
+                "aliases: 股票, 股票相关",
+                "intents: 行情查询, 历史走势",
+                "recommended_tools: run_workspace_command, web_search, read_file",
+                "prompt_mode: execute",
+                "---",
+                "# Stocks",
+                "Run the local stock client when the user asks for market data.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    captured = {"bound_tools": []}
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="stock data checked.")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return query
+
+    @tool
+    def run_workspace_command(command: list[str]) -> str:
+        """Run a workspace command."""
+        return " ".join(command)
+
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        skill_registry=SkillRegistry([tmp_path / ".focus_agent" / "skills"]),
+        tool_registry=ToolRegistry(tools=(read_file, web_search, run_workspace_command)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="南网能源在A股近一周表现如何？")
+            ],
+            "active_skill_ids": ["stocks"],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-command-tools"),
+        version="v2",
+    )
+
+    assert captured["bound_tools"]
+    exposed = set(captured["bound_tools"][0])
+    assert {"read_file", "web_search", "run_workspace_command"} <= exposed
+    intent_plan = result.value["tool_intent_plan"]
+    skill_plan = intent_plan["skill_execution_plan"]
+    assert intent_plan["policy"] == "execution"
+    assert intent_plan["source"] == "skill:active_execution"
+    assert intent_plan["preferred_first_tool"] == "run_workspace_command"
+    assert skill_plan["selected_skill_ids"] == ["stocks"]
+    assert skill_plan["primary_tools"] == ["run_workspace_command"]
+    assert skill_plan["runtime_cwds"] == {"stocks": ".focus_agent/skills/stocks"}
+    assert result.value["plan_meta"]["execution_contract"]["policy"] == "skill_execution"
+    assert result.value["plan_meta"]["execution_contract"]["required_tools"] == [
+        "run_workspace_command"
+    ]
+
+
+def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, monkeypatch):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: stocks",
+                "description: Fetch stock market data.",
+                "aliases: 股票, 股价, 行情, A股",
+                "intents: 行情查询, 历史走势",
+                "recommended_tools: run_workspace_command, web_search, read_file",
+                "prompt_mode: execute",
+                "---",
+                "# Stocks",
+                "Run the local stock client when the user asks for market data.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            has_repair_note = any(
+                isinstance(message, SystemMessage)
+                and "Skill execution contract repair" in message.content
+                for message in prompt_messages
+            )
+            has_tool_result = any(isinstance(message, ToolMessage) for message in prompt_messages)
+            if has_repair_note:
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "stocks-quote-1",
+                            "name": "run_workspace_command",
+                            "args": {
+                                "command": ["python3", "scripts/stock_client.py", "quote"],
+                                "cwd": ".focus_agent/skills/stocks",
+                            },
+                        }
+                    ],
+                )
+            if has_tool_result:
+                return AIMessage(content="华钰矿业行情来自 stocks Skill 的结构化结果。")
+            return AIMessage(content="华钰矿业近一周上涨明显。")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        return query
+
+    @tool
+    def run_workspace_command(command: list[str], cwd: str = ".") -> str:
+        """Run a workspace command."""
+        return json.dumps({"ok": True, "command": command, "cwd": cwd}, ensure_ascii=False)
+
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        skill_registry=SkillRegistry([tmp_path / ".focus_agent" / "skills"]),
+        tool_registry=ToolRegistry(tools=(read_file, web_search, run_workspace_command)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="华钰矿业近一周表现")],
+            "active_skill_ids": ["stocks"],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-contract-repair"),
+        version="v2",
+    )
+
+    tool_calls = [
+        call
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
+    assert any(call["name"] == "run_workspace_command" for call in tool_calls)
+    assert result.value["messages"][-1].content == ""
+    assert result.value["plan_meta"]["execution_contract"]["status"] == "missing_required_tools"
+    assert result.value["plan_meta"]["answer_verification"]["repair_action_taken"] == (
+        "retry_skill_primary_tool"
+    )
+    assert result.value["plan_meta"]["skill_execution_answer_repair_count"] == 1
 
 
 def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):

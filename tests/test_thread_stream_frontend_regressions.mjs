@@ -266,6 +266,22 @@ function loadMessageTranscriptFunctions() {
     "looksLikeToolPlanningPayload",
     "shouldHideStreamingInternalContent",
     "visibleAssistantIndexesToHide",
+    "appendUniqueValues",
+    "recordValue",
+    "arrayValue",
+    "stringListValue",
+    "parsedJsonLikeValue",
+    "collectSkillIdsFromMetadata",
+    "collectSkillIdsFromRecordMetadata",
+    "turnMetadataFromMessage",
+    "hasSkillExecutionMetadata",
+    "skillExecutionPlanContent",
+    "executionContractContent",
+    "contractTone",
+    "contractStepStatus",
+    "skillIdFromSkillPath",
+    "collectSkillIdsFromCwd",
+    "collectSkillIdsFromSkillPayload",
     "buildTranscriptItems",
   ];
   const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
@@ -514,12 +530,37 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     true,
   );
   assert.equal(looksLikeTextualToolCallArtifact("</tool_call>"), true);
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '<tool_req name="run_shell_command">\n<arg name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>\n</tool_req>',
+    ),
+    true,
+  );
+  assert.equal(
+    looksLikeTextualToolCallArtifact(
+      '<toolreq name="runshell_command">\n<arg name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>\n</toolreq>',
+    ),
+    true,
+  );
   assert.equal(looksLikeTextualToolCallArtifact("function=web_search>"), true);
   assert.equal(looksLikeTextualToolCallArtifact("<parameter=query>比亚迪</parameter>"), true);
   assert.equal(looksLikeTextualToolCallArtifact("[背景] 沪指本周震荡。"), false);
   assert.equal(looksLikeTextualToolCallArtifact("我来帮你分析这份报告：结论是现金流改善。"), false);
   assert.equal(looksLikeTextualToolCallArtifact("普通文本里提到 invoke name resolution。"), false);
   assert.equal(safeVisibleText("</tool_call>"), "");
+  assert.equal(
+    safeVisibleText(
+      '<tool_req name="run_shell_command">\n<arg name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>\n</tool_req>',
+    ),
+    "",
+  );
+  assert.equal(
+    safeVisibleText(
+      '<toolreq name="runshell_command">\n<arg name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>\n</toolreq>',
+    ),
+    "",
+  );
+  assert.equal(safeVisibleText('<arg name="timeout" string="false">30</arg>'), "");
   assert.equal(safeVisibleText("function=web_search>"), "");
   assert.equal(safeVisibleText("invoke name"), "");
   assert.equal(safeVisibleText("parameter name"), "");
@@ -738,6 +779,41 @@ test("stream reducer filters textual tool-call artifacts from visible text", () 
     },
   });
   assert.equal(withSplitXmlishToolC.visibleText, "");
+
+  let withSplitToolReq = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "<tool",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitToolReq.visibleText, "");
+  withSplitToolReq = reduceStreamEvent(withSplitToolReq, {
+    event: "message.delta",
+    data: {
+      delta:
+        '_req name="run_shell_command">\n<arg name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>\n</tool_req>',
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitToolReq.visibleText, "");
+
+  let withSplitToolReqArg = reduceStreamEvent(createInitialStreamState(), {
+    event: "message.delta",
+    data: {
+      delta: "<arg",
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitToolReqArg.visibleText, "");
+  withSplitToolReqArg = reduceStreamEvent(withSplitToolReqArg, {
+    event: "message.delta",
+    data: {
+      delta: ' name="command" string="true">python3 scripts/stocks_client.py quote 601020.SS</arg>',
+      channel: "message",
+    },
+  });
+  assert.equal(withSplitToolReqArg.visibleText, "");
 
   const withOrphanedToolTail = reduceStreamEvent(createInitialStreamState(), {
     event: "message.delta",
@@ -1763,11 +1839,199 @@ test("message transcript shows only the latest visible assistant answer per turn
 	const toolItems = items.filter((item) => item.kind === "tool-activity");
 	assert.equal(assistantItems.length, 1);
 	assert.equal(assistantItems[0].content, "Final answer.");
-	assert.equal(toolItems.length, 2);
+	assert.equal(toolItems.length, 1);
+	assert.equal(toolItems[0].steps.length, 2);
+});
+
+test("message transcript merges staged tool calls into one run activity and infers selected skills", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems([
+		{ id: "user-1", type: "human", content: "Use the stock skill." },
+		{
+			id: "assistant-tools-1",
+			type: "ai",
+			content: "",
+			tool_calls: [{ id: "call-skills", name: "skills_search", args: { query: "stocks" } }],
+		},
+		{
+			id: "tool-result-skills",
+			type: "tool",
+			tool_call_id: "call-skills",
+			content: JSON.stringify({ results: [{ skill_id: "stocks" }] }),
+		},
+		{
+			id: "assistant-tools-2",
+			type: "ai",
+			content: "",
+			tool_calls: [
+				{
+					id: "call-command",
+					name: "run_workspace_command",
+					args: {
+						cwd: "/tmp/work/.focus_agent/skills/stocks",
+						command: ["python", "analyze.py"],
+					},
+				},
+				{ id: "call-search", name: "web_search", args: { query: "market close" } },
+			],
+		},
+		{
+			id: "tool-result-command",
+			type: "tool",
+			tool_call_id: "call-command",
+			name: "run_workspace_command",
+			content: JSON.stringify({ output: "analysis ready" }),
+		},
+		{
+			id: "tool-result-search",
+			type: "tool",
+			tool_call_id: "call-search",
+			name: "web_search",
+			content: JSON.stringify({ answer: "market data" }),
+		},
+		{ id: "assistant-final", type: "ai", content: "Final answer." },
+	]);
+
+	const toolItems = items.filter((item) => item.kind === "tool-activity");
+	const assistantItems = items.filter((item) => item.kind === "message" && item.type === "ai");
+	assert.equal(toolItems.length, 1);
+	assert.equal(JSON.stringify(toolItems[0].skillIds), JSON.stringify(["stocks"]));
+	assert.equal(
+		JSON.stringify(toolItems[0].toolNames),
+		JSON.stringify(["skills_search", "run_workspace_command", "web_search"]),
+	);
+	assert.equal(toolItems[0].steps.length, 3);
+	assert.equal(assistantItems[0].content, "Final answer.");
+});
+
+test("message transcript infers skills from detail JSON metadata", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems([
+		{ id: "user-1", type: "human", content: "Show the selected skill." },
+		{
+			id: "assistant-tools-1",
+			type: "ai",
+			content: "",
+			tool_calls: [{ id: "call-view", name: "skill_view", args: { skill_id: "stocks" } }],
+		},
+		{
+			id: "tool-result-view",
+			type: "tool",
+			tool_call_id: "call-view",
+			name: "skill_view",
+			content: JSON.stringify({
+				skill_id: "stocks",
+				recommended_tools: ["run_workspace_command", "web_search"],
+			}),
+		},
+	]);
+
+	const toolItems = items.filter((item) => item.kind === "tool-activity");
+	assert.equal(toolItems.length, 1);
+	assert.equal(JSON.stringify(toolItems[0].skillIds), JSON.stringify(["stocks"]));
+});
+
+test("message transcript reads selected skills from backend turn metadata", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems([
+		{
+			id: "user-1",
+			type: "human",
+			content: "Use the stock skill.",
+			metadata: {
+				active_skill_ids: ["stocks"],
+				active_skills: [{ skill_id: "stocks", name: "Stocks" }],
+			},
+		},
+		{
+			id: "assistant-tools-1",
+			type: "ai",
+			content: "",
+			metadata: {
+				active_skills: [{ skill_id: "stocks", name: "Stocks" }],
+			},
+			tool_calls: [{ id: "call-search", name: "web_search", args: { query: "market close" } }],
+		},
+		{
+			id: "tool-result-search",
+			type: "tool",
+			tool_call_id: "call-search",
+			name: "web_search",
+			content: JSON.stringify({ answer: "market data" }),
+		},
+	]);
+
+	const toolItems = items.filter((item) => item.kind === "tool-activity");
+	assert.equal(toolItems.length, 1);
+	assert.equal(JSON.stringify(toolItems[0].skillIds), JSON.stringify(["stocks"]));
+});
+
+test("message transcript renders skill execution contract metadata in one activity", () => {
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+
+	const items = buildTranscriptItems([
+		{ id: "user-1", type: "human", content: "华钰矿业近一周表现" },
+		{
+			id: "assistant-repair-1",
+			type: "ai",
+			content: "",
+			turn_metadata: {
+				selected_skill_ids: ["stocks"],
+				skill_execution_plan: {
+					selected_skill_ids: ["stocks"],
+					primary_tools: ["run_workspace_command"],
+					supporting_tools: ["web_search", "read_file"],
+					runtime_cwds: { stocks: ".focus_agent/skills/stocks" },
+				},
+				execution_contract: {
+					policy: "skill_execution",
+					selected_skill_ids: ["stocks"],
+					required_tools: ["run_workspace_command"],
+					missing: ["run_workspace_command"],
+					status: "missing_required_tools",
+				},
+				answer_verification: {
+					status: "unsupported",
+					repair_action_taken: "retry_skill_primary_tool",
+				},
+			},
+			tool_calls: [
+				{
+					id: "call-stocks",
+					name: "run_workspace_command",
+					args: {
+						command: ["python3", "scripts/stock_client.py", "quote"],
+						cwd: ".focus_agent/skills/stocks",
+					},
+				},
+			],
+		},
+	]);
+
+	const toolItems = items.filter((item) => item.kind === "tool-activity");
+	assert.equal(toolItems.length, 1);
+	assert.equal(JSON.stringify(toolItems[0].skillIds), JSON.stringify(["stocks"]));
+	assert.equal(
+		JSON.stringify(toolItems[0].toolNames),
+		JSON.stringify(["run_workspace_command"]),
+	);
+	const labels = toolItems[0].steps.map((step) => step.label);
+	assert.equal(labels.includes("Skill plan"), true);
+	assert.equal(labels.includes("Required tools"), true);
+	assert.equal(labels.includes("Repair"), true);
+	assert.equal(
+		toolItems[0].steps.some((step) =>
+			String(step.content || "").includes(".focus_agent/skills/stocks")
+		),
+		true,
+	);
 });
 
 test("message transcript keeps historical tool results inside one tool activity", () => {
-  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+	const { buildTranscriptItems } = loadMessageTranscriptFunctions();
   const largeToolResult = JSON.stringify({
     answer: "tool-result-unique-large-payload",
     rows: Array.from({ length: 40 }, (_, index) => ({
@@ -2377,14 +2641,13 @@ test("branch decision summary stays compact while hover details keep diagnostics
   assert.equal(compactCss.includes("right: 0;"), true);
   assert.equal(compactCss.includes("pointer-events: none;"), true);
   assert.equal(compactCss.includes("pointer-events: auto;"), true);
-  assert.equal(
-    compactCss.includes(
-      ".fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history { padding-bottom: 72px;",
-    ),
-    true,
-  );
-  assert.equal(compactCss.includes("bottom: 72px;"), true);
-  assert.equal(compactCss.includes("display: none;"), true);
+	  assert.equal(
+	    compactCss.includes(
+	      ".fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history { padding-bottom: 56px;",
+	    ),
+	    true,
+	  );
+	  assert.equal(compactCss.includes("display: none;"), true);
 });
 
 test("chat header keeps conversation tools left and compacts branch actions by available width", () => {

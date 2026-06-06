@@ -2097,6 +2097,87 @@ def test_send_message_activates_skills_from_prefix(tmp_path: Path):
     assert payload["selected_thinking_mode"] == "disabled"
 
 
+def test_send_message_exposes_active_skill_metadata_per_turn(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    skill_dir = tmp_path / "skills"
+    plan_dir = skill_dir / "plan"
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: plan",
+                "description: Planning mode",
+                "triggers: plan:",
+                "recommended_tools: search_code, run_workspace_command",
+                "prompt_mode: explore",
+                "---",
+                "",
+                "# Plan",
+                "",
+                "Plan first.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class TurnMessageGraph:
+        def __init__(self):
+            self.values: dict[str, object] = {}
+            self.last_payload = None
+
+        def invoke(self, payload, *, config, context, version):
+            del config, context, version
+            self.last_payload = payload
+            self.values = {
+                "messages": [*list(payload["messages"]), AIMessage(content="planned")],
+                "active_skill_ids": list(payload.get("active_skill_ids", [])),
+                "selected_model": payload.get("selected_model", ""),
+                "selected_thinking_mode": payload.get("selected_thinking_mode", ""),
+            }
+            return {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+        def update_state(self, _config, values, as_node=None):
+            del _config, as_node
+            self.values = {**self.values, **dict(values)}
+
+    graph = TurnMessageGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        skill_registry=SkillRegistry([skill_dir]),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="plan: map the rollout",
+    )
+
+    assert graph.last_payload["messages"][0].response_metadata["focus_agent"][
+        "active_skill_ids"
+    ] == ["plan"]
+    assert payload["active_skill_ids"] == ["plan"]
+    assert payload["active_skills"][0]["skill_id"] == "plan"
+    assert payload["active_skills"][0]["description"] == "Planning mode"
+    assert payload["active_skills"][0]["recommended_tools"] == [
+        "search_code",
+        "run_workspace_command",
+    ]
+    human_message = payload["messages"][0]
+    assert human_message["type"] == "human"
+    assert human_message["metadata"]["active_skill_ids"] == ["plan"]
+    assert human_message["metadata"]["active_skills"][0]["skill_id"] == "plan"
+    assert human_message["metadata"]["skill_selection"]["prompt_mode"] == "explore"
+
+
 def test_send_message_semantically_activates_build_fix_for_real_failure_request(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
@@ -2579,6 +2660,27 @@ def test_serialize_message_normalizes_response_metadata_token_usage():
     }
 
 
+def test_serialize_message_exposes_focus_agent_metadata():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+
+    payload = service._serialize_message(
+        HumanMessage(
+            content="plan: map the rollout",
+            response_metadata={
+                "focus_agent": {
+                    "active_skill_ids": ["plan"],
+                    "active_skills": [{"skill_id": "plan", "name": "plan"}],
+                }
+            },
+        )
+    )
+
+    assert payload["metadata"]["active_skill_ids"] == ["plan"]
+    assert payload["metadata"]["active_skills"][0]["skill_id"] == "plan"
+
+
 def test_latest_final_ai_text_hides_english_process_narration():
     service = ChatService(
         ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
@@ -2657,6 +2759,15 @@ def test_thread_state_messages_hide_textual_tool_protocol_ai_messages():
             HumanMessage(content="Search this."),
             AIMessage(
                 content='="read="filepath" string="true">tool-observation://webfetch/call00ljJOwoeUmsjmBzMNhkx8505'
+            ),
+            AIMessage(
+                content=(
+                    '<tool_req name="run_shell_command">\n'
+                    '<arg name="command" string="true">cd /home/focus/.focus_agent/skills/stocks '
+                    "&& python3 scripts/stocks_client.py quote 601020.SS</arg>\n"
+                    '<arg name="timeout" string="false">30</arg>\n'
+                    "</tool_req>"
+                )
             ),
             AIMessage(content="最终安全回答。"),
         ]

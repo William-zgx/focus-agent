@@ -117,10 +117,14 @@ export function localRoleDecision(
 export function localSkillCatalogItems(_ctx: LocalFocusAgentRuntime) {
 	return ANDROID_LOCAL_SKILLS.map((skill) => ({
 		skill_id: skill.skill_id,
-		name: skill.name,
-		description: skill.description,
-		triggers: skill.triggers,
-		when_to_use: skill.when_to_use,
+			name: skill.name,
+			description: skill.description,
+			triggers: skill.triggers,
+			aliases: skill.aliases ?? [],
+			localized_triggers: skill.localized_triggers ?? [],
+			domains: skill.domains ?? [],
+			intents: skill.intents ?? [],
+			when_to_use: skill.when_to_use,
 		recommended_tools: skill.recommended_tools,
 		prompt_mode: skill.prompt_mode,
 		source_id: skill.source_id,

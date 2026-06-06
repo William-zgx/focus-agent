@@ -139,7 +139,7 @@ class SkillRegistry:
                 (
                     (trigger.lower(), skill)
                     for skill in self._active_skills()
-                    for trigger in skill.triggers
+                    for trigger in (*skill.triggers, *skill.localized_triggers)
                 ),
                 key=lambda item: len(item[0]),
                 reverse=True,
@@ -575,7 +575,12 @@ class SkillRegistry:
                 "description": skill.description,
                 "enabled": self.is_skill_enabled(skill.skill_id),
                 "triggers": list(skill.triggers),
+                "aliases": list(skill.aliases),
+                "localized_triggers": list(skill.localized_triggers),
+                "domains": list(skill.domains),
+                "intents": list(skill.intents),
                 "when_to_use": list(skill.when_to_use),
+                "primary_tools": list(skill.primary_tools),
                 "recommended_tools": list(skill.recommended_tools),
                 "prompt_mode": skill.prompt_mode.value if skill.prompt_mode else None,
                 "path": str(skill.path),
@@ -600,7 +605,12 @@ class SkillRegistry:
             "description": skill.description,
             "enabled": self.is_skill_enabled(skill.skill_id),
             "triggers": list(skill.triggers),
+            "aliases": list(skill.aliases),
+            "localized_triggers": list(skill.localized_triggers),
+            "domains": list(skill.domains),
+            "intents": list(skill.intents),
             "when_to_use": list(skill.when_to_use),
+            "primary_tools": list(skill.primary_tools),
             "recommended_tools": list(skill.recommended_tools),
             "prompt_mode": skill.prompt_mode.value if skill.prompt_mode else None,
             "path": str(skill.path),
@@ -627,6 +637,10 @@ class SkillRegistry:
         for skill in active_skills:
             trigger_text = ", ".join(skill.triggers) if skill.triggers else "manual only"
             line = f"- {skill.skill_id}: {skill.description} (triggers: {trigger_text})"
+            if skill.aliases:
+                line += f" Aliases: {', '.join(skill.aliases)}."
+            if skill.localized_triggers:
+                line += f" Localized triggers: {', '.join(skill.localized_triggers)}."
             if skill.when_to_use:
                 line += f" Use when: {'; '.join(skill.when_to_use)}"
             lines.append(line)
@@ -691,7 +705,12 @@ class SkillRegistry:
             body=body,
             raw_text=raw_text,
             triggers=_normalize_list(frontmatter.get("triggers")),
+            aliases=_normalize_list(frontmatter.get("aliases")),
+            localized_triggers=_normalize_list(frontmatter.get("localized_triggers")),
+            domains=_normalize_list(frontmatter.get("domains")),
+            intents=_normalize_list(frontmatter.get("intents")),
             when_to_use=_normalize_list(frontmatter.get("when_to_use")),
+            primary_tools=_normalize_list(frontmatter.get("primary_tools")),
             recommended_tools=_normalize_list(frontmatter.get("recommended_tools")),
             prompt_mode=_coerce_prompt_mode(frontmatter.get("prompt_mode")),
             source_id=resolved_source.source_id,
@@ -768,7 +787,13 @@ class SkillRegistry:
                         skill.skill_id,
                         skill.description,
                         " ".join(skill.triggers),
+                        " ".join(skill.aliases),
+                        " ".join(skill.localized_triggers),
+                        " ".join(skill.domains),
+                        " ".join(skill.intents),
                         " ".join(skill.when_to_use),
+                        " ".join(skill.primary_tools),
+                        " ".join(skill.capability_requirements),
                     ]
                 ).lower()
                 if query.lower() not in haystack:
@@ -807,7 +832,11 @@ class SkillRegistry:
                 if query.strip():
                     score = round(_cosine_score(query_vector, _skill_semantic_vector(skill)), 4)
                     haystack = (
-                        f"{skill.skill_id} {skill.description} {' '.join(skill.when_to_use)}"
+                        f"{skill.skill_id} {skill.description} {' '.join(skill.aliases)} "
+                        f"{' '.join(skill.localized_triggers)} {' '.join(skill.domains)} "
+                        f"{' '.join(skill.intents)} {' '.join(skill.when_to_use)} "
+                        f"{' '.join(skill.primary_tools)} "
+                        f"{' '.join(skill.capability_requirements)}"
                     ).lower()
                     if score <= 0 and query.lower() in haystack:
                         score = 0.1

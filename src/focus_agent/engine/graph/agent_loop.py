@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
@@ -66,10 +67,16 @@ from .agent_loop_helpers import (
     _next_pending_tool_action,
     _pending_live_web_search_action_from_state,
     _registered_tool_names,
+    _skill_execution_answer_repair_count,
+    _skill_execution_failure_answer,
+    _skill_execution_repair_prompt,
     _tool_intent_text,
     _tool_router_fallback_role,
     _tools_for_policy_compat,
     _workspace_lookup_should_start_with_search_compat,
+    apply_skill_execution_plan,
+    build_active_skill_execution_plan,
+    skill_execution_policy_note,
 )
 from .policy import (
     _skill_install_name_from_text,
@@ -131,6 +138,28 @@ def _model_with_tools_for_stream_phase(
     return wrapped
 
 
+def _with_focus_agent_turn_metadata(
+    response: AIMessage,
+    metadata: Mapping[str, Any],
+) -> AIMessage:
+    if not metadata:
+        return response
+    response_metadata = getattr(response, "response_metadata", None)
+    if not isinstance(response_metadata, Mapping):
+        response_metadata = {}
+    focus_agent = response_metadata.get("focus_agent")
+    focus_agent_metadata = dict(focus_agent) if isinstance(focus_agent, Mapping) else {}
+    focus_agent_metadata.update(dict(metadata))
+    return response.model_copy(
+        update={
+            "response_metadata": {
+                **dict(response_metadata),
+                "focus_agent": focus_agent_metadata,
+            }
+        }
+    )
+
+
 def make_agent_loop_node(
     *,
     settings: Settings,
@@ -167,6 +196,14 @@ def make_agent_loop_node(
             active_skill_ids=list(state.get("active_skill_ids", []) or ()),
             pending_tool_action=pending_tool_action,
         )
+        skill_execution_plan = build_active_skill_execution_plan(
+            skill_registry=skill_registry,
+            active_skill_ids=list(state.get("active_skill_ids", []) or ()),
+            text=tool_intent_text,
+            workspace_root=Path(settings.workspace_root or ".").expanduser().resolve(),
+            base_intent_plan=tool_intent_plan,
+        )
+        tool_intent_plan = apply_skill_execution_plan(tool_intent_plan, skill_execution_plan)
         tool_policy = tool_intent_plan.policy
         temporal_anchor_required = _tool_intent_plan_requires_temporal_anchor(tool_intent_plan)
         current_utc_time_result = _latest_tool_result_content(state_messages, "current_utc_time")
@@ -234,6 +271,9 @@ def make_agent_loop_node(
             temporal_anchor_required=temporal_anchor_required,
             available_tool_names=known_names,
             preferred_first_tool=tool_intent_plan.preferred_first_tool,
+            skill_execution_plan=tool_intent_plan.skill_execution_plan.model_dump(mode="json")
+            if tool_intent_plan.skill_execution_plan is not None
+            else None,
         )
         quarantined_model_for = _model_for_stream_phase(model_for, STREAM_VISIBILITY_QUARANTINE)
         quarantined_model_with_tools_for = _model_with_tools_for_stream_phase(
@@ -243,6 +283,9 @@ def make_agent_loop_node(
         tool_protocol_repair_count = 0
         tool_protocol_repair_reason = ""
         policy_note = _tool_policy_note(tool_policy)
+        skill_policy_note = skill_execution_policy_note(tool_intent_plan.skill_execution_plan)
+        if skill_policy_note:
+            policy_note = f"{policy_note}\n\n{skill_policy_note}".strip()
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
             plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
@@ -569,6 +612,86 @@ def make_agent_loop_node(
         )
         live_web_repair_count = _live_web_answer_repair_count(state)
         live_web_repair_taken = ""
+        skill_execution_repair_count = _skill_execution_answer_repair_count(state)
+        skill_execution_repair_taken = ""
+        if (
+            str(execution_contract.get("policy") or "") == "skill_execution"
+            and not getattr(response, "tool_calls", None)
+            and _live_web_answer_needs_repair(answer_verification)
+        ):
+            if skill_execution_repair_count < 1 and available_tools:
+                repair_prompt = apply_prompt_budget_guard(
+                    [
+                        prompt_messages[0],
+                        SystemMessage(
+                            content=_skill_execution_repair_prompt(
+                                verification=answer_verification,
+                                execution_contract=execution_contract,
+                            )
+                        ),
+                        *prompt_messages[1:],
+                    ],
+                    budget=context_budget,
+                )
+                repair_prompt = _ensure_reasoning_content_for_tool_call_history(
+                    repair_prompt,
+                    model_id=selected_model,
+                    thinking_mode=selected_thinking_mode,
+                    settings=settings,
+                )
+                repair_response = _invoke_with_tool_result_fallback(
+                    _with_stream_phase(
+                        model_with_tools_for(
+                            selected_model,
+                            selected_thinking_mode,
+                            available_tools,
+                        ),
+                        STREAM_VISIBILITY_QUARANTINE,
+                    ),
+                    repair_prompt,
+                    fallback_messages=fallback_messages,
+                    known_tool_names=known_names,
+                )
+                if _looks_like_textual_tool_call_artifact(
+                    repair_response, known_tool_names=known_names
+                ):
+                    tool_protocol_repair_count += 1
+                    tool_protocol_repair_reason = (
+                        tool_protocol_repair_reason or "textual_tool_marker"
+                    )
+                repair_response = _repair_textual_tool_call_response(
+                    response=repair_response,
+                    prompt_messages=repair_prompt,
+                    fallback_messages=fallback_messages,
+                    context_budget=context_budget,
+                    selected_model=selected_model,
+                    selected_thinking_mode=selected_thinking_mode,
+                    available_tools=available_tools,
+                    model_for=quarantined_model_for,
+                    model_with_tools_for=quarantined_model_with_tools_for,
+                )
+                repair_response = _repair_and_dedupe_tool_calls(repair_response)
+                if getattr(repair_response, "tool_calls", None):
+                    response = repair_response
+                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                    answer_verification = {
+                        **answer_verification,
+                        "repair_action_taken": "retry_skill_primary_tool",
+                    }
+                    skill_execution_repair_taken = "retry_skill_primary_tool"
+            if not skill_execution_repair_taken:
+                response = AIMessage(
+                    content=_skill_execution_failure_answer(
+                        verification=answer_verification,
+                        execution_contract=execution_contract,
+                    )
+                )
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                answer_verification = {
+                    **answer_verification,
+                    "repair_action_taken": "answer_with_uncertainty",
+                }
+                skill_execution_repair_taken = "answer_with_uncertainty"
         if (
             tool_policy == "live_web_research"
             and not getattr(response, "tool_calls", None)
@@ -661,6 +784,26 @@ def make_agent_loop_node(
             intent_dumped["live_web_answer_repair_action_taken"] = live_web_repair_taken
             if live_web_repair_taken == "retry_web_search":
                 intent_dumped["live_web_answer_repair_count"] = live_web_repair_count + 1
+        if skill_execution_repair_taken:
+            intent_dumped["skill_execution_repair_action_taken"] = skill_execution_repair_taken
+            if skill_execution_repair_taken == "retry_skill_primary_tool":
+                intent_dumped["skill_execution_answer_repair_count"] = (
+                    skill_execution_repair_count + 1
+                )
+        turn_metadata: dict[str, Any] = {}
+        if intent_dumped.get("skill_execution_plan"):
+            turn_metadata["skill_execution_plan"] = intent_dumped["skill_execution_plan"]
+            selected_skill_ids = intent_dumped["skill_execution_plan"].get("selected_skill_ids")
+            if isinstance(selected_skill_ids, list):
+                turn_metadata["selected_skill_ids"] = selected_skill_ids
+                turn_metadata["active_skill_ids"] = selected_skill_ids
+        if str(execution_contract.get("policy") or "") == "skill_execution":
+            turn_metadata["execution_contract"] = execution_contract
+        if skill_execution_repair_taken:
+            turn_metadata["answer_verification"] = answer_verification
+        if turn_metadata:
+            response = _with_focus_agent_turn_metadata(response, turn_metadata)
+            updates["messages"] = [response]
         updates["pending_tool_action"] = _next_pending_tool_action(
             state=state,
             tool_intent_plan=intent_dumped,
@@ -696,6 +839,10 @@ def make_agent_loop_node(
         }
         if live_web_repair_taken == "retry_web_search":
             updates["plan_meta"]["live_web_answer_repair_count"] = live_web_repair_count + 1
+        if skill_execution_repair_taken == "retry_skill_primary_tool":
+            updates["plan_meta"]["skill_execution_answer_repair_count"] = (
+                skill_execution_repair_count + 1
+            )
         if tool_route_plan is not None:
             dumped = tool_route_plan.model_dump(mode="json")
             append_agent_state_record(

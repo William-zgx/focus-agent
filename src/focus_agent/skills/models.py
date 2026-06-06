@@ -25,7 +25,12 @@ class SkillDefinition:
     body: str
     raw_text: str
     triggers: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
+    localized_triggers: tuple[str, ...] = ()
+    domains: tuple[str, ...] = ()
+    intents: tuple[str, ...] = ()
     when_to_use: tuple[str, ...] = ()
+    primary_tools: tuple[str, ...] = ()
     recommended_tools: tuple[str, ...] = ()
     prompt_mode: PromptMode | None = None
     source_id: str = "installed"
@@ -73,6 +78,10 @@ class SkillSearchResult:
     provenance: str | None = None
     checksum: str | None = None
     recommended_tools: tuple[str, ...] = ()
+    primary_tools: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
+    domains: tuple[str, ...] = ()
+    intents: tuple[str, ...] = ()
     capability_requirements: tuple[str, ...] = ()
     score: float = 0.0
     rationale: str = ""

@@ -32,7 +32,11 @@ def _search_result_from_skill(
         version=skill.version,
         provenance=skill.provenance,
         checksum=skill.checksum,
+        primary_tools=skill.primary_tools,
         recommended_tools=skill.recommended_tools,
+        aliases=skill.aliases,
+        domains=skill.domains,
+        intents=skill.intents,
         capability_requirements=skill.capability_requirements,
         score=round(float(score), 4),
         rationale="Installed semantic/local match."

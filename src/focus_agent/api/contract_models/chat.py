@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from focus_agent.core.branching import BranchActionProposal, ThreadResolution
 from focus_agent.core.governance import BranchDecisionSummary
@@ -91,6 +91,51 @@ class ThreadContextCompactRequest(BaseModel):
     trigger: Literal["manual", "auto_pre_send", "auto_post_turn"] = "manual"
 
 
+class ThreadActiveSkillResponse(BaseModel):
+    skill_id: str
+    name: str
+    description: str = ""
+    enabled: bool = True
+    triggers: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    recommended_tools: list[str] = Field(default_factory=list)
+    prompt_mode: str | None = None
+    source_id: str = ""
+    source_type: str = ""
+    version: str | None = None
+    trust_level: str = ""
+    install_state: str = ""
+
+
+class ThreadMessageSkillSelectionMetadata(BaseModel):
+    selection_source: str = "none"
+    matched_triggers: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    rationale: str = ""
+    prompt_mode: str | None = None
+
+
+class ThreadMessageMetadata(BaseModel):
+    active_skill_ids: list[str] = Field(default_factory=list)
+    active_skills: list[ThreadActiveSkillResponse] = Field(default_factory=list)
+    skill_selection: ThreadMessageSkillSelectionMetadata | None = None
+
+
+class ThreadMessageResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    content: str = ""
+    tool_calls: Any = None
+    name: str | None = None
+    id: str | None = None
+    usage_metadata: dict[str, Any] | None = None
+    tool_call_id: str | None = None
+    status: str | None = None
+    turn_metadata: dict[str, Any] | None = None
+    metadata: ThreadMessageMetadata | dict[str, Any] | None = None
+
+
 class ThreadStateResponse(BaseModel):
     thread_id: str
     root_thread_id: str
@@ -103,7 +148,8 @@ class ThreadStateResponse(BaseModel):
     merge_decision: dict[str, Any] | None = None
     merge_queue: list[dict[str, Any]] = Field(default_factory=list)
     active_skill_ids: list[str] = Field(default_factory=list)
-    messages: list[dict[str, Any]] = Field(default_factory=list)
+    active_skills: list[ThreadActiveSkillResponse] = Field(default_factory=list)
+    messages: list[ThreadMessageResponse | dict[str, Any]] = Field(default_factory=list)
     interrupts: list[Any] = Field(default_factory=list)
     branch_actions: list[BranchActionProposal] = Field(default_factory=list)
     branch_decision_summary: BranchDecisionSummary | None = None
@@ -132,6 +178,10 @@ __all__ = [
     "ThreadContextPreviewRequest",
     "ThreadContextPreviewResponse",
     "ThreadContextCompactRequest",
+    "ThreadActiveSkillResponse",
+    "ThreadMessageSkillSelectionMetadata",
+    "ThreadMessageMetadata",
+    "ThreadMessageResponse",
     "ThreadStateResponse",
     "ThreadContextCompactResponse",
     "ThreadResolutionResponse",

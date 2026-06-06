@@ -18,6 +18,20 @@ const MAX_FAILED_TIMELINE_STEPS = 3;
 const MAX_RECENT_TIMELINE_STEPS = 4;
 const MAX_DETAIL_PREVIEW_LENGTH = 140;
 
+type ActivityChipTone =
+	| "neutral"
+	| "skill"
+	| "tool"
+	| "success"
+	| "warn"
+	| "danger";
+type ActivitySummaryChip = {
+	id: string;
+	label: string;
+	tone: ActivityChipTone;
+	value?: number;
+};
+
 function processingStepStatusLabel(
 	step: ProcessingStepEntry,
 	isChineseUi: boolean,
@@ -34,18 +48,6 @@ function processingStepStatusLabel(
 	return isChineseUi ? "等待中" : "Pending";
 }
 
-function briefSteps(steps: ProcessingStepEntry[]) {
-	if (steps.length <= 2) {
-		return steps;
-	}
-	const failed = steps.find((step) => step.status === "failed");
-	const latest = steps[steps.length - 1];
-	if (failed && failed.id !== latest.id) {
-		return [failed, latest];
-	}
-	return steps.slice(-2);
-}
-
 function compactTimelineSteps(steps: ProcessingStepEntry[]) {
 	if (steps.length <= MAX_FAILED_TIMELINE_STEPS + MAX_RECENT_TIMELINE_STEPS) {
 		return {
@@ -55,6 +57,10 @@ function compactTimelineSteps(steps: ProcessingStepEntry[]) {
 	}
 
 	const selectedIds = new Set<string>();
+	const firstStep = steps[0];
+	if (firstStep?.id.endsWith("-skill-selection")) {
+		selectedIds.add(firstStep.id);
+	}
 	for (const step of steps
 		.filter((item) => item.status === "failed")
 		.slice(-MAX_FAILED_TIMELINE_STEPS)) {
@@ -78,13 +84,24 @@ function countSteps(
 	return steps.filter((step) => step.status === status).length;
 }
 
+function activityStatusCounts(steps: ProcessingStepEntry[]) {
+	return {
+		completed: countSteps(steps, "completed"),
+		failed: countSteps(steps, "failed"),
+		running: countSteps(steps, "running") + countSteps(steps, "pending"),
+	};
+}
+
 function activityStats(activity: ToolActivityItem, isChineseUi: boolean) {
-	const failedCount = countSteps(activity.steps, "failed");
-	const runningCount = countSteps(activity.steps, "running");
-	const completedCount = countSteps(activity.steps, "completed");
-	const pendingCount = countSteps(activity.steps, "pending");
+	const counts = activityStatusCounts(activity.steps);
 
 	return [
+		{
+			id: "skills",
+			label: "Skill",
+			tone: "neutral",
+			value: activity.skillIds.length,
+		},
 		{
 			id: "steps",
 			label: isChineseUi ? "步骤" : "Steps",
@@ -107,21 +124,110 @@ function activityStats(activity: ToolActivityItem, isChineseUi: boolean) {
 			id: "completed",
 			label: isChineseUi ? "完成" : "Done",
 			tone: "success",
-			value: completedCount,
+			value: counts.completed,
 		},
 		{
 			id: "running",
 			label: isChineseUi ? "处理中" : "Running",
 			tone: "warn",
-			value: runningCount + pendingCount,
+			value: counts.running,
 		},
 		{
 			id: "failed",
 			label: isChineseUi ? "失败" : "Failed",
 			tone: "danger",
-			value: failedCount,
+			value: counts.failed,
 		},
 	].filter((item) => item.value > 0 || item.id === "steps");
+}
+
+function statusChipLabel(label: string, value: number, isChineseUi: boolean) {
+	return isChineseUi ? `${label} ${value}` : `${value} ${label}`;
+}
+
+function activitySummaryChips(
+	activity: ToolActivityItem,
+	isChineseUi: boolean,
+): Array<{ id: string; label: string; tone: ActivityChipTone }> {
+	const counts = activityStatusCounts(activity.steps);
+	const skillChips: ActivitySummaryChip[] = activity.skillIds.map(
+		(skillId) => ({
+			id: `skill-${skillId}`,
+			label: `Skill · ${skillId}`,
+			tone: "skill" as const,
+		}),
+	);
+	const toolChips: ActivitySummaryChip[] = activity.toolNames.map(
+		(toolName) => ({
+			id: `tool-${toolName}`,
+			label: `${isChineseUi ? "工具" : "Tool"} · ${toolName}`,
+			tone: "tool" as const,
+		}),
+	);
+
+	const chips: ActivitySummaryChip[] = [
+		...skillChips,
+		...toolChips,
+		{
+			id: "completed",
+			value: counts.completed,
+			label: statusChipLabel(
+				isChineseUi ? "完成" : "done",
+				counts.completed,
+				isChineseUi,
+			),
+			tone: "success" as const,
+		},
+		{
+			id: "running",
+			value: counts.running,
+			label: statusChipLabel(
+				isChineseUi ? "处理中" : "running",
+				counts.running,
+				isChineseUi,
+			),
+			tone: "warn" as const,
+		},
+		{
+			id: "failed",
+			value: counts.failed,
+			label: statusChipLabel(
+				isChineseUi ? "失败" : "failed",
+				counts.failed,
+				isChineseUi,
+			),
+			tone: "danger" as const,
+		},
+	];
+	return chips
+		.filter((chip) => chip.value === undefined || chip.value > 0)
+		.map(({ value: _value, ...chip }) => chip);
+}
+
+function skillSelectionStep(
+	activity: ToolActivityItem,
+	isChineseUi: boolean,
+): ProcessingStepEntry | null {
+	if (activity.skillIds.length === 0) {
+		return null;
+	}
+	return {
+		id: `${activity.id}-skill-selection`,
+		kind: "skill",
+		label: isChineseUi
+			? `选择 Skill：${activity.skillIds.join("、")}`
+			: `Selected skill: ${activity.skillIds.join(", ")}`,
+		status: "completed",
+		tone: "success",
+	};
+}
+
+function timelineStepsForActivity(
+	activity: ToolActivityItem,
+	isChineseUi: boolean,
+) {
+	const firstStep = skillSelectionStep(activity, isChineseUi);
+	return firstStep ? [firstStep, ...activity.steps] : activity.steps;
 }
 
 function hiddenStepsLabel(count: number, isChineseUi: boolean) {
@@ -197,12 +303,13 @@ export function ToolActivityCard({
 }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const [showAllSteps, setShowAllSteps] = useState(false);
-	const compactSteps = compactTimelineSteps(activity.steps);
-	const previewSteps = briefSteps(activity.steps);
+	const timelineSteps = timelineStepsForActivity(activity, isChineseUi);
+	const compactSteps = compactTimelineSteps(timelineSteps);
 	const stats = activityStats(activity, isChineseUi);
+	const summaryChips = activitySummaryChips(activity, isChineseUi);
 	const visibleSteps =
 		showAllSteps && compactSteps.hiddenCount > 0
-			? activity.steps
+			? timelineSteps
 			: compactSteps.steps;
 
 	return (
@@ -225,14 +332,14 @@ export function ToolActivityCard({
 							<span className="fa-tool-activity-note">
 								{note ?? toolActivityNote(activity.toolNames, isChineseUi)}
 							</span>
-							{previewSteps.length > 0 ? (
+							{summaryChips.length > 0 ? (
 								<span className="fa-tool-activity-preview">
-									{previewSteps.map((step) => (
+									{summaryChips.map((chip) => (
 										<span
-											key={step.id}
-											className={`fa-tool-activity-preview-step is-${step.tone}`}
+											key={chip.id}
+											className={`fa-tool-activity-preview-step is-${chip.tone}`}
 										>
-											{step.label}
+											{chip.label}
 										</span>
 									))}
 								</span>
@@ -276,7 +383,7 @@ export function ToolActivityCard({
 								<div className="fa-tool-activity-section-header">
 									<span className="fa-tool-activity-section-title">
 										{processingStepsSummaryLabel(
-											activity.steps.length,
+											timelineSteps.length,
 											isChineseUi,
 										)}
 									</span>

@@ -11,8 +11,12 @@ TEXTUAL_TOOL_ARTIFACT_MARKERS = (
     "</tool_c",
     "<tool_call",
     "<tool_calls",
+    "<tool_req",
+    "<toolreq",
     "</tool_call",
     "</tool_calls",
+    "</tool_req",
+    "</toolreq",
     "<invoke=",
     "</invoke>",
     "tool-observation://",
@@ -33,6 +37,8 @@ DEFAULT_TEXTUAL_TOOL_NAMES = frozenset(
         "git_status",
         "list_files",
         "read_file",
+        "run_shell_command",
+        "runshell_command",
         "run_workspace_command",
         "search_code",
         "skills_list",
@@ -54,7 +60,9 @@ _DSML_TOOL_MARKUP_RE = re.compile(
 )
 _XMLISH_TOOL_CALL_RE = re.compile(
     r"(?is)<\s*/?\s*tool_?c(?:alls?)?\s*>|"
+    r"<\s*/?\s*tool_?req(?:uest)?(?:\s+name\b|\s*=|>)|"
     r"<\s*/?\s*invoke(?:\s*=|\s+name\b|>)|"
+    r"<\s*/?\s*arg(?:\s+name\b|\s*=|>)|"
     r"<\s*/?\s*parameter(?:[\w.-]+|\s+name\b|\s*=|>)|"
     r"(?:^|[\s<])/?<?function\s*=\s*[a-z_][\w.-]*\s*>|"
     r"(?:^|[\n\r<|｜/])\s*(?:[-*•·]\s*)*/?<?invoke\s+name(?:\b|[A-Za-z0-9_\"'=])[^<>\n]{0,160}|"
@@ -65,14 +73,14 @@ _XMLISH_TOOL_CALL_RE = re.compile(
 _DEGRADED_TOOL_PROTOCOL_FRAGMENT_RE = re.compile(
     r"(?is)(?:^|[\n\r])\s*"
     r"(?:"
-    r"(?:alls?|calls?|tool_?calls?|invoke|parameter)>|"
-    r"(?:https?://[^\s<>\"']{1,240}|[0-9]{1,8}|[a-z_][\w.-]{0,80})\s*(?:parameter|invoke)>|"
+    r"(?:alls?|calls?|tool_?calls?|tool_?req(?:uest)?|arg|invoke|parameter)>|"
+    r"(?:https?://[^\s<>\"']{1,240}|[0-9]{1,8}|[a-z_][\w.-]{0,80})\s*(?:arg|parameter|invoke)>|"
     r"=\s*[\"']?[a-z_][\w.-]*\s*=\s*[\"']?[a-z_][\w.-]*[\"']?\s+"
     r"(?:string|number|boolean|object|array)\s*=?|"
     r"=\s*[\"']?(?:web_[a-z_]+|[a-z_]*(?:chars?|url|query|count|fresh_days|format|limit|length|path|filepath|read|max_results)[\w.-]*)[\"']?"
     r"(?:\s*=|\s+string\s*=?|\s+string(?:true|false)|[\"']\s*(?:string|true|false|>|[0-9])|>)|"
     r"=\s*[\"'][^\"'\n]{1,160}[\"']\s*(?:>|string\s*=)|"
-    r"</?\s*(?:invoke|tool_?c|tool_?calls?|parameter)\s*>"
+    r"</?\s*(?:invoke|tool_?c|tool_?calls?|tool_?req(?:uest)?|arg|parameter)\s*>"
     r")"
 )
 _TOOL_RESULT_URI_RE = re.compile(
@@ -86,7 +94,7 @@ _DEGRADED_PARAMETER_TAIL_RE = re.compile(
     r"\s*(?:true|false|null|[0-9]{1,8})?\s*>"
     r"|(?:^|[\n\r])\s*=\s*[\"']?[\w.-]{1,80}(?:=\s*[\"']?[\w.-]{1,80})?[\"']?"
     r"\s*(?:string|number|boolean|object|array)?\s*(?:true|false|null)?[0-9]{0,8}\s*"
-    r"(?:parameter|invoke)>"
+    r"(?:arg|parameter|invoke)>"
 )
 _DEGRADED_TOOL_REFERENCE_RE = re.compile(
     r"(?is)(?:^|[\s,;])"
@@ -105,7 +113,9 @@ _TOOL_CALL_PREFIX_RE = re.compile(
     r"(?:\s*(?:t|tr|tru|true|f|fa|fal|fals|false|n|nu|null|[0-9]{1,8})?)?|"
     r"<|</|</<|"
     r"<\s*/?\s*(?:t|to|too|tool|tool_|tool_?c|tool_?ca|tool_?cal|tool_?call|tool_?calls?)|"
+    r"<\s*/?\s*(?:t|to|too|tool|tool_|tool_?r|tool_?re|tool_?req|tool_?requ|tool_?reque|tool_?reques|tool_?request)(?:\s+n(?:a(?:m(?:e)?)?)?)?|"
     r"<\s*/?\s*(?:i|in|inv|invo|invok|invoke)(?:\s*=)?|"
+    r"<\s*/?\s*(?:a|ar|arg)(?:\s+n(?:a(?:m(?:e)?)?)?|\s*=)?|"
     r"<\s*/?\s*(?:p|pa|par|para|param|parame|paramet|paramete|parameter)(?:[\w.-]*|\s*=)?|"
     r"<\s*/?\s*(?:[|｜]\s*){0,2}(?:d|ds|dsm|dsml)?\s*(?:[|｜]\s*){0,2}|"
     r"f|fu|fun|func|funct|functi|functio|function(?:\s*=\s*[\w.-]*)?|"

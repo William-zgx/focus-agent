@@ -1807,6 +1807,89 @@ def test_run_workspace_command_runs_allowlisted_commands_and_blocks_unsafe_ones(
     assert not (project / "pwned").exists()
 
 
+def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_path):
+    project = tmp_path / "project"
+    skill_dir = project / ".focus_agent" / "skills" / "stocks"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "stocks_client.py").write_text(
+        "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}, ensure_ascii=False))\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "unsafe.py").write_text("print('nope')\n", encoding="utf-8")
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    payload = json.loads(
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "scripts/stocks_client.py", "search", "南网能源"],
+                "cwd": ".focus_agent/skills/stocks",
+            }
+        )
+    )
+
+    assert payload["exit_code"] == 0
+    assert '"南网能源"' in payload["stdout"]
+    virtual_args = {
+        "command": ["python3", "scripts/stocks_client.py", "search", "南网能源"],
+        "cwd": "/home/focus/.focus_agent/skills/stocks",
+    }
+    tools["run_workspace_command"].metadata["validator"](virtual_args)
+    assert virtual_args["cwd"] == ".focus_agent/skills/stocks"
+
+    virtual_payload = json.loads(tools["run_workspace_command"].invoke(virtual_args))
+    assert virtual_payload["exit_code"] == 0
+    assert virtual_payload["cwd"] == ".focus_agent/skills/stocks"
+    assert '"南网能源"' in virtual_payload["stdout"]
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "scripts/stocks_client.py", "search", "南网能源"],
+                "cwd": ".",
+            }
+        )
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "unsafe.py"],
+                "cwd": ".focus_agent/skills/stocks",
+            }
+        )
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": [
+                    "python3",
+                    "/home/focus/.focus_agent/skills/stocks/scripts/stocks_client.py",
+                ],
+                "cwd": "/home/focus/.focus_agent/skills/stocks",
+            }
+        )
+
+
+def test_run_workspace_command_rejects_unsafe_virtual_skill_cwd(tmp_path):
+    project = tmp_path / "project"
+    skill_dir = project / ".focus_agent" / "skills" / "stocks"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "stocks_client.py").write_text("print('ok')\n", encoding="utf-8")
+    outside_skill = project / "outside-skill"
+    outside_skill.mkdir()
+    (skill_dir / "escape").symlink_to(outside_skill, target_is_directory=True)
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    command = ["python3", "scripts/stocks_client.py"]
+    for cwd, error in (
+        ("/home/focus/.focus_agent/skills", "skill id"),
+        ("/home/focus/.focus_agent/tools/stocks", "start"),
+        ("/home/focus/.focus_agent/skills/stocks/../stocks", r"\.\."),
+        ("/home/focus/.focus_agent/skills/stocks/escape", "escape"),
+    ):
+        with pytest.raises(ValueError, match=error):
+            tools["run_workspace_command"].invoke({"command": command, "cwd": cwd})
+
+
 def test_run_workspace_command_path_validation_ignores_scoped_package_filters(tmp_path):
     resolved_paths: list[str] = []
 

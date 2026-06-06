@@ -414,6 +414,13 @@
       },
       "AdminConfigSkillResponse": {
         "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
           "capability_requirements": {
             "items": {
               "type": "string"
@@ -436,6 +443,13 @@
             "title": "Description",
             "type": "string"
           },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
@@ -445,6 +459,20 @@
             "default": "installed",
             "title": "Install State",
             "type": "string"
+          },
+          "intents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Intents",
+            "type": "array"
+          },
+          "localized_triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Localized Triggers",
+            "type": "array"
           },
           "path": {
             "title": "Path",
@@ -2988,10 +3016,38 @@
       },
       "AgentSkillCatalogItemResponse": {
         "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
           "description": {
             "default": "",
             "title": "Description",
             "type": "string"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
+          "intents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Intents",
+            "type": "array"
+          },
+          "localized_triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Localized Triggers",
+            "type": "array"
           },
           "path": {
             "anyOf": [
@@ -11222,6 +11278,97 @@
         "title": "TaskResponse",
         "type": "object"
       },
+      "ThreadActiveSkillResponse": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "install_state": {
+            "default": "",
+            "title": "Install State",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Mode"
+          },
+          "recommended_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Tools",
+            "type": "array"
+          },
+          "skill_id": {
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "source_id": {
+            "default": "",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "default": "",
+            "title": "Source Type",
+            "type": "string"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Triggers",
+            "type": "array"
+          },
+          "trust_level": {
+            "default": "",
+            "title": "Trust Level",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "skill_id",
+          "name"
+        ],
+        "title": "ThreadActiveSkillResponse",
+        "type": "object"
+      },
       "ThreadContextCompactRequest": {
         "properties": {
           "trigger": {
@@ -11245,6 +11392,13 @@
               "type": "string"
             },
             "title": "Active Skill Ids",
+            "type": "array"
+          },
+          "active_skills": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadActiveSkillResponse"
+            },
+            "title": "Active Skills",
             "type": "array"
           },
           "assistant_message": {
@@ -11336,8 +11490,15 @@
           },
           "messages": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ThreadMessageResponse"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              ]
             },
             "title": "Messages",
             "type": "array"
@@ -11407,6 +11568,180 @@
         "title": "ThreadContextPreviewResponse",
         "type": "object"
       },
+      "ThreadMessageMetadata": {
+        "properties": {
+          "active_skill_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Skill Ids",
+            "type": "array"
+          },
+          "active_skills": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadActiveSkillResponse"
+            },
+            "title": "Active Skills",
+            "type": "array"
+          },
+          "skill_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadMessageSkillSelectionMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ThreadMessageMetadata",
+        "type": "object"
+      },
+      "ThreadMessageResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadMessageMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "title": "Tool Calls"
+          },
+          "turn_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Metadata"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "usage_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Metadata"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ThreadMessageResponse",
+        "type": "object"
+      },
+      "ThreadMessageSkillSelectionMetadata": {
+        "properties": {
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "matched_triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Triggers",
+            "type": "array"
+          },
+          "prompt_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Mode"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "selection_source": {
+            "default": "none",
+            "title": "Selection Source",
+            "type": "string"
+          }
+        },
+        "title": "ThreadMessageSkillSelectionMetadata",
+        "type": "object"
+      },
       "ThreadResolutionResponse": {
         "properties": {
           "branch_id": {
@@ -11462,6 +11797,13 @@
               "type": "string"
             },
             "title": "Active Skill Ids",
+            "type": "array"
+          },
+          "active_skills": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadActiveSkillResponse"
+            },
+            "title": "Active Skills",
             "type": "array"
           },
           "assistant_message": {
@@ -11553,8 +11895,15 @@
           },
           "messages": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ThreadMessageResponse"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              ]
             },
             "title": "Messages",
             "type": "array"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from langchain.messages import AIMessage, ToolMessage
@@ -9,8 +10,10 @@ from langchain.messages import AIMessage, ToolMessage
 from ...agent_roles import AgentRole
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_registry import ToolRuntimeMeta
+from ...capabilities.tool_router import SkillExecutionPlan, ToolIntentPlan
 from ...core.state import AgentState
 from ...skills import SkillRegistry
+from ...skills.models import SkillDefinition
 from ..graph_turn_helpers import (
     _live_web_research_should_start_with_search,
     _tools_for_policy,
@@ -20,6 +23,32 @@ from .policy import (
     _is_tool_carryover_confirmation,
     _temporal_live_web_search_args,
     build_tool_intent_plan,
+)
+
+_SKILL_SUPPORTING_TOOL_DEFAULTS = {
+    "web_search",
+    "web_fetch",
+    "read_file",
+    "write_text_artifact",
+}
+_ACTIVE_EXECUTE_CONTINUATION_MARKERS = (
+    "今天",
+    "昨天",
+    "本周",
+    "这周",
+    "近一周",
+    "最近",
+    "近期",
+    "走势",
+    "表现",
+    "行情",
+    "数据",
+    "查询",
+    "分析",
+    "quote",
+    "price",
+    "history",
+    "recent",
 )
 
 
@@ -60,6 +89,132 @@ def _merge_active_skill_recommended_tools(
     return merged
 
 
+def build_active_skill_execution_plan(
+    *,
+    skill_registry: SkillRegistry | None,
+    active_skill_ids: list[Any],
+    text: str,
+    workspace_root: Path,
+    base_intent_plan: ToolIntentPlan,
+) -> SkillExecutionPlan | None:
+    if skill_registry is None:
+        return None
+    if "explicit_no_tool" in set(base_intent_plan.reason_codes):
+        return None
+    if _is_explicit_skill_lookup_policy(base_intent_plan):
+        return None
+
+    matches: list[tuple[float, SkillDefinition, list[str]]] = []
+    active_ids = [str(skill_id).strip() for skill_id in active_skill_ids if str(skill_id).strip()]
+    for skill_id in active_ids:
+        skill = skill_registry.resolve(skill_id)
+        if skill is None or not skill_registry.is_skill_enabled(skill.skill_id):
+            continue
+        if str(skill.prompt_mode or "").strip().lower() != "execute":
+            continue
+        if str(skill.trust_level or "").strip().lower() not in {"", "trusted"}:
+            continue
+        score, reasons = _active_skill_match_score(skill, text, active_count=len(active_ids))
+        if score <= 0:
+            continue
+        matches.append((score, skill, reasons))
+    if not matches:
+        return None
+
+    matches.sort(key=lambda item: (-item[0], item[1].skill_id))
+    selected_skill_ids: list[str] = []
+    primary_tools: list[str] = []
+    supporting_tools: list[str] = []
+    runtime_cwds: dict[str, str] = {}
+    reason_codes = ["skill_execution_plan", "active_trusted_execute_skill"]
+    for _, skill, reasons in matches:
+        selected_skill_ids.append(skill.skill_id)
+        skill_primary = _skill_primary_tools(skill)
+        skill_supporting = _skill_supporting_tools(skill, primary_tools=skill_primary)
+        for tool_name in skill_primary:
+            if tool_name not in primary_tools:
+                primary_tools.append(tool_name)
+        for tool_name in skill_supporting:
+            if tool_name not in supporting_tools:
+                supporting_tools.append(tool_name)
+        cwd = _skill_runtime_cwd(skill, workspace_root=workspace_root)
+        if cwd:
+            runtime_cwds[skill.skill_id] = cwd
+        reason_codes.extend(reasons)
+        if skill_primary and not getattr(skill, "primary_tools", ()):
+            reason_codes.append("skill_primary_tool_inferred")
+    return SkillExecutionPlan(
+        selected_skill_ids=selected_skill_ids,
+        match_source="active",
+        prompt_mode="execute",
+        primary_tools=primary_tools,
+        supporting_tools=supporting_tools,
+        runtime_cwds=runtime_cwds,
+        policy_override="execution",
+        reason_codes=list(dict.fromkeys(reason_codes)),
+    )
+
+
+def apply_skill_execution_plan(
+    intent_plan: ToolIntentPlan,
+    skill_execution_plan: SkillExecutionPlan | None,
+) -> ToolIntentPlan:
+    if skill_execution_plan is None:
+        return intent_plan
+    if skill_execution_plan.policy_override != "execution":
+        return intent_plan
+    if "explicit_no_tool" in set(intent_plan.reason_codes):
+        return intent_plan
+    primary_tool = next(iter(skill_execution_plan.primary_tools), None)
+    return intent_plan.model_copy(
+        update={
+            "policy": "execution",
+            "confidence": max(float(intent_plan.confidence or 0.0), 0.92),
+            "reason_codes": list(
+                dict.fromkeys(
+                    [
+                        *intent_plan.reason_codes,
+                        "active_skill_execution",
+                        *skill_execution_plan.reason_codes,
+                    ]
+                )
+            ),
+            "preferred_first_tool": primary_tool,
+            "preferred_first_args": {},
+            "allowed_toolsets": list(
+                dict.fromkeys([*intent_plan.allowed_toolsets, "workspace", "web", "skill"])
+            ),
+            "denied_toolsets": [],
+            "source": "skill:active_execution",
+            "temporal_anchor_required": False,
+            "skill_execution_plan": skill_execution_plan,
+        }
+    )
+
+
+def skill_execution_policy_note(skill_execution_plan: SkillExecutionPlan | None) -> str:
+    if skill_execution_plan is None:
+        return ""
+    skills = ", ".join(skill_execution_plan.selected_skill_ids)
+    primary = ", ".join(skill_execution_plan.primary_tools) or "none"
+    supporting = ", ".join(skill_execution_plan.supporting_tools) or "none"
+    cwd_lines = [
+        f"- {skill_id}: {cwd}"
+        for skill_id, cwd in sorted(skill_execution_plan.runtime_cwds.items())
+    ]
+    cwd_block = "\n".join(cwd_lines) if cwd_lines else "- none"
+    return (
+        "Active Skill execution plan:\n"
+        f"- selected skills: {skills}\n"
+        f"- required primary tools: {primary}\n"
+        f"- supporting tools: {supporting}\n"
+        "- before answering, call at least one selected Skill primary tool and use its "
+        "structured tool result as evidence\n"
+        "- Skill runtime cwd values for run_workspace_command:\n"
+        f"{cwd_block}"
+    )
+
+
 def _active_skill_recommended_tool_names(
     skill_registry: SkillRegistry | None,
     active_skill_ids: list[Any],
@@ -81,6 +236,117 @@ def _active_skill_recommended_tool_names(
                 seen.add(tool_name)
                 names.append(tool_name)
     return tuple(names)
+
+
+def _is_explicit_skill_lookup_policy(intent_plan: ToolIntentPlan) -> bool:
+    tool_name = str(intent_plan.preferred_first_tool or "").strip()
+    if tool_name in {"skills_search", "skill_view", "skill_install"}:
+        return True
+    return set(intent_plan.allowed_toolsets) == {"skill"}
+
+
+def _active_skill_match_score(
+    skill: SkillDefinition,
+    text: str,
+    *,
+    active_count: int,
+) -> tuple[float, list[str]]:
+    normalized = " ".join(str(text or "").strip().split())
+    if not normalized:
+        return 0.0, []
+    lowered = normalized.lower()
+    score = 0.0
+    reasons: list[str] = []
+    for raw_term in _skill_match_terms(skill):
+        term = str(raw_term or "").strip()
+        if len(term) < 2:
+            continue
+        if term.lower() in lowered:
+            score += 1.0 if term in skill.aliases else 0.7
+            reasons.append(f"skill_term_match:{skill.skill_id}:{term}")
+    if score > 0:
+        return score, reasons
+    if active_count == 1 and _looks_like_active_execute_continuation(normalized):
+        return 0.45, [f"active_execute_skill_continuation:{skill.skill_id}"]
+    return 0.0, []
+
+
+def _skill_match_terms(skill: SkillDefinition) -> tuple[str, ...]:
+    terms: list[str] = []
+    for values in (
+        skill.aliases,
+        skill.domains,
+        skill.intents,
+        skill.when_to_use,
+        skill.localized_triggers,
+        skill.triggers,
+    ):
+        for item in values:
+            text = str(item or "").strip()
+            if text:
+                terms.append(text)
+    return tuple(dict.fromkeys(terms))
+
+
+def _looks_like_active_execute_continuation(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker.lower() in lowered for marker in _ACTIVE_EXECUTE_CONTINUATION_MARKERS)
+
+
+def _skill_primary_tools(skill: SkillDefinition) -> list[str]:
+    explicit = [
+        tool_name
+        for tool_name in _normalized_skill_tool_names(getattr(skill, "primary_tools", ()))
+        if tool_name
+    ]
+    if explicit:
+        return explicit
+    recommended = _normalized_skill_tool_names(skill.recommended_tools)
+    primary = [
+        tool_name
+        for tool_name in recommended
+        if tool_name not in _SKILL_SUPPORTING_TOOL_DEFAULTS
+    ]
+    if primary:
+        return primary
+    return recommended[:1]
+
+
+def _skill_supporting_tools(
+    skill: SkillDefinition,
+    *,
+    primary_tools: list[str],
+) -> list[str]:
+    primary = set(primary_tools)
+    return [
+        tool_name
+        for tool_name in _normalized_skill_tool_names(skill.recommended_tools)
+        if tool_name and tool_name not in primary
+    ]
+
+
+def _normalized_skill_tool_names(raw_values: Sequence[Any]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_value in raw_values:
+        name = str(raw_value or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _skill_runtime_cwd(skill: SkillDefinition, *, workspace_root: Path) -> str:
+    try:
+        root = workspace_root.expanduser().resolve()
+        skill_dir = skill.path.parent.expanduser().resolve()
+        relative = skill_dir.relative_to(root)
+    except ValueError:
+        return ""
+    except OSError:
+        return ""
+    return relative.as_posix() or "."
 
 
 def _recommended_tool_allowed_for_policy(tool: Any, tool_policy: str) -> bool:
@@ -368,6 +634,13 @@ def _live_web_answer_repair_count(state: AgentState) -> int:
     return 0
 
 
+def _skill_execution_answer_repair_count(state: AgentState) -> int:
+    plan_meta = state.get("plan_meta")
+    if isinstance(plan_meta, Mapping):
+        return _coerce_int(plan_meta.get("skill_execution_answer_repair_count"), default=0)
+    return 0
+
+
 def _live_web_answer_needs_repair(verification: Mapping[str, Any]) -> bool:
     status = str(verification.get("status") or "")
     repair_action = str(verification.get("repair_action") or "")
@@ -375,6 +648,70 @@ def _live_web_answer_needs_repair(verification: Mapping[str, Any]) -> bool:
         "call_missing_tool",
         "refresh_stale_evidence",
     }
+
+
+def _skill_execution_repair_prompt(
+    *,
+    verification: Mapping[str, Any],
+    execution_contract: Mapping[str, Any],
+) -> str:
+    required_tools = [
+        str(item)
+        for item in execution_contract.get("required_tools", []) or []
+        if str(item).strip()
+    ]
+    selected_skills = [
+        str(item)
+        for item in execution_contract.get("selected_skill_ids", []) or []
+        if str(item).strip()
+    ]
+    missing = [
+        str(item) for item in execution_contract.get("missing", []) or [] if str(item).strip()
+    ]
+    return (
+        "Skill execution contract repair:\n"
+        f"- selected skills: {', '.join(selected_skills) or 'none'}\n"
+        f"- required primary tools: {', '.join(required_tools) or 'none'}\n"
+        f"- missing tool results: {', '.join(missing) or 'none'}\n"
+        f"- verification status: {verification.get('status') or 'unknown'}\n"
+        "Do not provide a final answer yet. Call one of the required primary tools now. "
+        "Use the active Skill runtime cwd shown in the previous policy note when a workspace "
+        "command is needed."
+    )
+
+
+def _skill_execution_failure_answer(
+    *,
+    verification: Mapping[str, Any],
+    execution_contract: Mapping[str, Any],
+) -> str:
+    selected_skills = [
+        str(item)
+        for item in execution_contract.get("selected_skill_ids", []) or []
+        if str(item).strip()
+    ]
+    missing = [
+        str(item) for item in execution_contract.get("missing", []) or [] if str(item).strip()
+    ]
+    blocked_reason = str(execution_contract.get("blocked_reason") or "").strip()
+    unsupported = [
+        str(item)
+        for item in verification.get("unsupported_claims", []) or []
+        if str(item).strip()
+    ]
+    reason = blocked_reason or (f"缺少必要工具结果：{', '.join(missing)}" if missing else "")
+    if not reason and unsupported:
+        reason = unsupported[0]
+    if not reason:
+        reason = "已激活 Skill 的执行证据不足"
+    skill_part = f"（{', '.join(selected_skills)}）" if selected_skills else ""
+    return "\n".join(
+        [
+            f"我还不能可靠回答这个 Skill 任务{skill_part}。",
+            f"原因：{reason}。",
+            "本轮没有拿到必需 primary tool 的结构化结果，所以我不会用搜索片段或猜测数据代替 Skill 执行结果。",
+        ]
+    )
 
 
 def _live_web_repair_response(

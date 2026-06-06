@@ -18,10 +18,38 @@ def build_execution_contract(
     available_tool_names: Sequence[str] = (),
     preferred_first_tool: str | None = None,
     required_evidence: bool | None = None,
+    skill_execution_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a small per-turn execution contract from the current tool policy."""
 
     normalized_policy = str(policy or "").strip()
+    if normalized_policy == "execution" and isinstance(skill_execution_plan, Mapping):
+        selected_skill_ids = [
+            str(item).strip()
+            for item in skill_execution_plan.get("selected_skill_ids") or []
+            if str(item).strip()
+        ]
+        primary_tools = [
+            str(item).strip()
+            for item in skill_execution_plan.get("primary_tools") or []
+            if str(item).strip()
+        ]
+        if selected_skill_ids and primary_tools:
+            available = {str(name) for name in available_tool_names if str(name)}
+            required_tool = next((name for name in primary_tools if name in available), None)
+            required_tools = [required_tool or primary_tools[0]]
+            return {
+                "policy": "skill_execution",
+                "selected_skill_ids": selected_skill_ids,
+                "required_tools": required_tools,
+                "required_evidence": True if required_evidence is None else bool(required_evidence),
+                "temporal_anchor_required": False,
+                "status": "missing_required_tools",
+                "missing": list(required_tools),
+                "blocked_reason": "",
+                "skill_execution_plan": dict(skill_execution_plan),
+            }
+
     if normalized_policy != "live_web_research":
         return {
             "policy": normalized_policy or "direct_answer",
@@ -67,10 +95,13 @@ def evaluate_execution_contract(
     available = {str(item) for item in available_tool_names if str(item)}
     blocked = [name for name in missing if name not in available]
     required_evidence = bool(contract.get("required_evidence"))
-    has_evidence = bool(evidence_ledger)
+    policy = str(contract.get("policy") or "")
+    has_evidence = bool(evidence_ledger) or (
+        policy == "skill_execution" and bool(required_tools) and not missing
+    )
     status: ContractStatus
     blocked_reason = ""
-    if str(contract.get("policy") or "") != "live_web_research":
+    if policy not in {"live_web_research", "skill_execution"}:
         status = "not_required"
     elif blocked:
         status = "blocked"
@@ -99,22 +130,24 @@ def verify_answer_against_evidence(
 ) -> dict[str, Any]:
     contract_status = str((contract or {}).get("status") or "not_required")
     policy = str((contract or {}).get("policy") or "")
-    if policy != "live_web_research":
+    if policy not in {"live_web_research", "skill_execution"}:
         return _verification("not_required", required_tools_satisfied=True)
     if contract_status == "blocked":
         return _verification(
             "blocked",
             required_tools_satisfied=False,
-            unsupported_claims=["live_web_research contract is blocked"],
+            unsupported_claims=[f"{policy} contract is blocked"],
             repair_action="answer_with_uncertainty",
         )
     if contract_status != "satisfied":
         return _verification(
             "unsupported",
             required_tools_satisfied=False,
-            unsupported_claims=["live_web_research contract is missing required tools or evidence"],
+            unsupported_claims=[f"{policy} contract is missing required tools or evidence"],
             repair_action="call_missing_tool",
         )
+    if policy == "skill_execution":
+        return _verification("verified", required_tools_satisfied=True)
     stale_reason = _stale_evidence_reason(contract or {}, evidence_ledger)
     if stale_reason:
         return _verification(

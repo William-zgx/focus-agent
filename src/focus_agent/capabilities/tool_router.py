@@ -71,6 +71,17 @@ class ToolRoutePlan(StateModel):
     decisions: list[ToolRouteDecision] = Field(default_factory=list)
 
 
+class SkillExecutionPlan(StateModel):
+    selected_skill_ids: list[str] = Field(default_factory=list)
+    match_source: str = "active"
+    prompt_mode: str = "execute"
+    primary_tools: list[str] = Field(default_factory=list)
+    supporting_tools: list[str] = Field(default_factory=list)
+    runtime_cwds: dict[str, str] = Field(default_factory=dict)
+    policy_override: str = "none"
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class ToolIntentPlan(StateModel):
     normalized_text: str = ""
     policy: str = "direct_answer"
@@ -84,6 +95,7 @@ class ToolIntentPlan(StateModel):
     temporal_anchor_required: bool = False
     temporal_anchor_forced: bool = False
     external_answer_missing_citation: bool = False
+    skill_execution_plan: SkillExecutionPlan | None = None
 
 
 _TOOLSET_DESCRIPTIONS = {

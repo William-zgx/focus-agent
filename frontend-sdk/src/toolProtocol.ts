@@ -8,8 +8,12 @@ const TEXTUAL_TOOL_ARTIFACT_MARKERS = [
   "</tool_c",
   "<tool_call",
   "<tool_calls",
+  "<tool_req",
+  "<toolreq",
   "</tool_call",
   "</tool_calls",
+  "</tool_req",
+  "</toolreq",
   "<invoke=",
   "</invoke>",
   '"tool_name"',
@@ -26,6 +30,9 @@ const DEFAULT_TEXTUAL_TOOL_NAMES = new Set([
   "git_status",
   "list_files",
   "read_file",
+  "run_shell_command",
+  "runshell_command",
+  "run_workspace_command",
   "search_code",
   "skills_list",
   "skill_view",
@@ -41,15 +48,15 @@ const BARE_DSML_TOKEN_RE = /(?:^|[\s</])(?:[|｜]\s*){1,2}dsml\s*(?:[|｜]\s*){1
 const DSML_TOOL_MARKUP_RE =
   /(?:^|[\n\r<|｜/])\s*(?:[-*•·]\s*)*\/?<?\s*(?:invoke\s+name(?:\b|[A-Za-z0-9_"'=])[^<>\n]{0,160}|parameter\s+name(?:\b|[A-Za-z0-9_"'=])[^<>\n]{0,240}|tool_?calls\s*(?:>|\/))/ims;
 const XMLISH_TOOL_CALL_RE =
-  /<\s*\/?\s*tool_?c(?:alls?)?\s*>|<\s*\/?\s*invoke(?:\s*=|\s+name\b|>)|<\s*\/?\s*parameter(?:[\w.-]+|\s+name\b|\s*=|>)|(?:^|[\s<])\/?<?function\s*=\s*[a-z_][\w.-]*\s*>|(?:^|[\n\r<|｜/])\s*(?:[-*•·]\s*)*\/?<?invoke\s+name(?:\b|[A-Za-z0-9_"'=])[^<>\n]{0,160}|<\s*\/?\s*parameter\s*=|<[^>\n]{0,120}\bparameter\s+name\s*=|(?:^|[\s<])\/?<?parameter\s*=\s*[\w.-]+\s*>/ims;
+  /<\s*\/?\s*tool_?c(?:alls?)?\s*>|<\s*\/?\s*tool_?req(?:uest)?(?:\s+name\b|\s*=|>)|<\s*\/?\s*invoke(?:\s*=|\s+name\b|>)|<\s*\/?\s*arg(?:\s+name\b|\s*=|>)|<\s*\/?\s*parameter(?:[\w.-]+|\s+name\b|\s*=|>)|(?:^|[\s<])\/?<?function\s*=\s*[a-z_][\w.-]*\s*>|(?:^|[\n\r<|｜/])\s*(?:[-*•·]\s*)*\/?<?invoke\s+name(?:\b|[A-Za-z0-9_"'=])[^<>\n]{0,160}|<\s*\/?\s*parameter\s*=|<[^>\n]{0,120}\bparameter\s+name\s*=|(?:^|[\s<])\/?<?parameter\s*=\s*[\w.-]+\s*>/ims;
 const DEGRADED_TOOL_PROTOCOL_FRAGMENT_RE =
-  /(?:^|[\n\r])\s*(?:(?:alls?|calls?|tool_?calls?|invoke|parameter)>|(?:https?:\/\/[^\s<>"']{1,240}|[0-9]{1,8}|[a-z_][\w.-]{0,80})\s*(?:parameter|invoke)>|=\s*["']?(?:web_[a-z_]+|[a-z_]*(?:chars?|url|query|count|fresh_days|format|limit|length|path|filepath|read|max_results)[\w.-]*)["']?(?:\s*=|\s+string\s*=?|\s+string(?:true|false)|["']\s*(?:string|true|false|>|[0-9])|>)|=\s*["'][^"'\n]{1,160}["']\s*(?:>|string\s*=)|<\/?\s*(?:invoke|tool_?c|tool_?calls?|parameter)\s*>)/ims;
+  /(?:^|[\n\r])\s*(?:(?:alls?|calls?|tool_?calls?|tool_?req(?:uest)?|arg|invoke|parameter)>|(?:https?:\/\/[^\s<>"']{1,240}|[0-9]{1,8}|[a-z_][\w.-]{0,80})\s*(?:arg|parameter|invoke)>|=\s*["']?(?:web_[a-z_]+|[a-z_]*(?:chars?|url|query|count|fresh_days|format|limit|length|path|filepath|read|max_results)[\w.-]*)["']?(?:\s*=|\s+string\s*=?|\s+string(?:true|false)|["']\s*(?:string|true|false|>|[0-9])|>)|=\s*["'][^"'\n]{1,160}["']\s*(?:>|string\s*=)|<\/?\s*(?:invoke|tool_?c|tool_?calls?|tool_?req(?:uest)?|arg|parameter)\s*>)/ims;
 const TOOL_RESULT_URI_RE =
   /\b(?:tool[-_](?:observation|result|call|calls)|toolcall|observation):\/\/[^\s<>"']+/ims;
 const DEGRADED_PARAMETER_TAIL_RE =
-  /(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s+(?:string|number|boolean|object|array)\s*=?\s*["']?(?:true|false)?["']?\s*>|(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s*(?:true|false|null|[0-9]{1,8})?\s*>|(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s*(?:string|number|boolean|object|array)?\s*(?:true|false|null)?[0-9]{0,8}\s*(?:parameter|invoke)>/ims;
+  /(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s+(?:string|number|boolean|object|array)\s*=?\s*["']?(?:true|false)?["']?\s*>|(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s*(?:true|false|null|[0-9]{1,8})?\s*>|(?:^|[\n\r])\s*=\s*["']?[\w.-]{1,80}(?:=\s*["']?[\w.-]{1,80})?["']?\s*(?:string|number|boolean|object|array)?\s*(?:true|false|null)?[0-9]{0,8}\s*(?:arg|parameter|invoke)>/ims;
 const TOOL_CALL_PREFIX_RE =
-  /^\s*(?:https?:\/\/[^\s<>"']{1,512}|<|<\/|<\/<|<\s*\/?\s*(?:t|to|too|tool|tool_|tool_?c|tool_?ca|tool_?cal|tool_?call|tool_?calls?)|<\s*\/?\s*(?:i|in|inv|invo|invok|invoke)(?:\s*=)?|<\s*\/?\s*(?:p|pa|par|para|param|parame|paramet|paramete|parameter)(?:[\w.-]*|\s*=)?|<\s*\/?\s*(?:[|｜]\s*){0,2}(?:d|ds|dsm|dsml)?\s*(?:[|｜]\s*){0,2}|=|=\s*["']?[\w.-]*(?:=\s*["']?[\w.-]*)?["']?(?:\s*(?:t|tr|tru|true|f|fa|fal|fals|false|n|nu|null|[0-9]{1,8})|\s+(?:s|st|str|string|n|nu|num|numb|numbe|number|b|bo|boo|bool|boole|boolea|boolean|o|ob|obj|obje|objec|object|a|ar|arr|arra|array)(?:\s*=?)?)?|f|fu|fun|func|funct|functi|functio|function(?:\s*=\s*[\w.-]*)?|i|in|inv|invo|invok|invoke(?:\s+n(?:a(?:m(?:e)?)?)?)?|p|pa|par|para|param|parame|paramet|paramete|parameter(?:\s*=\s*[\w.-]*)?|t|to|too|tool|tool_?c|tool_?ca|tool_?cal|tool_?call|tool_?calls\/?|tool-|tool-o|tool-ob|tool-obs|tool-obse|tool-obser|tool-observ|tool-observa|tool-observat|tool-observati|tool-observatio|tool-observation(?::\/?)?)$/i;
+  /^\s*(?:https?:\/\/[^\s<>"']{1,512}|<|<\/|<\/<|<\s*\/?\s*(?:t|to|too|tool|tool_|tool_?c|tool_?ca|tool_?cal|tool_?call|tool_?calls?)|<\s*\/?\s*(?:t|to|too|tool|tool_|tool_?r|tool_?re|tool_?req|tool_?requ|tool_?reque|tool_?reques|tool_?request)(?:\s+n(?:a(?:m(?:e)?)?)?)?|<\s*\/?\s*(?:i|in|inv|invo|invok|invoke)(?:\s*=)?|<\s*\/?\s*(?:a|ar|arg)(?:\s+n(?:a(?:m(?:e)?)?)?|\s*=)?|<\s*\/?\s*(?:p|pa|par|para|param|parame|paramet|paramete|parameter)(?:[\w.-]*|\s*=)?|<\s*\/?\s*(?:[|｜]\s*){0,2}(?:d|ds|dsm|dsml)?\s*(?:[|｜]\s*){0,2}|=|=\s*["']?[\w.-]*(?:=\s*["']?[\w.-]*)?["']?(?:\s*(?:t|tr|tru|true|f|fa|fal|fals|false|n|nu|null|[0-9]{1,8})|\s+(?:s|st|str|string|n|nu|num|numb|numbe|number|b|bo|boo|bool|boole|boolea|boolean|o|ob|obj|obje|objec|object|a|ar|arr|arra|array)(?:\s*=?)?)?|f|fu|fun|func|funct|functi|functio|function(?:\s*=\s*[\w.-]*)?|i|in|inv|invo|invok|invoke(?:\s+n(?:a(?:m(?:e)?)?)?)?|p|pa|par|para|param|parame|paramet|paramete|parameter(?:\s*=\s*[\w.-]*)?|t|to|too|tool|tool_?c|tool_?ca|tool_?cal|tool_?call|tool_?calls\/?|tool-|tool-o|tool-ob|tool-obs|tool-obse|tool-obser|tool-observ|tool-observa|tool-observat|tool-observati|tool-observatio|tool-observation(?::\/?)?)$/i;
 const INTERNAL_PROCESS_NARRATION_RE =
   /(?:^|[\n。；;:：,，])\s*(?:我(?:来|先)?(?:帮你|为你)?(?:查询|获取|搜索|查找)|先(?:获取|查询|搜索|抓取)|让我(?:先|再)?(?:尝试|查询|搜索|获取|访问|抓取)|让我(?:先|再|进一步)?(?:查询|搜索|获取|访问|抓取)|现在让我|接下来我(?:会|将)?尝试|我(?:会|将|再)?尝试(?:通过)?)(?=.{0,160}(?:搜索|查询|访问|获取|抓取|页面|来源|资料|信息|内容|数据|行情|日线|东方财富|数据源|web_fetch|web_search|tool|fetch|search|browse|计算))/ims;
 const INTERNAL_SEARCH_RESULT_NARRATION_RE =

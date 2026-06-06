@@ -251,6 +251,7 @@ function buildStreamActivity({
 	return {
 		kind: "tool-activity",
 		id: "stream-processing",
+		skillIds: [],
 		toolNames,
 		summaryText: "",
 		details: steps.flatMap((step) => (step.detail ? [step.detail] : [])),

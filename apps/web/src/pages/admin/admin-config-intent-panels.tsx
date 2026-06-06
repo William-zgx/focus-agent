@@ -60,6 +60,34 @@ function metadataText(
 	return "";
 }
 
+type SkillListField =
+	| "aliases"
+	| "capability_requirements"
+	| "domains"
+	| "intents"
+	| "localized_triggers"
+	| "recommended_tools"
+	| "triggers"
+	| "when_to_use";
+
+function skillListValues(
+	item: FocusAgentAdminSkillConfigEntry,
+	key: SkillListField,
+) {
+	const value = item[key] as unknown;
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((entry) => String(entry ?? "").trim())
+		.filter((entry) => entry.length > 0);
+}
+
+function compactSkillValues(values: string[], limit = 5) {
+	const unique = Array.from(new Set(values));
+	const shown = unique.slice(0, limit);
+	const hiddenCount = Math.max(0, unique.length - shown.length);
+	return hiddenCount ? [...shown, `+${hiddenCount}`] : shown;
+}
+
 function errorText(error: Error | null, isChineseUi: boolean) {
 	if (!error) return "";
 	return error.message || (isChineseUi ? "加载失败。" : "Failed to load.");
@@ -211,6 +239,26 @@ export function ConnectionsSummaryPanel({
 	);
 }
 
+function SkillMetaGroup({
+	label,
+	skillId,
+	values,
+}: {
+	label: string;
+	skillId: string;
+	values: string[];
+}) {
+	if (!values.length) return null;
+	return (
+		<>
+			<span>{label}</span>
+			{values.map((value) => (
+				<span key={`${label}-${skillId}-${value}`}>{value}</span>
+			))}
+		</>
+	);
+}
+
 export function SkillManagementPanel({
 	disabled,
 	error,
@@ -244,9 +292,14 @@ export function SkillManagementPanel({
 						[
 							item.skill_id,
 							item.description ?? "",
-							...item.when_to_use,
-							...item.triggers,
-							...item.recommended_tools,
+							...skillListValues(item, "when_to_use"),
+							...skillListValues(item, "triggers"),
+							...skillListValues(item, "localized_triggers"),
+							...skillListValues(item, "aliases"),
+							...skillListValues(item, "domains"),
+							...skillListValues(item, "intents"),
+							...skillListValues(item, "recommended_tools"),
+							...skillListValues(item, "capability_requirements"),
 						]
 							.join(" ")
 							.toLowerCase()
@@ -287,8 +340,8 @@ export function SkillManagementPanel({
 					<input
 						placeholder={
 							isChineseUi
-								? "按名称、触发词或工具搜索"
-								: "Name, trigger, or tool"
+								? "按名称、触发词、别名、领域、意图或工具搜索"
+								: "Name, trigger, alias, domain, intent, or tool"
 						}
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
@@ -311,6 +364,21 @@ export function SkillManagementPanel({
 					const promptMode = metadataText(skill, "prompt_mode");
 					const path = metadataText(skill, "path");
 					const isPending = pendingSkillId === skill.skill_id;
+					const triggerChips = compactSkillValues([
+						...skillListValues(skill, "triggers"),
+						...skillListValues(skill, "localized_triggers"),
+					]);
+					const meaningChips = compactSkillValues([
+						...skillListValues(skill, "aliases"),
+						...skillListValues(skill, "intents"),
+						...skillListValues(skill, "domains"),
+					]);
+					const runtimeChips = compactSkillValues([
+						...skillListValues(skill, "recommended_tools"),
+						...skillListValues(skill, "capability_requirements"),
+						...(promptMode ? [promptMode] : []),
+						...(path ? [path] : []),
+					]);
 					return (
 						<div
 							className="fa-admin-config-value-row fa-admin-config-skill-row"
@@ -344,16 +412,21 @@ export function SkillManagementPanel({
 								/>
 							</div>
 							<div className="fa-admin-config-skill-meta">
-								{skill.triggers.slice(0, 5).map((trigger) => (
-									<span key={`trigger-${skill.skill_id}-${trigger}`}>
-										{trigger}
-									</span>
-								))}
-								{skill.recommended_tools.slice(0, 5).map((tool) => (
-									<span key={`tool-${skill.skill_id}-${tool}`}>{tool}</span>
-								))}
-								{promptMode ? <span>{promptMode}</span> : null}
-								{path ? <span>{path}</span> : null}
+								<SkillMetaGroup
+									label={isChineseUi ? "触发" : "Triggers"}
+									skillId={skill.skill_id}
+									values={triggerChips}
+								/>
+								<SkillMetaGroup
+									label={isChineseUi ? "含义" : "Meaning"}
+									skillId={skill.skill_id}
+									values={meaningChips}
+								/>
+								<SkillMetaGroup
+									label={isChineseUi ? "运行" : "Runtime"}
+									skillId={skill.skill_id}
+									values={runtimeChips}
+								/>
 							</div>
 						</div>
 					);

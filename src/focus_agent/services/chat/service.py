@@ -291,6 +291,9 @@ class ChatService(
             message_limit=self._THREAD_STATE_MESSAGE_LIMIT,
             trace_correlation=trace_correlation,
         )
+        payload["active_skills"] = self._active_skill_metadata(
+            payload.get("active_skill_ids", [])
+        )
         branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
         if branch_decision_service is not None and hasattr(
             branch_decision_service, "summary_for_thread"
@@ -313,6 +316,82 @@ class ChatService(
             thinking_mode=thinking_mode,
             settings=self.runtime.settings,
         )
+
+    def _active_skill_metadata(self, skill_ids: Any) -> list[dict[str, Any]]:
+        registry = getattr(self.runtime, "skill_registry", None)
+        resolve = getattr(registry, "resolve", None)
+        is_skill_enabled = getattr(registry, "is_skill_enabled", None)
+        active_skills: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        raw_skill_ids = [skill_ids] if isinstance(skill_ids, str) else list(skill_ids or [])
+        for raw_skill_id in raw_skill_ids:
+            skill_id = str(raw_skill_id or "").strip()
+            if not skill_id or skill_id in seen:
+                continue
+            seen.add(skill_id)
+            skill = resolve(skill_id) if callable(resolve) else None
+            enabled = (
+                bool(is_skill_enabled(skill_id))
+                if callable(is_skill_enabled)
+                else True
+            )
+            if skill is None:
+                active_skills.append(
+                    {
+                        "skill_id": skill_id,
+                        "name": skill_id,
+                        "description": "",
+                        "enabled": enabled,
+                        "triggers": [],
+                        "aliases": [],
+                        "recommended_tools": [],
+                        "prompt_mode": None,
+                        "source_id": "",
+                        "source_type": "",
+                        "version": None,
+                        "trust_level": "",
+                        "install_state": "",
+                    }
+                )
+                continue
+            prompt_mode = getattr(skill, "prompt_mode", None)
+            active_skills.append(
+                {
+                    "skill_id": str(getattr(skill, "skill_id", skill_id)),
+                    "name": str(getattr(skill, "skill_id", skill_id)),
+                    "description": str(getattr(skill, "description", "") or ""),
+                    "enabled": enabled,
+                    "triggers": list(getattr(skill, "triggers", ()) or ()),
+                    "aliases": list(getattr(skill, "aliases", ()) or ()),
+                    "recommended_tools": list(getattr(skill, "recommended_tools", ()) or ()),
+                    "prompt_mode": getattr(prompt_mode, "value", prompt_mode),
+                    "source_id": str(getattr(skill, "source_id", "") or ""),
+                    "source_type": str(getattr(skill, "source_type", "") or ""),
+                    "version": getattr(skill, "version", None),
+                    "trust_level": str(getattr(skill, "trust_level", "") or ""),
+                    "install_state": str(getattr(skill, "install_state", "") or ""),
+                }
+            )
+        return active_skills
+
+    @staticmethod
+    def _skill_selection_metadata(
+        *,
+        selection: SkillSelection,
+        active_skills: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        prompt_mode = selection.prompt_mode
+        return {
+            "active_skill_ids": list(selection.skill_ids),
+            "active_skills": active_skills,
+            "skill_selection": {
+                "selection_source": selection.selection_source,
+                "matched_triggers": list(selection.matched_triggers),
+                "confidence": selection.confidence,
+                "rationale": selection.rationale,
+                "prompt_mode": getattr(prompt_mode, "value", prompt_mode),
+            },
+        }
 
     def _turn_span_attributes(
         self,
@@ -659,8 +738,18 @@ class ChatService(
             explicit_skill_hints=skill_hints,
         )
         selected_model = model or self.runtime.settings.model
+        active_skills = self._active_skill_metadata(selection.skill_ids)
+        message_metadata = self._skill_selection_metadata(
+            selection=selection,
+            active_skills=active_skills,
+        )
         payload: dict[str, Any] = {
-            "messages": [HumanMessage(content=message)],
+            "messages": [
+                HumanMessage(
+                    content=message,
+                    response_metadata={"focus_agent": message_metadata},
+                )
+            ],
             "task_brief": selection.stripped_message or message,
             "active_skill_ids": list(selection.skill_ids),
             "selected_model": selected_model,

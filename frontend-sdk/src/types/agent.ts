@@ -91,6 +91,10 @@ export interface FocusAgentSkillCatalogItem {
   description: string;
   when_to_use: string[];
   triggers: string[];
+  aliases: string[];
+  localized_triggers: string[];
+  domains: string[];
+  intents: string[];
   recommended_tools: string[];
   path?: string | null;
   prompt_mode?: string | null;

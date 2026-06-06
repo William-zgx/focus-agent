@@ -37,6 +37,8 @@ from .policy_markers import (
     _WEAK_WORKSPACE_CONTEXT_MARKERS,
     _WEB_LOOKUP_ACTION_MARKERS,
     _WORKSPACE_INTENT_MARKERS,
+    _active_skill_execution_hits,
+    _active_skill_task_execution_hits,
     _academic_web_lookup_hits,
     _contains_any,
     _contextual_current_hits,
@@ -162,6 +164,8 @@ def build_tool_intent_plan(
     skill_ids = {
         str(skill_id).strip().lower() for skill_id in active_skill_ids if str(skill_id).strip()
     }
+    active_skill_execution_hits = _active_skill_execution_hits(normalized)
+    active_skill_task_hits = _active_skill_task_execution_hits(normalized)
     if not no_tool and not explicit_skill_tool_request and "plan" in skill_ids:
         exposure = _exposure(
             "direct_answer",
@@ -193,6 +197,22 @@ def build_tool_intent_plan(
             preferred_first_tool=exposure.preferred_first_tool or "web_search",
         )
         source = "skill:research"
+    elif not no_tool and skill_ids and (
+        active_skill_execution_hits
+        or (not explicit_skill_tool_request and active_skill_task_hits)
+    ):
+        exposure = _exposure(
+            "execution",
+            confidence=max(exposure.confidence, 0.88),
+            reason_codes=(
+                *exposure.reason_codes,
+                "active_skill_execution",
+                *active_skill_execution_hits,
+                *active_skill_task_hits,
+            ),
+            preferred_first_tool=None,
+        )
+        source = "skill:active_execution"
     elif (
         not no_tool
         and not explicit_skill_tool_request

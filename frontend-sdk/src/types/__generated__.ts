@@ -2751,12 +2751,16 @@ export interface components {
         };
         /** AdminConfigSkillResponse */
         AdminConfigSkillResponse: {
+            /** Aliases */
+            aliases?: string[];
             /** Capability Requirements */
             capability_requirements?: string[];
             /** Checksum */
             checksum?: string | null;
             /** Description */
             description: string;
+            /** Domains */
+            domains?: string[];
             /**
              * Enabled
              * @default true
@@ -2767,6 +2771,10 @@ export interface components {
              * @default installed
              */
             install_state: string;
+            /** Intents */
+            intents?: string[];
+            /** Localized Triggers */
+            localized_triggers?: string[];
             /** Path */
             path: string;
             /** Prompt Mode */
@@ -3900,11 +3908,19 @@ export interface components {
         };
         /** AgentSkillCatalogItemResponse */
         AgentSkillCatalogItemResponse: {
+            /** Aliases */
+            aliases?: string[];
             /**
              * Description
              * @default
              */
             description: string;
+            /** Domains */
+            domains?: string[];
+            /** Intents */
+            intents?: string[];
+            /** Localized Triggers */
+            localized_triggers?: string[];
             /** Path */
             path?: string | null;
             preference?: components["schemas"]["AgentSkillPreferenceResponse"] | null;
@@ -6783,6 +6799,53 @@ export interface components {
         TaskResponse: {
             task: components["schemas"]["FocusTask"];
         };
+        /** ThreadActiveSkillResponse */
+        ThreadActiveSkillResponse: {
+            /** Aliases */
+            aliases?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Install State
+             * @default
+             */
+            install_state: string;
+            /** Name */
+            name: string;
+            /** Prompt Mode */
+            prompt_mode?: string | null;
+            /** Recommended Tools */
+            recommended_tools?: string[];
+            /** Skill Id */
+            skill_id: string;
+            /**
+             * Source Id
+             * @default
+             */
+            source_id: string;
+            /**
+             * Source Type
+             * @default
+             */
+            source_type: string;
+            /** Triggers */
+            triggers?: string[];
+            /**
+             * Trust Level
+             * @default
+             */
+            trust_level: string;
+            /** Version */
+            version?: string | null;
+        };
         /** ThreadContextCompactRequest */
         ThreadContextCompactRequest: {
             /**
@@ -6796,6 +6859,8 @@ export interface components {
         ThreadContextCompactResponse: {
             /** Active Skill Ids */
             active_skill_ids?: string[];
+            /** Active Skills */
+            active_skills?: components["schemas"]["ThreadActiveSkillResponse"][];
             /** Assistant Message */
             assistant_message?: string | null;
             /** Branch Actions */
@@ -6821,9 +6886,9 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /** Messages */
-            messages?: {
+            messages?: (components["schemas"]["ThreadMessageResponse"] | {
                 [key: string]: unknown;
-            }[];
+            })[];
             /**
              * Rolling Summary
              * @default
@@ -6857,6 +6922,70 @@ export interface components {
         ThreadContextPreviewResponse: {
             context_usage: components["schemas"]["ContextUsageResponse"];
         };
+        /** ThreadMessageMetadata */
+        ThreadMessageMetadata: {
+            /** Active Skill Ids */
+            active_skill_ids?: string[];
+            /** Active Skills */
+            active_skills?: components["schemas"]["ThreadActiveSkillResponse"][];
+            skill_selection?: components["schemas"]["ThreadMessageSkillSelectionMetadata"] | null;
+        };
+        /** ThreadMessageResponse */
+        ThreadMessageResponse: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Id */
+            id?: string | null;
+            /** Metadata */
+            metadata?: components["schemas"]["ThreadMessageMetadata"] | {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Tool Call Id */
+            tool_call_id?: string | null;
+            /** Tool Calls */
+            tool_calls?: unknown;
+            /** Turn Metadata */
+            turn_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Type */
+            type: string;
+            /** Usage Metadata */
+            usage_metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ThreadMessageSkillSelectionMetadata */
+        ThreadMessageSkillSelectionMetadata: {
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Matched Triggers */
+            matched_triggers?: string[];
+            /** Prompt Mode */
+            prompt_mode?: string | null;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /**
+             * Selection Source
+             * @default none
+             */
+            selection_source: string;
+        };
         /** ThreadResolutionResponse */
         ThreadResolutionResponse: {
             /** Branch Id */
@@ -6884,6 +7013,8 @@ export interface components {
         ThreadStateResponse: {
             /** Active Skill Ids */
             active_skill_ids?: string[];
+            /** Active Skills */
+            active_skills?: components["schemas"]["ThreadActiveSkillResponse"][];
             /** Assistant Message */
             assistant_message?: string | null;
             /** Branch Actions */
@@ -6909,9 +7040,9 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /** Messages */
-            messages?: {
+            messages?: (components["schemas"]["ThreadMessageResponse"] | {
                 [key: string]: unknown;
-            }[];
+            })[];
             /**
              * Rolling Summary
              * @default

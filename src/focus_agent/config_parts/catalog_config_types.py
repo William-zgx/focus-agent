@@ -134,7 +134,10 @@ class ApplyPatchToolConfig:
 class RunWorkspaceCommandToolConfig:
     enabled: bool = True
     label: str = "Run Workspace Command"
-    description: str = "Run an allowlisted test, lint, build, or check command in the workspace."
+    description: str = (
+        "Run an allowlisted test, lint, build, check, or trusted local skill script command "
+        "in the workspace."
+    )
     allowed_commands: tuple[str, ...] = (
         "cargo",
         "go",

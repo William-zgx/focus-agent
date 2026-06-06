@@ -394,6 +394,41 @@ def test_skill_selection_event_logging_can_be_disabled() -> None:
     assert selections.json()["items"] == []
 
 
+def test_agent_skill_catalog_includes_capability_metadata(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "stocks"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        """
+---
+name: stocks
+description: Fetch read-only stock market data.
+triggers: [stock:]
+aliases: [股票, 股价, 行情]
+localized_triggers: [股票:, 股票：]
+domains: [finance, market-data]
+intents: [quote lookup, 行情查询]
+when_to_use: [Use when the user asks for market data]
+recommended_tools: [web_search]
+---
+# Stocks
+Use read-only market data.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    client, _repository = _agent_governance_client()
+    client.app.state.runtime.skill_registry = SkillRegistry([tmp_path / "skills"])
+
+    catalog = client.get("/v1/agent/skills/catalog")
+
+    assert catalog.status_code == 200
+    stocks = next(item for item in catalog.json()["items"] if item["skill_id"] == "stocks")
+    assert stocks["aliases"] == ["股票", "股价", "行情"]
+    assert stocks["localized_triggers"] == ["股票:", "股票："]
+    assert stocks["domains"] == ["finance", "market-data"]
+    assert stocks["intents"] == ["quote lookup", "行情查询"]
+
+
 def test_context_explain_persists_evidence_for_listing() -> None:
     client, _repository = _agent_governance_client()
 

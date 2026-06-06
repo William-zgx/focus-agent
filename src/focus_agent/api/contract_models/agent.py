@@ -125,6 +125,10 @@ class AgentSkillCatalogItemResponse(BaseModel):
     skill_id: str
     description: str = ""
     triggers: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    localized_triggers: list[str] = Field(default_factory=list)
+    domains: list[str] = Field(default_factory=list)
+    intents: list[str] = Field(default_factory=list)
     when_to_use: list[str] = Field(default_factory=list)
     recommended_tools: list[str] = Field(default_factory=list)
     prompt_mode: str | None = None

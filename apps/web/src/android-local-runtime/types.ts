@@ -128,6 +128,10 @@ export interface LocalSkill {
 	name: string;
 	description: string;
 	triggers: string[];
+	aliases?: string[];
+	localized_triggers?: string[];
+	domains?: string[];
+	intents?: string[];
 	when_to_use: string[];
 	recommended_tools: string[];
 	prompt_mode: string;

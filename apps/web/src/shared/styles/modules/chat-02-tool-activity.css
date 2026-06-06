@@ -5,7 +5,7 @@
 .fa-chat-main-body .fa-tool-activity-card {
 	border: 1px solid
 		color-mix(in srgb, var(--fa-border-subtle) 90%, var(--fa-accent-cyan) 10%);
-	border-radius: 18px;
+	border-radius: 8px;
 	background:
 		linear-gradient(
 			180deg,
@@ -324,7 +324,7 @@
 }
 
 .fa-chat-main-body .fa-tool-activity-detail {
-	border-radius: 12px;
+	border-radius: 8px;
 	border: 1px solid color-mix(in srgb, var(--fa-border) 72%, transparent);
 	background: color-mix(in srgb, var(--fa-panel-3) 22%, transparent);
 	overflow: hidden;

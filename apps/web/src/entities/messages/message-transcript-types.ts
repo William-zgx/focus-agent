@@ -17,7 +17,7 @@ export type ProcessingStepTone = "neutral" | "warn" | "success" | "danger";
 
 export interface ProcessingStepEntry {
 	id: string;
-	kind: "reasoning" | "tool" | "task" | "agent";
+	kind: "reasoning" | "tool" | "task" | "agent" | "skill";
 	label: string;
 	status: "pending" | "running" | "completed" | "failed";
 	tone: ProcessingStepTone;
@@ -28,6 +28,7 @@ export interface ProcessingStepEntry {
 export interface ToolActivityItem {
 	kind: "tool-activity";
 	id: string;
+	skillIds: string[];
 	toolNames: string[];
 	summaryText: string;
 	details: ToolDetailEntry[];

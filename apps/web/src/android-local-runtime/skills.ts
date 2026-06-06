@@ -4,11 +4,15 @@ export const ANDROID_LOCAL_SKILLS: LocalSkill[] = [
 	{
 		skill_id: "android-local-runtime",
 		name: "android-local-runtime",
-		description:
-			"Run Focus Agent chat, admin, branches, and tools inside the Android app.",
-		triggers: ["android", "mobile", "local runtime"],
-		when_to_use: [
-			"The user wants to understand what the Android app can do without a Focus Agent backend.",
+			description:
+				"Run Focus Agent chat, admin, branches, and tools inside the Android app.",
+			triggers: ["android", "mobile", "local runtime"],
+			aliases: ["Android", "local", "本地运行时"],
+			localized_triggers: ["安卓:", "本地:"],
+			domains: ["mobile", "runtime"],
+			intents: ["local app support", "runtime explanation"],
+			when_to_use: [
+				"The user wants to understand what the Android app can do without a Focus Agent backend.",
 		],
 		recommended_tools: ["conversation_summary", "web_search", "memory_search"],
 		prompt_mode: "answer",
@@ -18,10 +22,14 @@ export const ANDROID_LOCAL_SKILLS: LocalSkill[] = [
 	},
 	{
 		skill_id: "branch-focus-score",
-		name: "branch-focus-score",
-		description: "Explain and use local Focus Score branch recommendations.",
-		triggers: ["branch", "focus score", "推荐分支", "分支"],
-		when_to_use: [
+			name: "branch-focus-score",
+			description: "Explain and use local Focus Score branch recommendations.",
+			triggers: ["branch", "focus score", "推荐分支", "分支"],
+			aliases: ["focus score", "推荐分支", "分支建议"],
+			localized_triggers: ["分支:", "推荐分支:"],
+			domains: ["branching", "conversation management"],
+			intents: ["topic drift analysis", "branch recommendation"],
+			when_to_use: [
 			"The user asks whether a turn should continue current context or branch.",
 		],
 		recommended_tools: ["conversation_summary"],
@@ -32,10 +40,14 @@ export const ANDROID_LOCAL_SKILLS: LocalSkill[] = [
 	},
 	{
 		skill_id: "local-artifacts-memory",
-		name: "local-artifacts-memory",
-		description: "Use app-local artifacts and durable local memory.",
-		triggers: ["artifact", "memory", "产物", "记忆"],
-		when_to_use: [
+			name: "local-artifacts-memory",
+			description: "Use app-local artifacts and durable local memory.",
+			triggers: ["artifact", "memory", "产物", "记忆"],
+			aliases: ["artifact", "memory", "产物", "记忆"],
+			localized_triggers: ["产物:", "记忆:"],
+			domains: ["artifacts", "memory"],
+			intents: ["save local information", "read local artifacts"],
+			when_to_use: [
 			"The user asks to save, read, update, remember, search, or forget local information.",
 		],
 		recommended_tools: [
@@ -52,10 +64,14 @@ export const ANDROID_LOCAL_SKILLS: LocalSkill[] = [
 	{
 		skill_id: "local-web-tools",
 		name: "local-web-tools",
-		description:
-			"Search or fetch public web content directly from the Android app.",
-		triggers: ["web", "search", "fetch", "网页搜索", "抓取"],
-		when_to_use: [
+			description:
+				"Search or fetch public web content directly from the Android app.",
+			triggers: ["web", "search", "fetch", "网页搜索", "抓取"],
+			aliases: ["web", "search", "网页", "联网", "搜索"],
+			localized_triggers: ["网页:", "搜索:"],
+			domains: ["web", "current information"],
+			intents: ["web search", "URL fetch", "current time lookup"],
+			when_to_use: [
 			"The user asks for current, recent, online, or URL-specific information.",
 		],
 		recommended_tools: ["current_utc_time", "web_search", "web_fetch"],

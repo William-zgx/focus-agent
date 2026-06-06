@@ -87,6 +87,10 @@ def _write_skill(
     name: str,
     description: str,
     triggers: str = "",
+    aliases: str = "",
+    localized_triggers: str = "",
+    domains: str = "",
+    intents: str = "",
     when_to_use: str = "",
     recommended_tools: str = "",
     capability_requirements: str = "",
@@ -102,6 +106,14 @@ def _write_skill(
     ]
     if triggers:
         lines.append(f"triggers: {triggers}")
+    if aliases:
+        lines.append(f"aliases: {aliases}")
+    if localized_triggers:
+        lines.append(f"localized_triggers: {localized_triggers}")
+    if domains:
+        lines.append(f"domains: {domains}")
+    if intents:
+        lines.append(f"intents: {intents}")
     if when_to_use:
         lines.append(f"when_to_use: {when_to_use}")
     if recommended_tools:
@@ -139,6 +151,10 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
         name="plan",
         description="Planning mode",
         triggers="plan:",
+        aliases="方案, planning",
+        localized_triggers="计划:, 计划：",
+        domains="planning, 项目管理",
+        intents="implementation planning, 方案设计",
         when_to_use="The user wants a plan first",
         recommended_tools="list_files,read_file",
         prompt_mode="explore",
@@ -152,10 +168,18 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
 
     assert listed["success"] is True
     assert listed["skills"][0]["name"] == "plan"
+    assert listed["skills"][0]["aliases"] == ["方案", "planning"]
+    assert listed["skills"][0]["localized_triggers"] == ["计划:", "计划："]
+    assert listed["skills"][0]["domains"] == ["planning", "项目管理"]
+    assert listed["skills"][0]["intents"] == ["implementation planning", "方案设计"]
     assert listed["skills"][0]["when_to_use"] == ["The user wants a plan first"]
     assert listed["skills"][0]["recommended_tools"] == ["list_files", "read_file"]
     assert viewed["success"] is True
     assert viewed["prompt_mode"] == "explore"
+    assert viewed["aliases"] == ["方案", "planning"]
+    assert viewed["localized_triggers"] == ["计划:", "计划："]
+    assert viewed["domains"] == ["planning", "项目管理"]
+    assert viewed["intents"] == ["implementation planning", "方案设计"]
     assert viewed["when_to_use"] == ["The user wants a plan first"]
     assert viewed["recommended_tools"] == ["list_files", "read_file"]
     assert "Follow the steps carefully." in viewed["content"]
@@ -410,6 +434,27 @@ def test_skill_registry_supports_stacked_prefix_activation(tmp_path):
     assert selection.matched_triggers == ("plan:", "review:")
 
 
+def test_skill_registry_selects_localized_prefix_triggers(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="stocks",
+        description="Read-only market data lookup through Yahoo Finance",
+        aliases="股票, 股价, 行情, A股",
+        localized_triggers="股票:, 股票：, 行情:",
+        when_to_use="Use when users ask for stock quotes and ticker history",
+        prompt_mode="execute",
+    )
+
+    registry = SkillRegistry([tmp_path])
+    selection = registry.select_for_message("股票：看一下南网能源本周活动情况")
+
+    assert selection.skill_ids == ("stocks",)
+    assert selection.stripped_message == "看一下南网能源本周活动情况"
+    assert selection.selection_source == "prefix"
+    assert selection.matched_triggers == ("股票：",)
+    assert selection.prompt_mode == PromptMode.EXECUTE
+
+
 def test_skill_registry_semantic_selection_is_deterministic_fallback(tmp_path):
     _write_skill(
         tmp_path,
@@ -439,6 +484,54 @@ def test_skill_registry_semantic_selection_is_deterministic_fallback(tmp_path):
     assert selection.semantic_candidates[0].skill_id == "docs"
     assert selection.semantic_candidates[0].auto_activate is True
     assert selection.confidence == selection.semantic_candidates[0].score
+
+
+def test_skill_registry_semantic_selection_uses_cjk_aliases(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="stocks",
+        description="Fetch read-only stock quotes, ticker search, and OHLCV history",
+        aliases="股票, 股价, 行情, A股, 证券, ticker, quote",
+        domains="finance, market-data, 股票",
+        intents="quote lookup, historical OHLCV, 行情查询, 股价查询",
+        when_to_use="Use when the user asks for current stock prices or ticker lookup",
+        recommended_tools="run_workspace_command,web_search",
+        prompt_mode="execute",
+    )
+
+    registry = SkillRegistry([tmp_path], semantic_match_threshold=0.2)
+    selection = registry.select_for_message(
+        "使用股票相关的Skill看一下本周南网能源的活动情况。"
+    )
+
+    assert selection.skill_ids == ("stocks",)
+    assert selection.selection_source == "semantic"
+    assert selection.prompt_mode == PromptMode.EXECUTE
+    assert selection.semantic_candidates[0].skill_id == "stocks"
+    assert "股票" in selection.semantic_candidates[0].matched_terms
+
+
+def test_skills_search_matches_cjk_aliases(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="stocks",
+        description="Fetch read-only stock quotes through Yahoo Finance",
+        aliases="股票, 股价, 行情, A股",
+        domains="finance, market-data",
+        intents="行情查询, 股价查询",
+        when_to_use="Use when the user asks for current stock prices",
+        recommended_tools="run_workspace_command,web_search",
+    )
+
+    registry = SkillRegistry([tmp_path], semantic_match_threshold=0.2)
+    payload = json.loads(
+        render_skills_search_json(registry, query="股票相关能力", scope="installed")
+    )
+
+    assert payload["results"][0]["skill_id"] == "stocks"
+    assert payload["results"][0]["aliases"] == ["股票", "股价", "行情", "A股"]
+    assert payload["results"][0]["domains"] == ["finance", "market-data"]
+    assert payload["results"][0]["intents"] == ["行情查询", "股价查询"]
 
 
 def test_skill_registry_default_threshold_activates_real_build_failure_request(tmp_path):
