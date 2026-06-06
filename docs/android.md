@@ -1,6 +1,6 @@
 # Android App
 
-Updated: 2026-05-30
+Updated: 2026-06-06
 
 The Android shell is a Capacitor wrapper around the existing Web app. Web builds
 keep the normal `/app` base path and all Web modules enabled. Android-only
@@ -34,6 +34,12 @@ with model `deepseek-v4-pro`. Open the Admin config screen and save the provider
 API key in the local API key field. The key is stored through the native secure
 storage plugin and is never sent to a Focus Agent backend.
 
+The Android-local Admin config surface mirrors the Web settings center at a
+local-data level: model provider settings, tool availability, Skill global and
+per-skill enablement, and policy compatibility fields are kept in WebView local
+state. Android does not manage remote MCP servers; MCP-related workflows appear
+through installed/local skills and tool compatibility data.
+
 The Web target is unchanged and continues to use the SDK default HTTP transport
 for `/v1` and `/v2` backend routes. Android local data is persisted in the app
 WebView's local storage.
@@ -50,9 +56,9 @@ modules so Web transport code and Android-only local behavior stay separated.
 | `local-v1-runtime.ts` | Local route dispatcher for `/v1` and `/v2` compatible endpoints |
 | `auth-conversation-runtime.ts` | Login, demo tokens, sessions, users, conversations, and thread state |
 | `thread-branch-routes.ts` / `branch-logic.ts` | Branch tree, branch actions, merge review, thread resolution, and branch decisions |
-| `agent-runtime.ts` | Governance policies, skill catalog/selection, delegation/model-router/task-ledger compatibility data, and feedback trend route |
+| `agent-runtime.ts` | Governance policies, skill catalog/selection/preference compatibility data, delegation/model-router/task-ledger compatibility data, and feedback trend route |
 | `memory-observability-runtime.ts` | Local memory, context, trajectory, overview, replay, and promote compatibility routes |
-| `admin-runtime.ts` | Admin config, users, audit events, roles, status, sessions, and password reset |
+| `admin-runtime.ts` | Admin config including model/tool/Skill sections, users, audit events, roles, status, sessions, and password reset |
 | `model-provider.ts` / `model-runtime.ts` | Provider metadata, secure API key lookup, and direct OpenAI-compatible model calls |
 | `stream-runtime.ts` / `sse.ts` | POST-based stream events, local tool events, branch recommendation short-circuiting, and SSE framing |
 | `web-search.ts` / `web-planning.ts` / `web-fetch.ts` | Android-local web search planning and fetch helpers |
@@ -75,8 +81,8 @@ via feature flags. The Web target continues to include them by default.
 ## Verification
 
 Run the local runtime smoke after changing SDK endpoint wiring, stream reducer
-behavior, Android routes, model-provider storage, local web search, or the module
-facade:
+behavior, Android routes, model-provider storage, Admin settings, Skill
+preference/config behavior, local web search, or the module facade:
 
 ```bash
 make frontend-android-runtime-smoke

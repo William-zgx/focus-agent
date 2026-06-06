@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-05-30
+Updated: 2026-06-06
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -225,7 +225,7 @@ The current skill/tool autonomy surface is discover-first and install-gated:
 | `skills_refresh_index` | `planner`, `skill_scout` | Rebuilds the skill search index from configured sources. |
 | `skill_install` | `skill_scout` | Medium-risk workspace write tool for installing a selected skill. |
 
-`skill_install` is intentionally not an orchestrator tool. The orchestrator may discover available sources and search results, then route install-capable work to `skill_scout` under normal workspace-write governance.
+`skill_install` is intentionally not an orchestrator tool. The orchestrator may discover available sources and search results, then route install-capable work to `skill_scout` under normal workspace-write governance. Admin Skill settings are enforced before scout decisions: globally disabled Skill runtime or individually disabled skills remain auditable in the catalog but are skipped by search, prefix activation, semantic matching, and prompt injection.
 
 ### Branch Decision And Recommendation
 

@@ -264,14 +264,16 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 
 这组 focused suite 覆盖 HS256 issuer/audience/TTL、过期或轮换 token、生产环境禁用 demo token、注册/密码规则、refresh session 退出、admin 角色保护，以及 `tenant_id` 和 `scope` 只是 claim metadata 而不是 thread ownership key 的边界。
 
-如果改动触及 Admin Console Web 页面、admin SDK 类型、管理员路由保护或审计事件 UI，也要跑：
+如果改动触及 Admin Console 设置中心、Skill 管理、Web 页面、admin SDK 类型、管理员路由保护或审计事件 UI，也要跑：
 
 ```bash
+uv run pytest tests/test_admin_config_api.py tests/test_skill_registry.py tests/test_config_local_doc.py
 uv run pytest tests/test_web_app_scaffold.py
 make contract-check
 make web-check
 make web-build
 make sdk-check
+make frontend-android-runtime-smoke
 ```
 
 如果改动触及 Web 登录页、账号侧栏、管理员路由保护或 token 存储，还要用真实浏览器跑一遍主流程：

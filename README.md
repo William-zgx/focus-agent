@@ -36,9 +36,10 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
-- Access control, Admin Console, memory pipeline, governance feedback trends, and typed frontend SDK
+- Access control, Admin Console, capability-centered settings, memory pipeline, governance feedback trends, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
-- Built-in repo read/edit, git, web, artifact, memory, and productivity tools with guarded workspace command execution
+- Built-in repo read/edit, git, web, artifact, memory, productivity, and Skill catalog tools with guarded workspace command execution
+- Admin-managed runtime settings for model connections, tool providers, Skill enablement, Agent behavior, security/runtime policy, and low-frequency advanced options
 
 ## Repository Layout
 
@@ -79,6 +80,11 @@ Model/provider metadata is loaded from the packaged default catalog and can be
 overridden locally through `.focus_agent/models.toml`; keep provider secrets in
 `.focus_agent/local.env`. See [docs/quick-start.md](docs/quick-start.md) for the
 custom OpenAI-compatible model path.
+
+Skill runtime settings are local-first as well. Bundled skills provide the
+baseline catalog, optional local skills live under `.focus_agent/skills`, and
+the Admin settings page can enable or disable the Skill system or individual
+skills without changing tracked source.
 
 Memory embedding is enabled by default when PostgreSQL memory is available. Local auto mode prefers Ollama `embeddinggemma`; install it explicitly with `ollama pull embeddinggemma`, or configure an OpenAI-compatible embedding endpoint.
 

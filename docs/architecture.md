@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-05-30
+更新时间：2026-06-06
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -228,7 +228,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
 | Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`GET/PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
-| Admin | `/v1/admin/users/*`、`/v1/admin/audit-events` | 用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
+| Admin | `/v1/admin/config`、`/v1/admin/config/{models,tools,policies,skills}`、`/v1/admin/config/skills/refresh`、`/v1/admin/users/*`、`/v1/admin/audit-events` | 设置中心、模型/工具/策略/Skill 配置、用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
 API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业务流程在 services、runtime、repositories 和 graph nodes。
@@ -282,7 +282,7 @@ flowchart LR
 - SDK/前端目前仍会在列表请求里附带 `source_kind`（用于来源筛选 UI），但当前 API 路由未声明该查询参数，因此会被忽略；若要恢复服务端过滤，需要先扩展路由+repository+测试契约。
 - `GET /v1/notes/{note_id}`、`GET /v1/tasks/{task_id}` 均为 owner-scoped；不存在或无权限时返回 404。
 
-### 6.2 Admin Console 权限边界
+### 6.2 Admin Console 和设置中心边界
 
 认证、账号自助和 access model 的 canonical 文档是 [auth-access.md](auth-access.md)；Admin Console 的 canonical 文档是 [admin-console.md](admin-console.md)。架构层只保留安全边界：
 
@@ -291,6 +291,8 @@ flowchart LR
 - local/development 可以通过首个非匿名用户或 `AUTH_BOOTSTRAP_ADMIN_USER_IDS` bootstrap admin；生产数据库必须显式配置管理员并关闭 demo token。
 - 状态、角色、会话撤销和密码重置动作需要 reason，并写入 admin audit event。
 - 最后一个 active admin 不能被禁用，也不能失去 admin 角色。
+- 设置中心通过 Admin API 更新模型、工具、策略和 Skill 配置；Skill 启停必须同时影响 registry 的搜索、前缀触发、语义匹配和 prompt 注入。
+- MCP Server 目前只在设置中心作为扩展连接入口保留，架构层不把它描述成已具备完整 lifecycle 管理。
 
 ## 7. Harness Run 数据流
 
@@ -485,7 +487,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - tool registry：把工具和 `ToolRuntimeMeta` 组合成 runtime registry。
 - tool runtime：处理并行安全、缓存、fallback、观察裁剪；工具 timeout、并行工具调用和 delegated background execution 复用 `focus_agent.runtime.thread_pool.shared_thread_pool()`，并由调用点保留 batch / role 级并发限流。
 - tool router：按 role、tool policy、risk、side effect 过滤工具。
-- skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具。
+- skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具；管理员可全局关闭 Skill 系统或禁用单个 Skill，禁用项仍可见但不会参与搜索、触发或 prompt 注入。
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
 - live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。
 
@@ -789,11 +791,13 @@ make feedback-regression
 影响 Admin Console、Auth UI 或访问治理：
 
 ```bash
+uv run pytest tests/test_admin_config_api.py tests/test_skill_registry.py tests/test_config_local_doc.py
 uv run pytest tests/test_admin_users_api.py tests/test_auth.py tests/test_auth_accounts_api.py tests/test_user_service.py tests/test_auth_ownership.py
 uv run pytest tests/test_web_app_scaffold.py
 make contract-check
 make web-check
 make web-build
+make frontend-android-runtime-smoke
 ```
 
 影响部署、持久化或 observability：

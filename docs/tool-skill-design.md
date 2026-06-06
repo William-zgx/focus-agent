@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-05-18
+更新时间：2026-06-06
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -8,6 +8,7 @@ This document defines the current boundary between low-level tools and higher-le
 
 - Keep tools small, safe, auditable, and easy to test.
 - Let skills describe reusable workflows instead of hardcoding workflows into tools.
+- Let administrators manage Skill availability from the settings surface instead of editing code or deleting local files.
 - Add product capabilities that make the agent useful in normal conversations, not only codebase work.
 - Preserve Focus Agent's branch-aware conversation model while expanding beyond developer-only tools.
 
@@ -113,6 +114,7 @@ Focus Agent's skill runtime is prompt-first and local-first. It supports discove
 - Python runtime: `src/focus_agent/skills/`
 - Bundled skills: `src/focus_agent/skills/builtin/<skill>/SKILL.md`
 - Optional local overlays: `FOCUS_AGENT_SKILLS_DIRS` or the default `.focus_agent/skills`
+- Admin-managed local settings: `.focus_agent/local.env`
 
 Bundled skills are versioned with the repo so the agent has a stable baseline even when no local skills exist. Local overlays are intended for per-user or per-maintainer workflows and are typically kept out of git.
 
@@ -143,10 +145,11 @@ The parser is intentionally minimal and optimized for bundled skills plus straig
 ### Runtime flow
 
 1. `SkillRegistry` scans configured roots plus bundled skills and builds an in-memory index.
-2. Skills activate through API `skill_hints` or prefix triggers such as `plan:` and `review:`.
-3. `ChatService` resolves active skills, writes skill hints into `RequestContext`, persists `active_skill_ids`, and uses the cleaned task as `task_brief`.
-4. `graph_builder` asks the registry for available-skill and active-skill prompt blocks.
-5. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
+2. The registry keeps the full catalog visible but marks globally disabled or individually disabled skills as inactive.
+3. Skills activate through API `skill_hints`, semantic matching, or prefix triggers such as `plan:` and `review:` only when the Skill system and the target skill are enabled.
+4. `ChatService` resolves active skills, writes skill hints into `RequestContext`, persists `active_skill_ids`, and uses the cleaned task as `task_brief`.
+5. `graph_builder` asks the registry for available-skill and active-skill prompt blocks.
+6. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
 
 ![Skill prompt injection and tool narrowing](assets/diagrams/tool-skill-runtime.svg)
 
@@ -158,24 +161,43 @@ Current bundled skills:
 - `codebase-inspection`
 - `code-documentation`
 - `eco`
+- `node-inspect-debugger`
+- `one-three-one-rule`
 - `plan`
+- `python-debugpy`
 - `research`
 - `ralph`
+- `rest-graphql-debug`
 - `review`
 - `security-review`
+- `spike`
 - `systematic-debugging`
+- `tavily-search`
 - `tdd`
 - `ultrawork`
 - `writing-plans`
 
 These skills intentionally steer behavior that the current runtime can already support. For example, `ultrawork` encourages workstream decomposition, but it does not claim hidden sub-agent execution.
 
+### Admin configuration surface
+
+Skill availability is intentionally managed through Admin settings rather than by deleting files:
+
+- `GET /v1/admin/config` returns a `skills` section with global enablement, source settings, disabled ids, semantic-match settings, catalog entries, and summary counts.
+- `PATCH /v1/admin/config/skills` updates the global Skill switch, directories, install directory, disabled ids, per-skill enabled state, and semantic-match controls.
+- `POST /v1/admin/config/skills/refresh` rebuilds the runtime Skill index and returns the refreshed catalog.
+- `.focus_agent/local.env` is the local persistence target for `FOCUS_AGENT_SKILLS_ENABLED`, `FOCUS_AGENT_SKILLS_DIRS`, `SKILL_INSTALL_DIRECTORY`, `SKILL_DISABLED_IDS`, `SKILL_SEMANTIC_MATCH_ENABLED`, and `SKILL_SEMANTIC_MATCH_THRESHOLD`.
+
+Disabled skills remain visible in the catalog for auditing and re-enablement, but they are skipped by search, prefix activation, semantic matching, available-skill prompt rendering, and active-skill prompt injection.
+
+MCP-related workflows are represented as skills and tools today, for example FastMCP or mcporter workflows when installed. MCP Server lifecycle management is a reserved Admin connection surface until a first-class backend configuration contract exists.
+
 ### Current limitations
 
 - The frontmatter parser is deliberately simple and not a full YAML implementation.
 - Skill prompts are injected as plain text blocks; there is no scoring/ranking stage yet.
 - The system does not yet persist skill metadata snapshots or support linked reference files.
-- Skill selection is prefix/hint based; semantic auto-matching is future work.
+- Semantic matching is configurable but intentionally conservative; prefix and explicit hint selection remain the most predictable activation path.
 
 ## Connector Boundary
 

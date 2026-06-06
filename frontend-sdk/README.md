@@ -24,6 +24,7 @@ This SDK packages those concerns into a small, typed client layer.
 
 - `FocusAgentClient` for authenticated JSON requests and POST-based SSE streaming
 - Conversation, branch tree, branch action, and merge review request helpers
+- Admin settings helpers for model, tool, policy, and Skill configuration
 - Branch decision config/list/promote/dismiss helpers for AI-assisted branch recommendations
 - Agent governance helpers for skill selection, preference feedback, feedback trend summaries, role/tool/model routing, context, task ledger, critic, and review queue surfaces
 - Productivity request helpers for notes/tasks/capture, including task lifecycle actions and event list
@@ -140,6 +141,7 @@ flowchart LR
 - `register()`, `login()`, `logout()`, `refresh()`, and `changePassword()` - manage authenticated user sessions
 - `createDemoToken()` and `getPrincipal()` - request a local development token and inspect the authenticated principal
 - `listMySessions()` and `revokeSession()` - inspect or revoke the current user's sessions
+- `getAdminConfig()`, `updateAdminModelConfig()`, `updateAdminToolConfig()`, `updateAdminPolicyConfig()`, `updateAdminSkillConfig()`, and `refreshAdminSkillConfig()` - administer model connections, tools, policies, and Skill enablement
 - `listUsers()`, `createUser()`, `getUser()`, `updateUser()`, `updateUserStatus()`, `updateUserRoles()`, `listUserSessions()`, `revokeUserSession()`, `resetUserPassword()`, and `listAuditEvents()` - administer users, sessions, passwords, and audit events
 - `listModels()` - fetch the current model catalog
 - `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, `listAgentRoleDecisions()`, `selectAgentSkills()`, `listAgentSkillSelections()`, `sendAgentSkillSelectionFeedback()`, `getAgentSkillCatalog()`, `updateAgentSkillPreference()`, and `getAgentFeedbackTrend()` - inspect role routing policy, preview orchestrator decisions, review persisted role_route_plan records, manage skill selection evidence, and read governance feedback trend summaries

@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-05-30
+更新时间：2026-06-06
 
 这份文档只回答两个问题：
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-05-30，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-06-06，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、thread resolution、branch tree、branch action、merge review、Agent Team、Admin、productivity、agent governance、observability 等核心 typed client 能力
@@ -36,7 +36,7 @@ flowchart LR
 - Agent Team Mission Runner 已从 legacy dispatch 升级为目标驱动的动态 Mission DAG：支持 standalone session、可选来源对话、模型优先规划、fallback contract defaults、task retry/cancel、执行证据汇总、Cockpit UI 和 `final_answer` synthesis
 - Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events、multi-agent coordination、Postgres-backed rate limit、branch decision events 和 feedback regression 统一进入 schema v17 与 nightly 证据链
 - Agent Governance 反馈趋势已接入：`GET /v1/agent/feedback/trend` 和 SDK `getAgentFeedbackTrend()` 会聚合负反馈、merge review 成功/冲突、skill 低置信/override、context drift、Notes/Tasks capture 与失败 trajectory 样本，供 Web governance console 和 Android local runtime smoke 使用
-- Admin Console 已落地：`/app/admin/users` 管理用户、状态、角色、会话和密码，`/app/admin/audit-events` 浏览管理员审计事件；admin 权限来自持久化用户角色，不来自 token scope
+- Admin Console 已落地：`/app/admin/config` 以设置中心方式管理连接、能力、Skill、工具、Agent 行为、安全/运行时和高级配置，`/app/admin/users` 管理用户、状态、角色、会话和密码，`/app/admin/audit-events` 浏览管理员审计事件；admin 权限来自持久化用户角色，不来自 token scope
 - 第一轮工程化加固已落地：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
 - Android target 已具备 App 内本地 Focus Agent runtime，`apps/web/src/android-local-runtime/` 已按 auth/conversation、thread/branch、agent governance、memory/observability、admin、model provider、stream、web search 和 workspace/tool execution 拆分，并由 `make frontend-android-runtime-smoke` 守护
@@ -101,6 +101,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - 当前上下文窗口计量、发送栏 Context Meter、手动压缩、发送前和回合后自动压缩
 - Agent Team dynamic planning、任务契约、Cockpit UI、final answer synthesis、task retry/cancel 和 contract snapshot
 - Admin Console 用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件列表和管理员路由保护
+- 设置中心：模型连接、MCP 预留入口、工具配置、Skill 全局/单项启停、Agent 行为、安全运行和高级配置来源已按意图分区
 - 工具运行时并行/缓存/降级基础
 - 工具运行时参数校验失败短路、取消/超时不走 fallback、side-effect 串行边界
 - Postgres trajectory 落库
@@ -184,7 +185,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - [architecture.md](architecture.md)：描述整体架构、平台维护边界、核心链路、持久化边界和跨模块验证口径
 - [auth-access.md](auth-access.md)：描述登录、注册、账号自助、token/session、ownership 和生产鉴权边界
 - [agent-team-workbench.md](agent-team-workbench.md)：描述 Agent Team Mission Runner、动态 DAG、Cockpit UI、任务契约和验收口径
-- [admin-console.md](admin-console.md)：描述管理员用户、角色、会话、密码、审计事件和权限边界
+- [admin-console.md](admin-console.md)：描述设置中心、能力管理、管理员用户、角色、会话、密码、审计事件和权限边界
 - [branch-decisions.md](branch-decisions.md)：描述 branch decision event、发送前推荐、Branch Action 确认卡、配置、API/SDK 和验证口径
 - [docker-deployment.md](docker-deployment.md)：描述本机启动、本地 Docker、生产模板和迁移方式
 - 本文：保留统一的路线图视角，只维护“现状 + 下一步”

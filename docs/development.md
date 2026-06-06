@@ -265,14 +265,16 @@ uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_a
 This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
 tokens, production demo-token blocking, registration/password rules, refresh-session logout, admin role safeguards, and the rule that `tenant_id` and `scope` are claim metadata rather than thread ownership keys.
 
-If the Admin Console Web pages, admin SDK types, route protection, or audit event UI changed, also run:
+If the Admin Console settings center, Skill management, Web pages, admin SDK types, route protection, or audit event UI changed, also run:
 
 ```bash
+uv run pytest tests/test_admin_config_api.py tests/test_skill_registry.py tests/test_config_local_doc.py
 uv run pytest tests/test_web_app_scaffold.py
 make contract-check
 make web-check
 make web-build
 make sdk-check
+make frontend-android-runtime-smoke
 ```
 
 When the Web login surface, account shell, admin route protection, or token storage changes, also run a real-browser auth flow against the local app:

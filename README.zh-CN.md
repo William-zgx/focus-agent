@@ -36,9 +36,10 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
 - 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
-- 带有访问控制、管理员控制台、记忆链路、治理反馈趋势和类型完备的前端 SDK
+- 带有访问控制、管理员控制台、按能力收拢的设置中心、记忆链路、治理反馈趋势和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
-- 提供仓库读写、git、网页、artifact、memory 和 productivity 工具，并对 workspace 命令执行做保护
+- 提供仓库读写、git、网页、artifact、memory、productivity 和 Skill catalog 工具，并对 workspace 命令执行做保护
+- 管理员可在设置中心维护模型连接、工具 provider、Skill 启停、Agent 行为、安全/运行时策略和低频高级选项
 
 ## 仓库结构
 
@@ -79,6 +80,10 @@ make api
 `.focus_agent/models.toml` 做本地覆盖；provider 密钥请放在
 `.focus_agent/local.env`。新增自定义 OpenAI-compatible 模型的路径见
 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
+
+Skill runtime 也走 local-first 路径。包内 bundled skills 提供基础 catalog，
+可选本地 skill 放在 `.focus_agent/skills`，管理员设置页可以启停整个 Skill
+系统或单个 Skill，而不需要修改 tracked source。
 
 PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优先 Ollama `embeddinggemma`，请显式执行 `ollama pull embeddinggemma`，或配置 OpenAI-compatible embedding endpoint。
 

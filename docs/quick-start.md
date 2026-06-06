@@ -24,6 +24,8 @@ Keep provider credentials in `.focus_agent/local.env` or another untracked local
 
 To add an OpenAI-compatible chat model for one deployment, add provider/model metadata to `.focus_agent/models.toml` and put only secret endpoint values in `.focus_agent/local.env`. Add entries to `src/focus_agent/defaults/models.toml` only when a model should become built-in for every fresh setup.
 
+Skill settings are also local-first. Bundled skills are always available as the baseline catalog; optional project or user skills can live under `.focus_agent/skills` or another directory listed in `FOCUS_AGENT_SKILLS_DIRS`. Use `/app/admin/config` -> Capabilities to enable or disable the Skill system or individual skills. The Admin page persists local Skill settings such as `FOCUS_AGENT_SKILLS_ENABLED`, `SKILL_DISABLED_IDS`, and semantic-match controls to `.focus_agent/local.env`.
+
 If `AUTH_ENABLED=true`, replace the sample `AUTH_JWT_SECRET` before startup.
 The API refuses explicitly configured JWT secrets shorter than 32 characters or
 containing placeholder text such as `change`, `example`, or `replace`, even for
@@ -246,7 +248,7 @@ Build a debug APK:
 pnpm android:apk:debug
 ```
 
-The Android target uses the in-app Focus Agent local runtime, so it does not require a Focus Agent HTTP backend URL. Chat, branch, account, and admin data are stored in the app WebView's local storage. Model requests go directly to the OpenAI-compatible provider configured in Admin -> Config Center, using the API key saved inside the app. Use `pnpm android:open` for Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
+The Android target uses the in-app Focus Agent local runtime, so it does not require a Focus Agent HTTP backend URL. Chat, branch, account, and admin data are stored in the app WebView's local storage. Model requests go directly to the OpenAI-compatible provider configured in Admin -> Settings Center, using the API key saved inside the app. Skill and tool availability are also managed from the Android-local Admin settings surface. Use `pnpm android:open` for Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
 
 Run the Android local runtime smoke when SDK endpoints, local transport, stream parsing, model-provider config, or Android-only routes change:
 
@@ -291,6 +293,7 @@ Registration and test-account notes:
 
 Admin Console local checks:
 
+- `/app/admin/config` is the settings center. It groups Overview, Connections, Capabilities, Agent Behavior, Security & Runtime, and Advanced sections; Capabilities manages Skill and tool availability.
 - `/app/admin/users` is the user directory, create-user drawer, and user-detail drawer.
 - `/app/admin/audit-events` is the admin audit event browser.
 - Admin status, role, session revoke, and password reset actions require a reason and write audit events.

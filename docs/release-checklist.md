@@ -34,7 +34,8 @@ flowchart LR
 - Confirm SSE event names and payload expectations are still accurate
 - Confirm branch lifecycle behavior is still reflected correctly in docs
 - Confirm auth behavior, ownership rules, protected-route `return_to`, logout, and account switching are documented accurately
-- Confirm Admin Console docs match `/app/admin/users`, `/app/admin/audit-events`, persisted admin role checks, reasoned admin actions, session revoke, password reset, and last-active-admin protection
+- Confirm Admin Console docs match `/app/admin/config`, `/app/admin/users`, `/app/admin/audit-events`, persisted admin role checks, reasoned admin actions, session revoke, password reset, and last-active-admin protection
+- Confirm settings center docs match the current Overview / Connections / Capabilities / Agent Behavior / Security & Runtime / Advanced layout, including Skill management and the MCP reserved connection entry
 - Confirm the frontend SDK examples still match the live contract
 - Confirm Agent Team docs match dynamic planning, standalone sessions, task contracts, Cockpit UI, retry/cancel, final-answer status, and merge bundle behavior
 - Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
@@ -59,6 +60,7 @@ flowchart LR
 - Review memory embedding and pgvector settings: `AGENT_MEMORY_EMBEDDING_ENABLED`, `AGENT_MEMORY_EMBEDDING_BACKEND`, `AGENT_MEMORY_EMBEDDING_MODEL`, `AGENT_MEMORY_EMBEDDING_DIMENSIONS`, `AGENT_MEMORY_EMBEDDING_BASE_URL`, `AGENT_MEMORY_EMBEDDING_API_KEY_ENV`, `AGENT_MEMORY_EMBEDDING_API_KEY`, `AGENT_MEMORY_EMBEDDING_BATCH_SIZE`, `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS`, `AGENT_MEMORY_VECTOR_SEARCH_MODE`, `AGENT_MEMORY_VECTOR_INDEX_ENABLED`, and `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE`
 - Review memory governance settings: `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED`, `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES`, `AGENT_MEMORY_CURATOR_ENABLED`, and `AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE`
 - Review runtime coordination settings: `BACKGROUND_JOB_EXECUTION`, `BACKGROUND_JOB_BACKEND`, `BACKGROUND_JOB_CLAIM_TTL_SECONDS`, `RUNTIME_THREAD_LOCK_TTL_SECONDS`, and `RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS`
+- Review Skill settings: `FOCUS_AGENT_SKILLS_ENABLED`, `FOCUS_AGENT_SKILLS_DIRS`, `SKILL_INSTALL_DIRECTORY`, `SKILL_DISABLED_IDS`, `SKILL_SEMANTIC_MATCH_ENABLED`, and `SKILL_SEMANTIC_MATCH_THRESHOLD`
 
 ## Quality Checks
 
@@ -105,7 +107,7 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
 - Local Vite smoke URLs should use `http://127.0.0.1:5173/app/` with the trailing slash. Manual browser passes are useful, but personal Chrome profiles can carry stale localStorage, extensions, and auth state; prefer the smoke script's temporary Chrome profile for release evidence and use manual passes as an additional visual check.
-- Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
+- Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, settings center Overview/Connections/Capabilities navigation, Skill search and enablement toggles, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `make ui-smoke-agent-team-adoption` is the command name for the Agent Team adoption source-level smoke. It covers task selection, diff/test evidence, conflict/apply state, capture to Notes/Tasks, context evidence, and skill feedback wiring; pair it with real-browser coverage when changing the visual adoption flow.

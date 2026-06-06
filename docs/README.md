@@ -1,6 +1,6 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-05-30
+更新时间：2026-06-06
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight and describe the current platform-scale positioning; deeper guides live here and are grouped by use case.
 
@@ -62,11 +62,11 @@ flowchart LR
 - [productivity-system.md](productivity-system.md)：生产力工作台（笔记 + 任务）的 API、持久化、来源追踪、路由接入和验证口径。
 - [auth-access.md](auth-access.md)：登录、注册、Bearer/Demo token、refresh session、账号自助页面、ownership 和生产鉴权边界。
 - [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Mission Runner 的目标驱动规划、DAG 执行、最终答案、API、持久化边界和多 Agent 开发验收口径。
-- [admin-console.md](admin-console.md)：管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。
+- [admin-console.md](admin-console.md)：设置中心、能力管理、Skill 启停、管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。
 - [streaming-contract.md](streaming-contract.md)：SSE 事件模型、`message.delta` 可见文本边界、工具协议隔离、SDK reducer 和处理过程卡契约。
 - [context-window.md](context-window.md)：当前上下文窗口用量、发送栏 Context Meter、手动/自动压缩、API/SDK 和 `token_usage` 边界。
 - [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget、branch promotion 和 legacy fallback / migration 背景。
-- [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、live-web evidence contract、productivity tools、运行时策略和扩展检查项。
+- [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、Skill 管理配置、live-web evidence contract、productivity tools、运行时策略和扩展检查项。
 - [android.md](android.md)：Capacitor Android shell、SDK local transport、Android local runtime 模块图、移动端能力边界和 smoke 验证。
 
 ## Operations And Release / 运维发布
@@ -78,7 +78,7 @@ flowchart LR
 
 ## Configuration Examples / 配置示例
 
-- [local.env.example](local.env.example)：本地环境变量示例。
+- [local.env.example](local.env.example)：本地环境变量示例，包含 secret、runtime、Agent policy 和 Skill 管理开关。
 - [models.example.toml](models.example.toml)：模型目录示例。
 - [tools.example.toml](tools.example.toml)：工具目录示例。
 

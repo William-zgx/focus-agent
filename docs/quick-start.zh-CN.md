@@ -36,6 +36,8 @@ Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配
 
 如果只是给某个部署新增 OpenAI-compatible chat 模型，请在 `.focus_agent/models.toml` 里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
 
+Skill 设置同样是 local-first。包内 bundled skills 提供基础 catalog；可选项目或用户 Skill 可以放在 `.focus_agent/skills`，也可以放在 `FOCUS_AGENT_SKILLS_DIRS` 指定的目录。通过 `/app/admin/config` 的「能力」分区可以启停整个 Skill 系统或单个 Skill；页面会把 `FOCUS_AGENT_SKILLS_ENABLED`、`SKILL_DISABLED_IDS` 和语义匹配等本地设置写入 `.focus_agent/local.env`。
+
 如果 `AUTH_ENABLED=true`，启动前请替换示例 `AUTH_JWT_SECRET`。API 会拒绝长度小于 32 字符、或包含 `change`、`example`、`replace` 等占位文本的显式 JWT secret，即使是本地运行也一样。可用下面命令生成本地 secret：
 
 ```bash
@@ -219,7 +221,7 @@ pnpm android:sync
 pnpm android:apk:debug
 ```
 
-Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus Agent HTTP 后端地址；对话、分支、账号与管理数据会保存在 App WebView 本地存储中。模型请求会直接发往管理栏配置中心里设置的 OpenAI-compatible 供应商，并使用保存在 App 本机数据里的 API Key。需要打开 Android Studio 时运行 `pnpm android:open`；需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
+Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus Agent HTTP 后端地址；对话、分支、账号与管理数据会保存在 App WebView 本地存储中。模型请求会直接发往 Admin 设置中心里配置的 OpenAI-compatible 供应商，并使用保存在 App 本机数据里的 API Key。Skill 和工具可用性也通过 Android-local 的 Admin 设置页维护。需要打开 Android Studio 时运行 `pnpm android:open`；需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
 
 如果改动 SDK endpoint、本地 transport、stream parsing、模型配置或 Android-only 路由，请跑 Android 本地 runtime smoke：
 
@@ -264,6 +266,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
 
 Admin Console 本地检查入口：
 
+- `/app/admin/config` 是设置中心，包含总览、连接、能力、Agent 行为、安全与运行、高级配置；能力区维护 Skill 和工具启停。
 - `/app/admin/users` 是用户目录、创建用户抽屉和用户详情抽屉。
 - `/app/admin/audit-events` 是管理员审计事件浏览器。
 - 状态、角色、会话撤销和密码重置动作都需要填写 reason，并写入审计事件。
