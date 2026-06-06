@@ -27,6 +27,7 @@ import {
 	composerSendOverrides,
 	submitComposerMessage,
 } from "./message-composer-submit";
+import type { SendMessageResult } from "./stream-entry-state";
 
 export {
 	contextUsagePercent,
@@ -48,7 +49,7 @@ interface MessageComposerProps {
 			model?: string;
 			thinkingMode?: string;
 		},
-	) => Promise<{ ok: boolean }>;
+	) => Promise<SendMessageResult>;
 	onSelectionChange?: (overrides: {
 		model?: string;
 		thinkingMode?: string;

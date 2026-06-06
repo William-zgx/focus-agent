@@ -22,6 +22,7 @@ export interface ThreadStreamEntry {
 
 export interface SendMessageResult {
 	ok: boolean;
+	aborted?: boolean;
 }
 
 export function resolveThinkingModeForRequest(

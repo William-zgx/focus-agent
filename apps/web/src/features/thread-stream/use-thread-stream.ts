@@ -299,7 +299,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 			void invalidateThreadStreamSurfaces(queryClient, requestThreadId);
 		}
 
-		return { ok: sendSucceeded };
+		return { ok: sendSucceeded, aborted: controller.signal.aborted };
 	}
 
 	async function sendMessage(

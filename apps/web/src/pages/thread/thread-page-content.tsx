@@ -10,6 +10,7 @@ import type { StickToBottomInstance } from "use-stick-to-bottom";
 import { MessageList } from "@/entities/messages/message-list";
 import { BranchDecisionSummaryPanel } from "@/features/branch-decisions/branch-decision-summary-panel";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
+import type { SendMessageResult } from "@/features/thread-stream/stream-entry-state";
 import { EmptyState, Skeleton } from "@/shared/ui/primitives";
 
 import { ConversationViewport } from "./conversation-viewport";
@@ -54,7 +55,7 @@ interface ThreadPageContentProps {
 			model?: string;
 			thinkingMode?: string;
 		},
-	) => Promise<{ ok: boolean }>;
+	) => Promise<SendMessageResult>;
 	onStopStreaming: () => void;
 	previewContextError?: string;
 	previewContextUsage?: ContextUsageResponse | null;

@@ -12,6 +12,7 @@ import {
 	type SendMessageOverrides,
 	useThreadStream,
 } from "@/features/thread-stream/use-thread-stream";
+import type { SendMessageResult } from "@/features/thread-stream/stream-entry-state";
 
 import { ThreadPageContent } from "./thread-page-content";
 import { useThreadTranscriptViewModel } from "./thread-transcript-view-model";
@@ -157,7 +158,7 @@ export function ThreadPage() {
 			model?: string;
 			thinkingMode?: string;
 		},
-	): Promise<{ ok: boolean }> {
+	): Promise<SendMessageResult> {
 		if (isMergedReadOnlyThread) {
 			return { ok: false };
 		}

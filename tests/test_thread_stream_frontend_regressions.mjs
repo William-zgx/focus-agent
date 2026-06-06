@@ -151,6 +151,32 @@ function loadThreadBusyRetryModule() {
   return { ...context.module.exports, FocusAgentRequestError };
 }
 
+function loadMessageComposerSubmitModule() {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/message-composer-submit.ts"),
+    "utf8",
+  );
+  const transpiled = ts.transpileModule(sourceText, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const moduleExports = {};
+  const context = {
+    exports: moduleExports,
+    module: { exports: moduleExports },
+    require(moduleName) {
+      if (moduleName === "./message-composer-helpers") {
+        return { thinkingModeRequestValueForModel: () => "auto" };
+      }
+      throw new Error(`Unexpected module import: ${moduleName}`);
+    },
+  };
+  vm.runInNewContext(transpiled, context);
+  return context.module.exports;
+}
+
 function loadSdkStreamFunctions() {
   const toolProtocolSource = readFileSync(
     path.join(repoRoot, "frontend-sdk/src/toolProtocol.ts"),
@@ -1961,6 +1987,81 @@ test("composer action buttons are not nested inside the textarea label", () => {
     compactSource(composerCss),
     /\.fa-composer-icon, \.fa-composer-icon svg, \.fa-composer-icon \* \{ pointer-events: none; \}/,
   );
+});
+
+test("composer clears a submitted draft immediately and leaves it clear after stop", async () => {
+  const { submitComposerMessage } = loadMessageComposerSubmitModule();
+  let messageState = "Use stock SQL";
+  let sentMessage = "";
+  const updates = [];
+  const setMessage = (value) => {
+    messageState = typeof value === "function" ? value(messageState) : value;
+    updates.push(messageState);
+  };
+
+  const submitPromise = submitComposerMessage({
+    activeThinkingMode: "",
+    editDraft: null,
+    isReadOnly: false,
+    isStreaming: false,
+    message: messageState,
+    modelId: "",
+    onSendMessage: async (message) => {
+      sentMessage = message;
+      return { ok: false, aborted: true };
+    },
+    resetEditDraftSignature: () => undefined,
+    setMessage,
+  });
+
+  assert.equal(sentMessage, "Use stock SQL");
+  assert.equal(messageState, "");
+  await submitPromise;
+  assert.equal(messageState, "");
+  assert.deepEqual(updates, [""]);
+});
+
+test("composer restores a submitted draft after non-aborted send failure only when empty", async () => {
+  const { submitComposerMessage } = loadMessageComposerSubmitModule();
+  let restoredState = "first draft";
+  const setRestoredMessage = (value) => {
+    restoredState =
+      typeof value === "function" ? value(restoredState) : value;
+  };
+
+  await submitComposerMessage({
+    activeThinkingMode: "",
+    editDraft: null,
+    isReadOnly: false,
+    isStreaming: false,
+    message: restoredState,
+    modelId: "",
+    onSendMessage: async () => ({ ok: false }),
+    resetEditDraftSignature: () => undefined,
+    setMessage: setRestoredMessage,
+  });
+  assert.equal(restoredState, "first draft");
+
+  let newDraftState = "old draft";
+  const setNewDraftMessage = (value) => {
+    newDraftState =
+      typeof value === "function" ? value(newDraftState) : value;
+  };
+  await submitComposerMessage({
+    activeThinkingMode: "",
+    editDraft: null,
+    isReadOnly: false,
+    isStreaming: false,
+    message: newDraftState,
+    modelId: "",
+    onSendMessage: async () => {
+      setNewDraftMessage("new draft");
+      return { ok: false };
+    },
+    resetEditDraftSignature: () => undefined,
+    setMessage: setNewDraftMessage,
+  });
+  assert.equal(newDraftState, "new draft");
 });
 
 test("branch action confirmation starts an automatic carried handoff run", () => {

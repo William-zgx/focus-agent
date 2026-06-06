@@ -1,6 +1,8 @@
 import type { FocusAgentModelOption } from "@focus-agent/web-sdk";
+import type { Dispatch, SetStateAction } from "react";
 
 import { thinkingModeRequestValueForModel } from "./message-composer-helpers";
+import type { SendMessageResult } from "./stream-entry-state";
 
 type SendMessage = (
 	message: string,
@@ -8,7 +10,9 @@ type SendMessage = (
 		model?: string;
 		thinkingMode?: string;
 	},
-) => Promise<{ ok: boolean }>;
+) => Promise<SendMessageResult>;
+
+type SetComposerMessage = Dispatch<SetStateAction<string>>;
 
 export function composerSendOverrides({
 	activeModel,
@@ -55,24 +59,34 @@ export async function submitComposerMessage({
 	onClearEditDraft?: () => void;
 	onSendMessage: SendMessage;
 	resetEditDraftSignature: () => void;
-	setMessage: (message: string) => void;
+	setMessage: SetComposerMessage;
 }) {
 	const trimmed = message.trim();
 	if (!trimmed || isStreaming || isReadOnly) return;
+	const restoreSubmittedDraft = () => {
+		setMessage((current) => (current.trim() ? current : message));
+	};
 	const wasEditing = Boolean(editDraft);
 	if (wasEditing) {
 		resetEditDraftSignature();
 		onClearEditDraft?.();
 	}
-	const result = await onSendMessage(
-		trimmed,
-		composerSendOverrides({
-			activeModel,
-			activeThinkingMode,
-			modelId,
-		}),
-	);
-	if (result.ok) {
-		setMessage("");
+	setMessage("");
+	let result: SendMessageResult;
+	try {
+		result = await onSendMessage(
+			trimmed,
+			composerSendOverrides({
+				activeModel,
+				activeThinkingMode,
+				modelId,
+			}),
+		);
+	} catch (error) {
+		restoreSubmittedDraft();
+		throw error;
+	}
+	if (!result.ok && !result.aborted) {
+		restoreSubmittedDraft();
 	}
 }
