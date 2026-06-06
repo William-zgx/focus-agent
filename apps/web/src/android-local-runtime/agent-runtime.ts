@@ -579,8 +579,8 @@ export function handleAgent(
 		method === "PATCH"
 	) {
 		const body = parseJsonBody(init) as {
-			enabled?: boolean | null;
-			pinned?: boolean | null;
+			metadata?: Record<string, unknown>;
+			state?: string;
 		};
 		const skill =
 			ctx
@@ -589,12 +589,13 @@ export function handleAgent(
 					(item) => item.skill_id === subresource || item.name === subresource,
 				) ?? ctx.localSkillCatalogItems()[0];
 		return jsonResponse({
-			skill: {
-				...skill,
-				enabled: body.enabled ?? skill?.enabled ?? true,
-				pinned: body.pinned ?? skill?.pinned ?? false,
-				disabled_until: null,
-			},
+			preference_id: `android-local:${skill.skill_id}`,
+			user_id: LOCAL_USER_ID,
+			skill_id: skill.skill_id,
+			state: body.state ?? "default",
+			metadata: body.metadata ?? {},
+			created_at: nowIso(),
+			updated_at: nowIso(),
 		});
 	}
 	if (

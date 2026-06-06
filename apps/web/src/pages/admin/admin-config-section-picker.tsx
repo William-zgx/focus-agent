@@ -11,8 +11,15 @@ export function ConfigSectionPicker({
 	onChange: (section: ConfigSection) => void;
 	summary: {
 		defaultModel: string;
+		enabledSkillCount: number;
+		enabledToolCount: number;
+		modelProviderCount: number;
 		modelCount: number;
+		configuredModelProviderCount: number;
 		policyCount: number;
+		securityItemCount: number;
+		skillCount: number;
+		sourceCount: number;
 		systemCount: number;
 		toolCount: number;
 		toolProviderCount: number;
@@ -26,44 +33,66 @@ export function ConfigSectionPicker({
 		metric: string;
 	}> = [
 		{
-			key: "models",
-			label: isChineseUi ? "模型" : "Models",
-			metric: String(summary.modelCount),
+			key: "overview",
+			label: isChineseUi ? "总览" : "Overview",
+			metric: summary.defaultModel,
 			description: isChineseUi
-				? "默认模型、助手模型与模型提供方"
-				: "Default model, assistant model, and providers.",
+				? "核心连接、能力与运行状态"
+				: "Core connections, capabilities, and runtime state",
 			ariaLabel: isChineseUi
 				? `默认 ${summary.defaultModel}`
 				: `Default ${summary.defaultModel}`,
 		},
 		{
-			key: "tools",
-			label: isChineseUi ? "工具" : "Tools",
-			metric: `${summary.toolCount} / ${summary.toolProviderCount}`,
+			key: "connections",
+			label: isChineseUi ? "连接" : "Connections",
+			metric: `${summary.configuredModelProviderCount}/${summary.modelProviderCount}`,
 			description: isChineseUi
-				? "工具能力、可用列表与 Provider"
-				: "Tool capabilities, catalog, and providers",
-			ariaLabel: isChineseUi ? "工具与 Provider" : "Tools and providers",
+				? "模型 Provider、API Key 与外部扩展"
+				: "Model providers, API keys, and external extensions",
+			ariaLabel: isChineseUi
+				? "模型 Provider 与扩展"
+				: "Model providers and extensions",
 		},
 		{
-			key: "policies",
-			label: isChineseUi ? "策略" : "Policies",
+			key: "capabilities",
+			label: isChineseUi ? "能力" : "Capabilities",
+			metric: `${summary.enabledToolCount}/${summary.toolCount}`,
+			description: isChineseUi
+				? "工具、Skill、Toolset 与运行能力"
+				: "Tools, skills, toolsets, and runtime capabilities",
+			ariaLabel: isChineseUi
+				? `${summary.enabledSkillCount} 个 Skill 启用`
+				: `${summary.enabledSkillCount} skills enabled`,
+		},
+		{
+			key: "agent",
+			label: isChineseUi ? "Agent 行为" : "Agent Behavior",
 			metric: String(summary.policyCount),
 			description: isChineseUi
-				? "分支推荐策略与路由治理规则"
-				: "Branch recommendation and routing policies",
-			ariaLabel: isChineseUi
-				? "分支推荐、路由与治理"
-				: "Branching, routing, and governance",
+				? "路由、委派、记忆与上下文策略"
+				: "Routing, delegation, memory, and context policies",
+			ariaLabel: isChineseUi ? "Agent 策略" : "Agent policies",
 		},
 		{
-			key: "system",
-			label: isChineseUi ? "系统" : "System",
-			metric: String(summary.systemCount),
+			key: "security",
+			label: isChineseUi ? "安全与运行" : "Security & Runtime",
+			metric: String(summary.securityItemCount),
 			description: isChineseUi
 				? "运行环境、审计与敏感配置"
 				: "Runtime, audit, and secrets",
 			ariaLabel: isChineseUi ? "运行环境与敏感项" : "Runtime and secrets",
+		},
+		{
+			key: "advanced",
+			label: isChineseUi ? "高级" : "Advanced",
+			metric: String(summary.sourceCount),
+			description: isChineseUi
+				? "配置文件来源与低频选项"
+				: "Config sources and low-frequency options",
+			ariaLabel: isChineseUi
+				? `${summary.sourceCount} 个配置来源`
+				: `${summary.sourceCount} config sources`,
 		},
 	];
 

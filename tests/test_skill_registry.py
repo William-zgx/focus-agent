@@ -161,6 +161,48 @@ def test_skill_registry_discovers_skills_and_renders_json(tmp_path):
     assert "Follow the steps carefully." in viewed["content"]
 
 
+def test_skill_registry_global_disable_and_reload_from_settings(tmp_path):
+    skill_root = tmp_path / "skills"
+    _write_skill(skill_root, name="plan", description="Planning mode", triggers="plan:")
+    next_root = tmp_path / "next-skills"
+    _write_skill(next_root, name="review", description="Review mode", triggers="review:")
+    settings = Settings(
+        skills_enabled=False,
+        skill_directories=(str(skill_root),),
+        skill_install_directory=str(skill_root),
+    )
+
+    registry = SkillRegistry.from_settings(settings)
+
+    assert registry.enabled is False
+    assert "plan" in {skill.skill_id for skill in registry.all_skills()}
+    listed_by_name = {skill["name"]: skill for skill in registry.list_skills()}
+    assert listed_by_name["plan"]["enabled"] is False
+    assert registry.search_skills("planning") == ()
+    assert registry.install_skill("plan").success is False
+    assert registry.render_available_skills_block() == ""
+
+    settings.skills_enabled = True
+    settings.skill_directories = (str(next_root),)
+    settings.skill_install_directory = str(next_root)
+    settings.skill_disabled_ids = ("review",)
+    result = registry.reload_from_settings(settings)
+
+    assert result["previous_count"] >= 1
+    assert result["count"] >= 1
+    assert registry.enabled is True
+    assert "review" in {skill.skill_id for skill in registry.all_skills()}
+    listed_by_name = {skill["name"]: skill for skill in registry.list_skills()}
+    assert listed_by_name["review"]["enabled"] is False
+    assert "review" not in {result.skill_id for result in registry.search_skills("review")}
+
+    settings.skill_disabled_ids = ()
+    registry.reload_from_settings(settings)
+    listed_by_name = {skill["name"]: skill for skill in registry.list_skills()}
+    assert listed_by_name["review"]["enabled"] is True
+    assert "review" in {result.skill_id for result in registry.search_skills("review")}
+
+
 def test_migrated_hermes_builtin_skills_list_view_search_and_prefix_activate():
     registry = SkillRegistry([bundled_skills_dir()])
     listed = json.loads(render_skills_list_json(registry))

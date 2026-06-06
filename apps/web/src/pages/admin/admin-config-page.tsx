@@ -1,4 +1,7 @@
 import type {
+	FocusAgentAdminConfig,
+	FocusAgentAdminSkillConfigEntry,
+	FocusAgentAdminConfigValue,
 	FocusAgentUpdateAdminModelConfigEntry,
 	FocusAgentUpdateAdminModelConfigRequest,
 	FocusAgentUpdateAdminModelProviderConfig,
@@ -14,6 +17,7 @@ import {
 	useAdminConfig,
 	useUpdateAdminModelConfig,
 	useUpdateAdminPolicyConfig,
+	useUpdateAdminSkillConfig,
 	useUpdateAdminToolConfig,
 } from "@/features/admin-config/use-admin-config";
 import { appEnv } from "@/shared/config/env";
@@ -45,10 +49,68 @@ import type {
 import { ModelConfigPanel } from "./admin-config-model-panel";
 import { ConfigSectionPicker } from "./admin-config-section-picker";
 import {
+	AdvancedConfigPanel,
+	AdminConfigOverviewPanel,
+	ConnectionsSummaryPanel,
+	SecurityRuntimePanel,
+	SkillManagementPanel,
+} from "./admin-config-intent-panels";
+import {
 	PolicyConfigPanel,
-	SystemConfigPanel,
 	ToolConfigPanel,
 } from "./admin-config-tool-policy-panels";
+
+function isAgentBehaviorPolicyItem(item: FocusAgentAdminConfigValue) {
+	return ["agent_", "branch_", "context_", "multi_agent_", "trajectory_"].some(
+		(prefix) => item.key.startsWith(prefix),
+	);
+}
+
+function isSecurityPolicyItem(item: FocusAgentAdminConfigValue) {
+	return (
+		item.key.startsWith("rate_limit_") ||
+		item.key.startsWith("auth_") ||
+		item.key.includes("approval")
+	);
+}
+
+function isSecuritySystemItem(item: FocusAgentAdminConfigValue) {
+	return (
+		item.sensitive ||
+		item.key.startsWith("auth_") ||
+		item.key.startsWith("database_") ||
+		item.key.startsWith("rate_limit_") ||
+		item.key.includes("jwt")
+	);
+}
+
+function configSources(
+	config: FocusAgentAdminConfig | undefined,
+	isChineseUi: boolean,
+) {
+	return [
+		{
+			label: isChineseUi ? "模型" : "Models",
+			source: config?.models.source,
+		},
+		{
+			label: isChineseUi ? "工具" : "Tools",
+			source: config?.tools.source,
+		},
+		{
+			label: "Skills",
+			source: config?.skills.source,
+		},
+		{
+			label: isChineseUi ? "策略" : "Policies",
+			source: config?.policies.source,
+		},
+		{
+			label: isChineseUi ? "系统" : "System",
+			source: config?.system.source,
+		},
+	];
+}
 
 export function AdminConfigPage() {
 	const { isChineseUi } = useShellUi();
@@ -56,6 +118,7 @@ export function AdminConfigPage() {
 	const modelMutation = useUpdateAdminModelConfig();
 	const toolMutation = useUpdateAdminToolConfig();
 	const policyMutation = useUpdateAdminPolicyConfig();
+	const skillMutation = useUpdateAdminSkillConfig();
 	const [modelDraft, setModelDraft] = useState<ModelDraft>(() =>
 		buildModelDraft(undefined),
 	);
@@ -66,12 +129,47 @@ export function AdminConfigPage() {
 		buildPolicyDraft(undefined),
 	);
 	const [activeConfigSection, setActiveConfigSection] =
-		useState<ConfigSection>("models");
+		useState<ConfigSection>("overview");
 	const [formError, setFormError] = useState("");
+	const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
 	const config = configQuery.data;
+	const skillItems = config?.skills.catalog ?? [];
 	const editablePolicyItems = useMemo(
 		() => (config?.policies.items ?? []).filter((item) => item.editable),
 		[config?.policies.items],
+	);
+	const agentPolicyItems = useMemo(
+		() => editablePolicyItems.filter(isAgentBehaviorPolicyItem),
+		[editablePolicyItems],
+	);
+	const securityPolicyItems = useMemo(
+		() =>
+			editablePolicyItems.filter(
+				(item) =>
+					isSecurityPolicyItem(item) && !isAgentBehaviorPolicyItem(item),
+			),
+		[editablePolicyItems],
+	);
+	const advancedPolicyItems = useMemo(
+		() =>
+			editablePolicyItems.filter(
+				(item) =>
+					!isAgentBehaviorPolicyItem(item) && !isSecurityPolicyItem(item),
+			),
+		[editablePolicyItems],
+	);
+	const systemItems = config?.system.items ?? [];
+	const securitySystemItems = useMemo(
+		() => systemItems.filter(isSecuritySystemItem),
+		[systemItems],
+	);
+	const runtimeSystemItems = useMemo(
+		() => systemItems.filter((item) => !isSecuritySystemItem(item)),
+		[systemItems],
+	);
+	const sources = useMemo(
+		() => configSources(config, isChineseUi),
+		[config, isChineseUi],
 	);
 	const pendingSection: EditableConfigSection | null = modelMutation.isPending
 		? "models"
@@ -83,13 +181,77 @@ export function AdminConfigPage() {
 	const summary = useMemo(
 		() => ({
 			defaultModel: config?.models?.default_model || "-",
+			configuredModelProviderCount:
+				config?.models?.providers?.filter(
+					(provider) =>
+						provider.api_key_configured || provider.base_url_configured,
+				).length ?? 0,
+			enabledSkillCount: skillItems.filter((skill) => skill.enabled).length,
+			enabledToolCount:
+				config?.tools?.tools?.filter((tool) => tool.enabled).length ?? 0,
+			modelProviderCount: config?.models?.providers?.length ?? 0,
 			modelCount: config?.models?.models?.length ?? 0,
 			policyCount: config?.policies?.items?.length ?? 0,
+			securityItemCount:
+				securitySystemItems.length + securityPolicyItems.length,
+			skillCount: skillItems.length,
+			sourceCount: sources.filter((entry) => Boolean(entry.source)).length,
 			systemCount: config?.system?.items?.length ?? 0,
 			toolCount: config?.tools?.tools?.length ?? 0,
 			toolProviderCount: config?.tools?.providers?.length ?? 0,
 		}),
-		[config],
+		[
+			config,
+			securityPolicyItems.length,
+			securitySystemItems.length,
+			skillItems,
+			sources,
+		],
+	);
+	const overviewMetrics = useMemo(
+		() => [
+			{
+				label: isChineseUi ? "默认模型" : "Default model",
+				value: summary.defaultModel,
+				caption: isChineseUi
+					? `${summary.modelCount} 个模型`
+					: `${summary.modelCount} models`,
+			},
+			{
+				label: isChineseUi ? "模型连接" : "Model connections",
+				value: `${summary.configuredModelProviderCount}/${summary.modelProviderCount}`,
+				caption: isChineseUi ? "Provider 已配置" : "Providers configured",
+			},
+			{
+				label: isChineseUi ? "工具能力" : "Tool capabilities",
+				value: `${summary.enabledToolCount}/${summary.toolCount}`,
+				caption: isChineseUi ? "工具已启用" : "Tools enabled",
+			},
+			{
+				label: "Skills",
+				value: `${summary.enabledSkillCount}/${summary.skillCount}`,
+				caption: isChineseUi ? "Skill 已启用" : "Skills enabled",
+			},
+			{
+				label: isChineseUi ? "Agent 策略" : "Agent policies",
+				value: String(agentPolicyItems.length),
+				caption: isChineseUi
+					? "行为开关与阈值"
+					: "Behavior toggles and thresholds",
+			},
+			{
+				label: isChineseUi ? "运行安全" : "Runtime safety",
+				value: String(summary.securityItemCount),
+				caption: isChineseUi ? "敏感/访问控制项" : "Secret and access items",
+			},
+		],
+		[agentPolicyItems.length, isChineseUi, summary],
+	);
+	const requiresRestart = Boolean(
+		config?.models.requires_restart ||
+			config?.tools.requires_restart ||
+			config?.skills.requires_restart ||
+			config?.policies.requires_restart,
 	);
 
 	useEffect(() => {
@@ -115,7 +277,7 @@ export function AdminConfigPage() {
 			modelDraft.models,
 		],
 	);
-	const disabled = Boolean(pendingSection);
+	const disabled = Boolean(pendingSection || skillMutation.isPending);
 
 	function updateModelChoice(modelId: string, checked: boolean) {
 		setModelDraft((current) => ({
@@ -364,20 +526,71 @@ export function AdminConfigPage() {
 		}
 	}
 
+	async function updateSkillConfig(
+		skill: FocusAgentAdminSkillConfigEntry,
+		enabled: boolean,
+	) {
+		setFormError("");
+		setPendingSkillId(skill.skill_id);
+		try {
+			await skillMutation.mutateAsync({
+				reason: isChineseUi
+					? "管理员在能力中心更新 Skill 状态"
+					: "Admin updated skill state in capability center.",
+				skills: [{ skill_id: skill.skill_id, enabled }],
+			});
+		} catch (error) {
+			setFormError(
+				error instanceof Error
+					? error.message
+					: isChineseUi
+						? "保存 Skill 配置失败。"
+						: "Failed to save skill config.",
+			);
+		} finally {
+			setPendingSkillId(null);
+		}
+	}
+
+	async function updateGlobalSkillConfig(enabled: boolean) {
+		setFormError("");
+		setPendingSkillId("__global__");
+		try {
+			await skillMutation.mutateAsync({
+				enabled,
+				reason: isChineseUi
+					? "管理员在能力中心更新 Skill 系统开关"
+					: "Admin updated skill system availability in capability center.",
+			});
+		} catch (error) {
+			setFormError(
+				error instanceof Error
+					? error.message
+					: isChineseUi
+						? "保存 Skill 配置失败。"
+						: "Failed to save skill config.",
+			);
+		} finally {
+			setPendingSkillId(null);
+		}
+	}
+
 	return (
 		<AdminConsoleLayout
 			active="config"
-			title={isChineseUi ? "配置中心" : "Config Center"}
+			title={isChineseUi ? "设置中心" : "Settings Center"}
 			summary={
 				isChineseUi
-					? "集中查看和更新模型、工具与策略配置。"
-					: "Review and update model, tool, and policy configuration."
+					? "按连接、能力、Agent 行为和运行安全管理系统配置。"
+					: "Manage system settings by connections, capabilities, agent behavior, and runtime safety."
 			}
 			toolbar={
 				<button
 					className="fa-observability-preset"
 					type="button"
-					onClick={() => void configQuery.refetch()}
+					onClick={() => {
+						void configQuery.refetch();
+					}}
 				>
 					{isChineseUi ? "重新加载" : "Reload"}
 				</button>
@@ -405,71 +618,169 @@ export function AdminConfigPage() {
 			</section>
 
 			<div className="fa-admin-config-detail">
-				{activeConfigSection === "models" ? (
-					<ModelConfigPanel
-						choiceOptions={modelChoiceOptions}
-						disabled={disabled}
-						draft={modelDraft}
+				{activeConfigSection === "overview" ? (
+					<AdminConfigOverviewPanel
 						isChineseUi={isChineseUi}
-						onAddProvider={() =>
-							setModelDraft((current) => ({
-								...current,
-								providers: [...current.providers, emptyModelProviderDraft()],
-							}))
-						}
-						onChange={setModelDraft}
-						onChoiceChange={updateModelChoice}
-						onEntryChange={updateModelEntry}
-						onProviderChange={updateModelProvider}
-						onProviderRemove={removeModelProvider}
-						onReset={() => setModelDraft(buildModelDraft(config))}
-						onSubmit={(event) => void handleModelSubmit(event)}
-						pending={pendingSection === "models"}
-						showLocalSecrets={appEnv.useLocalRuntime}
-						source={config?.models.source}
+						metrics={overviewMetrics}
+						onSectionChange={setActiveConfigSection}
+						requiresRestart={requiresRestart}
+						sources={sources}
 					/>
 				) : null}
-				{activeConfigSection === "tools" ? (
-					<ToolConfigPanel
-						disabled={disabled}
-						draft={toolDraft}
-						isChineseUi={isChineseUi}
-						onAddProvider={() =>
-							setToolDraft((current) => ({
-								...current,
-								providers: [...current.providers, emptyToolProviderDraft()],
-							}))
-						}
-						onChange={setToolDraft}
-						onProviderChange={updateToolProvider}
-						onProviderRemove={removeToolProvider}
-						onReset={() => setToolDraft(buildToolDraft(config))}
-						onSubmit={(event) => void handleToolSubmit(event)}
-						onToolChange={updateToolEntry}
-						pending={pendingSection === "tools"}
-						source={config?.tools.source}
-					/>
+				{activeConfigSection === "connections" ? (
+					<>
+						<ConnectionsSummaryPanel
+							configuredProviderCount={summary.configuredModelProviderCount}
+							isChineseUi={isChineseUi}
+							modelProviderCount={summary.modelProviderCount}
+							toolProviderCount={summary.toolProviderCount}
+						/>
+						<ModelConfigPanel
+							choiceOptions={modelChoiceOptions}
+							disabled={disabled}
+							draft={modelDraft}
+							isChineseUi={isChineseUi}
+							onAddProvider={() =>
+								setModelDraft((current) => ({
+									...current,
+									providers: [...current.providers, emptyModelProviderDraft()],
+								}))
+							}
+							onChange={setModelDraft}
+							onChoiceChange={updateModelChoice}
+							onEntryChange={updateModelEntry}
+							onProviderChange={updateModelProvider}
+							onProviderRemove={removeModelProvider}
+							onReset={() => setModelDraft(buildModelDraft(config))}
+							onSubmit={(event) => void handleModelSubmit(event)}
+							pending={pendingSection === "models"}
+							showLocalSecrets={appEnv.useLocalRuntime}
+							source={config?.models.source}
+						/>
+					</>
 				) : null}
-				{activeConfigSection === "policies" ? (
+				{activeConfigSection === "capabilities" ? (
+					<>
+						<SkillManagementPanel
+							disabled={disabled}
+							error={null}
+							globalEnabled={Boolean(config?.skills.enabled)}
+							isChineseUi={isChineseUi}
+							items={skillItems}
+							loading={configQuery.isLoading}
+							onGlobalToggle={(enabled) =>
+								void updateGlobalSkillConfig(enabled)
+							}
+							onSkillToggle={(skill, enabled) =>
+								void updateSkillConfig(skill, enabled)
+							}
+							pendingSkillId={pendingSkillId}
+						/>
+						<ToolConfigPanel
+							disabled={disabled}
+							draft={toolDraft}
+							isChineseUi={isChineseUi}
+							onAddProvider={() =>
+								setToolDraft((current) => ({
+									...current,
+									providers: [...current.providers, emptyToolProviderDraft()],
+								}))
+							}
+							onChange={setToolDraft}
+							onProviderChange={updateToolProvider}
+							onProviderRemove={removeToolProvider}
+							onReset={() => setToolDraft(buildToolDraft(config))}
+							onSubmit={(event) => void handleToolSubmit(event)}
+							onToolChange={updateToolEntry}
+							pending={pendingSection === "tools"}
+							source={config?.tools.source}
+						/>
+					</>
+				) : null}
+				{activeConfigSection === "agent" ? (
 					<PolicyConfigPanel
 						disabled={disabled}
 						draft={policyDraft}
+						eyebrow={isChineseUi ? "Agent" : "Agent"}
+						help={
+							isChineseUi
+								? "集中维护路由、委派、记忆、上下文和多 Agent 行为策略。"
+								: "Tune routing, delegation, memory, context, and multi-agent behavior policies."
+						}
 						isChineseUi={isChineseUi}
-						items={editablePolicyItems}
+						items={agentPolicyItems}
 						onChange={setPolicyDraft}
 						onReset={() => setPolicyDraft(buildPolicyDraft(config))}
 						onSubmit={(event) => void handlePolicySubmit(event)}
 						onValueChange={updatePolicyValue}
 						pending={pendingSection === "policies"}
 						source={config?.policies.source}
+						title={isChineseUi ? "Agent 行为策略" : "Agent Behavior Policies"}
 					/>
 				) : null}
-				{activeConfigSection === "system" ? (
-					<SystemConfigPanel
-						isChineseUi={isChineseUi}
-						items={config?.system.items ?? []}
-						source={config?.system.source}
-					/>
+				{activeConfigSection === "security" ? (
+					<>
+						<SecurityRuntimePanel
+							isChineseUi={isChineseUi}
+							policyItems={securityPolicyItems}
+							runtimeItems={runtimeSystemItems}
+							securityItems={securitySystemItems}
+							source={config?.system.source}
+						/>
+						{securityPolicyItems.length ? (
+							<PolicyConfigPanel
+								disabled={disabled}
+								draft={policyDraft}
+								eyebrow={isChineseUi ? "Security" : "Security"}
+								help={
+									isChineseUi
+										? "维护限流、审批与安全相关的可编辑策略。"
+										: "Maintain editable rate-limit, approval, and safety policies."
+								}
+								isChineseUi={isChineseUi}
+								items={securityPolicyItems}
+								onChange={setPolicyDraft}
+								onReset={() => setPolicyDraft(buildPolicyDraft(config))}
+								onSubmit={(event) => void handlePolicySubmit(event)}
+								onValueChange={updatePolicyValue}
+								pending={pendingSection === "policies"}
+								source={config?.policies.source}
+								title={
+									isChineseUi ? "安全运行策略" : "Security Runtime Policies"
+								}
+							/>
+						) : null}
+					</>
+				) : null}
+				{activeConfigSection === "advanced" ? (
+					<>
+						<AdvancedConfigPanel
+							advancedPolicyCount={advancedPolicyItems.length}
+							isChineseUi={isChineseUi}
+							sources={sources}
+						/>
+						{advancedPolicyItems.length ? (
+							<PolicyConfigPanel
+								disabled={disabled}
+								draft={policyDraft}
+								eyebrow={isChineseUi ? "Advanced" : "Advanced"}
+								help={
+									isChineseUi
+										? "这些配置保留为高级项，避免干扰常用设置流程。"
+										: "These settings remain advanced so common workflows stay focused."
+								}
+								isChineseUi={isChineseUi}
+								items={advancedPolicyItems}
+								onChange={setPolicyDraft}
+								onReset={() => setPolicyDraft(buildPolicyDraft(config))}
+								onSubmit={(event) => void handlePolicySubmit(event)}
+								onValueChange={updatePolicyValue}
+								pending={pendingSection === "policies"}
+								source={config?.policies.source}
+								title={isChineseUi ? "高级策略" : "Advanced Policies"}
+							/>
+						) : null}
+					</>
 				) : null}
 			</div>
 		</AdminConsoleLayout>

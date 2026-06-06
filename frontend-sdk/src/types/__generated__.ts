@@ -225,6 +225,40 @@ export interface paths {
         patch: operations["patch_admin_policy_config_v1_admin_config_policies_patch"];
         trace?: never;
     };
+    "/v1/admin/config/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Admin Skill Config */
+        patch: operations["patch_admin_skill_config_v1_admin_config_skills_patch"];
+        trace?: never;
+    };
+    "/v1/admin/config/skills/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Admin Skill Index */
+        post: operations["refresh_admin_skill_index_v1_admin_config_skills_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/config/tools": {
         parameters: {
             query?: never;
@@ -2687,12 +2721,142 @@ export interface components {
             message?: string | null;
             models: components["schemas"]["AdminConfigModelSectionResponse"];
             policies: components["schemas"]["AdminConfigPolicySectionResponse"];
+            skills: components["schemas"]["AdminConfigSkillSectionResponse"];
             system: components["schemas"]["AdminConfigSystemSectionResponse"];
             tools: components["schemas"]["AdminConfigToolSectionResponse"];
             /** Updated At */
             updated_at?: string | null;
             /** Updated By */
             updated_by?: string | null;
+        };
+        /** AdminConfigSkillRefreshResponse */
+        AdminConfigSkillRefreshResponse: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Previous Count */
+            previous_count?: number | null;
+            /**
+             * Refreshed
+             * @default false
+             */
+            refreshed: boolean;
+        };
+        /** AdminConfigSkillResponse */
+        AdminConfigSkillResponse: {
+            /** Capability Requirements */
+            capability_requirements?: string[];
+            /** Checksum */
+            checksum?: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Install State
+             * @default installed
+             */
+            install_state: string;
+            /** Path */
+            path: string;
+            /** Prompt Mode */
+            prompt_mode?: string | null;
+            /** Provenance */
+            provenance?: string | null;
+            /** Recommended Tools */
+            recommended_tools?: string[];
+            /** Skill Id */
+            skill_id: string;
+            /** Source Id */
+            source_id: string;
+            /** Source Type */
+            source_type: string;
+            /** Triggers */
+            triggers?: string[];
+            /**
+             * Trust Level
+             * @default trusted
+             */
+            trust_level: string;
+            /** Version */
+            version?: string | null;
+            /** When To Use */
+            when_to_use?: string[];
+        };
+        /** AdminConfigSkillSectionResponse */
+        AdminConfigSkillSectionResponse: {
+            /** Catalog */
+            catalog?: components["schemas"]["AdminConfigSkillResponse"][];
+            /** Disabled Skill Ids */
+            disabled_skill_ids?: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            install_directory: components["schemas"]["AdminConfigSourceResponse"];
+            refresh?: components["schemas"]["AdminConfigSkillRefreshResponse"];
+            /**
+             * Requires Restart
+             * @default false
+             */
+            requires_restart: boolean;
+            /**
+             * Semantic Match Enabled
+             * @default true
+             */
+            semantic_match_enabled: boolean;
+            /**
+             * Semantic Match Threshold
+             * @default 0.22
+             */
+            semantic_match_threshold: number;
+            /** Skill Directories */
+            skill_directories?: components["schemas"]["AdminConfigSourceResponse"][];
+            source: components["schemas"]["AdminConfigSourceResponse"];
+            /** Source Locations */
+            source_locations?: string[];
+            /** Sources */
+            sources?: components["schemas"]["AdminConfigSkillSourceResponse"][];
+            /** Sources Enabled */
+            sources_enabled?: string[];
+            /** Trusted Sources */
+            trusted_sources?: string[];
+        };
+        /** AdminConfigSkillSourceResponse */
+        AdminConfigSkillSourceResponse: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Label */
+            label: string;
+            /** Location */
+            location?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Source Id */
+            source_id: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Trusted
+             * @default true
+             */
+            trusted: boolean;
         };
         /** AdminConfigSourceResponse */
         AdminConfigSourceResponse: {
@@ -2898,6 +3062,46 @@ export interface components {
             new_password: string;
             /** Reason */
             reason: string;
+        };
+        /** AdminSkillConfigPayload */
+        AdminSkillConfigPayload: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Skill Id */
+            skill_id: string;
+        };
+        /** AdminSkillConfigUpdateRequest */
+        AdminSkillConfigUpdateRequest: {
+            /** Disabled Skill Ids */
+            disabled_skill_ids?: string[] | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Install Directory */
+            install_directory?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+            /** Semantic Match Enabled */
+            semantic_match_enabled?: boolean | null;
+            /** Semantic Match Threshold */
+            semantic_match_threshold?: number | null;
+            /** Skill Directories */
+            skill_directories?: string[] | null;
+            /** Skills */
+            skills?: components["schemas"]["AdminSkillConfigPayload"][] | null;
+            /** Source Locations */
+            source_locations?: string[] | null;
+            /** Sources Enabled */
+            sources_enabled?: string[] | null;
+            /** Trusted Sources */
+            trusted_sources?: string[] | null;
         };
         /** AdminToolConfigPayload */
         AdminToolConfigPayload: {
@@ -4996,6 +5200,8 @@ export interface components {
             status: components["schemas"]["BranchActionStatus"];
             /** Suggested Branch Name */
             suggested_branch_name?: string | null;
+            /** Suggested Branch Name Source */
+            suggested_branch_name_source?: ("explicit" | "inferred") | null;
             /** Target Parent Thread Id */
             target_parent_thread_id: string;
         };
@@ -8230,6 +8436,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_skill_config_v1_admin_config_skills_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSkillConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_admin_skill_index_v1_admin_config_skills_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminConfigResponse"];
                 };
             };
         };

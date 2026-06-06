@@ -42,6 +42,18 @@ export function localSkillPayload(
 	};
 }
 
+function resolveLocalSkill(requested: string): LocalSkill | undefined {
+	const normalized = requested.trim().toLowerCase();
+	if (!normalized) return ANDROID_LOCAL_SKILLS[0];
+	return ANDROID_LOCAL_SKILLS.find(
+		(item) =>
+			item.skill_id === normalized ||
+			item.name.toLowerCase() === normalized ||
+			normalized.includes(item.skill_id) ||
+			normalized.includes(item.name.toLowerCase()),
+	);
+}
+
 export function executeLocalAppTool(
 	ctx: LocalFocusAgentRuntime,
 	thread: ThreadStateResponse,
@@ -280,11 +292,7 @@ export function executeLocalAppTool(
 		message = skill ? skill.name : "Skill not found.";
 	} else if (name === "skill_install") {
 		const requested = stringValue(args.skill_id) || stringValue(args.name);
-		const skill = requested
-			? ANDROID_LOCAL_SKILLS.find(
-					(item) => item.skill_id === requested || item.name === requested,
-				)
-			: ANDROID_LOCAL_SKILLS[0];
+		const skill = resolveLocalSkill(requested);
 		if (skill && !thread.active_skill_ids.includes(skill.skill_id)) {
 			thread.active_skill_ids = [...thread.active_skill_ids, skill.skill_id];
 		}

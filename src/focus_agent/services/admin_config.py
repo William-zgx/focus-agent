@@ -12,6 +12,8 @@ if TYPE_CHECKING:
         AdminConfigModelSectionResponse,
         AdminConfigPolicySectionResponse,
         AdminConfigResponse,
+        AdminConfigSkillResponse,
+        AdminConfigSkillSectionResponse,
         AdminConfigSourceResponse,
         AdminConfigSystemSectionResponse,
         AdminConfigToolResponse,
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
         AdminModelConfigUpdateRequest,
         AdminModelProviderConfigPayload,
         AdminPolicyConfigUpdateRequest,
+        AdminSkillConfigUpdateRequest,
         AdminToolConfigPayload,
         AdminToolConfigUpdateRequest,
     )
@@ -38,6 +41,8 @@ from focus_agent.config import (
     load_tool_catalog_document,
 )
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.skills.registry import SkillRegistry
+from focus_agent.skills.registry_paths import _normalize_skill_id
 
 from .admin_config_fields import (
     _POLICY_FIELD_SPECS,
@@ -47,6 +52,15 @@ from .admin_config_fields import (
 )
 
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
+_SKILLS_ENABLED_ENV = "FOCUS_AGENT_SKILLS_ENABLED"
+_SKILL_DIRECTORIES_ENV = "FOCUS_AGENT_SKILLS_DIRS"
+_SKILL_INSTALL_DIRECTORY_ENV = "SKILL_INSTALL_DIRECTORY"
+_SKILL_SOURCES_ENABLED_ENV = "SKILL_SOURCES_ENABLED"
+_SKILL_SOURCE_LOCATIONS_ENV = "SKILL_SOURCE_LOCATIONS"
+_SKILL_TRUSTED_SOURCES_ENV = "SKILL_TRUSTED_SOURCES"
+_SKILL_SEMANTIC_MATCH_ENABLED_ENV = "SKILL_SEMANTIC_MATCH_ENABLED"
+_SKILL_SEMANTIC_MATCH_THRESHOLD_ENV = "SKILL_SEMANTIC_MATCH_THRESHOLD"
+_SKILL_DISABLED_IDS_ENV = "SKILL_DISABLED_IDS"
 
 
 def _admin_config_contracts():
@@ -68,6 +82,7 @@ def read_admin_config(
     return contracts.AdminConfigResponse(
         models=_build_model_section(settings),
         tools=_build_tool_section(settings),
+        skills=_build_skill_section(runtime),
         policies=_build_policy_section(settings),
         system=_build_system_section(settings),
         updated_by=updated_by,
@@ -125,6 +140,114 @@ def update_admin_tool_config(
     return read_admin_config(
         runtime,
         message="Tool configuration saved. Restart the API to rebuild registered tools.",
+        updated_by=updated_by,
+    )
+
+
+def update_admin_skill_config(
+    runtime: AppRuntime,
+    payload: AdminSkillConfigUpdateRequest,
+    *,
+    updated_by: str | None = None,
+) -> AdminConfigResponse:
+    settings = runtime.settings
+    updates: dict[str, object | None] = {}
+
+    if payload.enabled is not None:
+        settings.skills_enabled = bool(payload.enabled)
+        updates[_SKILLS_ENABLED_ENV] = settings.skills_enabled
+    if payload.skill_directories is not None:
+        settings.skill_directories = _coerce_string_tuple(
+            payload.skill_directories,
+            field_name="skill_directories",
+            allow_empty=False,
+        )
+        updates[_SKILL_DIRECTORIES_ENV] = _csv_env_value(settings.skill_directories)
+    if payload.install_directory is not None:
+        install_directory = str(payload.install_directory).strip()
+        if not install_directory:
+            raise AdminConfigError("install_directory cannot be empty.")
+        settings.skill_install_directory = install_directory
+        updates[_SKILL_INSTALL_DIRECTORY_ENV] = install_directory
+    if payload.sources_enabled is not None:
+        settings.skill_sources_enabled = _coerce_string_tuple(
+            payload.sources_enabled,
+            field_name="sources_enabled",
+            normalize=True,
+        )
+        updates[_SKILL_SOURCES_ENABLED_ENV] = _csv_env_value(settings.skill_sources_enabled)
+    if payload.source_locations is not None:
+        settings.skill_source_locations = _coerce_string_tuple(
+            payload.source_locations,
+            field_name="source_locations",
+        )
+        updates[_SKILL_SOURCE_LOCATIONS_ENV] = _csv_env_value(settings.skill_source_locations)
+    if payload.trusted_sources is not None:
+        settings.skill_trusted_sources = _coerce_string_tuple(
+            payload.trusted_sources,
+            field_name="trusted_sources",
+            normalize=True,
+        )
+        updates[_SKILL_TRUSTED_SOURCES_ENV] = _csv_env_value(settings.skill_trusted_sources)
+    if payload.disabled_skill_ids is not None:
+        settings.skill_disabled_ids = _coerce_disabled_skill_ids(
+            runtime,
+            payload.disabled_skill_ids,
+        )
+        updates[_SKILL_DISABLED_IDS_ENV] = _csv_env_value(settings.skill_disabled_ids)
+    if payload.skills is not None:
+        disabled_ids = set(getattr(settings, "skill_disabled_ids", ()) or ())
+        known_ids = _known_skill_ids(runtime)
+        for item in payload.skills:
+            skill_id = _normalize_skill_id(item.skill_id)
+            if not skill_id:
+                raise AdminConfigError("skill_id cannot be empty.")
+            if known_ids and skill_id not in known_ids:
+                raise AdminConfigError(f"Unknown skill: {item.skill_id}")
+            if item.enabled:
+                disabled_ids.discard(skill_id)
+            else:
+                disabled_ids.add(skill_id)
+        settings.skill_disabled_ids = tuple(sorted(disabled_ids))
+        updates[_SKILL_DISABLED_IDS_ENV] = _csv_env_value(settings.skill_disabled_ids)
+    if payload.semantic_match_enabled is not None:
+        settings.skill_semantic_match_enabled = bool(payload.semantic_match_enabled)
+        updates[_SKILL_SEMANTIC_MATCH_ENABLED_ENV] = settings.skill_semantic_match_enabled
+    if payload.semantic_match_threshold is not None:
+        threshold = float(payload.semantic_match_threshold)
+        if threshold < 0:
+            raise AdminConfigError("semantic_match_threshold must be greater than or equal to 0.")
+        settings.skill_semantic_match_threshold = threshold
+        updates[_SKILL_SEMANTIC_MATCH_THRESHOLD_ENV] = threshold
+
+    if updates:
+        _write_local_env_updates(_local_env_path(settings), updates)
+        for key, value in updates.items():
+            if value is None:
+                settings.resolved_env.pop(key, None)
+            else:
+                settings.resolved_env[key] = _format_env_value(value)
+
+    refresh_result = _reload_runtime_skill_registry(runtime)
+    if payload.refresh and not updates:
+        refresh_result = _refresh_runtime_skill_registry(runtime)
+
+    return read_admin_config(
+        runtime,
+        message=_skill_update_message(bool(updates), refresh_result),
+        updated_by=updated_by,
+    )
+
+
+def refresh_admin_skill_config(
+    runtime: AppRuntime,
+    *,
+    updated_by: str | None = None,
+) -> AdminConfigResponse:
+    refresh_result = _refresh_runtime_skill_registry(runtime)
+    return read_admin_config(
+        runtime,
+        message=f"Skill index refreshed. {refresh_result.get('count', 0)} skills available.",
         updated_by=updated_by,
     )
 
@@ -236,6 +359,53 @@ def _build_tool_section(settings: Any) -> AdminConfigToolSectionResponse:
     )
 
 
+def _build_skill_section(runtime: AppRuntime) -> AdminConfigSkillSectionResponse:
+    settings = runtime.settings
+    registry = _skill_registry_for_response(runtime)
+    skills = registry.all_skills()
+    contracts = _admin_config_contracts()
+    return contracts.AdminConfigSkillSectionResponse(
+        source=_source_response(_local_env_path(settings)),
+        enabled=bool(getattr(settings, "skills_enabled", True)),
+        install_directory=_source_response(
+            Path(
+                getattr(settings, "skill_install_directory", ".focus_agent/skills")
+                or ".focus_agent/skills"
+            ).expanduser()
+        ),
+        skill_directories=[
+            _source_response(Path(path).expanduser())
+            for path in getattr(settings, "skill_directories", ()) or ()
+            if str(path).strip()
+        ],
+        disabled_skill_ids=list(getattr(settings, "skill_disabled_ids", ()) or ()),
+        sources_enabled=list(getattr(settings, "skill_sources_enabled", ()) or ()),
+        source_locations=list(getattr(settings, "skill_source_locations", ()) or ()),
+        trusted_sources=list(getattr(settings, "skill_trusted_sources", ()) or ()),
+        sources=[
+            contracts.AdminConfigSkillSourceResponse(
+                source_id=str(source.get("source_id") or ""),
+                source_type=str(source.get("source_type") or ""),
+                label=str(source.get("label") or source.get("source_id") or ""),
+                enabled=bool(source.get("enabled", True)),
+                trusted=bool(source.get("trusted", True)),
+                location=source.get("location"),
+                metadata=dict(source.get("metadata") or {}),
+            )
+            for source in registry.list_sources()
+        ],
+        catalog=[_skill_response(skill, registry=registry) for skill in skills],
+        semantic_match_enabled=bool(getattr(settings, "skill_semantic_match_enabled", True)),
+        semantic_match_threshold=float(getattr(settings, "skill_semantic_match_threshold", 0.22)),
+        refresh=contracts.AdminConfigSkillRefreshResponse(
+            available=True,
+            refreshed=False,
+            count=len(skills),
+        ),
+        requires_restart=False,
+    )
+
+
 def _build_policy_section(settings: Any) -> AdminConfigPolicySectionResponse:
     contracts = _admin_config_contracts()
     return contracts.AdminConfigPolicySectionResponse(
@@ -312,6 +482,115 @@ def _tool_response(
         settings=settings,
         metadata=dict(metadata),
     )
+
+
+def _skill_response(skill: Any, *, registry: Any) -> AdminConfigSkillResponse:
+    contracts = _admin_config_contracts()
+    prompt_mode = getattr(skill, "prompt_mode", None)
+    return contracts.AdminConfigSkillResponse(
+        skill_id=str(getattr(skill, "skill_id", "")),
+        description=str(getattr(skill, "description", "")),
+        enabled=bool(registry.is_skill_enabled(getattr(skill, "skill_id", ""))),
+        triggers=list(getattr(skill, "triggers", ()) or ()),
+        when_to_use=list(getattr(skill, "when_to_use", ()) or ()),
+        recommended_tools=list(getattr(skill, "recommended_tools", ()) or ()),
+        prompt_mode=getattr(prompt_mode, "value", None),
+        path=str(getattr(skill, "path", "")),
+        source_id=str(getattr(skill, "source_id", "")),
+        source_type=str(getattr(skill, "source_type", "")),
+        version=getattr(skill, "version", None),
+        trust_level=str(getattr(skill, "trust_level", "trusted")),
+        install_state=str(getattr(skill, "install_state", "installed")),
+        provenance=getattr(skill, "provenance", None),
+        checksum=getattr(skill, "checksum", None),
+        capability_requirements=list(getattr(skill, "capability_requirements", ()) or ()),
+    )
+
+
+def _skill_registry_for_response(runtime: AppRuntime) -> SkillRegistry:
+    registry = getattr(runtime, "skill_registry", None)
+    if isinstance(registry, SkillRegistry):
+        return registry
+    return SkillRegistry.from_settings(runtime.settings)
+
+
+def _known_skill_ids(runtime: AppRuntime) -> set[str]:
+    registries = [_skill_registry_for_response(runtime), SkillRegistry.from_settings(runtime.settings)]
+    return {
+        _normalize_skill_id(skill.skill_id)
+        for registry in registries
+        for skill in registry.all_skills()
+    }
+
+
+def _coerce_disabled_skill_ids(
+    runtime: AppRuntime,
+    values: list[str],
+) -> tuple[str, ...]:
+    known_ids = _known_skill_ids(runtime)
+    disabled_ids: set[str] = set()
+    for raw_value in values:
+        skill_id = _normalize_skill_id(raw_value)
+        if not skill_id:
+            continue
+        if known_ids and skill_id not in known_ids:
+            raise AdminConfigError(f"Unknown skill: {raw_value}")
+        disabled_ids.add(skill_id)
+    return tuple(sorted(disabled_ids))
+
+
+def _coerce_string_tuple(
+    values: list[str],
+    *,
+    field_name: str,
+    allow_empty: bool = True,
+    normalize: bool = False,
+) -> tuple[str, ...]:
+    items: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item:
+            continue
+        items.append(item.lower() if normalize else item)
+    if not allow_empty and not items:
+        raise AdminConfigError(f"{field_name} cannot be empty.")
+    return tuple(dict.fromkeys(items))
+
+
+def _csv_env_value(values: tuple[str, ...]) -> str:
+    return ",".join(values)
+
+
+def _reload_runtime_skill_registry(runtime: AppRuntime) -> dict[str, Any]:
+    registry = getattr(runtime, "skill_registry", None)
+    if isinstance(registry, SkillRegistry):
+        return registry.reload_from_settings(runtime.settings)
+    registry = SkillRegistry.from_settings(runtime.settings)
+    try:
+        setattr(runtime, "skill_registry", registry)
+    except Exception:
+        pass
+    return {
+        "success": True,
+        "enabled": registry.enabled,
+        "previous_count": 0,
+        "count": len(registry.all_skills()),
+        "sources": registry.list_sources(),
+    }
+
+
+def _refresh_runtime_skill_registry(runtime: AppRuntime) -> dict[str, Any]:
+    registry = getattr(runtime, "skill_registry", None)
+    if isinstance(registry, SkillRegistry):
+        return registry.refresh_index()
+    return _reload_runtime_skill_registry(runtime)
+
+
+def _skill_update_message(changed: bool, refresh_result: dict[str, Any]) -> str:
+    count = int(refresh_result.get("count") or 0)
+    if changed:
+        return f"Skill configuration saved. {count} skills available."
+    return f"Skill index refreshed. {count} skills available."
 
 
 def _provider_payloads(
@@ -670,7 +949,9 @@ __all__ = [
     "AdminConfigError",
     "ModelCatalogValidationError",
     "read_admin_config",
+    "refresh_admin_skill_config",
     "update_admin_model_config",
     "update_admin_policy_config",
+    "update_admin_skill_config",
     "update_admin_tool_config",
 ]

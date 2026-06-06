@@ -142,7 +142,7 @@
 
 .fa-admin-config-section-picker {
 	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
+	grid-template-columns: repeat(6, minmax(0, 1fr));
 	gap: 5px;
 	min-width: 0;
 }
@@ -219,12 +219,20 @@
 }
 
 .fa-admin-form-grid,
+.fa-admin-config-action-grid,
+.fa-admin-config-metric-grid,
 .fa-admin-config-section,
 .fa-admin-config-card-list,
-.fa-admin-config-list {
+.fa-admin-config-list,
+.fa-admin-config-source-list {
 	display: grid;
 	gap: 8px;
 	min-width: 0;
+}
+
+.fa-admin-config-action-grid,
+.fa-admin-config-metric-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .fa-admin-form-grid.is-two {
@@ -243,7 +251,8 @@
 .fa-admin-config-section-head,
 .fa-admin-config-card-head,
 .fa-admin-config-source,
-.fa-admin-config-readonly-head {
+.fa-admin-config-readonly-head,
+.fa-admin-config-source-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -258,10 +267,22 @@
 
 .fa-admin-config-section-head > strong,
 .fa-admin-config-card-head > strong,
-.fa-admin-config-readonly-head > strong {
+.fa-admin-config-readonly-head > strong,
+.fa-admin-config-source-row > strong {
 	min-width: 0;
 	color: var(--fa-text);
 	overflow-wrap: anywhere;
+}
+
+.fa-admin-config-title-stack {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.fa-admin-config-title-stack span {
+	color: var(--fa-text-soft);
+	font-size: 0.72rem;
 }
 
 .fa-admin-picker-list {
@@ -303,7 +324,9 @@
 }
 
 .fa-admin-config-card,
-.fa-admin-config-value-row {
+.fa-admin-config-value-row,
+.fa-admin-config-action-tile,
+.fa-admin-config-metric-tile {
 	display: grid;
 	gap: 7px;
 	min-width: 0;
@@ -311,6 +334,39 @@
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 8px;
 	background: color-mix(in srgb, var(--fa-panel-1) 44%, transparent 56%);
+}
+
+.fa-admin-config-action-tile {
+	color: var(--fa-text);
+	text-align: left;
+	cursor: pointer;
+	transition:
+		border-color 0.16s ease,
+		background 0.16s ease;
+}
+
+.fa-admin-config-action-tile:hover {
+	border-color: color-mix(in srgb, var(--fa-accent) 34%, var(--fa-border) 66%);
+	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1) 92%);
+}
+
+.fa-admin-config-action-tile span,
+.fa-admin-config-metric-tile span,
+.fa-admin-config-metric-tile small {
+	min-width: 0;
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	line-height: 1.24;
+	overflow-wrap: anywhere;
+}
+
+.fa-admin-config-action-tile strong,
+.fa-admin-config-metric-tile strong {
+	min-width: 0;
+	color: var(--fa-text);
+	font-size: 0.9rem;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
 }
 
 .fa-admin-config-value-row > p,
@@ -353,6 +409,43 @@
 	color: var(--fa-text-muted);
 	font-size: 0.72rem;
 	font-weight: 760;
+}
+
+.fa-admin-config-source-row .fa-admin-config-source {
+	flex: 1 1 280px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+}
+
+.fa-admin-config-inline-metrics {
+	display: flex;
+	align-items: center;
+	align-self: end;
+	gap: 6px;
+	flex-wrap: wrap;
+	min-height: 35px;
+}
+
+.fa-admin-config-inline-metrics span,
+.fa-admin-config-skill-meta span,
+.fa-admin-chip-row span {
+	min-width: 0;
+	padding: 2px 7px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-panel-1) 54%, transparent 46%);
+	color: var(--fa-text-muted);
+	font-size: 0.72rem;
+	font-weight: 720;
+	overflow-wrap: anywhere;
+}
+
+.fa-admin-config-skill-meta {
+	display: flex;
+	gap: 5px;
+	flex-wrap: wrap;
+	min-width: 0;
 }
 
 .fa-admin-audit-side {

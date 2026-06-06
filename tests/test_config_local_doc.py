@@ -489,9 +489,11 @@ def test_settings_from_env_reads_branch_max_depth(monkeypatch):
 
 def test_settings_from_env_reads_skill_directories(monkeypatch):
     monkeypatch.setenv("FOCUS_AGENT_SKILLS_DIRS", "skills,/tmp/agent-skills")
+    monkeypatch.setenv("FOCUS_AGENT_SKILLS_ENABLED", "false")
 
     settings = Settings.from_env()
 
+    assert settings.skills_enabled is False
     assert settings.skill_directories == ("skills", "/tmp/agent-skills")
 
 

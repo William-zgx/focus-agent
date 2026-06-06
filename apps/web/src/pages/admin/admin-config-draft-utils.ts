@@ -8,7 +8,13 @@ import type {
 } from "@focus-agent/web-sdk";
 
 export type EditableConfigSection = "models" | "policies" | "tools";
-export type ConfigSection = EditableConfigSection | "system";
+export type ConfigSection =
+	| "advanced"
+	| "agent"
+	| "capabilities"
+	| "connections"
+	| "overview"
+	| "security";
 export type PolicyDraftValue = boolean | string;
 
 export type ModelProviderDraft = {

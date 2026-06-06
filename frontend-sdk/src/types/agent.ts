@@ -88,15 +88,13 @@ export interface FocusAgentSkillSelectionListResponse {
 
 export interface FocusAgentSkillCatalogItem {
   skill_id: string;
-  name: string;
-  description?: string | null;
-  when_to_use?: string | null;
+  description: string;
+  when_to_use: string[];
   triggers: string[];
   recommended_tools: string[];
-  enabled: boolean;
-  pinned: boolean;
-  disabled_until?: string | null;
-  metadata?: Record<string, unknown> | null;
+  path?: string | null;
+  prompt_mode?: string | null;
+  preference?: FocusAgentSkillPreferenceResponse | null;
 }
 
 export interface FocusAgentSkillCatalogResponse {
@@ -110,14 +108,18 @@ export interface FocusAgentSkillSelectionFeedbackRequest {
 }
 
 export interface FocusAgentSkillPreferenceRequest {
-  enabled?: boolean | null;
-  pinned?: boolean | null;
-  disabled_for_session?: boolean | null;
-  reason?: string | null;
+  state: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FocusAgentSkillPreferenceResponse {
-  skill: FocusAgentSkillCatalogItem;
+  preference_id: string;
+  user_id: string;
+  skill_id: string;
+  state: string;
+  metadata: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface FocusAgentRoleDecisionListResponse {

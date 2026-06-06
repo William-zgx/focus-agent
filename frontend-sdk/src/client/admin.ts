@@ -11,6 +11,7 @@ import type {
   FocusAgentRevokeUserSessionRequest,
   FocusAgentUpdateAdminModelConfigRequest,
   FocusAgentUpdateAdminPolicyConfigRequest,
+  FocusAgentUpdateAdminSkillConfigRequest,
   FocusAgentUpdateAdminToolConfigRequest,
   FocusAgentUpdateUserRequest,
   FocusAgentUpdateUserRolesRequest,
@@ -222,6 +223,21 @@ async function updateAdminToolConfig(
   );
 }
 
+async function updateAdminSkillConfig(
+  this: FocusAgentEndpointContext,
+  request: FocusAgentUpdateAdminSkillConfigRequest,
+): Promise<FocusAgentAdminConfig> {
+  return this.requestJson<FocusAgentAdminConfig>(
+    "/v1/admin/config/skills",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
+
 async function updateAdminPolicyConfig(
   this: FocusAgentEndpointContext,
   request: FocusAgentUpdateAdminPolicyConfigRequest,
@@ -251,6 +267,7 @@ export interface AdminEndpoints {
   getAdminConfig: OmitThisParameter<typeof getAdminConfig>;
   updateAdminModelConfig: OmitThisParameter<typeof updateAdminModelConfig>;
   updateAdminToolConfig: OmitThisParameter<typeof updateAdminToolConfig>;
+  updateAdminSkillConfig: OmitThisParameter<typeof updateAdminSkillConfig>;
   updateAdminPolicyConfig: OmitThisParameter<typeof updateAdminPolicyConfig>;
 }
 
@@ -268,6 +285,7 @@ const adminEndpoints: FocusAgentEndpointMethodMap<AdminEndpoints> = {
   getAdminConfig,
   updateAdminModelConfig,
   updateAdminToolConfig,
+  updateAdminSkillConfig,
   updateAdminPolicyConfig,
 };
 

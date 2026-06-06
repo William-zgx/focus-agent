@@ -30,6 +30,11 @@ def load_runtime_config(
         "local_checkpoint_path": env.get("LOCAL_CHECKPOINT_PATH") or None,
         "local_store_path": env.get("LOCAL_STORE_PATH") or None,
         "branch_max_depth": int(env.get("BRANCH_MAX_DEPTH", str(defaults.branch_max_depth))),
+        "skills_enabled": _env_bool(
+            env,
+            "FOCUS_AGENT_SKILLS_ENABLED",
+            default=_env_bool(env, "SKILLS_ENABLED", default=defaults.skills_enabled),
+        ),
         "tool_max_parallel_workers": int(
             env.get("TOOL_MAX_PARALLEL_WORKERS", str(defaults.tool_max_parallel_workers))
         ),
@@ -138,6 +143,14 @@ def load_runtime_config(
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
             if env.get("FOCUS_AGENT_SKILLS_DIRS") is not None
             else defaults.skill_directories
+        ),
+        "skill_disabled_ids": (
+            _split_csv(env.get("FOCUS_AGENT_SKILL_DISABLED_IDS") or env.get("SKILL_DISABLED_IDS"))
+            if (
+                env.get("FOCUS_AGENT_SKILL_DISABLED_IDS") is not None
+                or env.get("SKILL_DISABLED_IDS") is not None
+            )
+            else defaults.skill_disabled_ids
         ),
         "skill_semantic_match_enabled": _env_bool(
             env,

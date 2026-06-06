@@ -2,6 +2,7 @@ import type {
 	FocusAgentAdminConfig,
 	FocusAgentUpdateAdminModelConfigRequest,
 	FocusAgentUpdateAdminPolicyConfigRequest,
+	FocusAgentUpdateAdminSkillConfigRequest,
 	FocusAgentUpdateAdminToolConfigRequest,
 } from "@focus-agent/web-sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ export type {
 	FocusAgentAdminConfig,
 	FocusAgentUpdateAdminModelConfigRequest,
 	FocusAgentUpdateAdminPolicyConfigRequest,
+	FocusAgentUpdateAdminSkillConfigRequest,
 	FocusAgentUpdateAdminToolConfigRequest,
 } from "@focus-agent/web-sdk";
 
@@ -26,6 +28,9 @@ type AdminConfigClient = {
 	): Promise<FocusAgentAdminConfig>;
 	updateAdminPolicyConfig(
 		request: FocusAgentUpdateAdminPolicyConfigRequest,
+	): Promise<FocusAgentAdminConfig>;
+	updateAdminSkillConfig(
+		request: FocusAgentUpdateAdminSkillConfigRequest,
 	): Promise<FocusAgentAdminConfig>;
 };
 
@@ -87,6 +92,24 @@ export function useUpdateAdminPolicyConfig() {
 		FocusAgentUpdateAdminPolicyConfigRequest
 	>({
 		mutationFn: (request) => adminConfigClient.updateAdminPolicyConfig(request),
+		onSuccess: (config) => {
+			queryClient.setQueryData(queryKeys.adminConfig, config);
+			void queryClient.invalidateQueries({ queryKey: queryKeys.adminConfig });
+		},
+	});
+}
+
+export function useUpdateAdminSkillConfig() {
+	const { client } = useFocusAgent();
+	const queryClient = useQueryClient();
+	const adminConfigClient = client as unknown as AdminConfigClient;
+
+	return useMutation<
+		FocusAgentAdminConfig,
+		Error,
+		FocusAgentUpdateAdminSkillConfigRequest
+	>({
+		mutationFn: (request) => adminConfigClient.updateAdminSkillConfig(request),
 		onSuccess: (config) => {
 			queryClient.setQueryData(queryKeys.adminConfig, config);
 			void queryClient.invalidateQueries({ queryKey: queryKeys.adminConfig });

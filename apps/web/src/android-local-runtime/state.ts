@@ -17,6 +17,7 @@ import {
 	LOCAL_USER_ID,
 } from "./constants";
 import { clone, contextUsage, isRecord, nowIso } from "./helpers";
+import { ANDROID_LOCAL_SKILLS } from "./skills";
 import type { LocalGitCommit, LocalRuntimeState } from "./types";
 
 export function localUser(
@@ -130,9 +131,9 @@ export function modelOption(): FocusAgentModelOption {
 	};
 }
 
-export function configSource() {
+export function configSource(path = "android-local-runtime") {
 	return {
-		path: "android-local-runtime",
+		path,
 		exists: true,
 		writable: true,
 	};
@@ -168,6 +169,57 @@ export function localAdminTool(
 					? "This tool needs a Focus Agent workspace backend and is disabled in the Android app-local runtime."
 					: null,
 		},
+	};
+}
+
+export function defaultAdminSkillConfig(): FocusAgentAdminConfig["skills"] {
+	return {
+		source: configSource("android-local-runtime/skills"),
+		enabled: true,
+		install_directory: configSource("android-local-runtime/skills/install"),
+		skill_directories: [configSource("android-local-runtime/skills/builtin")],
+		disabled_skill_ids: [],
+		sources_enabled: ["android-local"],
+		source_locations: [],
+		trusted_sources: ["android-local"],
+		sources: [
+			{
+				source_id: "android-local",
+				source_type: "builtin",
+				label: "Android local runtime",
+				enabled: true,
+				trusted: true,
+				location: null,
+				metadata: { runtime: "android-local" },
+			},
+		],
+		catalog: ANDROID_LOCAL_SKILLS.map((skill) => ({
+			skill_id: skill.skill_id,
+			description: skill.description,
+			enabled: true,
+			triggers: skill.triggers,
+			when_to_use: skill.when_to_use,
+			recommended_tools: skill.recommended_tools,
+			prompt_mode: skill.prompt_mode,
+			path: `android-local://${skill.skill_id}`,
+			source_id: skill.source_id,
+			source_type: "builtin",
+			version: null,
+			trust_level: "trusted",
+			install_state: "installed",
+			provenance: "android-local-runtime",
+			checksum: null,
+			capability_requirements: [],
+		})),
+		semantic_match_enabled: true,
+		semantic_match_threshold: 0.25,
+		refresh: {
+			available: true,
+			refreshed: false,
+			previous_count: null,
+			count: ANDROID_LOCAL_SKILLS.length,
+		},
+		requires_restart: false,
 	};
 }
 
@@ -406,6 +458,7 @@ export function defaultAdminConfig(): FocusAgentAdminConfig {
 			],
 			requires_restart: false,
 		},
+		skills: defaultAdminSkillConfig(),
 		policies: {
 			source: configSource(),
 			items: [],
@@ -586,6 +639,11 @@ export function normalizeStoredState(
 		}
 		return tool;
 	});
+	const defaultSkills = defaultAdminSkillConfig();
+	value.adminConfig.skills ??= defaultSkills;
+	value.adminConfig.skills.catalog = defaultSkills.catalog;
+	value.adminConfig.skills.sources = defaultSkills.sources;
+	value.adminConfig.skills.refresh = defaultSkills.refresh;
 	value.sequence.artifact ??= value.artifacts.length + 1;
 	value.sequence.memory ??= value.memories.length + 1;
 	value.sequence.note ??= value.notes.length + 1;

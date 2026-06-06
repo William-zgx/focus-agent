@@ -70,6 +70,8 @@ class SkillRegistry:
         self,
         skill_dirs: Iterable[Path],
         *,
+        enabled: bool = True,
+        disabled_skill_ids: Iterable[str] = (),
         semantic_match_enabled: bool = True,
         semantic_match_threshold: float = 0.22,
         source_definitions: Iterable[SkillSourceDefinition] = (),
@@ -82,6 +84,12 @@ class SkillRegistry:
         if resolved_install_dir is not None and resolved_install_dir not in configured_skill_dirs:
             configured_skill_dirs = (*configured_skill_dirs, resolved_install_dir)
         self._skill_dirs = configured_skill_dirs
+        self._enabled = bool(enabled)
+        self._disabled_skill_ids = {
+            _normalize_skill_id(skill_id)
+            for skill_id in disabled_skill_ids
+            if str(skill_id).strip()
+        }
         self._semantic_match_enabled = bool(semantic_match_enabled)
         self._semantic_match_threshold = float(semantic_match_threshold)
         self._source_definitions = self._normalize_sources(source_definitions)
@@ -128,7 +136,11 @@ class SkillRegistry:
         }
         self._trigger_pairs = tuple(
             sorted(
-                ((trigger.lower(), skill) for skill in self._skills for trigger in skill.triggers),
+                (
+                    (trigger.lower(), skill)
+                    for skill in self._active_skills()
+                    for trigger in skill.triggers
+                ),
                 key=lambda item: len(item[0]),
                 reverse=True,
             )
@@ -140,6 +152,8 @@ class SkillRegistry:
         source_definitions = _source_definitions_from_settings(settings)
         return cls(
             [*configured, bundled_skills_dir()],
+            enabled=bool(getattr(settings, "skills_enabled", True)),
+            disabled_skill_ids=getattr(settings, "skill_disabled_ids", ()),
             semantic_match_enabled=_semantic_enabled(
                 getattr(settings, "skill_semantic_match_enabled", True)
             ),
@@ -156,6 +170,33 @@ class SkillRegistry:
     @property
     def skill_dirs(self) -> tuple[Path, ...]:
         return self._skill_dirs
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @property
+    def install_dir(self) -> Path | None:
+        return self._install_dir
+
+    def disabled_skill_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(self._disabled_skill_ids))
+
+    def set_disabled_skill_ids(self, disabled_skill_ids: Iterable[str]) -> None:
+        self._disabled_skill_ids = {
+            _normalize_skill_id(skill_id)
+            for skill_id in disabled_skill_ids
+            if str(skill_id).strip()
+        }
+        self._reindex()
+
+    def is_skill_enabled(self, skill_id: str) -> bool:
+        return self._enabled and _normalize_skill_id(skill_id) not in self._disabled_skill_ids
+
+    def _active_skills(self) -> tuple[SkillDefinition, ...]:
+        if not self._enabled:
+            return ()
+        return tuple(skill for skill in self._skills if self.is_skill_enabled(skill.skill_id))
 
     def all_skills(self) -> tuple[SkillDefinition, ...]:
         return self._skills
@@ -185,6 +226,8 @@ class SkillRegistry:
         sources: Iterable[str] = (),
         limit: int = 5,
     ) -> tuple[SkillSearchResult, ...]:
+        if not self._enabled:
+            return ()
         source_filter = {_normalize_skill_id(source) for source in sources if str(source).strip()}
         include_installed = scope in {"", "installed", "all"} or "installed" in source_filter
         results: list[SkillSearchResult] = []
@@ -207,6 +250,13 @@ class SkillRegistry:
     ) -> SkillInstallResult:
         del version
         normalized_skill_id = _normalize_skill_id(skill_id)
+        if not self._enabled:
+            return SkillInstallResult(
+                success=False,
+                skill_id=normalized_skill_id,
+                source_id=source_id or "installed",
+                error="Skill registry is disabled.",
+            )
         if not _is_safe_skill_id(normalized_skill_id):
             return SkillInstallResult(
                 success=False,
@@ -290,6 +340,27 @@ class SkillRegistry:
         self._reindex()
         return {
             "success": True,
+            "enabled": self._enabled,
+            "previous_count": before,
+            "count": len(self._skills),
+            "sources": self.list_sources(),
+        }
+
+    def reload_from_settings(self, settings: Settings) -> dict[str, Any]:
+        before = len(self._skills)
+        updated = type(self).from_settings(settings)
+        self._skill_dirs = updated._skill_dirs
+        self._enabled = updated._enabled
+        self._disabled_skill_ids = updated._disabled_skill_ids
+        self._semantic_match_enabled = updated._semantic_match_enabled
+        self._semantic_match_threshold = updated._semantic_match_threshold
+        self._source_definitions = updated._source_definitions
+        self._install_dir = updated._install_dir
+        self._skills = updated._skills
+        self._reindex()
+        return {
+            "success": True,
+            "enabled": self._enabled,
             "previous_count": before,
             "count": len(self._skills),
             "sources": self.list_sources(),
@@ -309,7 +380,7 @@ class SkillRegistry:
 
         for hint in explicit_hints:
             skill = self.resolve(str(hint))
-            if skill is None or skill.skill_id in seen:
+            if skill is None or not self.is_skill_enabled(skill.skill_id) or skill.skill_id in seen:
                 continue
             seen.add(skill.skill_id)
             chosen.append(skill)
@@ -421,6 +492,8 @@ class SkillRegistry:
         threshold: float | None = None,
         limit: int = _SEMANTIC_CANDIDATE_LIMIT,
     ) -> tuple[SkillSemanticCandidate, ...]:
+        if not self._enabled:
+            return ()
         query: dict[str, float] = {}
         _add_weighted_tokens(query, message, 1.0)
         if not query:
@@ -430,6 +503,8 @@ class SkillRegistry:
         )
         candidates: list[SkillSemanticCandidate] = []
         for skill in self._skills:
+            if not self.is_skill_enabled(skill.skill_id):
+                continue
             vector = self._semantic_vectors.get(skill.skill_id, {})
             score = round(_cosine_score(query, vector), 4)
             if score <= 0:
@@ -498,6 +573,7 @@ class SkillRegistry:
             {
                 "name": skill.skill_id,
                 "description": skill.description,
+                "enabled": self.is_skill_enabled(skill.skill_id),
                 "triggers": list(skill.triggers),
                 "when_to_use": list(skill.when_to_use),
                 "recommended_tools": list(skill.recommended_tools),
@@ -522,6 +598,7 @@ class SkillRegistry:
         return {
             "name": skill.skill_id,
             "description": skill.description,
+            "enabled": self.is_skill_enabled(skill.skill_id),
             "triggers": list(skill.triggers),
             "when_to_use": list(skill.when_to_use),
             "recommended_tools": list(skill.recommended_tools),
@@ -539,14 +616,15 @@ class SkillRegistry:
         }
 
     def render_available_skills_block(self) -> str:
-        if not self._skills:
+        active_skills = self._active_skills()
+        if not active_skills:
             return ""
 
         lines = [
             "## Available skills",
             "If a user message starts with one of these prefixes, activate the matching skill for that turn.",
         ]
-        for skill in self._skills:
+        for skill in active_skills:
             trigger_text = ", ".join(skill.triggers) if skill.triggers else "manual only"
             line = f"- {skill.skill_id}: {skill.description} (triggers: {trigger_text})"
             if skill.when_to_use:
@@ -556,7 +634,11 @@ class SkillRegistry:
 
     def render_active_skills_block(self, skill_ids: Iterable[str]) -> str:
         skills = [self.resolve(skill_id) for skill_id in skill_ids]
-        resolved = [skill for skill in skills if skill is not None]
+        resolved = [
+            skill
+            for skill in skills
+            if skill is not None and self.is_skill_enabled(skill.skill_id)
+        ]
         if not resolved:
             return ""
 
@@ -671,6 +753,8 @@ class SkillRegistry:
             ordered_skills = sorted(self._skills, key=lambda skill: skill.skill_id)
         results: list[SkillSearchResult] = []
         for skill in ordered_skills:
+            if not self.is_skill_enabled(skill.skill_id):
+                continue
             if (
                 source_filter
                 and "installed" not in source_filter

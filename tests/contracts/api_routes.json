@@ -337,6 +337,35 @@
     },
     {
       "method": "PATCH",
+      "operation_id": "patch_admin_skill_config_v1_admin_config_skills_patch",
+      "parameters": [],
+      "path": "/v1/admin/config/skills",
+      "request": {
+        "$ref": "#/components/schemas/AdminSkillConfigUpdateRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AdminConfigResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "refresh_admin_skill_index_v1_admin_config_skills_refresh_post",
+      "parameters": [],
+      "path": "/v1/admin/config/skills/refresh",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AdminConfigResponse"
+        }
+      }
+    },
+    {
+      "method": "PATCH",
       "operation_id": "patch_admin_tool_config_v1_admin_config_tools_patch",
       "parameters": [],
       "path": "/v1/admin/config/tools",
@@ -6553,6 +6582,9 @@
         "policies": {
           "$ref": "#/components/schemas/AdminConfigPolicySectionResponse"
         },
+        "skills": {
+          "$ref": "#/components/schemas/AdminConfigSkillSectionResponse"
+        },
         "system": {
           "$ref": "#/components/schemas/AdminConfigSystemSectionResponse"
         },
@@ -6583,8 +6615,256 @@
       "required": [
         "models",
         "tools",
+        "skills",
         "policies",
         "system"
+      ],
+      "type": "object"
+    },
+    "AdminConfigSkillRefreshResponse": {
+      "properties": {
+        "available": {
+          "default": true,
+          "type": "boolean"
+        },
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "previous_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "refreshed": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AdminConfigSkillResponse": {
+      "properties": {
+        "capability_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "checksum": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "install_state": {
+          "default": "installed",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "prompt_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommended_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skill_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trust_level": {
+          "default": "trusted",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "when_to_use": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "skill_id",
+        "description",
+        "path",
+        "source_id",
+        "source_type"
+      ],
+      "type": "object"
+    },
+    "AdminConfigSkillSectionResponse": {
+      "properties": {
+        "catalog": {
+          "items": {
+            "$ref": "#/components/schemas/AdminConfigSkillResponse"
+          },
+          "type": "array"
+        },
+        "disabled_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "install_directory": {
+          "$ref": "#/components/schemas/AdminConfigSourceResponse"
+        },
+        "refresh": {
+          "$ref": "#/components/schemas/AdminConfigSkillRefreshResponse"
+        },
+        "requires_restart": {
+          "default": false,
+          "type": "boolean"
+        },
+        "semantic_match_enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "semantic_match_threshold": {
+          "default": 0.22,
+          "type": "number"
+        },
+        "skill_directories": {
+          "items": {
+            "$ref": "#/components/schemas/AdminConfigSourceResponse"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/components/schemas/AdminConfigSourceResponse"
+        },
+        "source_locations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/components/schemas/AdminConfigSkillSourceResponse"
+          },
+          "type": "array"
+        },
+        "sources_enabled": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "trusted_sources": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "install_directory"
+      ],
+      "type": "object"
+    },
+    "AdminConfigSkillSourceResponse": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "trusted": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_type",
+        "label"
       ],
       "type": "object"
     },
@@ -7107,6 +7387,158 @@
         "new_password",
         "reason"
       ],
+      "type": "object"
+    },
+    "AdminSkillConfigPayload": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "skill_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id"
+      ],
+      "type": "object"
+    },
+    "AdminSkillConfigUpdateRequest": {
+      "properties": {
+        "disabled_skill_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "install_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "refresh": {
+          "default": false,
+          "type": "boolean"
+        },
+        "semantic_match_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "semantic_match_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_directories": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skills": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/AdminSkillConfigPayload"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_locations": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources_enabled": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trusted_sources": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "type": "object"
     },
     "AdminToolConfigPayload": {
@@ -11615,6 +12047,20 @@
         "suggested_branch_name": {
           "anyOf": [
             {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suggested_branch_name_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "explicit",
+                "inferred"
+              ],
               "type": "string"
             },
             {

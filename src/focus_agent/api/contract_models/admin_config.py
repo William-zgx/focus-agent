@@ -73,6 +73,42 @@ class AdminConfigToolProviderResponse(BaseModel):
     overrides: list[str] = Field(default_factory=list)
 
 
+class AdminConfigSkillResponse(BaseModel):
+    skill_id: str
+    description: str
+    enabled: bool = True
+    triggers: list[str] = Field(default_factory=list)
+    when_to_use: list[str] = Field(default_factory=list)
+    recommended_tools: list[str] = Field(default_factory=list)
+    prompt_mode: str | None = None
+    path: str
+    source_id: str
+    source_type: str
+    version: str | None = None
+    trust_level: str = "trusted"
+    install_state: str = "installed"
+    provenance: str | None = None
+    checksum: str | None = None
+    capability_requirements: list[str] = Field(default_factory=list)
+
+
+class AdminConfigSkillSourceResponse(BaseModel):
+    source_id: str
+    source_type: str
+    label: str
+    enabled: bool = True
+    trusted: bool = True
+    location: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminConfigSkillRefreshResponse(BaseModel):
+    available: bool = True
+    refreshed: bool = False
+    previous_count: int | None = None
+    count: int = 0
+
+
 class AdminConfigModelSectionResponse(BaseModel):
     source: AdminConfigSourceResponse
     default_model: str | None = None
@@ -90,6 +126,25 @@ class AdminConfigToolSectionResponse(BaseModel):
     requires_restart: bool = True
 
 
+class AdminConfigSkillSectionResponse(BaseModel):
+    source: AdminConfigSourceResponse
+    enabled: bool = True
+    install_directory: AdminConfigSourceResponse
+    skill_directories: list[AdminConfigSourceResponse] = Field(default_factory=list)
+    disabled_skill_ids: list[str] = Field(default_factory=list)
+    sources_enabled: list[str] = Field(default_factory=list)
+    source_locations: list[str] = Field(default_factory=list)
+    trusted_sources: list[str] = Field(default_factory=list)
+    sources: list[AdminConfigSkillSourceResponse] = Field(default_factory=list)
+    catalog: list[AdminConfigSkillResponse] = Field(default_factory=list)
+    semantic_match_enabled: bool = True
+    semantic_match_threshold: float = 0.22
+    refresh: AdminConfigSkillRefreshResponse = Field(
+        default_factory=AdminConfigSkillRefreshResponse
+    )
+    requires_restart: bool = False
+
+
 class AdminConfigPolicySectionResponse(BaseModel):
     source: AdminConfigSourceResponse
     items: list[AdminConfigValueResponse] = Field(default_factory=list)
@@ -104,6 +159,7 @@ class AdminConfigSystemSectionResponse(BaseModel):
 class AdminConfigResponse(BaseModel):
     models: AdminConfigModelSectionResponse
     tools: AdminConfigToolSectionResponse
+    skills: AdminConfigSkillSectionResponse
     policies: AdminConfigPolicySectionResponse
     system: AdminConfigSystemSectionResponse
     updated_at: str | None = None
@@ -172,6 +228,26 @@ class AdminToolConfigUpdateRequest(BaseModel):
     providers: list[AdminToolProviderConfigPayload] | None = None
 
 
+class AdminSkillConfigPayload(BaseModel):
+    skill_id: str
+    enabled: bool = True
+
+
+class AdminSkillConfigUpdateRequest(BaseModel):
+    reason: str | None = None
+    enabled: bool | None = None
+    skills: list[AdminSkillConfigPayload] | None = None
+    disabled_skill_ids: list[str] | None = None
+    skill_directories: list[str] | None = None
+    install_directory: str | None = None
+    sources_enabled: list[str] | None = None
+    source_locations: list[str] | None = None
+    trusted_sources: list[str] | None = None
+    semantic_match_enabled: bool | None = None
+    semantic_match_threshold: float | None = None
+    refresh: bool = False
+
+
 class AdminPolicyConfigUpdateRequest(BaseModel):
     reason: str | None = None
     values: dict[str, Any] = Field(default_factory=dict)
@@ -182,6 +258,10 @@ __all__ = [
     "AdminConfigModelSectionResponse",
     "AdminConfigProviderResponse",
     "AdminConfigResponse",
+    "AdminConfigSkillRefreshResponse",
+    "AdminConfigSkillResponse",
+    "AdminConfigSkillSectionResponse",
+    "AdminConfigSkillSourceResponse",
     "AdminConfigSourceResponse",
     "AdminConfigSystemSectionResponse",
     "AdminConfigToolProviderResponse",
@@ -192,6 +272,8 @@ __all__ = [
     "AdminModelConfigUpdateRequest",
     "AdminModelProviderConfigPayload",
     "AdminPolicyConfigUpdateRequest",
+    "AdminSkillConfigPayload",
+    "AdminSkillConfigUpdateRequest",
     "AdminToolConfigPayload",
     "AdminToolConfigUpdateRequest",
     "AdminToolProviderConfigPayload",

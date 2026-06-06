@@ -164,6 +164,59 @@ export interface FocusAgentAdminToolConfig {
   requires_restart: boolean;
 }
 
+export interface FocusAgentAdminSkillConfigEntry {
+  skill_id: string;
+  description: string;
+  enabled: boolean;
+  triggers: string[];
+  when_to_use: string[];
+  recommended_tools: string[];
+  prompt_mode?: string | null;
+  path: string;
+  source_id: string;
+  source_type: string;
+  version?: string | null;
+  trust_level: string;
+  install_state: string;
+  provenance?: string | null;
+  checksum?: string | null;
+  capability_requirements: string[];
+}
+
+export interface FocusAgentAdminSkillSourceConfig {
+  source_id: string;
+  source_type: string;
+  label: string;
+  enabled: boolean;
+  trusted: boolean;
+  location?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface FocusAgentAdminSkillRefreshConfig {
+  available: boolean;
+  refreshed: boolean;
+  previous_count?: number | null;
+  count: number;
+}
+
+export interface FocusAgentAdminSkillConfig {
+  source: FocusAgentAdminConfigSource;
+  enabled: boolean;
+  install_directory: FocusAgentAdminConfigSource;
+  skill_directories: FocusAgentAdminConfigSource[];
+  disabled_skill_ids: string[];
+  sources_enabled: string[];
+  source_locations: string[];
+  trusted_sources: string[];
+  sources: FocusAgentAdminSkillSourceConfig[];
+  catalog: FocusAgentAdminSkillConfigEntry[];
+  semantic_match_enabled: boolean;
+  semantic_match_threshold: number;
+  refresh: FocusAgentAdminSkillRefreshConfig;
+  requires_restart: boolean;
+}
+
 export interface FocusAgentAdminPolicyConfig {
   source: FocusAgentAdminConfigSource;
   items: FocusAgentAdminConfigValue[];
@@ -178,6 +231,7 @@ export interface FocusAgentAdminSystemConfig {
 export interface FocusAgentAdminConfig {
   models: FocusAgentAdminModelConfig;
   tools: FocusAgentAdminToolConfig;
+  skills: FocusAgentAdminSkillConfig;
   policies: FocusAgentAdminPolicyConfig;
   system: FocusAgentAdminSystemConfig;
   updated_at?: string | null;
@@ -244,6 +298,26 @@ export interface FocusAgentUpdateAdminToolConfigRequest {
   reason?: string | null;
   tools?: FocusAgentUpdateAdminToolConfigEntry[];
   providers?: FocusAgentUpdateAdminToolProviderConfig[];
+}
+
+export interface FocusAgentUpdateAdminSkillConfigEntry {
+  skill_id: string;
+  enabled: boolean;
+}
+
+export interface FocusAgentUpdateAdminSkillConfigRequest {
+  reason?: string | null;
+  enabled?: boolean | null;
+  skills?: FocusAgentUpdateAdminSkillConfigEntry[];
+  disabled_skill_ids?: string[];
+  skill_directories?: string[];
+  install_directory?: string | null;
+  sources_enabled?: string[];
+  source_locations?: string[];
+  trusted_sources?: string[];
+  semantic_match_enabled?: boolean | null;
+  semantic_match_threshold?: number | null;
+  refresh?: boolean;
 }
 
 export interface FocusAgentUpdateAdminPolicyConfigRequest {

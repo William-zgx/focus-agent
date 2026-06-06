@@ -202,6 +202,8 @@ export function ToolConfigPanel({
 export function PolicyConfigPanel({
 	disabled,
 	draft,
+	eyebrow,
+	help,
 	isChineseUi,
 	items,
 	onChange,
@@ -210,9 +212,12 @@ export function PolicyConfigPanel({
 	onValueChange,
 	pending,
 	source,
+	title,
 }: {
 	disabled: boolean;
 	draft: PolicyDraft;
+	eyebrow?: string;
+	help?: string;
 	isChineseUi: boolean;
 	items: FocusAgentAdminConfigValue[];
 	onChange: (draft: PolicyDraft) => void;
@@ -221,18 +226,20 @@ export function PolicyConfigPanel({
 	onValueChange: (key: string, value: PolicyDraftValue) => void;
 	pending: boolean;
 	source?: { exists: boolean; path: string; writable: boolean };
+	title?: string;
 }) {
 	return (
 		<form className="fa-admin-panel fa-admin-config-panel" onSubmit={onSubmit}>
 			<AdminPanelHeader
-				eyebrow={isChineseUi ? "Policies" : "Policies"}
+				eyebrow={eyebrow ?? (isChineseUi ? "Policies" : "Policies")}
 				status={pending ? (isChineseUi ? "保存中" : "saving") : null}
-				title={isChineseUi ? "策略配置" : "Policy Config"}
+				title={title ?? (isChineseUi ? "策略配置" : "Policy Config")}
 			/>
 			<p className="fa-admin-config-help">
-				{isChineseUi
-					? "布尔项用开关，枚举项用下拉，数值项直接填写。"
-					: "Use switches for booleans, selects for enums, and inputs for numbers."}
+				{help ??
+					(isChineseUi
+						? "布尔项用开关，枚举项用下拉，数值项直接填写。"
+						: "Use switches for booleans, selects for enums, and inputs for numbers.")}
 			</p>
 			<ConfigSourceMeta isChineseUi={isChineseUi} source={source} />
 			<div className="fa-admin-config-list">

@@ -1037,15 +1037,15 @@ try {
 			})
 		).items,
 	);
-	assert.equal(
-		(
-			await sdkClient.updateAgentSkillPreference("android-local-runtime", {
-				enabled: true,
-				pinned: true,
-			})
-		).skill.pinned,
-		true,
-	);
+		assert.equal(
+			(
+				await sdkClient.updateAgentSkillPreference("android-local-runtime", {
+					state: "preferred",
+					metadata: { runtime: "android-local" },
+				})
+			).state,
+			"preferred",
+		);
 	assert.equal((await sdkClient.getAgentFeedbackTrend()).notes_tasks_capture_count, 0);
 	assert.equal((await sdkClient.getAgentDelegationPolicy()).enabled, false);
 	assert.equal(
@@ -1691,15 +1691,21 @@ try {
 	);
 	assert.equal(
 		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/skills/android-local-runtime/preference",
-					{ ...jsonBody({ enabled: true, pinned: true }), method: "PATCH" },
-				),
-			)
-		).skill.pinned,
-		true,
-	);
+				await expectJson(
+					await focusFetch(
+						"http://focus-agent.local/v1/agent/skills/android-local-runtime/preference",
+						{
+							...jsonBody({
+								metadata: { runtime: "android-local" },
+								state: "preferred",
+							}),
+							method: "PATCH",
+						},
+					),
+				)
+			).state,
+			"preferred",
+		);
 	assert.equal(
 		(
 			await expectJson(

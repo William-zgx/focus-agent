@@ -3,6 +3,7 @@ import type {
 	FocusAgentCreateUserRequest,
 	FocusAgentUpdateAdminModelConfigRequest,
 	FocusAgentUpdateAdminPolicyConfigRequest,
+	FocusAgentUpdateAdminSkillConfigRequest,
 	FocusAgentUpdateAdminToolConfigRequest,
 	FocusAgentUpdateUserRequest,
 	FocusAgentUpdateUserRolesRequest,
@@ -272,6 +273,37 @@ export async function handleAdminConfig(
 			);
 		}
 		ctx.touchAdminConfig("Admin tool config updated locally.");
+		ctx.persist();
+		return jsonResponse(ctx.adminConfigResponse());
+	}
+	if (resource === "skills" && method === "PATCH") {
+		const body = parseJsonBody(init) as FocusAgentUpdateAdminSkillConfigRequest;
+		const skills = ctx.state.adminConfig.skills;
+		if (body.enabled !== undefined && body.enabled !== null) {
+			skills.enabled = body.enabled;
+		}
+		if (body.skills) {
+			const enabledBySkillId = new Map(
+				body.skills.map((skill) => [skill.skill_id, skill.enabled]),
+			);
+			skills.catalog = skills.catalog.map((skill) => {
+				const enabled = enabledBySkillId.get(skill.skill_id);
+				return enabled === undefined ? skill : { ...skill, enabled };
+			});
+			skills.disabled_skill_ids = skills.catalog
+				.filter((skill) => !skill.enabled)
+				.map((skill) => skill.skill_id);
+		}
+		if (body.disabled_skill_ids) {
+			const disabledSkillIds = new Set(body.disabled_skill_ids);
+			skills.disabled_skill_ids = [...disabledSkillIds];
+			skills.catalog = skills.catalog.map((skill) => ({
+				...skill,
+				enabled: !disabledSkillIds.has(skill.skill_id),
+			}));
+		}
+		skills.requires_restart = false;
+		ctx.touchAdminConfig("Admin skill config updated locally.");
 		ctx.persist();
 		return jsonResponse(ctx.adminConfigResponse());
 	}
