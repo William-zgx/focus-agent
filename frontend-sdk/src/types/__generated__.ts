@@ -6935,6 +6935,8 @@ export interface components {
             /** Active Skills */
             active_skills?: components["schemas"]["ThreadActiveSkillResponse"][];
             skill_selection?: components["schemas"]["ThreadMessageSkillSelectionMetadata"] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** ThreadMessageResponse */
         ThreadMessageResponse: {

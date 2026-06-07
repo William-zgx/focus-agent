@@ -470,6 +470,28 @@ def test_compare_baselines_flags_regression():
     assert any("task_success" in r for r in diff["regressions"])
 
 
+def test_compare_baselines_ignores_small_absolute_latency_jitter():
+    base = aggregate_metrics([])
+    base.p95_latency_ms = 264.7
+    cur = aggregate_metrics([])
+    cur.p95_latency_ms = 338.5
+
+    diff = compare_baselines(baseline=base, current=cur)
+
+    assert not diff["regressions"]
+
+
+def test_compare_baselines_flags_large_absolute_latency_regression():
+    base = aggregate_metrics([])
+    base.p95_latency_ms = 264.7
+    cur = aggregate_metrics([])
+    cur.p95_latency_ms = 465.0
+
+    diff = compare_baselines(baseline=base, current=cur)
+
+    assert any("p95_latency_ms grew" in r for r in diff["regressions"])
+
+
 def test_reports_write_files(tmp_path, eval_runtime_factory):
     case = EvalCase.from_dict(
         {

@@ -390,9 +390,10 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert "if (!trimmed || isStreaming || isReadOnly) return;" in composer_text
     assert "const wasEditing = Boolean(editDraft);" in composer_text
     assert "if (wasEditing) {" in composer_text
-    assert "const result = await onSendMessage(" in composer_text
+    assert "result = await onSendMessage(" in composer_text
     assert "trimmed," in composer_text
-    assert "if (result.ok) {" in composer_text
+    assert "if (!result.ok && !result.aborted) {" in composer_text
+    assert "restoreSubmittedDraft();" in composer_text
     assert "onClearEditDraft?.();" in composer_text
     assert "readOnly={isReadOnly}" in composer_text
     assert "disabled={isStreaming || isReadOnly || !message.trim()}" in composer_text

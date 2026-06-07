@@ -19,6 +19,10 @@ from typing import Any
 
 from ..schema import EvalResult
 
+_ABSOLUTE_REGRESSION_TOLERANCES = {
+    "p95_latency_ms": 100.0,
+}
+
 
 def _percentile(values: list[float], pct: float) -> float:
     if not values:
@@ -478,6 +482,8 @@ def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary)
         if name == "forbidden_tool_violation_rate" and cur > base + 1e-9:
             regressions.append(f"forbidden tool violations grew {base:.3f} -> {cur:.3f}")
         if not higher_better and base > 0 and (cur - base) / base > 0.20:
-            regressions.append(f"{name} grew >20%: {base:.3f} -> {cur:.3f}")
+            tolerance = _ABSOLUTE_REGRESSION_TOLERANCES.get(name, 0.0)
+            if cur - base > tolerance:
+                regressions.append(f"{name} grew >20%: {base:.3f} -> {cur:.3f}")
 
     return {"delta": delta, "regressions": regressions}

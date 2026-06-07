@@ -223,7 +223,8 @@ Token + cost accounting only works when the underlying chat model exposes
 - `task_success` drop > 2 percentage points
 - any new forbidden-tool violation
 - any efficiency metric (tool_calls / llm_calls / tokens / latency / cost)
-  growing > 20% vs baseline
+  growing > 20% vs baseline; `p95_latency_ms` also needs to exceed a 100ms
+  absolute delta so small deterministic suites do not fail on runner jitter
 
 Use `--fail-if-regression` in CI when comparing against a baseline. Store
 baselines as JSON (produced by `--report-json`) under `eval-baselines/` and

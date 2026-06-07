@@ -462,7 +462,8 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert '"https://duckduckgo.com/html/"' in android_smoke_text
     assert "roleDryRun.plan.decisions[0].model_id" in android_smoke_text
     assert 'skill.skill_id === "android-local-runtime"' in android_smoke_text
-    assert 'skillSelection.skill_ids.includes("local-web-tools")' in android_smoke_text
+    assert "skillSelection.skill_ids" in android_smoke_text
+    assert '["local-web-tools"]' in android_smoke_text
     assert "contextPreview.decision.budget.prompt_chars" in android_smoke_text
     assert 'contextEvidence.backend, "android-local"' in android_smoke_text
     assert "contextExplain.item.evidence_id" in android_smoke_text
