@@ -77,9 +77,8 @@ _UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
 _FOCUS_HOME_FOCUS_AGENT_PARTS = PurePosixPath("/home/focus/.focus_agent").parts
 _FOCUS_HOME_SKILLS_PARTS = PurePosixPath("/home/focus/.focus_agent/skills").parts
 _TRUSTED_SKILL_PYTHON_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
-_WORKSPACE_SKILL_ROOT_PARTS: tuple[tuple[str, ...], ...] = (
+_DEFAULT_WORKSPACE_SKILL_COLLECTION_ROOT_PARTS: tuple[tuple[str, ...], ...] = (
     (".focus_agent", "skills"),
-    ("skills",),
 )
 
 
@@ -146,9 +145,50 @@ def _trusted_skill_python_interpreter_name(command_name: str) -> bool:
     return bool(_TRUSTED_SKILL_PYTHON_RE.fullmatch(command_name))
 
 
-def _workspace_skill_root_for_path(*, path: Path, workspace_root: Path) -> Path | None:
-    for root_parts in _WORKSPACE_SKILL_ROOT_PARTS:
-        skill_collection_root = (workspace_root / Path(*root_parts)).resolve()
+def _resolve_workspace_skill_collection_root(
+    *, raw_root: str | Path, workspace_root: Path
+) -> Path | None:
+    root_text = os.fspath(raw_root).strip()
+    if not root_text:
+        return None
+    candidate = Path(root_text).expanduser()
+    resolved = (
+        candidate.resolve() if candidate.is_absolute() else (workspace_root / candidate).resolve()
+    )
+    try:
+        resolved.relative_to(workspace_root)
+    except ValueError:
+        return None
+    return resolved
+
+
+def _trusted_workspace_skill_collection_roots(
+    *, workspace_root: Path, configured_roots: Iterable[str | Path]
+) -> tuple[Path, ...]:
+    roots: list[Path] = []
+
+    def append_root(root: Path | None) -> None:
+        if root is not None and root not in roots:
+            roots.append(root)
+
+    for root_parts in _DEFAULT_WORKSPACE_SKILL_COLLECTION_ROOT_PARTS:
+        append_root((workspace_root / Path(*root_parts)).resolve())
+    for configured_root in configured_roots:
+        append_root(
+            _resolve_workspace_skill_collection_root(
+                raw_root=configured_root, workspace_root=workspace_root
+            )
+        )
+    return tuple(roots)
+
+
+def _workspace_skill_root_for_path(
+    *,
+    path: Path,
+    workspace_root: Path,
+    skill_collection_roots: Iterable[Path],
+) -> Path | None:
+    for skill_collection_root in skill_collection_roots:
         try:
             skill_collection_root.relative_to(workspace_root)
             relative = path.relative_to(skill_collection_root)
@@ -302,7 +342,13 @@ def build_workspace_tools(
     workspace_root: Path,
     tool_catalog: Any,
     emit_tool_event: Callable[..., None],
+    trusted_skill_collection_roots: Iterable[str | Path] = (),
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    trusted_skill_collection_root_paths = _trusted_workspace_skill_collection_roots(
+        workspace_root=workspace_root,
+        configured_roots=trusted_skill_collection_roots,
+    )
+
     def _trusted_skill_script_command_allowed(
         command: list[str],
         *,
@@ -315,7 +361,11 @@ def build_workspace_tools(
         script_arg = command[1].strip()
         if not script_arg or script_arg.startswith("-"):
             return False
-        skill_root = _workspace_skill_root_for_path(path=working_dir, workspace_root=workspace_root)
+        skill_root = _workspace_skill_root_for_path(
+            path=working_dir,
+            workspace_root=workspace_root,
+            skill_collection_roots=trusted_skill_collection_root_paths,
+        )
         if skill_root is None:
             return False
         script_path = (

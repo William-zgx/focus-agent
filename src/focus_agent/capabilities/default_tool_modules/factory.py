@@ -90,6 +90,10 @@ def get_default_tools(
             workspace_root=workspace_root,
             tool_catalog=tool_catalog,
             emit_tool_event=_emit_tool_event,
+            trusted_skill_collection_roots=(
+                *settings.skill_directories,
+                settings.skill_install_directory,
+            ),
         )
     )
     _merge_tool_group(

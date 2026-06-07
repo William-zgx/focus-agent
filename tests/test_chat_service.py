@@ -2681,6 +2681,72 @@ def test_serialize_message_exposes_focus_agent_metadata():
     assert payload["metadata"]["active_skills"][0]["skill_id"] == "plan"
 
 
+def test_serialize_ai_message_exposes_focus_agent_turn_metadata_from_response_metadata():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+    skill_execution_plan = {
+        "active_skill_ids": ["plan"],
+        "required_tools": ["read_file"],
+    }
+    execution_contract = {
+        "required_tools": ["read_file"],
+        "deliverable": "skill plan",
+    }
+    answer_verification = {
+        "checks": ["required tools rendered"],
+    }
+
+    payload = service._serialize_message(
+        AIMessage(
+            content="done",
+            response_metadata={
+                "focus_agent": {
+                    "skill_execution_plan": skill_execution_plan,
+                    "execution_contract": execution_contract,
+                    "answer_verification": answer_verification,
+                }
+            },
+        )
+    )
+
+    assert "turn_metadata" in payload
+    assert payload["turn_metadata"]["skill_execution_plan"] == skill_execution_plan
+    assert payload["turn_metadata"]["execution_contract"] == execution_contract
+    assert payload["turn_metadata"]["answer_verification"] == answer_verification
+
+
+def test_serialize_dict_ai_message_exposes_focus_agent_turn_metadata_from_response_metadata():
+    service = ChatService(
+        ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())
+    )
+    skill_execution_plan = {
+        "active_skill_ids": ["plan"],
+        "required_tools": ["read_file"],
+    }
+    execution_contract = {
+        "required_tools": ["read_file"],
+        "deliverable": "skill plan",
+    }
+
+    payload = service._serialize_message(
+        {
+            "type": "ai",
+            "content": "done",
+            "response_metadata": {
+                "focus_agent": {
+                    "skill_execution_plan": skill_execution_plan,
+                    "execution_contract": execution_contract,
+                }
+            },
+        }
+    )
+
+    assert "turn_metadata" in payload
+    assert payload["turn_metadata"]["skill_execution_plan"] == skill_execution_plan
+    assert payload["turn_metadata"]["execution_contract"] == execution_contract
+
+
 def test_latest_final_ai_text_hides_english_process_narration():
     service = ChatService(
         ChatServicePorts(settings=Settings(), graph=FakeGraph(), repo=SimpleNamespace())

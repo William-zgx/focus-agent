@@ -1868,6 +1868,31 @@ def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_pat
         )
 
 
+def test_run_workspace_command_rejects_unconfigured_workspace_skills_root_scripts_by_default(
+    tmp_path,
+):
+    project = tmp_path / "project"
+    skill_dir = project / "skills" / "not-installed"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    marker = project / "pwned"
+    (scripts_dir / "run.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "scripts/run.py"],
+                "cwd": "skills/not-installed",
+            }
+        )
+
+    assert not marker.exists()
+
+
 def test_run_workspace_command_allows_trusted_workspace_skills_root_scripts(tmp_path):
     project = tmp_path / "project"
     skill_dir = project / "skills" / "stocks"

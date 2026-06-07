@@ -161,6 +161,12 @@ def _turn_metadata_from_mapping(value: Any) -> dict[str, Any]:
     return metadata
 
 
+def _turn_metadata_from_response_metadata(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return _turn_metadata_from_mapping(value.get("focus_agent"))
+
+
 def _message_turn_metadata(message: Any) -> dict[str, Any]:
     if isinstance(message, dict):
         direct = _turn_metadata_from_mapping(message.get("turn_metadata"))
@@ -174,6 +180,9 @@ def _message_turn_metadata(message: Any) -> dict[str, Any]:
             direct = _turn_metadata_from_mapping(additional_kwargs.get("turn_metadata"))
             if direct:
                 return direct
+        response_metadata = _turn_metadata_from_response_metadata(message.get("response_metadata"))
+        if response_metadata:
+            return response_metadata
         return _turn_metadata_from_mapping(message.get("focus_agent"))
 
     additional_kwargs = getattr(message, "additional_kwargs", None)
@@ -184,6 +193,11 @@ def _message_turn_metadata(message: Any) -> dict[str, Any]:
         direct = _turn_metadata_from_mapping(additional_kwargs.get("turn_metadata"))
         if direct:
             return direct
+    response_metadata = _turn_metadata_from_response_metadata(
+        getattr(message, "response_metadata", None)
+    )
+    if response_metadata:
+        return response_metadata
     return {}
 
 
