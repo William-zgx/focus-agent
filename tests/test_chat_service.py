@@ -2178,6 +2178,83 @@ def test_send_message_exposes_active_skill_metadata_per_turn(tmp_path: Path):
     assert human_message["metadata"]["skill_selection"]["prompt_mode"] == "explore"
 
 
+def test_send_message_preserves_thread_active_skill_without_new_trigger(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+
+    skill_dir = tmp_path / "skills"
+    stocks_dir = skill_dir / "stocks"
+    stocks_dir.mkdir(parents=True, exist_ok=True)
+    (stocks_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: stocks",
+                "description: Fetch read-only stock market data.",
+                "aliases: [股票, 行情, A股]",
+                "recommended_tools: [run_workspace_command, web_search]",
+                "prompt_mode: execute",
+                "---",
+                "",
+                "# Stocks",
+                "",
+                "Use this skill for stock market data.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class ActiveSkillGraph:
+        def __init__(self):
+            self.values: dict[str, object] = {
+                "messages": [],
+                "active_skill_ids": ["stocks"],
+            }
+            self.last_payload = None
+            self.last_context = None
+
+        def invoke(self, payload, *, config, context, version):
+            del config, version
+            self.last_payload = payload
+            self.last_context = context
+            self.values = {
+                **self.values,
+                "messages": [*list(payload["messages"]), AIMessage(content="done")],
+                "active_skill_ids": list(payload.get("active_skill_ids", [])),
+            }
+            return {}
+
+        def get_state(self, _config):
+            return SimpleNamespace(values=self.values, interrupts=[])
+
+        def update_state(self, _config, values, as_node=None):
+            del _config, as_node
+            self.values = {**self.values, **dict(values)}
+
+    graph = ActiveSkillGraph()
+    runtime = SimpleNamespace(
+        settings=Settings(),
+        graph=graph,
+        repo=repo,
+        skill_registry=SkillRegistry([skill_dir], semantic_match_enabled=False),
+    )
+    chat = ChatService(runtime)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="华钰矿业近一周表现",
+    )
+
+    assert graph.last_payload["active_skill_ids"] == ["stocks"]
+    assert graph.last_context.skill_hints == ("stocks",)
+    assert payload["active_skill_ids"] == ["stocks"]
+    assert payload["active_skills"][0]["skill_id"] == "stocks"
+    human_message = payload["messages"][0]
+    assert human_message["metadata"]["active_skill_ids"] == ["stocks"]
+    assert human_message["metadata"]["skill_selection"]["selection_source"] == "none"
+
+
 def test_send_message_semantically_activates_build_fix_for_real_failure_request(tmp_path: Path):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
     repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")

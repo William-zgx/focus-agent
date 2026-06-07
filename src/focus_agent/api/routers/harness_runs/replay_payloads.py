@@ -27,9 +27,19 @@ def _prepare_run_payload(
     context, branch_meta, initial_values = chat._preflight_thread_access(
         thread_id=thread_id,
         user_id=user_id,
-        explicit_skill_hints=selection.skill_ids,
         require_writable=True,
     )
+    active_skill_ids = _merged_skill_ids(
+        selection.skill_ids,
+        initial_values.get("active_skill_ids", []),
+    )
+    if active_skill_ids:
+        context, branch_meta, initial_values = chat._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            explicit_skill_hints=active_skill_ids,
+            require_writable=True,
+        )
     selected_model = payload.model
     if selected_model is None:
         selected_model = getattr(getattr(chat, "runtime", None), "settings", None)
@@ -43,7 +53,7 @@ def _prepare_run_payload(
     graph_payload: dict[str, Any] = {
         "messages": input_messages,
         "task_brief": selection.stripped_message or message,
-        "active_skill_ids": list(selection.skill_ids),
+        "active_skill_ids": list(active_skill_ids),
         "selected_model": selected_model,
         "selected_thinking_mode": chat._effective_thinking_mode(
             model_id=selected_model,
@@ -57,6 +67,20 @@ def _prepare_run_payload(
     if selection.prompt_mode is not None:
         graph_payload["prompt_mode"] = selection.prompt_mode
     return graph_payload, context, branch_meta, initial_values
+
+
+def _merged_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
+    skill_ids: list[str] = []
+    seen: set[str] = set()
+    for group in skill_id_groups:
+        raw_items = [group] if isinstance(group, str) else list(group or [])
+        for raw_item in raw_items:
+            skill_id = str(raw_item or "").strip()
+            if not skill_id or skill_id in seen:
+                continue
+            seen.add(skill_id)
+            skill_ids.append(skill_id)
+    return tuple(skill_ids)
 
 
 def _run_input_messages_for_state(

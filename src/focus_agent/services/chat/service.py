@@ -377,14 +377,34 @@ class ChatService(
         return active_skills
 
     @staticmethod
+    def _merged_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
+        skill_ids: list[str] = []
+        seen: set[str] = set()
+        for group in skill_id_groups:
+            raw_items = [group] if isinstance(group, str) else list(group or [])
+            for raw_item in raw_items:
+                skill_id = str(raw_item or "").strip()
+                if not skill_id or skill_id in seen:
+                    continue
+                seen.add(skill_id)
+                skill_ids.append(skill_id)
+        return tuple(skill_ids)
+
+    @staticmethod
     def _skill_selection_metadata(
         *,
         selection: SkillSelection,
         active_skills: list[dict[str, Any]],
+        active_skill_ids: tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         prompt_mode = selection.prompt_mode
+        metadata_skill_ids = (
+            list(active_skill_ids)
+            if active_skill_ids is not None
+            else list(selection.skill_ids)
+        )
         return {
-            "active_skill_ids": list(selection.skill_ids),
+            "active_skill_ids": metadata_skill_ids,
             "active_skills": active_skills,
             "skill_selection": {
                 "selection_source": selection.selection_source,
@@ -739,11 +759,21 @@ class ChatService(
             message=message,
             explicit_skill_hints=skill_hints,
         )
+        _, _, current_values = self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
+            require_writable=True,
+        )
+        active_skill_ids = self._merged_skill_ids(
+            selection.skill_ids,
+            current_values.get("active_skill_ids", []),
+        )
         selected_model = model or self.runtime.settings.model
-        active_skills = self._active_skill_metadata(selection.skill_ids)
+        active_skills = self._active_skill_metadata(active_skill_ids)
         message_metadata = self._skill_selection_metadata(
             selection=selection,
             active_skills=active_skills,
+            active_skill_ids=active_skill_ids,
         )
         payload: dict[str, Any] = {
             "messages": [
@@ -753,7 +783,7 @@ class ChatService(
                 )
             ],
             "task_brief": selection.stripped_message or message,
-            "active_skill_ids": list(selection.skill_ids),
+            "active_skill_ids": list(active_skill_ids),
             "selected_model": selected_model,
             "selected_thinking_mode": self._effective_thinking_mode(
                 model_id=selected_model,
@@ -768,7 +798,7 @@ class ChatService(
             payload=payload,
             run_name="focus_agent_turn",
             request_id=request_id,
-            context_skill_hints=selection.skill_ids,
+            context_skill_hints=active_skill_ids,
             kind="chat.turn",
         )
 

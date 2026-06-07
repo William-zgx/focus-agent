@@ -116,6 +116,55 @@ def test_prepare_run_payload_keeps_explicit_message_when_input_has_messages():
     assert initial_values == {"messages": []}
 
 
+def test_prepare_run_payload_preserves_thread_active_skill_without_new_trigger():
+    class _Selection:
+        stripped_message = "601020.SS 近一周表现"
+        skill_ids = ()
+        prompt_mode = None
+
+    class _Chat:
+        runtime = SimpleNamespace(settings=SimpleNamespace(model="model-1"))
+
+        def __init__(self):
+            self.preflight_calls = []
+
+        def _select_skills_for_message(self, **kwargs):
+            self.selection_kwargs = kwargs
+            return _Selection()
+
+        def _preflight_thread_access(self, **kwargs):
+            self.preflight_calls.append(kwargs)
+            return (
+                SimpleNamespace(
+                    root_thread_id="root-1",
+                    skill_hints=kwargs.get("explicit_skill_hints"),
+                ),
+                None,
+                {"messages": [], "active_skill_ids": ["stocks"]},
+            )
+
+        def _effective_thinking_mode(self, **kwargs):
+            del kwargs
+            return "auto"
+
+    chat = _Chat()
+    payload = harness_runs.HarnessRunRequest(message="601020.SS 近一周表现")
+
+    graph_payload, context, branch_meta, initial_values = harness_runs._prepare_run_payload(
+        thread_id="thread-1",
+        user_id="user-1",
+        payload=payload,
+        chat=chat,
+    )
+
+    assert graph_payload["active_skill_ids"] == ["stocks"]
+    assert context.skill_hints == ("stocks",)
+    assert branch_meta is None
+    assert initial_values["active_skill_ids"] == ["stocks"]
+    assert chat.preflight_calls[0].get("explicit_skill_hints") is None
+    assert chat.preflight_calls[1]["explicit_skill_hints"] == ("stocks",)
+
+
 def test_prepare_run_payload_skips_duplicate_branch_handoff_auto_run_input():
     class _Selection:
         stripped_message = "carried question"
