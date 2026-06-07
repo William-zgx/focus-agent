@@ -16,7 +16,11 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
-import { ANDROID_LOCAL_SKILLS } from "./skills";
+import {
+	ANDROID_LOCAL_SKILLS,
+	localSkillMatchedTerms,
+	localSkillScore,
+} from "./skills";
 import { defaultAdminConfig } from "./state";
 
 export function localAgentEmptyList(_ctx: LocalFocusAgentRuntime, limit = 50) {
@@ -117,14 +121,15 @@ export function localRoleDecision(
 export function localSkillCatalogItems(_ctx: LocalFocusAgentRuntime) {
 	return ANDROID_LOCAL_SKILLS.map((skill) => ({
 		skill_id: skill.skill_id,
-			name: skill.name,
-			description: skill.description,
-			triggers: skill.triggers,
-			aliases: skill.aliases ?? [],
-			localized_triggers: skill.localized_triggers ?? [],
-			domains: skill.domains ?? [],
-			intents: skill.intents ?? [],
-			when_to_use: skill.when_to_use,
+		name: skill.name,
+		description: skill.description,
+		triggers: skill.triggers,
+		aliases: skill.aliases ?? [],
+		localized_triggers: skill.localized_triggers ?? [],
+		domains: skill.domains ?? [],
+		intents: skill.intents ?? [],
+		when_to_use: skill.when_to_use,
+		primary_tools: skill.primary_tools ?? [],
 		recommended_tools: skill.recommended_tools,
 		prompt_mode: skill.prompt_mode,
 		source_id: skill.source_id,
@@ -151,8 +156,12 @@ export function localSelectedSkills(
 		if (hinted.has(String(skill.skill_id)) || hinted.has(String(skill.name))) {
 			return true;
 		}
-		return stringArray(skill.triggers).some((trigger) =>
-			normalized.includes(trigger.toLowerCase()),
+		return (
+			localSkillMatchedTerms(skill, message).length > 0 ||
+			stringArray(skill.triggers).some((trigger) =>
+				normalized.includes(trigger.toLowerCase()),
+			) ||
+			localSkillScore(skill, message) > 0
 		);
 	});
 	return selected.length ? selected : ctx.localSkillCatalogItems().slice(0, 1);
@@ -547,7 +556,12 @@ export function handleAgent(
 			stringArray(body.skill_hints),
 		);
 		const matchedTriggers = [
-			...new Set(selected.flatMap((skill) => stringArray(skill.triggers))),
+			...new Set(
+				selected.flatMap((skill) => {
+					const matched = localSkillMatchedTerms(skill, body.message ?? "");
+					return matched.length ? matched : stringArray(skill.triggers);
+				}),
+			),
 		];
 		return jsonResponse({
 			skill_ids: selected.map((skill) => String(skill.skill_id)),
@@ -555,13 +569,16 @@ export function handleAgent(
 			prompt_mode: selected[0]?.prompt_mode ?? null,
 			selection_source: "android-local",
 			matched_triggers: matchedTriggers,
-			semantic_candidates: selected.map((skill, index) => ({
-				skill_id: skill.skill_id,
-				score: index === 0 ? 0.82 : 0.65,
-				matched_terms: stringArray(skill.triggers),
-				auto_activate: index === 0,
-				rationale: "Matched by Android local skill triggers.",
-			})),
+			semantic_candidates: selected.map((skill, index) => {
+				const matched = localSkillMatchedTerms(skill, body.message ?? "");
+				return {
+					skill_id: skill.skill_id,
+					score: index === 0 ? 0.82 : 0.65,
+					matched_terms: matched.length ? matched : stringArray(skill.triggers),
+					auto_activate: index === 0,
+					rationale: "Matched by Android local skill metadata.",
+				};
+			}),
 			confidence: selected.length ? 0.82 : 0.5,
 			rationale: "Android local runtime selected built-in local skills.",
 			semantic_enabled: false,

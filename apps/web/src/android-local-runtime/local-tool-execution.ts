@@ -1,9 +1,17 @@
-import type { ThreadStateResponse } from "@focus-agent/web-sdk";
+import type {
+	ThreadActiveSkillResponse,
+	ThreadStateResponse,
+} from "@focus-agent/web-sdk";
 import { LOCAL_USER_ID } from "./constants";
 import { nowIso, nullableString, stringArray, stringValue } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
 import { slugifyArtifactTitle, textWords } from "./local-text";
-import { ANDROID_LOCAL_SKILLS } from "./skills";
+import {
+	ANDROID_LOCAL_SKILLS,
+	localSkillMatchedTerms,
+	localSkillScore,
+	localSkillSearchTerms,
+} from "./skills";
 import { defaultGitCommits } from "./state";
 import type {
 	LocalArtifact,
@@ -39,11 +47,65 @@ export function localSkillPayload(
 		domains: skill.domains ?? [],
 		intents: skill.intents ?? [],
 		when_to_use: skill.when_to_use,
+		primary_tools: skill.primary_tools ?? [],
 		recommended_tools: skill.recommended_tools,
 		prompt_mode: skill.prompt_mode,
 		source_id: skill.source_id,
 		installed: true,
 	};
+}
+
+export function syncLocalThreadActiveSkills(
+	_ctx: LocalFocusAgentRuntime,
+	thread: ThreadStateResponse,
+): void {
+	const seen = new Set<string>();
+	thread.active_skill_ids = stringArray(thread.active_skill_ids).filter(
+		(skillId) => {
+			if (seen.has(skillId)) return false;
+			seen.add(skillId);
+			return true;
+		},
+	);
+	thread.active_skills = thread.active_skill_ids.map((skillId) => {
+		const skill = ANDROID_LOCAL_SKILLS.find(
+			(item) => item.skill_id === skillId || item.name === skillId,
+		);
+		if (!skill) {
+			return {
+				skill_id: skillId,
+				name: skillId,
+				description: "",
+				enabled: true,
+				triggers: [],
+				aliases: [],
+				primary_tools: [],
+				recommended_tools: [],
+				prompt_mode: null,
+				source_id: "android-local",
+				source_type: "builtin",
+				version: null,
+				trust_level: "trusted",
+				install_state: "installed",
+			} satisfies ThreadActiveSkillResponse;
+		}
+		return {
+			skill_id: skill.skill_id,
+			name: skill.name,
+			description: skill.description,
+			enabled: true,
+			triggers: skill.triggers,
+			aliases: skill.aliases ?? [],
+			primary_tools: skill.primary_tools ?? [],
+			recommended_tools: skill.recommended_tools,
+			prompt_mode: skill.prompt_mode,
+			source_id: skill.source_id,
+			source_type: "builtin",
+			version: null,
+			trust_level: "trusted",
+			install_state: "installed",
+		} satisfies ThreadActiveSkillResponse;
+	});
 }
 
 function resolveLocalSkill(requested: string): LocalSkill | undefined {
@@ -54,7 +116,10 @@ function resolveLocalSkill(requested: string): LocalSkill | undefined {
 			item.skill_id === normalized ||
 			item.name.toLowerCase() === normalized ||
 			normalized.includes(item.skill_id) ||
-			normalized.includes(item.name.toLowerCase()),
+			normalized.includes(item.name.toLowerCase()) ||
+			localSkillSearchTerms(item).some((term) =>
+				normalized.includes(term.toLowerCase()),
+			),
 	);
 }
 
@@ -258,21 +323,16 @@ export function executeLocalAppTool(
 		};
 		message = "skill_sources completed.";
 	} else if (name === "skills_search") {
-		const queryWords = textWords(stringValue(args.query));
+		const query = stringValue(args.query);
+		const queryWords = textWords(query);
 		const limit = Number(args.limit ?? 5);
 		const results = ANDROID_LOCAL_SKILLS.map((skill) => {
-			const haystack = [
-				skill.name,
-				skill.description,
-				...skill.triggers,
-				...skill.when_to_use,
-			].join(" ");
-			const haystackWords = new Set(textWords(haystack));
-			const score = queryWords.length
-				? queryWords.filter((word) => haystackWords.has(word)).length /
-					queryWords.length
-				: 1;
-			return { ...ctx.localSkillPayload(skill), score };
+			const matchedTerms = localSkillMatchedTerms(skill, query);
+			return {
+				...ctx.localSkillPayload(skill),
+				score: localSkillScore(skill, query),
+				matched_terms: matchedTerms,
+			};
 		})
 			.filter((item) => item.score > 0 || queryWords.length === 0)
 			.sort((left, right) => right.score - left.score)
@@ -300,6 +360,7 @@ export function executeLocalAppTool(
 		if (skill && !thread.active_skill_ids.includes(skill.skill_id)) {
 			thread.active_skill_ids = [...thread.active_skill_ids, skill.skill_id];
 		}
+		if (skill) syncLocalThreadActiveSkills(ctx, thread);
 		output = skill
 			? {
 					success: true,

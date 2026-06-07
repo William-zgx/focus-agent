@@ -1015,11 +1015,11 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     chinese_skill_use_plans = [
         build_tool_intent_plan(prompt) for prompt in chinese_skill_use_prompts
     ]
-    active_stock_skill_execution = build_tool_intent_plan(
+    active_stock_skill_request = build_tool_intent_plan(
         "请使用本周股票相关的 Skill 帮我分析走势",
         active_skill_ids=["stocks"],
     )
-    active_stock_skill_prefix_task = build_tool_intent_plan(
+    active_stock_temporal_lookup = build_tool_intent_plan(
         "看一下本周南网能源的活动情况",
         active_skill_ids=["stocks"],
     )
@@ -1076,13 +1076,14 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
         assert "skill" not in skill_lookup.denied_toolsets
         assert "skill_discovery_signal" in skill_lookup.reason_codes
         assert skill_lookup.temporal_anchor_required is False
-    for skill_execution in (active_stock_skill_execution, active_stock_skill_prefix_task):
-        assert skill_execution.policy == "execution"
-        assert skill_execution.source == "skill:active_execution"
-        assert skill_execution.preferred_first_tool is None
-        assert skill_execution.preferred_first_args == {}
-        assert skill_execution.allowed_toolsets == []
-        assert "active_skill_execution" in skill_execution.reason_codes
+    assert active_stock_skill_request.policy == "workspace_lookup"
+    assert active_stock_skill_request.preferred_first_tool == "skills_search"
+    assert active_stock_skill_request.allowed_toolsets == ["skill"]
+    assert "active_skill_execution" not in active_stock_skill_request.reason_codes
+    assert active_stock_temporal_lookup.policy == "live_web_research"
+    assert active_stock_temporal_lookup.preferred_first_tool == "web_search"
+    assert active_stock_temporal_lookup.allowed_toolsets == ["web"]
+    assert "active_skill_execution" not in active_stock_temporal_lookup.reason_codes
     assert code_lookup.policy == "workspace_lookup"
     assert code_lookup.preferred_first_tool == "search_code"
     assert code_lookup.allowed_toolsets == ["workspace"]
@@ -2727,6 +2728,87 @@ def test_graph_adds_active_skill_recommended_command_tools_for_execution(
     assert result.value["plan_meta"]["execution_contract"]["required_tools"] == [
         "run_workspace_command"
     ]
+
+
+def test_graph_adds_active_skill_primary_tools_for_execution_contract(
+    tmp_path, monkeypatch
+):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: stocks",
+                "description: Fetch stock market data.",
+                "aliases: 股票, A股",
+                "intents: 行情查询, 历史走势",
+                "primary_tools: stock_quote",
+                "prompt_mode: execute",
+                "---",
+                "# Stocks",
+                "Call stock_quote before answering market-data requests.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    captured = {"bound_tools": []}
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="stock data checked.")
+
+    class FakeModel:
+        def bind_tools(self, bound_tools):
+            captured["bound_tools"].append([tool.name for tool in bound_tools])
+            return FakeRunnable()
+
+        def with_config(self, _config):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+
+    @tool
+    def stock_quote(symbol: str) -> str:
+        """Fetch a stock quote."""
+        return json.dumps({"symbol": symbol, "price": "10.00"})
+
+    stock_quote.metadata = {
+        "allowed_roles": ("executor",),
+        "intent_policies": ("execution",),
+    }
+
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        skill_registry=SkillRegistry([tmp_path / ".focus_agent" / "skills"]),
+        tool_registry=ToolRegistry(tools=(stock_quote,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="南网能源股票近一周行情如何？")],
+            "active_skill_ids": ["stocks"],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="route-skill-primary-tools"),
+        version="v2",
+    )
+
+    assert captured["bound_tools"]
+    assert any("stock_quote" in bound for bound in captured["bound_tools"])
+    intent_plan = result.value["tool_intent_plan"]
+    skill_plan = intent_plan["skill_execution_plan"]
+    assert intent_plan["policy"] == "execution"
+    assert intent_plan["preferred_first_tool"] == "stock_quote"
+    assert skill_plan["primary_tools"] == ["stock_quote"]
+    assert result.value["plan_meta"]["execution_contract"]["policy"] == "skill_execution"
+    assert result.value["plan_meta"]["execution_contract"]["required_tools"] == ["stock_quote"]
 
 
 def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, monkeypatch):

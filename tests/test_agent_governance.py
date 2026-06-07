@@ -408,6 +408,7 @@ localized_triggers: [股票:, 股票：]
 domains: [finance, market-data]
 intents: [quote lookup, 行情查询]
 when_to_use: [Use when the user asks for market data]
+primary_tools: [web_fetch]
 recommended_tools: [web_search]
 ---
 # Stocks
@@ -427,6 +428,7 @@ Use read-only market data.
     assert stocks["localized_triggers"] == ["股票:", "股票："]
     assert stocks["domains"] == ["finance", "market-data"]
     assert stocks["intents"] == ["quote lookup", "行情查询"]
+    assert stocks["primary_tools"] == ["web_fetch"]
 
 
 def test_context_explain_persists_evidence_for_listing() -> None:

@@ -45,6 +45,7 @@ localized_triggers: [计划:, 计划：]
 domains: [planning, 项目管理]
 intents: [implementation planning, 方案设计]
 when_to_use: [The user wants a plan first]
+primary_tools: [search_code]
 recommended_tools: [read_file]
 ---
 # Plan
@@ -163,6 +164,7 @@ def test_admin_config_requires_admin_and_masks_sensitive_values(
     assert skill_catalog["plan"]["localized_triggers"] == ["计划:", "计划："]
     assert skill_catalog["plan"]["domains"] == ["planning", "项目管理"]
     assert skill_catalog["plan"]["intents"] == ["implementation planning", "方案设计"]
+    assert skill_catalog["plan"]["primary_tools"] == ["search_code"]
     assert skill_catalog["plan"]["recommended_tools"] == ["read_file"]
     system_by_key = {item["key"]: item for item in body["system"]["items"]}
     assert system_by_key["database_uri"]["sensitive"] is True

@@ -174,6 +174,7 @@ export interface FocusAgentAdminSkillConfigEntry {
   domains: string[];
   intents: string[];
   when_to_use: string[];
+  primary_tools: string[];
   recommended_tools: string[];
   prompt_mode?: string | null;
   path: string;

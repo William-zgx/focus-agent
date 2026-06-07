@@ -497,6 +497,7 @@ def _skill_response(skill: Any, *, registry: Any) -> AdminConfigSkillResponse:
         domains=list(getattr(skill, "domains", ()) or ()),
         intents=list(getattr(skill, "intents", ()) or ()),
         when_to_use=list(getattr(skill, "when_to_use", ()) or ()),
+        primary_tools=list(getattr(skill, "primary_tools", ()) or ()),
         recommended_tools=list(getattr(skill, "recommended_tools", ()) or ()),
         prompt_mode=getattr(prompt_mode, "value", None),
         path=str(getattr(skill, "path", "")),

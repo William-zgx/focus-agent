@@ -17,6 +17,7 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
+import { syncLocalThreadActiveSkills } from "./local-tool-execution";
 import { threadBranchRecord } from "./state";
 
 export function handleThreads(
@@ -31,6 +32,7 @@ export function handleThreads(
 	const thread = ctx.state.threads[threadId];
 	if (!thread) return errorResponse(404, "Thread not found.");
 	if (!resource && method === "GET") {
+		syncLocalThreadActiveSkills(ctx, thread);
 		return jsonResponse(thread);
 	}
 	if (resource === "resolution" && method === "GET") {
@@ -62,6 +64,7 @@ export function handleThreads(
 			.join("\n")
 			.slice(0, 1200);
 		thread.context_usage = contextUsage(thread.messages);
+		syncLocalThreadActiveSkills(ctx, thread);
 		ctx.persist();
 		return jsonResponse(thread);
 	}
@@ -125,6 +128,7 @@ export function handleThreads(
 			branch_record: record,
 			navigation: actionProposal.navigation,
 		};
+		syncLocalThreadActiveSkills(ctx, response.thread_state);
 		ctx.persist();
 		return jsonResponse(response);
 	}
@@ -140,6 +144,7 @@ export function handleThreads(
 		if (!actionProposal) return errorResponse(404, "Branch action not found.");
 		actionProposal.status = "dismissed";
 		actionProposal.dismissed_at = nowIso();
+		syncLocalThreadActiveSkills(ctx, thread);
 		ctx.persist();
 		return jsonResponse(thread);
 	}

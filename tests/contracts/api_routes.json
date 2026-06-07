@@ -6704,6 +6704,12 @@
         "path": {
           "type": "string"
         },
+        "primary_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "prompt_mode": {
           "anyOf": [
             {
@@ -8946,6 +8952,12 @@
               "type": "null"
             }
           ]
+        },
+        "primary_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "prompt_mode": {
           "anyOf": [
@@ -16187,6 +16199,12 @@
         },
         "name": {
           "type": "string"
+        },
+        "primary_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "prompt_mode": {
           "anyOf": [

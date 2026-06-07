@@ -16,6 +16,7 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
+import { syncLocalThreadActiveSkills } from "./local-tool-execution";
 import {
 	deniesExecutedWebAccess,
 	localReply,
@@ -628,6 +629,7 @@ export function streamRun(
 					event: "message.completed",
 					data: { ...baseData, content: reply, source },
 				});
+				syncLocalThreadActiveSkills(ctx, thread);
 				send({
 					id: `${runId}:completed`,
 					event: "run.completed",

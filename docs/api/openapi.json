@@ -478,6 +478,13 @@
             "title": "Path",
             "type": "string"
           },
+          "primary_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Primary Tools",
+            "type": "array"
+          },
           "prompt_mode": {
             "anyOf": [
               {
@@ -3069,6 +3076,13 @@
                 "type": "null"
               }
             ]
+          },
+          "primary_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Primary Tools",
+            "type": "array"
           },
           "prompt_mode": {
             "anyOf": [
@@ -11305,6 +11319,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "primary_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Primary Tools",
+            "type": "array"
           },
           "prompt_mode": {
             "anyOf": [

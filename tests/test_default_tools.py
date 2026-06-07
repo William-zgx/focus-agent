@@ -1868,6 +1868,83 @@ def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_pat
         )
 
 
+def test_run_workspace_command_allows_trusted_workspace_skills_root_scripts(tmp_path):
+    project = tmp_path / "project"
+    skill_dir = project / "skills" / "stocks"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "stocks_client.py").write_text(
+        "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}, ensure_ascii=False))\n",
+        encoding="utf-8",
+    )
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            skill_directories=("skills",),
+            skill_install_directory="skills",
+        )
+    )
+
+    payload = json.loads(
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "scripts/stocks_client.py", "search", "南网能源"],
+                "cwd": "skills/stocks",
+            }
+        )
+    )
+
+    assert payload["exit_code"] == 0
+    assert payload["cwd"] == "skills/stocks"
+    assert '"南网能源"' in payload["stdout"]
+
+
+def test_run_workspace_command_rejects_skill_script_interpreter_paths(tmp_path):
+    project = tmp_path / "project"
+    skill_dir = project / ".focus_agent" / "skills" / "stocks"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "stocks_client.py").write_text("print('real script')\n", encoding="utf-8")
+    fake_python = skill_dir / "python3"
+    fake_python.write_text("#!/bin/sh\necho fake interpreter\n", encoding="utf-8")
+    fake_python.chmod(0o755)
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": [".focus_agent/skills/stocks/python3", "scripts/stocks_client.py"],
+                "cwd": ".focus_agent/skills/stocks",
+            }
+        )
+
+
+def test_run_workspace_command_rejects_workspace_skill_root_escape(tmp_path):
+    project = tmp_path / "project"
+    skill_dir = project / "skills" / "stocks"
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "stocks_client.py").write_text("print('ok')\n", encoding="utf-8")
+    outside_skill = project / "outside-skill"
+    outside_skill.mkdir()
+    (skill_dir / "escape").symlink_to(outside_skill, target_is_directory=True)
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            skill_directories=("skills",),
+            skill_install_directory="skills",
+        )
+    )
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tools["run_workspace_command"].invoke(
+            {
+                "command": ["python3", "scripts/stocks_client.py"],
+                "cwd": "skills/stocks/escape",
+            }
+        )
+
+
 def test_run_workspace_command_rejects_unsafe_virtual_skill_cwd(tmp_path):
     project = tmp_path / "project"
     skill_dir = project / ".focus_agent" / "skills" / "stocks"

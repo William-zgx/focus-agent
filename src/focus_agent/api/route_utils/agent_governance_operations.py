@@ -353,6 +353,7 @@ def _agent_skill_catalog_response(
                 domains=_normalize_string_list(skill.get("domains")),
                 intents=_normalize_string_list(skill.get("intents")),
                 when_to_use=_normalize_string_list(skill.get("when_to_use")),
+                primary_tools=_normalize_string_list(skill.get("primary_tools")),
                 recommended_tools=_normalize_string_list(skill.get("recommended_tools")),
                 prompt_mode=skill.get("prompt_mode"),
                 path=skill.get("path"),

@@ -91,6 +91,98 @@ def test_skill_execution_contract_requires_primary_tool_result():
     )["status"] == "verified"
 
 
+def test_skill_execution_contract_ignores_error_tool_result():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_workspace_command",
+                    "args": {"cwd": ".focus_agent/skills/stocks"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "status": "error",
+                    "tool": "run_workspace_command",
+                    "error": "denied by approval response",
+                }
+            ),
+            tool_call_id="skill-1",
+            status="error",
+        ),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command"],
+        skill_execution_plan={
+            "selected_skill_ids": ["stocks"],
+            "primary_tools": ["run_workspace_command"],
+            "policy_override": "execution",
+        },
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command"],
+    )
+
+    assert tool_result_names(messages) == []
+    assert evaluated["status"] == "missing_required_tools"
+
+
+def test_skill_execution_contract_ignores_failed_workspace_command_payload():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_workspace_command",
+                    "args": {"cwd": ".focus_agent/skills/stocks"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "command": ["python3", "scripts/stock_client.py", "quote"],
+                    "cwd": ".focus_agent/skills/stocks",
+                    "exit_code": 2,
+                    "timed_out": False,
+                    "stdout": "",
+                    "stderr": "symbol not found",
+                }
+            ),
+            tool_call_id="skill-1",
+        ),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command"],
+        skill_execution_plan={
+            "selected_skill_ids": ["stocks"],
+            "primary_tools": ["run_workspace_command"],
+            "policy_override": "execution",
+        },
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command"],
+    )
+
+    assert tool_result_names(messages) == []
+    assert evaluated["status"] == "missing_required_tools"
+
+
 def test_answer_verifier_flags_leader_visit_contradiction():
     messages = [
         AIMessage(content="", tool_calls=[{"id": "search-1", "name": "web_search", "args": {}}]),

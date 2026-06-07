@@ -98,6 +98,7 @@ class ThreadActiveSkillResponse(BaseModel):
     enabled: bool = True
     triggers: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
+    primary_tools: list[str] = Field(default_factory=list)
     recommended_tools: list[str] = Field(default_factory=list)
     prompt_mode: str | None = None
     source_id: str = ""

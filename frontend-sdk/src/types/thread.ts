@@ -90,6 +90,7 @@ export interface ThreadActiveSkillResponse {
 	enabled: boolean;
 	triggers: string[];
 	aliases: string[];
+	primary_tools: string[];
 	recommended_tools: string[];
 	prompt_mode?: string | null;
 	source_id: string;

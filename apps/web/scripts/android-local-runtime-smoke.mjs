@@ -397,7 +397,10 @@ function assertAdminConfigContract(config) {
 		(choice, index) =>
 			assertNonEmptyString(choice, `admin config model choice ${index}`),
 	);
-	assertBoolean(models.requires_restart, "admin config models requires_restart");
+	assertBoolean(
+		models.requires_restart,
+		"admin config models requires_restart",
+	);
 	assertArray(models.providers, "admin config model providers").forEach(
 		(provider, index) => {
 			const providerRecord = assertRecord(
@@ -405,17 +408,22 @@ function assertAdminConfigContract(config) {
 				`admin config model provider ${index}`,
 			);
 			assertNonEmptyString(providerRecord.id, `model provider ${index}.id`);
-			assertNullableString(providerRecord.label, `model provider ${index}.label`);
+			assertNullableString(
+				providerRecord.label,
+				`model provider ${index}.label`,
+			);
 			assertNullableString(
 				providerRecord.backend_provider,
 				`model provider ${index}.backend_provider`,
 			);
-			assertArray(providerRecord.aliases, `model provider ${index}.aliases`).forEach(
-				(alias, aliasIndex) =>
-					assertNonEmptyString(
-						alias,
-						`model provider ${index}.aliases[${aliasIndex}]`,
-					),
+			assertArray(
+				providerRecord.aliases,
+				`model provider ${index}.aliases`,
+			).forEach((alias, aliasIndex) =>
+				assertNonEmptyString(
+					alias,
+					`model provider ${index}.aliases[${aliasIndex}]`,
+				),
 			);
 			assertNullableString(
 				providerRecord.logo_slug,
@@ -454,7 +462,10 @@ function assertAdminConfigContract(config) {
 	);
 	assertArray(models.models, "admin config model entries").forEach(
 		(model, index) => {
-			const modelRecord = assertRecord(model, `admin config model entry ${index}`);
+			const modelRecord = assertRecord(
+				model,
+				`admin config model entry ${index}`,
+			);
 			assertNonEmptyString(modelRecord.id, `model entry ${index}.id`);
 			assertNullableString(modelRecord.label, `model entry ${index}.label`);
 			assertBoolean(
@@ -465,7 +476,10 @@ function assertAdminConfigContract(config) {
 				modelRecord.default_thinking_enabled,
 				`model entry ${index}.default_thinking_enabled`,
 			);
-			assertRecord(modelRecord.request_kwargs, `model entry ${index}.request_kwargs`);
+			assertRecord(
+				modelRecord.request_kwargs,
+				`model entry ${index}.request_kwargs`,
+			);
 			assertRecord(
 				modelRecord.thinking_enabled_request_kwargs,
 				`model entry ${index}.thinking_enabled_request_kwargs`,
@@ -523,30 +537,38 @@ function assertAdminConfigContract(config) {
 			assertArray(providerRecord.overrides, `tool provider ${index}.overrides`);
 		},
 	);
-	assertArray(tools.tools, "admin config tool entries").forEach((tool, index) => {
-		const toolRecord = assertRecord(tool, `admin config tool ${index}`);
-		assertNonEmptyString(toolRecord.name, `tool ${index}.name`);
-		assertNonEmptyString(toolRecord.label, `tool ${index}.label`);
-		assertString(toolRecord.description, `tool ${index}.description`);
-		assertBoolean(toolRecord.enabled, `tool ${index}.enabled`);
-		assertRecord(toolRecord.settings, `tool ${index}.settings`);
-		const metadata = assertRecord(toolRecord.metadata, `tool ${index}.metadata`);
-		assertNonEmptyString(metadata.runtime, `tool ${index}.metadata.runtime`);
-		assertNonEmptyString(metadata.toolset, `tool ${index}.metadata.toolset`);
-		assertBoolean(
-			metadata.requires_workspace,
-			`tool ${index}.metadata.requires_workspace`,
-		);
-		assertBoolean(
-			metadata.requires_workspace_write,
-			`tool ${index}.metadata.requires_workspace_write`,
-		);
-		assertBoolean(metadata.side_effect, `tool ${index}.metadata.side_effect`);
-	});
+	assertArray(tools.tools, "admin config tool entries").forEach(
+		(tool, index) => {
+			const toolRecord = assertRecord(tool, `admin config tool ${index}`);
+			assertNonEmptyString(toolRecord.name, `tool ${index}.name`);
+			assertNonEmptyString(toolRecord.label, `tool ${index}.label`);
+			assertString(toolRecord.description, `tool ${index}.description`);
+			assertBoolean(toolRecord.enabled, `tool ${index}.enabled`);
+			assertRecord(toolRecord.settings, `tool ${index}.settings`);
+			const metadata = assertRecord(
+				toolRecord.metadata,
+				`tool ${index}.metadata`,
+			);
+			assertNonEmptyString(metadata.runtime, `tool ${index}.metadata.runtime`);
+			assertNonEmptyString(metadata.toolset, `tool ${index}.metadata.toolset`);
+			assertBoolean(
+				metadata.requires_workspace,
+				`tool ${index}.metadata.requires_workspace`,
+			);
+			assertBoolean(
+				metadata.requires_workspace_write,
+				`tool ${index}.metadata.requires_workspace_write`,
+			);
+			assertBoolean(metadata.side_effect, `tool ${index}.metadata.side_effect`);
+		},
+	);
 
 	const policies = assertRecord(configRecord.policies, "admin config policies");
 	assertConfigSourceContract(policies.source, "admin config policies source");
-	assertBoolean(policies.requires_restart, "admin config policies requires_restart");
+	assertBoolean(
+		policies.requires_restart,
+		"admin config policies requires_restart",
+	);
 	assertArray(policies.items, "admin config policy items").forEach(
 		(policy, index) => {
 			const policyRecord = assertRecord(policy, `admin config policy ${index}`);
@@ -570,23 +592,28 @@ function assertAdminConfigContract(config) {
 
 	const system = assertRecord(configRecord.system, "admin config system");
 	assertConfigSourceContract(system.source, "admin config system source");
-	assertArray(system.items, "admin config system items").forEach((item, index) => {
-		const itemRecord = assertRecord(item, `admin config system item ${index}`);
-		assertNonEmptyString(itemRecord.key, `system item ${index}.key`);
-		assertNonEmptyString(itemRecord.label, `system item ${index}.label`);
-		assertNonEmptyString(
-			itemRecord.value_type,
-			`system item ${index}.value_type`,
-		);
-		assertNonEmptyString(itemRecord.source, `system item ${index}.source`);
-		assertBoolean(itemRecord.editable, `system item ${index}.editable`);
-		assertBoolean(itemRecord.sensitive, `system item ${index}.sensitive`);
-		assertBoolean(
-			itemRecord.requires_restart,
-			`system item ${index}.requires_restart`,
-		);
-		assertArray(itemRecord.options, `system item ${index}.options`);
-	});
+	assertArray(system.items, "admin config system items").forEach(
+		(item, index) => {
+			const itemRecord = assertRecord(
+				item,
+				`admin config system item ${index}`,
+			);
+			assertNonEmptyString(itemRecord.key, `system item ${index}.key`);
+			assertNonEmptyString(itemRecord.label, `system item ${index}.label`);
+			assertNonEmptyString(
+				itemRecord.value_type,
+				`system item ${index}.value_type`,
+			);
+			assertNonEmptyString(itemRecord.source, `system item ${index}.source`);
+			assertBoolean(itemRecord.editable, `system item ${index}.editable`);
+			assertBoolean(itemRecord.sensitive, `system item ${index}.sensitive`);
+			assertBoolean(
+				itemRecord.requires_restart,
+				`system item ${index}.requires_restart`,
+			);
+			assertArray(itemRecord.options, `system item ${index}.options`);
+		},
+	);
 	assertNullableString(configRecord.updated_at, "admin config updated_at");
 	assertNullableString(configRecord.updated_by, "admin config updated_by");
 	assertNullableString(configRecord.message, "admin config message");
@@ -594,13 +621,19 @@ function assertAdminConfigContract(config) {
 
 function assertModelsResponseContract(modelList, adminConfig) {
 	const modelListRecord = assertRecord(modelList, "model list");
-	assertNonEmptyString(modelListRecord.default_model, "model list default_model");
+	assertNonEmptyString(
+		modelListRecord.default_model,
+		"model list default_model",
+	);
 	const models = assertArray(modelListRecord.models, "model list models");
 	assert.ok(models.length > 0, "model list should include at least one model");
 	for (const [index, model] of models.entries()) {
 		const modelRecord = assertRecord(model, `model list item ${index}`);
 		assertNonEmptyString(modelRecord.id, `model list item ${index}.id`);
-		assertNonEmptyString(modelRecord.provider, `model list item ${index}.provider`);
+		assertNonEmptyString(
+			modelRecord.provider,
+			`model list item ${index}.provider`,
+		);
 		assertNonEmptyString(
 			modelRecord.provider_label,
 			`model list item ${index}.provider_label`,
@@ -615,7 +648,10 @@ function assertModelsResponseContract(modelList, adminConfig) {
 		);
 		assertNonEmptyString(modelRecord.name, `model list item ${index}.name`);
 		assertNonEmptyString(modelRecord.label, `model list item ${index}.label`);
-		assertBoolean(modelRecord.is_default, `model list item ${index}.is_default`);
+		assertBoolean(
+			modelRecord.is_default,
+			`model list item ${index}.is_default`,
+		);
 		assertBoolean(
 			modelRecord.supports_thinking,
 			`model list item ${index}.supports_thinking`,
@@ -633,7 +669,10 @@ function assertModelsResponseContract(modelList, adminConfig) {
 		"model list should mark the default model",
 	);
 	if (adminConfig) {
-		assert.equal(modelListRecord.default_model, adminConfig.models.default_model);
+		assert.equal(
+			modelListRecord.default_model,
+			adminConfig.models.default_model,
+		);
 		for (const model of adminConfig.models.models) {
 			assert.ok(
 				models.some((item) => item.id === model.id),
@@ -670,6 +709,29 @@ function assertLocalRuntimeExposeContract(runtime) {
 			.localSelectedSkills("Need Android web search")
 			.some((skill) => skill.skill_id === "local-web-tools"),
 	);
+	assert.ok(
+		runtime
+			.localSelectedSkills("请 联网 搜索一下")
+			.some((skill) => skill.skill_id === "local-web-tools"),
+		"local skill selection should match aliases",
+	);
+	assert.ok(
+		runtime
+			.localSelectedSkills("推荐分支: 看一下是否要拆出去")
+			.some((skill) => skill.skill_id === "branch-focus-score"),
+		"local skill selection should match localized triggers",
+	);
+	assert.ok(
+		runtime
+			.localSelectedSkills("branch recommendation")
+			.some((skill) => skill.skill_id === "branch-focus-score"),
+		"local skill selection should match intents",
+	);
+	const localWebCatalogItem = runtime
+		.localSkillCatalogItems()
+		.find((skill) => skill.skill_id === "local-web-tools");
+	assert.ok(localWebCatalogItem, "local-web-tools should be in the catalog");
+	assert.deepEqual(localWebCatalogItem.primary_tools, ["web_search"]);
 	assert.equal(
 		runtime.localContextEvidenceRecord({ message: "Android context" }).metadata
 			.runtime,
@@ -689,6 +751,40 @@ function assertLocalRuntimeExposeContract(runtime) {
 		adminConfig.models.providers[0].label,
 	);
 	const [thread] = Object.values(runtime.state.threads);
+	const skillSearch = assertRecord(
+		runtime.executeLocalAppTool(thread, "skills_search", {
+			query: "联网",
+			limit: 5,
+		}).output,
+		"skills_search output",
+	);
+	const skillSearchResults = assertArray(
+		skillSearch.results,
+		"skills_search results",
+	);
+	const localWebSearchResult = assertRecord(
+		skillSearchResults.find((result) => result.skill_id === "local-web-tools"),
+		"local-web-tools skills_search result",
+	);
+	assert.ok(
+		assertArray(
+			localWebSearchResult.matched_terms,
+			"local-web-tools matched_terms",
+		).includes("联网"),
+		"skills_search should include alias matched terms",
+	);
+	runtime.executeLocalAppTool(thread, "skill_install", {
+		skill_id: "联网",
+	});
+	assert.ok(thread.active_skill_ids.includes("local-web-tools"));
+	assert.ok(
+		thread.active_skills.some(
+			(skill) =>
+				skill.skill_id === "local-web-tools" &&
+				skill.primary_tools.includes("web_search"),
+		),
+		"skill_install should keep active_skills in sync",
+	);
 	assert.ok(
 		runtime
 			.localAppToolPlan(thread, "请列出产物列表并搜索技能 web tools")
@@ -739,13 +835,15 @@ function assertLocalStreamContract(events, expectedThreadId) {
 			event.event === "tool.error"
 		) {
 			assertNonEmptyString(data.tool_name, `tool event ${index}.tool_name`);
-			assertNonEmptyString(data.tool_call_id, `tool event ${index}.tool_call_id`);
+			assertNonEmptyString(
+				data.tool_call_id,
+				`tool event ${index}.tool_call_id`,
+			);
 		}
 	}
 	assert.ok(
 		events.some(
-			(event) =>
-				event.event === "run.status" && event.data.phase === "running",
+			(event) => event.event === "run.status" && event.data.phase === "running",
 		),
 		"stream should emit a running status",
 	);
@@ -779,7 +877,10 @@ function assertLocalStreamContract(events, expectedThreadId) {
 	assert.equal(threadState.assistant_message, messageCompleted.data.content);
 	assert.equal(threadState.trace?.last_run_id, runId);
 	const messages = assertArray(threadState.messages, "thread_state messages");
-	assert.ok(messages.length >= 2, "thread_state should include user and assistant messages");
+	assert.ok(
+		messages.length >= 2,
+		"thread_state should include user and assistant messages",
+	);
 	assert.ok(
 		messages.some(
 			(message) =>
@@ -789,9 +890,15 @@ function assertLocalStreamContract(events, expectedThreadId) {
 		"thread_state should include the completed assistant message",
 	);
 	for (const [index, message] of messages.entries()) {
-		const messageRecord = assertRecord(message, `thread_state message ${index}`);
+		const messageRecord = assertRecord(
+			message,
+			`thread_state message ${index}`,
+		);
 		assertNonEmptyString(messageRecord.id, `thread_state message ${index}.id`);
-		assertNonEmptyString(messageRecord.type, `thread_state message ${index}.type`);
+		assertNonEmptyString(
+			messageRecord.type,
+			`thread_state message ${index}.type`,
+		);
 		assertNonEmptyString(
 			messageRecord.created_at,
 			`thread_state message ${index}.created_at`,
@@ -831,11 +938,15 @@ try {
 			importOutputs: androidLocalRuntimeImportOutputs,
 		});
 	}
-	const { LocalFocusAgentRuntime, createLocalFocusAgentFetch } = await loadTsModule(
-		resolve(appRoot, "src/android-local-runtime/local-focus-agent-runtime.ts"),
-		"local-focus-agent-runtime.mjs",
-		{ importOutputs: androidLocalRuntimeImportOutputs },
-	);
+	const { LocalFocusAgentRuntime, createLocalFocusAgentFetch } =
+		await loadTsModule(
+			resolve(
+				appRoot,
+				"src/android-local-runtime/local-focus-agent-runtime.ts",
+			),
+			"local-focus-agent-runtime.mjs",
+			{ importOutputs: androidLocalRuntimeImportOutputs },
+		);
 	const directRuntime = new LocalFocusAgentRuntime();
 	await directRuntime.ensureSecrets();
 	assertLocalRuntimeExposeContract(directRuntime);
@@ -893,16 +1004,23 @@ try {
 	);
 	assertModelsResponseContract(modelList, adminConfig);
 	assert.ok(
-		modelList.models.some((model) => model.id === adminConfig.models.default_model),
+		modelList.models.some(
+			(model) => model.id === adminConfig.models.default_model,
+		),
 		"Android local runtime should expose configured models through the Web SDK model endpoint",
 	);
 	const sdkModelList = await sdkClient.listModels();
 	assertModelsResponseContract(sdkModelList, adminConfig);
 	assert.ok(
-		sdkModelList.models.some((model) => model.id === adminConfig.models.default_model),
+		sdkModelList.models.some(
+			(model) => model.id === adminConfig.models.default_model,
+		),
 		"Web SDK model listing should work against Android local runtime",
 	);
-	assert.equal((await sdkClient.getPrincipal()).user.user_id, "android-local-admin");
+	assert.equal(
+		(await sdkClient.getPrincipal()).user.user_id,
+		"android-local-admin",
+	);
 	assert.equal((await sdkClient.createDemoToken({})).token_type, "bearer");
 	assert.equal(
 		(await sdkClient.refresh({})).principal.user.user_id,
@@ -940,7 +1058,10 @@ try {
 		display_name: "Android SDK User",
 		roles: ["viewer"],
 	});
-	assert.equal((await sdkClient.getUser(sdkUser.user_id)).username, "android-sdk-user");
+	assert.equal(
+		(await sdkClient.getUser(sdkUser.user_id)).username,
+		"android-sdk-user",
+	);
 	assert.equal(
 		(
 			await sdkClient.updateUser(sdkUser.user_id, {
@@ -989,16 +1110,19 @@ try {
 			values: { android_sdk_runtime_smoke: true },
 		}),
 	);
-	const sdkAdminSessions = await sdkClient.listUserSessions("android-local-admin", {
-		include_revoked: true,
-	});
+	const sdkAdminSessions = await sdkClient.listUserSessions(
+		"android-local-admin",
+		{
+			include_revoked: true,
+		},
+	);
 	assert.ok(sdkAdminSessions.count >= 1);
 	assert.ok((await sdkClient.listAgentCapabilities()).items.length > 0);
 	assert.ok((await sdkClient.listAgentToolsets()).items.length > 0);
 	assert.equal((await sdkClient.getAgentRolePolicy()).enabled, true);
 	assert.ok(
-		(await sdkClient.dryRunAgentRoleRoute({ message: "Android SDK route" })).plan
-			.decisions[0].model_id,
+		(await sdkClient.dryRunAgentRoleRoute({ message: "Android SDK route" }))
+			.plan.decisions[0].model_id,
 	);
 	assert.ok((await sdkClient.listAgentRoleDecisions(5)).items);
 	assert.deepEqual(
@@ -1037,16 +1161,19 @@ try {
 			})
 		).items,
 	);
-		assert.equal(
-			(
-				await sdkClient.updateAgentSkillPreference("android-local-runtime", {
-					state: "preferred",
-					metadata: { runtime: "android-local" },
-				})
-			).state,
-			"preferred",
-		);
-	assert.equal((await sdkClient.getAgentFeedbackTrend()).notes_tasks_capture_count, 0);
+	assert.equal(
+		(
+			await sdkClient.updateAgentSkillPreference("android-local-runtime", {
+				state: "preferred",
+				metadata: { runtime: "android-local" },
+			})
+		).state,
+		"preferred",
+	);
+	assert.equal(
+		(await sdkClient.getAgentFeedbackTrend()).notes_tasks_capture_count,
+		0,
+	);
 	assert.equal((await sdkClient.getAgentDelegationPolicy()).enabled, false);
 	assert.equal(
 		(await sdkClient.planAgentDelegation({ message: "Android SDK delegation" }))
@@ -1055,7 +1182,9 @@ try {
 	);
 	assert.ok((await sdkClient.listAgentDelegationRuns(5)).items);
 	assert.equal((await sdkClient.getAgentModelRouterPolicy()).enabled, true);
-	assert.ok((await sdkClient.routeAgentModel({ role: "planner" })).decision.model);
+	assert.ok(
+		(await sdkClient.routeAgentModel({ role: "planner" })).decision.model,
+	);
 	assert.ok((await sdkClient.listAgentModelRouterDecisions(5)).items);
 	assert.ok((await sdkClient.listAgentSelfRepairFailures(5)).items);
 	assert.ok(
@@ -1069,7 +1198,8 @@ try {
 		"approve",
 	);
 	assert.equal(
-		(await sdkClient.rejectAgentReviewQueueItem("android-sdk-review")).item.status,
+		(await sdkClient.rejectAgentReviewQueueItem("android-sdk-review")).item
+			.status,
 		"reject",
 	);
 	assert.equal((await sdkClient.getAgentContextPolicy()).enabled, true);
@@ -1093,15 +1223,18 @@ try {
 	);
 	assert.equal((await sdkClient.getAgentTaskLedgerPolicy()).enabled, true);
 	assert.equal(
-		(await sdkClient.planAgentTaskLedger({ message: "Android SDK task" })).ledger
-			.tasks.length,
+		(await sdkClient.planAgentTaskLedger({ message: "Android SDK task" }))
+			.ledger.tasks.length,
 		1,
 	);
 	assert.ok((await sdkClient.listAgentTaskLedgerRuns(5)).items);
 	assert.ok((await sdkClient.listAgentArtifacts(5)).items);
 	assert.ok(
-		(await sdkClient.synthesizeAgentArtifacts({ message: "Android SDK artifact" }))
-			.result,
+		(
+			await sdkClient.synthesizeAgentArtifacts({
+				message: "Android SDK artifact",
+			})
+		).result,
 	);
 	assert.ok((await sdkClient.listAgentCriticVerdicts(5)).items);
 	assert.equal(
@@ -1109,7 +1242,10 @@ try {
 			.result.verdict,
 		"pass",
 	);
-	assert.equal((await sdkClient.getObservabilityOverview()).trajectory_available, true);
+	assert.equal(
+		(await sdkClient.getObservabilityOverview()).trajectory_available,
+		true,
+	);
 	const sdkConversation = await sdkClient.createConversation({
 		title: "Android SDK smoke",
 	});
@@ -1179,7 +1315,8 @@ try {
 		"assistant fallback should not call a configured provider before a local API key exists",
 	);
 	assert.equal(
-		(await sdkClient.getBranchTree(sdkConversation.root_thread_id)).root.thread_id,
+		(await sdkClient.getBranchTree(sdkConversation.root_thread_id)).root
+			.thread_id,
 		sdkConversation.root_thread_id,
 	);
 	const sdkBranch = await sdkClient.forkBranch({
@@ -1196,8 +1333,14 @@ try {
 		).branch_name,
 		"Android SDK branch renamed",
 	);
-	assert.equal((await sdkClient.archiveBranch(sdkBranch.child_thread_id)).is_archived, true);
-	assert.equal((await sdkClient.activateBranch(sdkBranch.child_thread_id)).is_archived, false);
+	assert.equal(
+		(await sdkClient.archiveBranch(sdkBranch.child_thread_id)).is_archived,
+		true,
+	);
+	assert.equal(
+		(await sdkClient.activateBranch(sdkBranch.child_thread_id)).is_archived,
+		false,
+	);
 	assert.ok(await sdkClient.prepareMergeProposal(sdkBranch.child_thread_id));
 	assert.equal(
 		(
@@ -1211,7 +1354,10 @@ try {
 	const sdkMemoryList = await sdkClient.listMemoryRecords({ limit: 5 });
 	assert.ok(sdkMemoryList.items[0]?.memory_id);
 	assert.ok(await sdkClient.getMemoryRecord(sdkMemoryList.items[0].memory_id));
-	assert.ok((await sdkClient.getMemoryUsage(sdkMemoryList.items[0].memory_id)).memory_id);
+	assert.ok(
+		(await sdkClient.getMemoryUsage(sdkMemoryList.items[0].memory_id))
+			.memory_id,
+	);
 	assert.ok((await sdkClient.listMemoryAuditEvents({ limit: 5 })).items);
 	assert.ok(
 		(
@@ -1248,7 +1394,10 @@ try {
 		sdkConversation.root_thread_id,
 		{ message: "Android SDK streamHarnessRun smoke." },
 	);
-	assert.equal((await sdkClient.collectStream(sdkHarnessStream)).isClosed, true);
+	assert.equal(
+		(await sdkClient.collectStream(sdkHarnessStream)).isClosed,
+		true,
+	);
 	const sdkResumeStream = await sdkClient.streamResume({
 		thread_id: sdkConversation.root_thread_id,
 		resume: { run_id: "android-sdk-resume" },
@@ -1261,9 +1410,11 @@ try {
 		[],
 	);
 	assert.equal(
-		(await sdkClient.cancelHarnessRun("android-sdk-resume", {
-			action: "interrupt",
-		})).run.status,
+		(
+			await sdkClient.cancelHarnessRun("android-sdk-resume", {
+				action: "interrupt",
+			})
+		).run.status,
 		"interrupt",
 	);
 	const sdkTrajectories = await sdkClient.listTrajectoryTurns({ limit: 5 });
@@ -1282,14 +1433,18 @@ try {
 			.case_id,
 	);
 	assert.ok(
-		(await sdkClient.batchPromoteTrajectoryTurnsPreview({
-			turn_ids: [sdkTrajectories.items[0].id],
-		})).items,
+		(
+			await sdkClient.batchPromoteTrajectoryTurnsPreview({
+				turn_ids: [sdkTrajectories.items[0].id],
+			})
+		).items,
 	);
 	assert.ok(
-		(await sdkClient.batchReplayCompareTrajectoryTurns({
-			turn_ids: [sdkTrajectories.items[0].id],
-		})).summary,
+		(
+			await sdkClient.batchReplayCompareTrajectoryTurns({
+				turn_ids: [sdkTrajectories.items[0].id],
+			})
+		).summary,
 	);
 
 	const principal = await expectJson(
@@ -1299,7 +1454,10 @@ try {
 	const registered = await expectJson(
 		await focusFetch(
 			"http://focus-agent.local/v1/auth/register",
-			jsonBody({ username: "android-register", display_name: "Android Register" }),
+			jsonBody({
+				username: "android-register",
+				display_name: "Android Register",
+			}),
 		),
 	);
 	assert.equal(registered.principal.user.username, "android-register");
@@ -1311,7 +1469,10 @@ try {
 	);
 	assert.equal(loggedIn.principal.user.username, "android-login");
 	const demoToken = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/auth/demo-token", jsonBody({})),
+		await focusFetch(
+			"http://focus-agent.local/v1/auth/demo-token",
+			jsonBody({}),
+		),
 	);
 	assert.equal(demoToken.token_type, "bearer");
 	await expectJson(
@@ -1375,7 +1536,10 @@ try {
 			await expectJson(
 				await focusFetch(
 					`http://focus-agent.local/v1/admin/users/${createdUser.user_id}`,
-					{ ...jsonBody({ display_name: "Android Smoke Updated" }), method: "PATCH" },
+					{
+						...jsonBody({ display_name: "Android Smoke Updated" }),
+						method: "PATCH",
+					},
 				),
 			)
 		).display_name,
@@ -1691,21 +1855,21 @@ try {
 	);
 	assert.equal(
 		(
-				await expectJson(
-					await focusFetch(
-						"http://focus-agent.local/v1/agent/skills/android-local-runtime/preference",
-						{
-							...jsonBody({
-								metadata: { runtime: "android-local" },
-								state: "preferred",
-							}),
-							method: "PATCH",
-						},
-					),
-				)
-			).state,
-			"preferred",
-		);
+			await expectJson(
+				await focusFetch(
+					"http://focus-agent.local/v1/agent/skills/android-local-runtime/preference",
+					{
+						...jsonBody({
+							metadata: { runtime: "android-local" },
+							state: "preferred",
+						}),
+						method: "PATCH",
+					},
+				),
+			)
+		).state,
+		"preferred",
+	);
 	assert.equal(
 		(
 			await expectJson(
@@ -1743,7 +1907,9 @@ try {
 	assert.equal(
 		(
 			await expectJson(
-				await focusFetch("http://focus-agent.local/v1/agent/model-router/policy"),
+				await focusFetch(
+					"http://focus-agent.local/v1/agent/model-router/policy",
+				),
 			)
 		).enabled,
 		true,
@@ -1834,7 +2000,9 @@ try {
 			jsonBody({
 				assembled_context: "Android local context ".repeat(80),
 				role: "executor",
-				state: { context_budget: { prompt_token_limit: 20, chars_per_token: 4 } },
+				state: {
+					context_budget: { prompt_token_limit: 20, chars_per_token: 4 },
+				},
 			}),
 		),
 	);
@@ -1875,12 +2043,17 @@ try {
 			jsonBody({ message: "Why this Android context?" }),
 		),
 	);
-	assert.equal(contextExplain.item.evidence_id, contextExplain.evidence.evidence_id);
+	assert.equal(
+		contextExplain.item.evidence_id,
+		contextExplain.evidence.evidence_id,
+	);
 
 	assert.equal(
 		(
 			await expectJson(
-				await focusFetch("http://focus-agent.local/v1/agent/task-ledger/policy"),
+				await focusFetch(
+					"http://focus-agent.local/v1/agent/task-ledger/policy",
+				),
 			)
 		).enabled,
 		true,
@@ -1965,7 +2138,9 @@ try {
 		firstMemoryId,
 	);
 	await expectJson(
-		await focusFetch(`http://focus-agent.local/v1/memory/${firstMemoryId}/audit`),
+		await focusFetch(
+			`http://focus-agent.local/v1/memory/${firstMemoryId}/audit`,
+		),
 	);
 	await expectJson(
 		await focusFetch("http://focus-agent.local/v1/memory/candidates"),
@@ -2012,7 +2187,10 @@ try {
 			await expectJson(
 				await focusFetch(
 					`http://focus-agent.local/v1/conversations/${threadId}`,
-					{ ...jsonBody({ title: "Android parity smoke renamed" }), method: "PATCH" },
+					{
+						...jsonBody({ title: "Android parity smoke renamed" }),
+						method: "PATCH",
+					},
 				),
 			)
 		).title,
@@ -2041,8 +2219,11 @@ try {
 		false,
 	);
 	assert.equal(
-		(await expectJson(await focusFetch(`http://focus-agent.local/v1/threads/${threadId}`)))
-			.thread_id,
+		(
+			await expectJson(
+				await focusFetch(`http://focus-agent.local/v1/threads/${threadId}`),
+			)
+		).thread_id,
 		threadId,
 	);
 	assert.equal(
@@ -2077,8 +2258,13 @@ try {
 		threadId,
 	);
 	assert.equal(
-		(await expectJson(await focusFetch(`http://focus-agent.local/v1/branches/tree/${threadId}`)))
-			.root.thread_id,
+		(
+			await expectJson(
+				await focusFetch(
+					`http://focus-agent.local/v1/branches/tree/${threadId}`,
+				),
+			)
+		).root.thread_id,
 		threadId,
 	);
 	const manualBranch = await expectJson(
@@ -2204,8 +2390,7 @@ try {
 	);
 	const searchRequest = searchEvents.find(
 		(event) =>
-			event.event === "tool.requested" &&
-			event.data.tool_name === "web_search",
+			event.event === "tool.requested" && event.data.tool_name === "web_search",
 	);
 	assert.ok(
 		searchRequest?.data.args?.query.includes("原始查询："),
@@ -2400,6 +2585,15 @@ try {
 				event.data.output?.installed === true,
 		),
 		"skill_install should work against Android built-in skills",
+	);
+	const skillWriteCompleted = skillWriteEvents.find(
+		(event) => event.event === "run.completed",
+	);
+	assert.ok(
+		skillWriteCompleted?.data.thread_state?.active_skills?.some(
+			(skill) => skill.skill_id === "android-local-runtime",
+		),
+		"skill_install run.completed should include active_skills metadata",
 	);
 	assert.ok(
 		skillWriteEvents.some(
@@ -2730,7 +2924,9 @@ try {
 	assert.ok(
 		(
 			await expectJson(
-				await focusFetch("http://focus-agent.local/v1/observability/trajectory/stats"),
+				await focusFetch(
+					"http://focus-agent.local/v1/observability/trajectory/stats",
+				),
 			)
 		).stats,
 	);
@@ -2793,9 +2989,11 @@ try {
 	);
 	const sdkForgetList = await sdkClient.listMemoryRecords({ limit: 5 });
 	assert.equal(
-		(await sdkClient.forgetMemoryRecord(sdkForgetList.items[0].memory_id, {
-			reason: "android sdk final forget",
-		})).forgotten,
+		(
+			await sdkClient.forgetMemoryRecord(sdkForgetList.items[0].memory_id, {
+				reason: "android sdk final forget",
+			})
+		).forgotten,
 		true,
 	);
 } finally {

@@ -2777,6 +2777,8 @@ export interface components {
             localized_triggers?: string[];
             /** Path */
             path: string;
+            /** Primary Tools */
+            primary_tools?: string[];
             /** Prompt Mode */
             prompt_mode?: string | null;
             /** Provenance */
@@ -3924,6 +3926,8 @@ export interface components {
             /** Path */
             path?: string | null;
             preference?: components["schemas"]["AgentSkillPreferenceResponse"] | null;
+            /** Primary Tools */
+            primary_tools?: string[];
             /** Prompt Mode */
             prompt_mode?: string | null;
             /** Recommended Tools */
@@ -6820,6 +6824,8 @@ export interface components {
             install_state: string;
             /** Name */
             name: string;
+            /** Primary Tools */
+            primary_tools?: string[];
             /** Prompt Mode */
             prompt_mode?: string | null;
             /** Recommended Tools */

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -200,9 +201,38 @@ def tool_result_names(messages: Sequence[Any]) -> list[str]:
                 call_names_by_id[call_id] = name
         if isinstance(message, ToolMessage):
             name = call_names_by_id.get(str(message.tool_call_id or "").strip())
-            if name:
+            if name and _tool_message_counts_as_success(message, name):
                 names.append(name)
     return names
+
+
+def _tool_message_counts_as_success(message: ToolMessage, tool_name: str) -> bool:
+    status = str(getattr(message, "status", "success") or "success").strip().lower()
+    if status != "success":
+        return False
+    if tool_name == "run_workspace_command":
+        return _run_workspace_command_payload_succeeded(message)
+    return True
+
+
+def _run_workspace_command_payload_succeeded(message: ToolMessage) -> bool:
+    content = getattr(message, "content", "")
+    if not isinstance(content, str):
+        return True
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return True
+    if not isinstance(payload, Mapping):
+        return True
+    if payload.get("timed_out") is True:
+        return False
+    if "exit_code" not in payload:
+        return True
+    try:
+        return int(payload.get("exit_code")) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _verification(

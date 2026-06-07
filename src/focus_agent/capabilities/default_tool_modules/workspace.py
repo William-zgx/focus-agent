@@ -76,6 +76,11 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
 _UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
 _FOCUS_HOME_FOCUS_AGENT_PARTS = PurePosixPath("/home/focus/.focus_agent").parts
 _FOCUS_HOME_SKILLS_PARTS = PurePosixPath("/home/focus/.focus_agent/skills").parts
+_TRUSTED_SKILL_PYTHON_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
+_WORKSPACE_SKILL_ROOT_PARTS: tuple[tuple[str, ...], ...] = (
+    (".focus_agent", "skills"),
+    ("skills",),
+)
 
 
 def _language_for_path(path: Path) -> str:
@@ -133,6 +138,32 @@ def _resolve_focus_home_skill_cwd(*, raw_cwd: str, workspace_root: Path) -> Path
     except ValueError as exc:
         raise ValueError("Skill cwd must not escape the workspace skill directory.") from exc
     return resolved
+
+
+def _trusted_skill_python_interpreter_name(command_name: str) -> bool:
+    if "/" in command_name or "\\" in command_name:
+        return False
+    return bool(_TRUSTED_SKILL_PYTHON_RE.fullmatch(command_name))
+
+
+def _workspace_skill_root_for_path(*, path: Path, workspace_root: Path) -> Path | None:
+    for root_parts in _WORKSPACE_SKILL_ROOT_PARTS:
+        skill_collection_root = (workspace_root / Path(*root_parts)).resolve()
+        try:
+            skill_collection_root.relative_to(workspace_root)
+            relative = path.relative_to(skill_collection_root)
+        except ValueError:
+            continue
+        if not relative.parts:
+            return None
+        skill_root = (skill_collection_root / relative.parts[0]).resolve()
+        try:
+            skill_root.relative_to(workspace_root)
+            path.relative_to(skill_root)
+        except ValueError:
+            continue
+        return skill_root
+    return None
 
 
 def _matches_glob_pattern(path_text: str, pattern: str) -> bool:
@@ -277,22 +308,15 @@ def build_workspace_tools(
         *,
         working_dir: Path,
     ) -> bool:
-        base = Path(command[0]).name
-        if base not in {"python", "python3"} and not base.startswith("python3."):
+        if not _trusted_skill_python_interpreter_name(command[0]):
             return False
         if len(command) < 2:
             return False
         script_arg = command[1].strip()
         if not script_arg or script_arg.startswith("-"):
             return False
-        try:
-            skill_relative = working_dir.relative_to(workspace_root)
-        except ValueError:
-            return False
-        if len(skill_relative.parts) < 3 or skill_relative.parts[:2] != (
-            ".focus_agent",
-            "skills",
-        ):
+        skill_root = _workspace_skill_root_for_path(path=working_dir, workspace_root=workspace_root)
+        if skill_root is None:
             return False
         script_path = (
             Path(script_arg).expanduser()
@@ -301,6 +325,7 @@ def build_workspace_tools(
         ).resolve()
         try:
             script_relative = script_path.relative_to(working_dir)
+            script_path.relative_to(skill_root)
             script_path.relative_to(workspace_root)
         except ValueError:
             return False

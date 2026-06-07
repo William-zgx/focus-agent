@@ -230,7 +230,7 @@ def _active_skill_recommended_tool_names(
         skill = skill_registry.resolve(skill_id)
         if skill is None:
             continue
-        for raw_tool_name in skill.recommended_tools:
+        for raw_tool_name in (*skill.primary_tools, *skill.recommended_tools):
             tool_name = str(raw_tool_name).strip()
             if tool_name and tool_name not in seen:
                 seen.add(tool_name)
