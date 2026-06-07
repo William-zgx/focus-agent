@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,113 @@ _ACTIVE_EXECUTE_CONTINUATION_MARKERS = (
     "history",
     "recent",
 )
+_LIVE_WEB_DOMAIN_MARKERS: Mapping[str, tuple[str, ...]] = {
+    "weather": (
+        "天气",
+        "气温",
+        "温度",
+        "降雨",
+        "下雨",
+        "预报",
+        "weather",
+        "forecast",
+        "temperature",
+    ),
+    "finance": (
+        "股票",
+        "股价",
+        "行情",
+        "走势",
+        "涨跌",
+        "大盘",
+        "沪指",
+        "上证",
+        "深证",
+        "创业板",
+        "a股",
+        "证券",
+        "stock",
+        "stocks",
+        "share price",
+        "ticker",
+        "quote",
+        "market",
+        "finance",
+    ),
+    "news": (
+        "新闻",
+        "资讯",
+        "事件",
+        "公告",
+        "news",
+    ),
+    "currency": (
+        "汇率",
+        "美元",
+        "人民币",
+        "日元",
+        "欧元",
+        "currency",
+        "exchange rate",
+        "fx",
+    ),
+    "sports": (
+        "世界杯",
+        "赛程",
+        "比赛",
+        "球队",
+        "足球",
+        "篮球",
+        "sports",
+        "schedule",
+        "match",
+    ),
+    "aerospace": (
+        "spacex",
+        "发射",
+        "火箭",
+        "航天",
+        "launch",
+        "rocket",
+    ),
+    "entertainment": (
+        "电影",
+        "上映",
+        "票房",
+        "movie",
+        "film",
+        "release",
+    ),
+}
+_FINANCE_ENTITY_HINTS = (
+    "能源",
+    "矿业",
+    "股份",
+    "科技",
+    "银行",
+    "证券",
+    "汽车",
+    "医药",
+    "药业",
+    "电力",
+    "新能源",
+    "公司",
+    "集团",
+    "工业",
+    "控股",
+)
+_FINANCE_PERFORMANCE_MARKERS = (
+    "走势",
+    "表现",
+    "行情",
+    "涨跌",
+    "涨幅",
+    "跌幅",
+    "成交",
+    "市值",
+    "财报",
+)
+_STOCK_CODE_RE = re.compile(r"(?<!\d)(?:[036]\d{5}|\d{6}\.(?:ss|sz|sh))(?!\d)", re.I)
 
 
 def _tools_for_policy_compat(
@@ -114,7 +222,12 @@ def build_active_skill_execution_plan(
             continue
         if str(skill.trust_level or "").strip().lower() not in {"", "trusted"}:
             continue
-        score, reasons = _active_skill_match_score(skill, text, active_count=len(active_ids))
+        score, reasons = _active_skill_match_score(
+            skill,
+            text,
+            active_count=len(active_ids),
+            base_intent_plan=base_intent_plan,
+        )
         if score <= 0:
             continue
         matches.append((score, skill, reasons))
@@ -250,6 +363,7 @@ def _active_skill_match_score(
     text: str,
     *,
     active_count: int,
+    base_intent_plan: ToolIntentPlan,
 ) -> tuple[float, list[str]]:
     normalized = " ".join(str(text or "").strip().split())
     if not normalized:
@@ -266,7 +380,11 @@ def _active_skill_match_score(
             reasons.append(f"skill_term_match:{skill.skill_id}:{term}")
     if score > 0:
         return score, reasons
-    if active_count == 1 and _looks_like_active_execute_continuation(normalized):
+    if (
+        active_count == 1
+        and _looks_like_active_execute_continuation(normalized)
+        and _active_execute_continuation_allowed(skill, normalized, base_intent_plan)
+    ):
         return 0.45, [f"active_execute_skill_continuation:{skill.skill_id}"]
     return 0.0, []
 
@@ -291,6 +409,73 @@ def _skill_match_terms(skill: SkillDefinition) -> tuple[str, ...]:
 def _looks_like_active_execute_continuation(text: str) -> bool:
     lowered = text.lower()
     return any(marker.lower() in lowered for marker in _ACTIVE_EXECUTE_CONTINUATION_MARKERS)
+
+
+def _active_execute_continuation_allowed(
+    skill: SkillDefinition,
+    text: str,
+    base_intent_plan: ToolIntentPlan,
+) -> bool:
+    if base_intent_plan.policy != "live_web_research":
+        return True
+    domains = _explicit_live_web_domains(text)
+    if not domains:
+        return any(
+            _query_matches_live_web_domain(text, domain)
+            for domain in _skill_live_web_domains(skill)
+        )
+    return _skill_supports_live_web_domains(skill, domains)
+
+
+def _explicit_live_web_domains(text: str) -> set[str]:
+    lowered = text.lower()
+    return {
+        domain
+        for domain, markers in _LIVE_WEB_DOMAIN_MARKERS.items()
+        if any(marker.lower() in lowered for marker in markers)
+    }
+
+
+def _skill_supports_live_web_domains(
+    skill: SkillDefinition,
+    domains: set[str],
+) -> bool:
+    skill_domains = _skill_live_web_domains(skill)
+    return bool(skill_domains.intersection(domains))
+
+
+def _skill_live_web_domains(skill: SkillDefinition) -> set[str]:
+    haystack = " ".join(
+        str(value or "").strip()
+        for value in (
+            skill.skill_id,
+            getattr(skill, "name", ""),
+            skill.description,
+            *_skill_match_terms(skill),
+        )
+        if str(value or "").strip()
+    ).lower()
+    if not haystack:
+        return set()
+    return {
+        domain
+        for domain, markers in _LIVE_WEB_DOMAIN_MARKERS.items()
+        if any(marker.lower() in haystack for marker in markers)
+    }
+
+
+def _query_matches_live_web_domain(text: str, domain: str) -> bool:
+    lowered = text.lower()
+    markers = _LIVE_WEB_DOMAIN_MARKERS.get(domain, ())
+    if any(marker.lower() in lowered for marker in markers):
+        return True
+    if domain != "finance":
+        return False
+    if _STOCK_CODE_RE.search(text):
+        return True
+    has_finance_entity = any(hint in text for hint in _FINANCE_ENTITY_HINTS)
+    has_performance_marker = any(marker in text for marker in _FINANCE_PERFORMANCE_MARKERS)
+    return has_finance_entity or has_performance_marker
 
 
 def _skill_primary_tools(skill: SkillDefinition) -> list[str]:

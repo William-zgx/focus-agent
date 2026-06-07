@@ -62,6 +62,7 @@ from focus_agent.api.schemas import (
     ThreadContextCompactRequest,
     ThreadContextPreviewRequest,
     ThreadContextPreviewResponse,
+    ThreadMessageResponse,
     ThreadStateResponse,
     TrajectoryBatchPromotionPreviewRequest,
     TrajectoryBatchPromotionPreviewResponse,
@@ -254,6 +255,28 @@ def test_thread_context_usage_contract_shape_is_separate_from_token_usage():
     assert dumped["context_usage"]["used_tokens"] == 104000
     assert dumped["messages"][0]["usage_metadata"]["total_tokens"] == 20
     assert "token_usage" not in dumped["context_usage"]
+
+
+def test_thread_message_metadata_preserves_execution_plan_fields():
+    message = ThreadMessageResponse.model_validate(
+        {
+            "type": "ai",
+            "content": "done",
+            "metadata": {
+                "skill_execution_plan": {
+                    "selected_skill_ids": ["stocks"],
+                    "primary_tools": ["run_workspace_command"],
+                }
+            },
+        }
+    )
+
+    dumped = message.model_dump(mode="json")
+
+    assert dumped["metadata"]["skill_execution_plan"] == {
+        "selected_skill_ids": ["stocks"],
+        "primary_tools": ["run_workspace_command"],
+    }
 
 
 def test_branch_action_contract_shapes():

@@ -18,6 +18,8 @@ import {
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
 import {
 	ANDROID_LOCAL_SKILLS,
+	localSkillActivationMatchedTerms,
+	localSkillActivationScore,
 	localSkillMatchedTerms,
 	localSkillScore,
 } from "./skills";
@@ -150,21 +152,22 @@ export function localSelectedSkills(
 	message: string,
 	hints: string[] = [],
 ) {
-	const normalized = message.toLowerCase();
 	const hinted = new Set(hints);
-	const selected = ctx.localSkillCatalogItems().filter((skill) => {
+	const scored = ctx.localSkillCatalogItems().flatMap((skill) => {
 		if (hinted.has(String(skill.skill_id)) || hinted.has(String(skill.name))) {
-			return true;
+			return [{ score: 100, skill }];
 		}
-		return (
-			localSkillMatchedTerms(skill, message).length > 0 ||
-			stringArray(skill.triggers).some((trigger) =>
-				normalized.includes(trigger.toLowerCase()),
-			) ||
-			localSkillScore(skill, message) > 0
-		);
+		const matchedTerms = localSkillActivationMatchedTerms(skill, message);
+		if (!matchedTerms.length) return [];
+		return [{ score: matchedTerms.length + localSkillActivationScore(skill, message), skill }];
 	});
-	return selected.length ? selected : ctx.localSkillCatalogItems().slice(0, 1);
+	if (!scored.length) return ctx.localSkillCatalogItems().slice(0, 1);
+	scored.sort((left, right) => {
+		if (right.score !== left.score) return right.score - left.score;
+		return String(left.skill.skill_id).localeCompare(String(right.skill.skill_id));
+	});
+	const topScore = scored[0]?.score ?? 0;
+	return scored.filter((item) => item.score === topScore).map((item) => item.skill);
 }
 
 export function localContextEvidenceRecord(
@@ -558,7 +561,10 @@ export function handleAgent(
 		const matchedTriggers = [
 			...new Set(
 				selected.flatMap((skill) => {
-					const matched = localSkillMatchedTerms(skill, body.message ?? "");
+					const matched = localSkillActivationMatchedTerms(
+						skill,
+						body.message ?? "",
+					);
 					return matched.length ? matched : stringArray(skill.triggers);
 				}),
 			),
@@ -570,7 +576,10 @@ export function handleAgent(
 			selection_source: "android-local",
 			matched_triggers: matchedTriggers,
 			semantic_candidates: selected.map((skill, index) => {
-				const matched = localSkillMatchedTerms(skill, body.message ?? "");
+				const matched = localSkillActivationMatchedTerms(
+					skill,
+					body.message ?? "",
+				);
 				return {
 					skill_id: skill.skill_id,
 					score: index === 0 ? 0.82 : 0.65,

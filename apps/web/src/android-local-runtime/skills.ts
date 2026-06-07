@@ -43,13 +43,36 @@ export function localSkillSearchTerms(skill: SearchableLocalSkill): string[] {
 	]);
 }
 
+export function localSkillActivationTerms(skill: SearchableLocalSkill): string[] {
+	return uniqueStrings([
+		skill.skill_id,
+		skill.name,
+		...skill.triggers,
+		...(skill.aliases ?? []),
+		...(skill.localized_triggers ?? []),
+		...(skill.domains ?? []),
+		...(skill.intents ?? []),
+	]);
+}
+
 export function localSkillMatchedTerms(
 	skill: SearchableLocalSkill,
 	query: string,
 ): string[] {
+	return matchedTermsFor(localSkillSearchTerms(skill), query);
+}
+
+export function localSkillActivationMatchedTerms(
+	skill: SearchableLocalSkill,
+	query: string,
+): string[] {
+	return matchedTermsFor(localSkillActivationTerms(skill), query);
+}
+
+function matchedTermsFor(terms: string[], query: string): string[] {
 	const queryWords = textWords(query);
 	if (!queryWords.length) return [];
-	return localSkillSearchTerms(skill).filter((term) => {
+	return terms.filter((term) => {
 		const normalizedTerm = term.toLowerCase();
 		const termWords = new Set(textWords(term));
 		return queryWords.some(
@@ -62,11 +85,20 @@ export function localSkillScore(
 	skill: SearchableLocalSkill,
 	query: string,
 ): number {
+	return scoreTerms(localSkillSearchTerms(skill), query);
+}
+
+export function localSkillActivationScore(
+	skill: SearchableLocalSkill,
+	query: string,
+): number {
+	return scoreTerms(localSkillActivationTerms(skill), query);
+}
+
+function scoreTerms(terms: string[], query: string): number {
 	const queryWords = textWords(query);
 	if (!queryWords.length) return 1;
-	const haystackWords = new Set(
-		textWords(localSkillSearchTerms(skill).join(" ")),
-	);
+	const haystackWords = new Set(textWords(terms.join(" ")));
 	return (
 		queryWords.filter((word) => haystackWords.has(word)).length /
 		queryWords.length

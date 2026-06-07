@@ -704,16 +704,17 @@ function assertLocalRuntimeExposeContract(runtime) {
 		runtime.localRoleDecision("Plan an Android local task.").model_id,
 		adminConfig.models.default_model,
 	);
-	assert.ok(
-		runtime
-			.localSelectedSkills("Need Android web search")
-			.some((skill) => skill.skill_id === "local-web-tools"),
+	const androidWebSelection = runtime.localSelectedSkills("Need Android web search");
+	assert.deepEqual(
+		androidWebSelection.map((skill) => skill.skill_id),
+		["local-web-tools"],
+		"web search selection should prefer the web execution skill",
 	);
-	assert.ok(
-		runtime
-			.localSelectedSkills("请 联网 搜索一下")
-			.some((skill) => skill.skill_id === "local-web-tools"),
-		"local skill selection should match aliases",
+	assert.equal(androidWebSelection[0]?.prompt_mode, "execute");
+	assert.deepEqual(
+		runtime.localSelectedSkills("请 联网 搜索一下").map((skill) => skill.skill_id),
+		["local-web-tools"],
+		"local skill selection should match aliases without over-selecting",
 	);
 	assert.ok(
 		runtime
@@ -776,6 +777,14 @@ function assertLocalRuntimeExposeContract(runtime) {
 	runtime.executeLocalAppTool(thread, "skill_install", {
 		skill_id: "联网",
 	});
+	const skillView = assertRecord(
+		runtime.executeLocalAppTool(thread, "skill_view", {
+			skill_id: "联网",
+		}).output,
+		"skill_view output",
+	);
+	assert.equal(skillView.skill_id, "local-web-tools");
+	assert.equal(skillView.success, true);
 	assert.ok(thread.active_skill_ids.includes("local-web-tools"));
 	assert.ok(
 		thread.active_skills.some(
@@ -1830,10 +1839,12 @@ try {
 			jsonBody({ message: "Need a web search skill for Android." }),
 		),
 	);
-	assert.ok(
-		skillSelection.skill_ids.includes("local-web-tools"),
-		"Android skill selection should activate matching local skills",
+	assert.deepEqual(
+		skillSelection.skill_ids,
+		["local-web-tools"],
+		"Android skill selection should activate the best matching local skill",
 	);
+	assert.equal(skillSelection.prompt_mode, "execute");
 	assert.ok(
 		(
 			await expectJson(

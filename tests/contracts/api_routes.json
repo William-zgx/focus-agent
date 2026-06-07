@@ -16438,6 +16438,7 @@
       "type": "object"
     },
     "ThreadMessageMetadata": {
+      "additionalProperties": true,
       "properties": {
         "active_skill_ids": {
           "items": {

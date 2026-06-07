@@ -10,6 +10,10 @@ from focus_agent.capabilities.tool_router import build_tool_route_plan
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
+from focus_agent.engine.graph.agent_loop_helpers import (
+    apply_skill_execution_plan,
+    build_active_skill_execution_plan,
+)
 from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
 from focus_agent.engine.graph_builder import (
     _canonicalize_tool_call_args,
@@ -974,6 +978,108 @@ def test_tool_intent_plan_applies_skill_defaults_and_no_tool_precedence():
     assert "explicit_no_tool" in plan.reason_codes
     assert review.policy == "workspace_lookup"
     assert review.source == "skill:review"
+
+
+def test_active_execute_skill_continuation_does_not_override_unrelated_live_web_domain(
+    tmp_path,
+):
+    skill_root = tmp_path / ".focus_agent" / "skills"
+    skill_dir = skill_root / "tdd"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: tdd",
+                "description: Test-driven development workflow.",
+                "aliases: [TDD, tests]",
+                "domains: [testing]",
+                "primary_tools: [list_files]",
+                "prompt_mode: execute",
+                "---",
+                "# TDD",
+                "Use this skill for test-driven implementation work.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry([skill_root])
+    base_plan = build_tool_intent_plan(
+        "今天北京天气怎么样？",
+        active_skill_ids=["tdd"],
+    )
+
+    skill_plan = build_active_skill_execution_plan(
+        skill_registry=registry,
+        active_skill_ids=["tdd"],
+        text="今天北京天气怎么样？",
+        workspace_root=tmp_path,
+        base_intent_plan=base_plan,
+    )
+    merged_plan = apply_skill_execution_plan(base_plan, skill_plan)
+
+    assert base_plan.policy == "live_web_research"
+    assert skill_plan is None
+    assert merged_plan.policy == "live_web_research"
+    assert merged_plan.preferred_first_tool == "web_search"
+
+
+def test_active_stock_skill_continuation_requires_supported_live_web_domain(tmp_path):
+    skill_root = tmp_path / ".focus_agent" / "skills"
+    skill_dir = skill_root / "stocks"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: stocks",
+                "description: Fetch stock market data.",
+                "aliases: [股票, A股]",
+                "domains: [finance, 股票]",
+                "primary_tools: [run_workspace_command]",
+                "prompt_mode: execute",
+                "---",
+                "# Stocks",
+                "Use this skill for stock market data.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry([skill_root])
+    valid_base_plan = build_tool_intent_plan(
+        "华钰矿业近一周表现",
+        active_skill_ids=["stocks"],
+    )
+    valid_skill_plan = build_active_skill_execution_plan(
+        skill_registry=registry,
+        active_skill_ids=["stocks"],
+        text="华钰矿业近一周表现",
+        workspace_root=tmp_path,
+        base_intent_plan=valid_base_plan,
+    )
+
+    assert valid_base_plan.policy == "live_web_research"
+    assert apply_skill_execution_plan(valid_base_plan, valid_skill_plan).policy == "execution"
+
+    for prompt in (
+        "今天世界杯赛程是什么？",
+        "今天 SpaceX 发射安排是什么？",
+        "最近有哪些新电影上映？",
+        "最近北京旅游攻略有哪些？",
+    ):
+        base_plan = build_tool_intent_plan(prompt, active_skill_ids=["stocks"])
+        skill_plan = build_active_skill_execution_plan(
+            skill_registry=registry,
+            active_skill_ids=["stocks"],
+            text=prompt,
+            workspace_root=tmp_path,
+            base_intent_plan=base_plan,
+        )
+        merged_plan = apply_skill_execution_plan(base_plan, skill_plan)
+        assert base_plan.policy == "live_web_research"
+        assert skill_plan is None
+        assert merged_plan.policy == "live_web_research"
+        assert merged_plan.preferred_first_tool == "web_search"
 
 
 def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():

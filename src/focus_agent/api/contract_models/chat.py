@@ -117,6 +117,8 @@ class ThreadMessageSkillSelectionMetadata(BaseModel):
 
 
 class ThreadMessageMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     active_skill_ids: list[str] = Field(default_factory=list)
     active_skills: list[ThreadActiveSkillResponse] = Field(default_factory=list)
     skill_selection: ThreadMessageSkillSelectionMetadata | None = None

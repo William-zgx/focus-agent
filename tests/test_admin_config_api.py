@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,11 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
+from focus_agent.capabilities.tool_registry import build_tool_registry
 from focus_agent.config import Settings, load_model_catalog_toml, load_tool_catalog_document
+from focus_agent.engine.graph_builder import build_graph
 from focus_agent.repositories.user_repository import InMemoryUserRepository
 from focus_agent.security.tokens import create_access_token
 from focus_agent.services.auth import AuthService
 from focus_agent.services.users import UserService
+from focus_agent.skills import SkillRegistry
 
 
 def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -94,6 +98,7 @@ order = 0
     model_catalog = load_model_catalog_toml(model_path.read_text(encoding="utf-8"))
     tool_catalog = load_tool_catalog_document(tool_path)
     settings = Settings(
+        workspace_root=str(tmp_path),
         auth_enabled=True,
         auth_demo_tokens_enabled=True,
         auth_jwt_secret="admin-config-secret",
@@ -264,9 +269,26 @@ def test_admin_config_updates_and_refreshes_skills(
     client, settings, service, _, _, local_env_path = _build_client(monkeypatch, tmp_path)
     service.create_user(user_id="admin-1", roles=["admin"])
     headers = _headers(settings, "admin-1")
+    runtime = client.app.state.runtime
+    skill_registry = SkillRegistry.from_settings(settings)
+    tool_registry = build_tool_registry(settings=settings, skill_registry=skill_registry)
+    runtime.skill_registry = skill_registry
+    runtime.tool_registry = tool_registry
+    runtime.graph = build_graph(
+        settings=settings,
+        skill_registry=skill_registry,
+        tool_registry=tool_registry,
+    )
+    initial_graph = runtime.graph
+    old_skill_root = Path(settings.skill_directories[0])
+    old_scripts_dir = old_skill_root / "plan" / "scripts"
+    old_scripts_dir.mkdir(parents=True)
+    (old_scripts_dir / "probe.py").write_text("print('old-skill-root')\n", encoding="utf-8")
     next_skill_root = tmp_path / "next-skills"
     next_skill_dir = next_skill_root / "review"
-    next_skill_dir.mkdir(parents=True)
+    next_scripts_dir = next_skill_dir / "scripts"
+    next_scripts_dir.mkdir(parents=True)
+    (next_scripts_dir / "probe.py").write_text("print('new-skill-root')\n", encoding="utf-8")
     (next_skill_dir / "SKILL.md").write_text(
         """
 ---
@@ -310,6 +332,25 @@ Look for correctness risks first.
     assert settings.skill_install_directory == str(next_skill_root)
     assert settings.skill_semantic_match_enabled is False
     assert settings.skill_semantic_match_threshold == 0.31
+    tool = runtime.tool_registry.by_name["run_workspace_command"]
+    assert runtime.graph is not initial_graph
+    new_payload = json.loads(
+        tool.invoke(
+            {
+                "command": ["python3", "scripts/probe.py"],
+                "cwd": "next-skills/review",
+            }
+        )
+    )
+    assert new_payload["exit_code"] == 0
+    assert "new-skill-root" in new_payload["stdout"]
+    with pytest.raises(ValueError, match="not allowlisted"):
+        tool.invoke(
+            {
+                "command": ["python3", "scripts/probe.py"],
+                "cwd": "skills/plan",
+            }
+        )
     local_env = local_env_path.read_text(encoding="utf-8")
     assert "FOCUS_AGENT_SKILLS_ENABLED=false" in local_env
     assert f"FOCUS_AGENT_SKILLS_DIRS={next_skill_root}" in local_env
