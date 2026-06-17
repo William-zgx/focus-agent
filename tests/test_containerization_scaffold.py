@@ -10,6 +10,8 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
         root / "compose.yaml",
         root / "compose.prod.yaml",
         root / "docker" / "entrypoint.sh",
+        root / "docker" / "sandbox.Dockerfile",
+        root / "scripts" / "ensure_sandbox_image.py",
     ]
 
     for path in required:
@@ -30,6 +32,23 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert 'ENTRYPOINT ["/entrypoint.sh"]' in dockerfile_text
     assert 'CMD ["focus-agent-api"]' in dockerfile_text
     assert "FOCUS_AGENT_LOCAL_ENV_FILE=/data/local.env" in dockerfile_text
+
+    sandbox_dockerfile_text = (root / "docker" / "sandbox.Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    assert "ARG BASE_IMAGE=node:20-bookworm-slim" in sandbox_dockerfile_text
+    assert "mcr.microsoft.com/devcontainers" not in sandbox_dockerfile_text
+    assert "ARG APT_MIRROR=" in sandbox_dockerfile_text
+    assert "Acquire::Retries=3" in sandbox_dockerfile_text
+    assert "python3-venv" in sandbox_dockerfile_text
+    assert "golang-go" in sandbox_dockerfile_text
+    assert "rustc" in sandbox_dockerfile_text
+    assert "pnpm@9.15.9" in sandbox_dockerfile_text
+    assert "WORKDIR /workspace" in sandbox_dockerfile_text
+
+    makefile_text = (root / "Makefile").read_text(encoding="utf-8")
+    assert "sandbox-image:" in makefile_text
+    assert "scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest" in makefile_text
 
     entrypoint_text = (root / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     assert "copy_if_missing" in entrypoint_text

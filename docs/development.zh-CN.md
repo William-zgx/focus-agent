@@ -181,6 +181,17 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 
 `scripts/ui_smoke_test.py` 不会启动 API 或 Vite dev server。按默认参数运行前，请先确认 `http://127.0.0.1:8000/healthz` 和 `http://127.0.0.1:5173/app/` 已可访问。如果指向后端托管的静态 app，请先跑 `make web-build`。
 
+如果改动影响 sandbox execution，请先构建或刷新标准执行镜像，再跑依赖 Docker 执行的浏览器或 API smoke：
+
+```bash
+make sandbox-image
+# 或不通过 Make：
+uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
+.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
+```
+
+sandbox Dockerfile 默认使用 `node:20-bookworm-slim`，不再依赖体积较大的 devcontainer 镜像。如果本地镜像源更稳定，可以给 `scripts/ensure_sandbox_image.py` 传 `--base-image`、`--apt-mirror` 或 `--apt-security-mirror`。`FOCUS_AGENT_SANDBOX_IMAGE` 可以指向其他受信任本地镜像。默认镜像不存在时，dev run 可能降级到 local backend，并在工具结果里带 `fallback_reason`；不要把这个降级路径当成最终安全模型。
+
 8. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 
 ```bash

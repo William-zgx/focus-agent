@@ -13,7 +13,14 @@ from typing import Any
 
 from langchain.tools import tool
 
-from .common import _coerce_relative_posix, _read_text_file, _require_non_empty_text_arg
+from ..sandbox_execution import SandboxExecutionRequest, default_sandbox_execution_service
+from .common import (
+    _coerce_relative_posix,
+    _get_current_branch_id,
+    _get_current_thread_id,
+    _read_text_file,
+    _require_non_empty_text_arg,
+)
 from .workspace_command import (
     allowed_command_names,
     normalize_command,
@@ -743,7 +750,7 @@ def build_workspace_tools(
             validate_command_paths(
                 normalized_command, resolve_path=_resolve_workspace_command_path
             )
-            resolved_command = resolve_command_executable(
+            resolve_command_executable(
                 normalized_command, resolve_path=_resolve_workspace_command_path
             )
             requested_timeout = (
@@ -764,41 +771,21 @@ def build_workspace_tools(
                 100,
                 min(requested_output_chars, tool_catalog.run_workspace_command.max_output_chars),
             )
-            timed_out = False
-            try:
-                completed = subprocess.run(
-                    resolved_command,
-                    cwd=working_dir,
+            sandbox_result = default_sandbox_execution_service().run(
+                SandboxExecutionRequest(
+                    workspace_root=workspace_root,
+                    command=normalized_command,
+                    cwd=normalized_cwd,
+                    timeout_seconds=capped_timeout,
+                    max_output_chars=capped_output_chars,
+                    allow_network=False,
                     env=workspace_command_env(),
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=capped_timeout,
-                    check=False,
+                    tool_name=tool_name,
+                    thread_id=_get_current_thread_id(),
+                    branch_id=_get_current_branch_id(),
                 )
-                returncode: int | None = completed.returncode
-                stdout = completed.stdout
-                stderr = completed.stderr
-            except subprocess.TimeoutExpired as exc:
-                timed_out = True
-                returncode = None
-                stdout = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-                stderr = (exc.stderr or "") if isinstance(exc.stderr, str) else ""
-            stdout_truncated = len(stdout) > capped_output_chars
-            stderr_truncated = len(stderr) > capped_output_chars
-            payload = {
-                "command": normalized_command,
-                "cwd": normalized_cwd,
-                "exit_code": returncode,
-                "timed_out": timed_out,
-                "timeout_seconds": capped_timeout,
-                "stdout": stdout[:capped_output_chars],
-                "stderr": stderr[:capped_output_chars],
-                "stdout_truncated": stdout_truncated,
-                "stderr_truncated": stderr_truncated,
-            }
-            result = json.dumps(payload, ensure_ascii=False)
+            )
+            result = sandbox_result.to_json()
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001

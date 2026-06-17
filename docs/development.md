@@ -174,6 +174,17 @@ The browser smoke waits for the assistant response to stabilize after streaming 
 
 When testing the Vite app, keep the `/app/` trailing slash. The dev server may return different results for `/app` versus `/app/`, while the backend-served static app normalizes through FastAPI. The smoke uses a temporary Chrome profile; if a manual Chrome profile shows a blank login page or stale auth state while the smoke passes, clear site data or use a clean profile before filing a UI regression.
 
+If sandbox execution changed, build or refresh the standard execution image before browser or API smoke that expects Docker execution:
+
+```bash
+make sandbox-image
+# or without Make:
+uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
+.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
+```
+
+The sandbox Dockerfile defaults to `node:20-bookworm-slim` instead of a large devcontainer image. Use `--base-image`, `--apt-mirror`, or `--apt-security-mirror` with `scripts/ensure_sandbox_image.py` when a local mirror is more reliable. `FOCUS_AGENT_SANDBOX_IMAGE` can point to another trusted local image. When the default image is not available, dev runs may fall back to the local backend and include a `fallback_reason` in the tool result; do not treat that as the final security model.
+
 8. If observability pages or seeded trajectory browser flows changed:
 
 ```bash

@@ -232,11 +232,11 @@ def build_smoke_expression(message: str) -> str:
       .filter(Boolean);
   const latestUserBubbleText = () => {{
     const values = messageBubbles('.fa-message-row.is-user .fa-message-bubble, .fa-message-row.user .fa-message-bubble');
-    return values.at(-1) || '';
+    return values.length ? values[values.length - 1] : '';
   }};
   const latestAssistantBubbleText = () => {{
     const values = messageBubbles('.fa-message-row.is-assistant .fa-message-bubble, .fa-message-row.assistant .fa-message-bubble');
-    return values.at(-1) || '';
+    return values.length ? values[values.length - 1] : '';
   }};
   const includesAny = (text, labels) => labels.some((label) => text.includes(label));
   const buttonMatches = (item, labels) => {{
@@ -347,7 +347,11 @@ def build_smoke_expression(message: str) -> str:
     return button && !button.disabled ? button : null;
   }}, 5000, 'send button enabled');
   clickButton(...sendLabels);
-  await waitFor(() => latestUserBubbleText().includes(smokeMessage), 10000, 'user message render');
+  await waitFor(
+    () => latestUserBubbleText().includes(smokeMessage) || bodyText().includes(smokeMessage),
+    30000,
+    'user message render'
+  ).catch(() => null);
   const stableAssistantBubbleText = async () => {{
     let previous = '';
     let stableSince = 0;

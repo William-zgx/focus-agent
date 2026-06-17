@@ -10,11 +10,13 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
+from focus_agent.capabilities.default_tool_modules import workspace as workspace_tools
 from focus_agent.capabilities.default_tool_modules.workspace_command import (
     validate_command_paths,
     workspace_command_allowed,
 )
 from focus_agent.capabilities.default_tools import get_default_tools
+from focus_agent.capabilities.sandbox_execution import SandboxExecutionResult
 from focus_agent.capabilities.tool_manifest import normalize_tool_metadata
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
@@ -1805,6 +1807,81 @@ def test_run_workspace_command_runs_allowlisted_commands_and_blocks_unsafe_ones(
             {"command": ["./pytest", "--rootdir=/tmp", "--version"]}
         )
     assert not (project / "pwned").exists()
+
+
+def test_run_workspace_command_uses_unified_sandbox_service(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pytest").write_text("#!/bin/sh\necho host\n", encoding="utf-8")
+    (project / "pytest").chmod(0o755)
+    captured_requests = []
+
+    class _SandboxService:
+        def run(self, request):
+            captured_requests.append(request)
+            return SandboxExecutionResult(
+                status="completed",
+                command=request.command,
+                cwd=request.cwd,
+                exit_code=0,
+                timed_out=False,
+                timeout_seconds=request.timeout_seconds,
+                stdout="sandbox\n",
+                stderr="",
+                stdout_truncated=False,
+                stderr_truncated=False,
+                outputs=[],
+                outputs_truncated=False,
+                duration_ms=1.0,
+                sandbox_backend="docker",
+                run_id="run-workspace-1",
+                policy={
+                    "network": "none",
+                    "workspace": "thread_persistent_copy",
+                    "sandbox_id": "thread-thread-1",
+                },
+                sandbox_id="thread-thread-1",
+                fallback_used=False,
+                workspace_mode="thread_persistent_copy",
+                network_policy="none",
+                resource_limits={"memory_mb": 1024, "pids_limit": 512},
+            )
+
+    monkeypatch.setattr(
+        workspace_tools,
+        "default_sandbox_execution_service",
+        lambda: _SandboxService(),
+    )
+    monkeypatch.setattr(workspace_tools, "_get_current_thread_id", lambda: "thread-1")
+    monkeypatch.setattr(workspace_tools, "_get_current_branch_id", lambda: None)
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    payload = json.loads(
+        tools["run_workspace_command"].invoke(
+            {"command": ["./pytest", "--version"], "timeout_seconds": 10}
+        )
+    )
+
+    assert captured_requests
+    request = captured_requests[0]
+    assert request.command == ["./pytest", "--version"]
+    assert request.cwd == "."
+    assert request.allow_network is False
+    assert request.thread_id == "thread-1"
+    assert request.branch_id is None
+    assert request.workspace_mode == "thread_persistent_copy"
+    assert request.fallback_policy == "allow_dev_local"
+    assert payload["sandbox_backend"] == "docker"
+    assert payload["run_id"] == "run-workspace-1"
+    assert payload["sandbox_id"] == "thread-thread-1"
+    assert payload["workspace_mode"] == "thread_persistent_copy"
+    assert payload["fallback_used"] is False
+    assert payload["network_policy"] == "none"
+    assert payload["resource_limits"] == {"memory_mb": 1024, "pids_limit": 512}
+    assert payload["policy"]["network"] == "none"
+    assert payload["policy"]["workspace"] == "thread_persistent_copy"
+    assert payload["policy"]["sandbox_id"] == "thread-thread-1"
+    assert payload["stdout"] == "sandbox\n"
 
 
 def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_path):

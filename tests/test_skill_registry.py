@@ -6,6 +6,8 @@ from langchain.tools import tool
 
 from focus_agent.api.contract_models.agent import AgentSkillSelectRequest
 from focus_agent.api.routers.agent_governance import _skill_selection_response
+from focus_agent.capabilities import skill_entrypoint_runner
+from focus_agent.capabilities.sandbox_execution import SandboxExecutionResult
 from focus_agent.capabilities.tool_manifest import StaticToolProvider
 from focus_agent.capabilities.tool_registry import build_tool_registry
 from focus_agent.config import (
@@ -255,6 +257,7 @@ def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
     fake_python.parent.mkdir(parents=True)
     fake_python.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
     monkeypatch.setenv("SECRET_TOKEN", "sk-test-secret")
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_BACKEND", "local")
     registry = SkillRegistry([skill_root])
     tools = build_tool_registry(
         settings=Settings(workspace_root=str(tmp_path)),
@@ -328,7 +331,125 @@ def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
         )
 
 
-def test_run_skill_entrypoint_rejects_unsafe_dependency_declarations(tmp_path):
+def test_run_skill_entrypoint_uses_unified_sandbox_service(tmp_path, monkeypatch):
+    skill_root = tmp_path / "skills"
+    skill_file = _write_skill(
+        skill_root,
+        name="demo-skill",
+        description="Run a declared demo script.",
+        primary_tools="[run_skill_entrypoint]",
+        recommended_tools="[run_skill_entrypoint]",
+        prompt_mode="execute",
+        entrypoints="\n".join(
+            [
+                "entrypoints:",
+                "  hello:",
+                '    command: ["python3", "scripts/hello.py"]',
+                "    timeout_seconds: 30",
+                "    memory_mb: 512",
+                "    output_dir_arg: --output-dir",
+            ]
+        ),
+    )
+    scripts_dir = skill_file.parent / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "hello.py").write_text("print('hello')\n", encoding="utf-8")
+    captured_requests = []
+
+    class _SandboxService:
+        def run(self, request):
+            captured_requests.append(request)
+            return SandboxExecutionResult(
+                status="completed",
+                command=request.command,
+                cwd=request.cwd,
+                exit_code=0,
+                timed_out=False,
+                timeout_seconds=request.timeout_seconds,
+                stdout='{"result":"ok"}\n',
+                stderr="",
+                stdout_truncated=False,
+                stderr_truncated=False,
+                outputs=[
+                    {
+                        "path": ".focus_agent/sandboxes/runs/run-skill-1/output/summary.json",
+                        "size_bytes": 2,
+                    }
+                ],
+                outputs_truncated=False,
+                duration_ms=1.0,
+                sandbox_backend="docker",
+                run_id="run-skill-1",
+                policy={
+                    "network": "none",
+                    "workspace": "thread_persistent_copy",
+                    "sandbox_id": "thread-thread-1",
+                },
+                skill_id=request.skill_id,
+                entrypoint=request.entrypoint,
+                memory_mb=request.memory_mb,
+                sandbox_id="thread-thread-1",
+                fallback_used=False,
+                workspace_mode="thread_persistent_copy",
+                network_policy="none",
+                resource_limits={"memory_mb": request.memory_mb, "pids_limit": 512},
+            )
+
+    monkeypatch.setattr(
+        skill_entrypoint_runner,
+        "default_sandbox_execution_service",
+        lambda **_kwargs: _SandboxService(),
+    )
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_registry._get_current_thread_id",
+        lambda: "thread-1",
+    )
+    monkeypatch.setattr(
+        "focus_agent.capabilities.tool_registry._get_current_branch_id",
+        lambda: None,
+    )
+    registry = SkillRegistry([skill_root])
+    tools = build_tool_registry(
+        settings=Settings(workspace_root=str(tmp_path)),
+        skill_registry=registry,
+    )
+
+    payload = json.loads(
+        tools.by_name["run_skill_entrypoint"].invoke(
+            {
+                "skill_id": "demo-skill",
+                "entrypoint": "hello",
+                "arguments": {"name": "Ada"},
+            }
+        )
+    )
+
+    assert captured_requests
+    request = captured_requests[0]
+    assert request.command == ["python3", "scripts/hello.py", "--name", "Ada"]
+    assert request.cwd == "skills/demo-skill"
+    assert request.output_dir_arg == "--output-dir"
+    assert request.skill_id == "demo-skill"
+    assert request.entrypoint == "hello"
+    assert request.allow_network is False
+    assert request.memory_mb == 512
+    assert request.thread_id == "thread-1"
+    assert request.branch_id is None
+    assert request.workspace_mode == "thread_persistent_copy"
+    assert payload["sandbox_backend"] == "docker"
+    assert payload["sandbox_id"] == "thread-thread-1"
+    assert payload["workspace_mode"] == "thread_persistent_copy"
+    assert payload["fallback_used"] is False
+    assert payload["network_policy"] == "none"
+    assert payload["resource_limits"] == {"memory_mb": 512, "pids_limit": 512}
+    assert payload["skill_id"] == "demo-skill"
+    assert payload["entrypoint"] == "hello"
+    assert payload["run_id"] == "run-skill-1"
+    assert payload["policy"]["workspace"] == "thread_persistent_copy"
+    assert payload["policy"]["sandbox_id"] == "thread-thread-1"
+
+
+def test_run_skill_entrypoint_rejects_unsafe_dependency_declarations(tmp_path, monkeypatch):
     skill_root = tmp_path / "skills"
     skill_file = _write_skill(
         skill_root,
@@ -351,6 +472,11 @@ def test_run_skill_entrypoint_rejects_unsafe_dependency_declarations(tmp_path):
     scripts_dir.mkdir()
     (scripts_dir / "hello.py").write_text("print('hello')\n", encoding="utf-8")
     registry = SkillRegistry([skill_root])
+    monkeypatch.setattr(
+        skill_entrypoint_runner,
+        "default_sandbox_execution_service",
+        lambda **_kwargs: pytest.fail("unsafe dependencies must not reach sandbox service"),
+    )
     tools = build_tool_registry(
         settings=Settings(workspace_root=str(tmp_path)),
         skill_registry=registry,

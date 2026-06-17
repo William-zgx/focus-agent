@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report compat-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report compat-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -74,6 +74,7 @@ help:
 		'  make docker-rebuild    Rebuild image and recreate the Compose service' \
 		'  make docker-restart    Restart the running Compose service' \
 		'  make docker-logs       Follow Compose service logs' \
+		'  make sandbox-image     Check or build the local sandbox execution image' \
 		'  make ui-smoke          Run the real-browser chat and branch UI smoke test' \
 		'  make ui-smoke-observability Run the real-browser observability UI smoke test' \
 		'  make ui-smoke-productivity Run the productivity source-level UI smoke test' \
@@ -277,6 +278,9 @@ docker-restart:
 
 docker-logs:
 	$(DOCKER_COMPOSE) logs -f focus-agent
+
+sandbox-image: .venv/bin/python
+	$(PYTHON) scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
 
 ui-smoke: .venv/bin/python
 	$(PYTHON) scripts/ui_smoke_test.py
