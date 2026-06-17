@@ -10227,6 +10227,37 @@
       },
       "type": "object"
     },
+    "AgentTeamSchedulerMetadata": {
+      "properties": {
+        "blocked_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_tasks": {
+          "default": 0,
+          "type": "integer"
+        },
+        "max_waves": {
+          "default": 0,
+          "type": "integer"
+        },
+        "ready_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "waiting_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "AgentTeamSessionContract": {
       "properties": {
         "created_at": {
@@ -10461,6 +10492,16 @@
           "anyOf": [
             {
               "$ref": "#/components/schemas/AgentTeamRunMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scheduler": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamSchedulerMetadata"
             },
             {
               "type": "null"
@@ -14550,7 +14591,7 @@
           "type": "string"
         },
         "on_disconnect": {
-          "default": "cancel",
+          "default": "rollback",
           "enum": [
             "cancel",
             "continue",
@@ -14629,7 +14670,7 @@
           "type": "string"
         },
         "on_disconnect": {
-          "default": "cancel",
+          "default": "rollback",
           "enum": [
             "cancel",
             "continue",

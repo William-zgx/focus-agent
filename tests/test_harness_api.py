@@ -323,6 +323,7 @@ def test_create_run_record_persists_user_id():
 
         assert manager.args == ("thread-1",)
         assert manager.kwargs["user_id"] == "user-1"
+        assert manager.kwargs["on_disconnect"].value == "rollback"
         assert manager.kwargs["rollback_target"].checkpoint_id == "checkpoint-1"
         assert manager.kwargs["metadata"][ROLLBACK_TARGET_METADATA_KEY] == {
             "thread_id": "thread-1",
@@ -1327,6 +1328,7 @@ async def _collect_produced_events(
     final_messages=None,
     error: Exception | None = None,
     abort_requested: bool = False,
+    chat=None,
 ):
     async def fake_stream_chunks(**kwargs):
         del kwargs
@@ -1365,10 +1367,11 @@ async def _collect_produced_events(
     producer_final_messages = (
         [AIMessage(content="done")] if final_messages is None else final_messages
     )
+    producer_chat = chat or _ProducerChat(producer_final_messages)
 
     await harness_runs._produce_run_stream(
         runtime=runtime,
-        chat=_ProducerChat(producer_final_messages),
+        chat=producer_chat,
         run_id="run-1",
         thread_id="thread-1",
         user_id="user-1",
@@ -2561,12 +2564,37 @@ def test_produce_run_stream_demotes_custom_tool_payload_without_call_id(monkeypa
     asyncio.run(scenario())
 
 
-def test_produce_run_stream_reports_exception_as_run_failed(monkeypatch):
+class _RecordingFailureChat(_ProducerChat):
+    def __init__(self, final_messages):
+        super().__init__(final_messages)
+        self.trajectory_calls = []
+        self.compaction_scheduled = False
+        self.branch_refresh_scheduled = False
+
+    def _safe_get_values(self, thread_id: str):
+        assert thread_id == "thread-1"
+        return {"messages": self.final_messages, "llm_calls": 2}
+
+    def _record_turn_trajectory_best_effort(self, **kwargs):
+        self.trajectory_calls.append(kwargs)
+
+    def _schedule_post_turn_context_compaction(self, **kwargs):
+        del kwargs
+        self.compaction_scheduled = True
+
+    def _schedule_branch_name_refresh_after_first_turn(self, **kwargs):
+        del kwargs
+        self.branch_refresh_scheduled = True
+
+
+def test_produce_run_stream_records_failed_turn_trajectory_and_reports_run_failed(monkeypatch):
     async def scenario():
+        chat = _RecordingFailureChat([AIMessage(content="partial failure answer")])
         events, statuses, ended = await _collect_produced_events(
             monkeypatch,
             [],
             error=RuntimeError("stream failed for test"),
+            chat=chat,
         )
         by_name = {event: data for event, data in events}
 
@@ -2581,6 +2609,19 @@ def test_produce_run_stream_reports_exception_as_run_failed(monkeypatch):
         }
         assert events[-1][0] == "run.closed"
         assert statuses[-1][0] is RunStatus.ERROR
+        assert statuses[-1][1]["error"] == "stream failed for test"
+        assert len(chat.trajectory_calls) == 1
+        call = chat.trajectory_calls[0]
+        assert call["status"] == "failed"
+        assert call["kind"] == "chat.turn"
+        assert call["thread_id"] == "thread-1"
+        assert call["user_id"] == "user-1"
+        assert call["root_thread_id"] == "root-1"
+        assert call["error"] == "stream failed for test"
+        assert call["final_values"]["messages"][0].content == "partial failure answer"
+        assert call["input_messages"] == []
+        assert chat.compaction_scheduled is False
+        assert chat.branch_refresh_scheduled is False
         assert ended is True
 
     asyncio.run(scenario())

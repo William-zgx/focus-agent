@@ -20,6 +20,7 @@ from ...core.repo_call import (
 from ...core.request_context import RequestContext
 from ...core.state import normalize_agent_state
 from ...core.token_usage import message_token_usage
+from ...core.tool_call_protocol import repair_dangling_tool_call_messages
 from ...core.types import ConversationRecord
 from ...model_registry import default_thinking_enabled, supports_thinking_mode
 from ...observability.tracing import build_invoke_config
@@ -420,6 +421,10 @@ def response_payload(
 ) -> dict[str, Any]:
     messages = values.get("messages", [])
     thread_messages = branch_visible_messages(list(messages), values=values)
+    thread_messages = repair_dangling_tool_call_messages(
+        thread_messages,
+        repair_trailing=not bool(interrupts),
+    )
     branch_actions = _thread_state_branch_actions(values, thread_id=thread_id)
     selected_model = str(values.get("selected_model") or settings.model)
     selected_thinking_mode = effective_thinking_mode(

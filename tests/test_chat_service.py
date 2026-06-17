@@ -1079,6 +1079,91 @@ def test_branch_thread_state_hides_copied_terminal_handoff_after_auto_run():
     assert payload["branch_actions"] == []
 
 
+def test_response_payload_repairs_trailing_tool_calls_without_interrupt():
+    class _Graph:
+        def get_state(self, _config):
+            return SimpleNamespace(
+                values={
+                    "messages": [
+                        HumanMessage(content="查中国能建"),
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "id": "call-1",
+                                    "name": "run_workspace_command",
+                                    "args": {
+                                        "command": [
+                                            "python3",
+                                            "scripts/stocks_client.py",
+                                            "quote",
+                                            "601868.SS",
+                                        ]
+                                    },
+                                }
+                            ],
+                        ),
+                    ]
+                }
+            )
+
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace()))
+
+    payload = chat._response_payload(
+        thread_id="thread-1",
+        user_id="owner-1",
+        context=RequestContext(user_id="owner-1", root_thread_id="thread-1"),
+        branch_meta=None,
+        interrupts=[],
+    )
+
+    assert payload["assistant_message"] is None
+    assert [message["type"] for message in payload["messages"]] == ["human", "ai", "tool"]
+    assert payload["messages"][2]["tool_call_id"] == "call-1"
+    assert payload["messages"][2]["status"] == "error"
+
+
+def test_response_payload_preserves_trailing_tool_calls_with_interrupt():
+    class _Graph:
+        def get_state(self, _config):
+            return SimpleNamespace(
+                values={
+                    "messages": [
+                        HumanMessage(content="查中国能建"),
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "id": "call-1",
+                                    "name": "run_workspace_command",
+                                    "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                                }
+                            ],
+                        ),
+                    ]
+                }
+            )
+
+    chat = ChatService(ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace()))
+    interrupt = {
+        "kind": "tool_approval",
+        "tool_call_id": "call-1",
+        "tool_name": "run_workspace_command",
+    }
+
+    payload = chat._response_payload(
+        thread_id="thread-1",
+        user_id="owner-1",
+        context=RequestContext(user_id="owner-1", root_thread_id="thread-1"),
+        branch_meta=None,
+        interrupts=[interrupt],
+    )
+
+    assert [message["type"] for message in payload["messages"]] == ["human", "ai"]
+    assert payload["messages"][1]["tool_calls"][0]["id"] == "call-1"
+    assert payload["interrupts"] == [interrupt]
+
+
 def test_branch_thread_state_hides_local_duplicate_handoff_before_answer():
     handoff = "大阪环球影城十月亲子预算，20字以内"
     graph = BranchActionGraph(

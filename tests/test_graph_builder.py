@@ -543,10 +543,108 @@ def test_count_tool_call_rounds_since_latest_human_ignores_older_turns():
     ]
 
     assert _count_tool_call_rounds_since_latest_human(messages) == 2
+    assert _should_force_tool_free_answer(messages) is False
+
+
+def test_should_force_tool_free_answer_after_repeated_same_tool_failure():
+    messages = [
+        HumanMessage(content="查行情"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "missing.py"]},
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"status":"error","error":"missing script"}',
+            tool_call_id="call-1",
+            status="error",
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-2",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "missing.py"]},
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"status":"error","error":"missing script"}',
+            tool_call_id="call-2",
+            status="error",
+        ),
+    ]
+
+    assert _count_tool_call_rounds_since_latest_human(messages) == 2
     assert _should_force_tool_free_answer(messages) is True
 
 
-def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
+def test_should_force_tool_free_answer_after_repeated_string_exit_code_failure():
+    messages = [
+        HumanMessage(content="查行情"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                }
+            ],
+        ),
+        ToolMessage(content='{"exit_code":"1"}', tool_call_id="call-1"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-2",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                }
+            ],
+        ),
+        ToolMessage(content='{"exit_code":"1"}', tool_call_id="call-2"),
+    ]
+
+    assert _should_force_tool_free_answer(messages) is True
+
+
+def test_messages_for_model_repairs_dangling_tool_calls_before_provider_prompt():
+    state = {
+        "recent_messages": [],
+        "messages": [
+            HumanMessage(content="查行情"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "run_workspace_command",
+                        "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                    }
+                ],
+            ),
+            HumanMessage(content="继续回答"),
+        ],
+    }
+
+    messages = _messages_for_model(state)
+
+    assert isinstance(messages[1], AIMessage)
+    assert isinstance(messages[2], ToolMessage)
+    assert messages[2].tool_call_id == "call-1"
+    assert messages[2].status == "error"
+    assert messages[2].artifact["runtime"]["dangling_tool_call_repaired"] is True
+    assert isinstance(messages[3], HumanMessage)
+
+
+def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):
             self.owner = owner
@@ -624,9 +722,10 @@ def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
     tool_enabled_calls = [item for item in fake_model.invocations if item["allow_tools"]]
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
 
-    # The live-web execution contract now performs the first mandatory search
-    # deterministically before handing any follow-up tool choice to the model.
-    assert len(tool_enabled_calls) == 1
+    # The first mandatory search is deterministic; the model then receives
+    # three follow-up tool opportunities before the four-round cap forces
+    # synthesis without tools.
+    assert len(tool_enabled_calls) == 3
     assert len(tool_free_calls) == 2
     assert any(
         isinstance(message, SystemMessage) and "Do not call more tools" in message.content

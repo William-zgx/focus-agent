@@ -225,9 +225,14 @@ def build_turn_trajectory_record(
         trajectory_messages,
         observation_max_chars=observation_max_chars,
     )
-    selected_answer = (
-        answer or _latest_final_ai_text(appended_messages) or _latest_final_ai_text(final_messages)
-    )
+    if answer:
+        selected_answer = answer
+    elif current_turn_answer := _latest_final_ai_text(appended_messages):
+        selected_answer = current_turn_answer
+    elif status == "succeeded" and not appended_messages:
+        selected_answer = _latest_final_ai_text(final_messages)
+    else:
+        selected_answer = None
     if selected_answer is not None:
         selected_answer = selected_answer[: max(answer_max_chars, 0)]
 

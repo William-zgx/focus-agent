@@ -25,11 +25,15 @@ export interface SendMessageResult {
 	aborted?: boolean;
 }
 
+function hasOwn(object: object, key: PropertyKey): boolean {
+	return Object.prototype.hasOwnProperty.call(object, key);
+}
+
 export function resolveThinkingModeForRequest(
 	overrides: SendMessageOverrides | undefined,
 	selectedThinkingMode: string | undefined,
 ) {
-	if (overrides && Object.hasOwn(overrides, "thinkingMode")) {
+	if (overrides && hasOwn(overrides, "thinkingMode")) {
 		return overrides.thinkingMode;
 	}
 	return selectedThinkingMode || undefined;
@@ -70,7 +74,7 @@ export function nextThreadEntryMap(
 		return current;
 	}
 	if (value === null) {
-		if (!Object.hasOwn(current, threadId)) {
+		if (!hasOwn(current, threadId)) {
 			return current;
 		}
 		const next = { ...current };
