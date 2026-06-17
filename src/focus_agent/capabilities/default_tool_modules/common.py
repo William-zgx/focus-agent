@@ -34,6 +34,20 @@ def _get_current_thread_id() -> str | None:
     return str(value) if value else None
 
 
+def _get_current_branch_id() -> str | None:
+    try:
+        config = get_config()
+    except Exception:  # noqa: BLE001
+        return None
+    configurable = dict(config.get("configurable") or {})
+    value = configurable.get("branch_id")
+    if value:
+        return str(value)
+    metadata = dict(config.get("metadata") or {})
+    metadata_branch = metadata.get("branch_id")
+    return str(metadata_branch) if metadata_branch else None
+
+
 def _get_current_user_id() -> str | None:
     try:
         config = get_config()

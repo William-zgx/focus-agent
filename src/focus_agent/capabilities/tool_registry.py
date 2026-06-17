@@ -19,8 +19,9 @@ from ..skills.registry import (
     render_skills_refresh_index_json,
     render_skills_search_json,
 )
+from .default_tool_modules.common import _get_current_branch_id, _get_current_thread_id
 from .default_tools import get_default_tools
-from .skill_entrypoint_runner import run_skill_entrypoint_in_local_venv
+from .skill_entrypoint_runner import run_skill_entrypoint_in_sandbox_service
 from .tool_manifest import StaticToolProvider, ToolManifest, ToolProvider, normalize_tool_metadata
 
 ToolArgValidator = Callable[[Mapping[str, Any]], None]
@@ -490,7 +491,7 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         entrypoint: str,
         arguments: dict[str, Any] | None = None,
     ) -> str:
-        """Run a declared local Skill entrypoint in an isolated local virtualenv sandbox."""
+        """Run a declared local Skill entrypoint through the unified sandbox service."""
         skill = skill_registry.resolve(skill_id)
         if skill is None or not skill_registry.is_skill_enabled(skill_id):
             raise ValueError(f"Skill '{skill_id}' not found or disabled.")
@@ -498,11 +499,13 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
             raise ValueError(f"Skill '{skill.skill_id}' is not trusted.")
         if arguments is not None and not isinstance(arguments, dict):
             raise ValueError("arguments must be an object.")
-        return run_skill_entrypoint_in_local_venv(
+        return run_skill_entrypoint_in_sandbox_service(
             workspace_root=Path(settings.workspace_root),
             skill=skill,
             entrypoint_name=entrypoint,
             arguments=arguments or {},
+            thread_id=_get_current_thread_id(),
+            branch_id=_get_current_branch_id(),
         )
 
     skills_list.description = settings.tool_catalog.skills_list.description

@@ -16,6 +16,11 @@ from typing import Any
 
 from ..skills.models import SkillDefinition, SkillEntrypoint
 from .default_tool_modules.workspace_command import workspace_command_env
+from .sandbox_execution import (
+    SandboxExecutionRequest,
+    SandboxExecutionResult,
+    default_sandbox_execution_service,
+)
 
 _PYTHON_NAMES = {"python", "python3"}
 _DEFAULT_TIMEOUT_SECONDS = 60
@@ -31,7 +36,172 @@ _MAX_FILE_BYTES = 512 * 1024 * 1024
 _MAX_PROCESSES = 1024
 
 
+def run_skill_entrypoint_in_sandbox_service(
+    *,
+    workspace_root: Path,
+    skill: SkillDefinition,
+    entrypoint_name: str,
+    arguments: Mapping[str, Any] | None = None,
+    thread_id: str | None = None,
+    branch_id: str | None = None,
+) -> str:
+    entrypoint = _entrypoint_for(skill, entrypoint_name)
+    skill_dir = skill.path.parent.expanduser().resolve()
+    workspace = workspace_root.expanduser().resolve()
+    _validated_script_path(
+        entrypoint=entrypoint,
+        skill_dir=skill_dir,
+    )
+    try:
+        cwd = skill_dir.relative_to(workspace).as_posix()
+    except ValueError as exc:
+        raise ValueError("Skill entrypoint path must stay inside the workspace.") from exc
+    timeout_seconds = _resolved_timeout(entrypoint.timeout_seconds)
+    memory_mb = _resolved_memory_mb(entrypoint.memory_mb)
+    try:
+        dependencies = _validated_dependencies(entrypoint.dependencies)
+    except RuntimeError as exc:
+        run_id = uuid.uuid4().hex
+        return json.dumps(
+            {
+                "status": "dependency_error",
+                "skill_id": skill.skill_id,
+                "entrypoint": entrypoint.name,
+                "run_id": run_id,
+                "exit_code": None,
+                "timed_out": False,
+                "timeout_seconds": timeout_seconds,
+                "memory_mb": memory_mb,
+                "stdout": "",
+                "stderr": str(exc),
+                "stdout_truncated": False,
+                "stderr_truncated": False,
+                "outputs": [],
+                "outputs_truncated": False,
+                "duration_ms": 0.0,
+                "sandbox_backend": "none",
+                "sandbox_id": None,
+                "fallback_used": False,
+                "workspace_mode": "thread_persistent_copy",
+                "network_policy": "bridge" if entrypoint.network else "none",
+                "resource_limits": {"memory_mb": memory_mb},
+                "network": entrypoint.network,
+            },
+            ensure_ascii=False,
+        )
+    command = [
+        *entrypoint.command,
+        *_arguments_to_argv(
+            arguments or {},
+            reserved_flags=(entrypoint.output_dir_arg,) if entrypoint.output_dir_arg else (),
+        ),
+    ]
+    service = default_sandbox_execution_service(
+        fallback_backend=_LocalVenvSkillEntrypointBackend(
+            workspace_root=workspace,
+            skill=skill,
+            entrypoint_name=entrypoint.name,
+            arguments=arguments or {},
+        )
+    )
+    result = service.run(
+        SandboxExecutionRequest(
+            workspace_root=workspace,
+            command=command,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            max_output_chars=_MAX_OUTPUT_CHARS,
+            allow_network=entrypoint.network,
+            memory_mb=memory_mb,
+            env={},
+            tool_name="run_skill_entrypoint",
+            skill_id=skill.skill_id,
+            entrypoint=entrypoint.name,
+            dependencies=dependencies,
+            output_dir_arg=entrypoint.output_dir_arg,
+            thread_id=thread_id,
+            branch_id=branch_id,
+        )
+    )
+    payload = result.to_payload()
+    payload["network"] = entrypoint.network
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def run_skill_entrypoint_in_local_venv(
+    *,
+    workspace_root: Path,
+    skill: SkillDefinition,
+    entrypoint_name: str,
+    arguments: Mapping[str, Any] | None = None,
+) -> str:
+    return run_skill_entrypoint_in_sandbox_service(
+        workspace_root=workspace_root,
+        skill=skill,
+        entrypoint_name=entrypoint_name,
+        arguments=arguments,
+    )
+
+
+class _LocalVenvSkillEntrypointBackend:
+    backend_name = "local_venv"
+
+    def __init__(
+        self,
+        *,
+        workspace_root: Path,
+        skill: SkillDefinition,
+        entrypoint_name: str,
+        arguments: Mapping[str, Any],
+    ) -> None:
+        self.workspace_root = workspace_root
+        self.skill = skill
+        self.entrypoint_name = entrypoint_name
+        self.arguments = arguments
+
+    def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
+        payload = json.loads(
+            _run_skill_entrypoint_in_local_venv(
+                workspace_root=self.workspace_root,
+                skill=self.skill,
+                entrypoint_name=self.entrypoint_name,
+                arguments=self.arguments,
+            )
+        )
+        return SandboxExecutionResult(
+            status=str(payload.get("status") or "failed"),
+            command=list(request.command),
+            cwd=request.cwd,
+            exit_code=payload.get("exit_code") if isinstance(payload.get("exit_code"), int) else None,
+            timed_out=bool(payload.get("timed_out", False)),
+            timeout_seconds=int(payload.get("timeout_seconds") or request.timeout_seconds),
+            stdout=str(payload.get("stdout") or ""),
+            stderr=str(payload.get("stderr") or ""),
+            stdout_truncated=bool(payload.get("stdout_truncated", False)),
+            stderr_truncated=bool(payload.get("stderr_truncated", False)),
+            outputs=list(payload.get("outputs") or []),
+            outputs_truncated=bool(payload.get("outputs_truncated", False)),
+            duration_ms=float(payload.get("duration_ms") or 0.0),
+            sandbox_backend="local_venv",
+            run_id=str(payload.get("run_id") or ""),
+            policy={
+                "backend": "local_venv",
+                "network": "host",
+                "workspace": "host",
+                "fallback": True,
+            },
+            skill_id=self.skill.skill_id,
+            entrypoint=self.entrypoint_name,
+            memory_mb=payload.get("memory_mb") if isinstance(payload.get("memory_mb"), int) else None,
+            sandbox_id=request.sandbox_id,
+            fallback_used=True,
+            workspace_mode="host",
+            network_policy="host",
+            resource_limits={},
+        )
+
+
+def _run_skill_entrypoint_in_local_venv(
     *,
     workspace_root: Path,
     skill: SkillDefinition,
@@ -458,4 +628,7 @@ def _resource_limiter(timeout_seconds: int, memory_mb: int):
     return limit
 
 
-__all__ = ["run_skill_entrypoint_in_local_venv"]
+__all__ = [
+    "run_skill_entrypoint_in_local_venv",
+    "run_skill_entrypoint_in_sandbox_service",
+]

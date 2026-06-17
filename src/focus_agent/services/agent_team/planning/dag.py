@@ -238,6 +238,7 @@ class AgentTeamPlanningService:
             max_tasks=max_tasks,
             plan_source="model",
             context_refs=_context_refs_for(session),
+            sandbox_id=session.root_thread_id,
         )
         _validate_task_draft(tasks)
         draft = AgentTeamPlanDraft(
@@ -274,6 +275,7 @@ class AgentTeamPlanningService:
             max_tasks=max_tasks,
             plan_source=source,
             context_refs=[],
+            sandbox_id=session.root_thread_id,
         )
         _validate_task_draft(candidates)
         draft = AgentTeamPlanDraft(
