@@ -387,7 +387,10 @@ class AgentTeamSessionTaskMixin:
             for task in tasks
         ):
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
-        elif any(task.status == AgentTeamTaskStatus.FAILED for task in tasks):
+        elif any(
+            task.status in {AgentTeamTaskStatus.FAILED, AgentTeamTaskStatus.BLOCKED}
+            for task in tasks
+        ):
             self._touch_session(session_id, status=AgentTeamSessionStatus.FAILED)
         elif all(
             task.status in {AgentTeamTaskStatus.DONE, AgentTeamTaskStatus.CANCELLED}

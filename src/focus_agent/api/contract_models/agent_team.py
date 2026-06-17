@@ -47,6 +47,14 @@ class AgentTeamRunMetadata(BaseModel):
     max_parallel_runs: int = 1
 
 
+class AgentTeamSchedulerMetadata(BaseModel):
+    ready_task_ids: list[str] = Field(default_factory=list)
+    waiting_task_ids: list[str] = Field(default_factory=list)
+    blocked_task_ids: list[str] = Field(default_factory=list)
+    max_waves: int = 0
+    max_tasks: int = 0
+
+
 class AgentTeamToolApprovalContract(BaseModel):
     request_id: str
     session_id: str
@@ -292,6 +300,7 @@ class AgentTeamSessionViewResponse(BaseModel):
     merge_bundle: AgentTeamMergeBundleContract | None = None
     planning: AgentTeamPlanningMetadata | None = None
     run: AgentTeamRunMetadata | None = None
+    scheduler: AgentTeamSchedulerMetadata | None = None
     pending_tool_approvals: list[AgentTeamToolApprovalContract] = Field(default_factory=list)
 
 

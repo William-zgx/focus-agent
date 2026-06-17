@@ -29,10 +29,13 @@ def _prepare_run_payload(
         user_id=user_id,
         require_writable=True,
     )
-    active_skill_ids = _merged_skill_ids(
-        selection.skill_ids,
-        initial_values.get("active_skill_ids", []),
-    )
+    if getattr(selection, "selection_source", "none") in {"explicit", "mixed"} and selection.skill_ids:
+        active_skill_ids = tuple(selection.skill_ids)
+    else:
+        active_skill_ids = _merged_skill_ids(
+            selection.skill_ids,
+            initial_values.get("active_skill_ids", []),
+        )
     if active_skill_ids:
         context, branch_meta, initial_values = chat._preflight_thread_access(
             thread_id=thread_id,

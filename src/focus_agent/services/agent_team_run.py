@@ -178,10 +178,20 @@ class AgentTeamRunMixin:
                 limit=_MAX_MISSION_SCHEDULER_TASKS,
             )
             if _multi_agent_dag_scheduler_enabled(self.settings):
-                runnable = self._compute_dag_runnable_tasks(
-                    tasks=tasks,
-                    max_parallel=remaining_capacity,
-                )
+                try:
+                    runnable = self._compute_dag_runnable_tasks(
+                        tasks=tasks,
+                        max_parallel=remaining_capacity,
+                    )
+                except DAGValidationError as exc:
+                    self._block_dag_scheduler_error(
+                        tasks=tasks,
+                        error=str(exc),
+                        selected_task_ids=selected_task_ids,
+                    )
+                    self._refresh_session_status(session_id)
+                    session = self.repository.get_session(session_id)
+                    return session, self.repository.list_tasks(session_id=session_id)
             if selected_task_ids:
                 runnable = [task for task in runnable if task.task_id in selected_task_ids]
             runnable = runnable[: min(remaining_capacity, _MAX_MISSION_SCHEDULER_TASKS)]
@@ -239,19 +249,50 @@ class AgentTeamRunMixin:
             for task in tasks
             if task.status in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}
         }
-        try:
-            wave = DAGScheduler(nodes, max_parallel_runs=max_parallel).compute_next_wave(
-                completed=completed,
-                failed=failed,
-                in_progress=in_progress,
-            )
-        except DAGValidationError:
-            return []
+        wave = DAGScheduler(nodes, max_parallel_runs=max_parallel).compute_next_wave(
+            completed=completed,
+            failed=failed,
+            in_progress=in_progress,
+        )
         return [
             task_by_id[node.task_id]
             for node in wave
             if task_by_id[node.task_id].status == AgentTeamTaskStatus.PENDING
         ]
+
+    def _block_dag_scheduler_error(
+        self,
+        *,
+        tasks: list[AgentTeamTask],
+        error: str,
+        selected_task_ids: set[str],
+    ) -> None:
+        now = _now()
+        selected = {task_id for task_id in selected_task_ids if task_id}
+        blocked: list[AgentTeamTask] = []
+        for task in tasks:
+            if selected and task.task_id not in selected:
+                continue
+            if task.status != AgentTeamTaskStatus.PENDING:
+                continue
+            blocked.append(
+                task.model_copy(
+                    update={
+                        "status": AgentTeamTaskStatus.BLOCKED,
+                        "run_status": "blocked",
+                        "execution_status": "scheduler_blocked",
+                        "last_error": f"DAG scheduler validation failed: {error}",
+                        "finished_at": task.finished_at or now,
+                        "claim_token": None,
+                        "claim_owner": None,
+                        "claimed_until": None,
+                        "queued_at": None,
+                        "updated_at": now,
+                    }
+                )
+            )
+        if blocked:
+            self.repository.save_tasks_bulk(blocked)
 
     def run_task(
         self, *, task_id: str, user_id: str, scheduler_wave: int | None = None

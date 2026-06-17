@@ -8,6 +8,7 @@ from focus_agent.engine.graph_evidence import normalize_evidence_bundle, normali
 from focus_agent.engine.graph_execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
+    skill_execution_evidence_facts,
     tool_result_names,
     verify_answer_against_evidence,
 )
@@ -78,6 +79,10 @@ def test_skill_execution_contract_requires_primary_tool_result():
         tool_results_seen=tool_result_names(messages),
         evidence_ledger=[],
         available_tool_names=["run_workspace_command", "web_search"],
+        skill_evidence_facts=skill_execution_evidence_facts(
+            messages,
+            required_tools=["run_workspace_command"],
+        ),
     )
 
     assert contract["policy"] == "skill_execution"
@@ -85,10 +90,25 @@ def test_skill_execution_contract_requires_primary_tool_result():
     assert missing["status"] == "missing_required_tools"
     assert satisfied["status"] == "satisfied"
     assert verify_answer_against_evidence(
-        answer="华钰矿业行情来自 stocks Skill。",
+        answer="华钰矿业行情来自 stocks Skill，代码 601020.SS。",
         contract=satisfied,
         evidence_ledger=[],
     )["status"] == "verified"
+
+
+def test_skill_execution_contract_prefers_entrypoint_tool_when_declared():
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command", "run_skill_entrypoint"],
+        skill_execution_plan={
+            "selected_skill_ids": ["china-stock-analysis"],
+            "primary_tools": ["run_workspace_command", "run_skill_entrypoint"],
+            "policy_override": "execution",
+        },
+    )
+
+    assert contract["policy"] == "skill_execution"
+    assert contract["required_tools"] == ["run_skill_entrypoint"]
 
 
 def test_skill_execution_contract_ignores_error_tool_result():
@@ -136,6 +156,83 @@ def test_skill_execution_contract_ignores_error_tool_result():
     assert evaluated["status"] == "missing_required_tools"
 
 
+def test_skill_execution_contract_requires_evidence_facts_after_tool_success():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_workspace_command",
+                    "args": {"cwd": ".focus_agent/skills/stocks"},
+                }
+            ],
+        ),
+        ToolMessage(content="plain output without structured facts", tool_call_id="skill-1"),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command"],
+        skill_execution_plan={
+            "selected_skill_ids": ["stocks"],
+            "primary_tools": ["run_workspace_command"],
+            "policy_override": "execution",
+        },
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command"],
+        skill_evidence_facts=skill_execution_evidence_facts(
+            messages,
+            required_tools=["run_workspace_command"],
+        ),
+    )
+    verification = verify_answer_against_evidence(
+        answer="工具已经执行成功，可以回答。",
+        contract=evaluated,
+        evidence_ledger=[],
+    )
+
+    assert tool_result_names(messages) == ["run_workspace_command"]
+    assert evaluated["status"] == "missing_required_tools"
+    assert evaluated["missing"] == []
+    assert evaluated["skill_evidence_facts"] == []
+    assert verification["status"] == "unsupported"
+    assert verification["repair_action"] == "fallback_to_tool_results"
+
+
+def test_run_skill_entrypoint_success_requires_uncompacted_structured_payload():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_skill_entrypoint",
+                    "args": {
+                        "skill_id": "china-stock-analysis",
+                        "entrypoint": "analyze_a_stock",
+                    },
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "tool": "run_skill_entrypoint",
+                    "truncated_by_context_policy": True,
+                }
+            ),
+            tool_call_id="skill-1",
+        ),
+    ]
+
+    assert tool_result_names(messages) == []
+
+
 def test_skill_execution_contract_ignores_failed_workspace_command_payload():
     messages = [
         AIMessage(
@@ -181,6 +278,110 @@ def test_skill_execution_contract_ignores_failed_workspace_command_payload():
 
     assert tool_result_names(messages) == []
     assert evaluated["status"] == "missing_required_tools"
+
+
+def test_skill_execution_answer_must_reference_latest_skill_observation():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_skill_entrypoint",
+                    "args": {
+                        "skill_id": "china-stock-analysis",
+                        "entrypoint": "analyze_a_stock",
+                    },
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "status": "completed",
+                    "skill_id": "china-stock-analysis",
+                    "entrypoint": "analyze_a_stock",
+                    "run_id": "run-abc123",
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "stdout": json.dumps(
+                        {
+                            "status": "completed",
+                            "code": "000063",
+                            "generated_at": "2026-06-17T02:04:20",
+                        }
+                    ),
+                }
+            ),
+            tool_call_id="skill-1",
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "read-1",
+                    "name": "read_file",
+                    "args": {
+                        "path": ".focus_agent/sandboxes/china-stock-analysis/runs/run-abc123/financial_analysis.json"
+                    },
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "path": ".focus_agent/sandboxes/china-stock-analysis/runs/run-abc123/financial_analysis.json",
+                    "content": "\n".join(
+                        [
+                            " 1 | {",
+                            ' 2 |   "code": "000063",',
+                            ' 3 |   "name": "中兴通讯",',
+                            ' 4 |   "score": 50,',
+                            ' 5 |   "profitability": {"assessment": "较弱 - ROE低于10%，盈利能力需要改善"}',
+                            " 6 | }",
+                        ]
+                    ),
+                }
+            ),
+            tool_call_id="read-1",
+        ),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_skill_entrypoint", "read_file"],
+        skill_execution_plan={
+            "selected_skill_ids": ["china-stock-analysis"],
+            "primary_tools": ["run_skill_entrypoint"],
+            "policy_override": "execution",
+        },
+    )
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_skill_entrypoint", "read_file"],
+        skill_evidence_facts=skill_execution_evidence_facts(
+            messages,
+            required_tools=["run_skill_entrypoint"],
+        ),
+    )
+
+    stale = verify_answer_against_evidence(
+        answer="以下是基于 2019-2023 年数据的旧版报告，ROE 为 13.38%。",
+        contract=evaluated,
+        evidence_ledger=[],
+    )
+    grounded = verify_answer_against_evidence(
+        answer="本次 run_id run-abc123 已完成，财务评分 50。",
+        contract=evaluated,
+        evidence_ledger=[],
+    )
+
+    assert evaluated["status"] == "satisfied"
+    assert any(fact["key"] == "score" and fact["value"] == "50" for fact in evaluated["skill_evidence_facts"])
+    assert stale["status"] == "unsupported"
+    assert stale["repair_action"] == "fallback_to_tool_results"
+    assert grounded["status"] == "verified"
 
 
 def test_answer_verifier_flags_leader_visit_contradiction():

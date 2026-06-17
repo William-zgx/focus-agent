@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 from ..config import Settings
 from .models import (
     SkillDefinition,
+    SkillEntrypoint,
     SkillInstallResult,
     SkillSearchResult,
     SkillSelection,
@@ -25,6 +27,7 @@ from .registry_matching import (
 )
 from .registry_parsing import (
     _coerce_prompt_mode,
+    _normalize_entrypoints,
     _normalize_list,
     _split_frontmatter,
 )
@@ -63,6 +66,18 @@ from .registry_sources import (
 )
 
 _SKILL_FILE_NAME = "SKILL.md"
+
+
+def _entrypoint_to_dict(entrypoint: SkillEntrypoint) -> dict[str, Any]:
+    return {
+        "name": entrypoint.name,
+        "command": list(entrypoint.command),
+        "dependencies": list(entrypoint.dependencies),
+        "network": entrypoint.network,
+        "timeout_seconds": entrypoint.timeout_seconds,
+        "memory_mb": entrypoint.memory_mb,
+        "output_dir_arg": entrypoint.output_dir_arg,
+    }
 
 
 class SkillRegistry:
@@ -378,7 +393,11 @@ class SkillRegistry:
         seen: set[str] = set()
         explicit_matched = False
 
-        for hint in explicit_hints:
+        resolved_explicit_hints = (
+            *tuple(str(item) for item in explicit_hints),
+            *self.explicit_hints_for_message(message),
+        )
+        for hint in resolved_explicit_hints:
             skill = self.resolve(str(hint))
             if skill is None or not self.is_skill_enabled(skill.skill_id) or skill.skill_id in seen:
                 continue
@@ -484,6 +503,35 @@ class SkillRegistry:
                 threshold=threshold,
             ),
         )
+
+    def explicit_hints_for_message(self, message: str) -> tuple[str, ...]:
+        lowered = str(message or "").lower()
+        if not lowered:
+            return ()
+        hints: list[str] = []
+        seen: set[str] = set()
+        for skill in self._active_skills():
+            skill_id = skill.skill_id.lower()
+            escaped = re.escape(skill_id)
+            path_markers = (
+                f".focus_agent/skills/{skill_id}/skill.md",
+                f"/skills/{skill_id}/skill.md",
+            )
+            contextual_patterns = (
+                rf"(?<![a-z0-9_-]){escaped}(?![a-z0-9_-])\s*(?:skill|技能)",
+                rf"(?:skill|技能)\s*[：:'\"`（(]*\s*{escaped}(?![a-z0-9_-])",
+                rf"(?:调用|使用|use|run)\s*{escaped}(?![a-z0-9_-])",
+            )
+            if not (
+                any(marker in lowered for marker in path_markers)
+                or any(re.search(pattern, lowered) for pattern in contextual_patterns)
+            ):
+                continue
+            if skill.skill_id in seen:
+                continue
+            seen.add(skill.skill_id)
+            hints.append(skill.skill_id)
+        return tuple(hints)
 
     def semantic_candidates_for_message(
         self,
@@ -592,6 +640,7 @@ class SkillRegistry:
                 "provenance": skill.provenance,
                 "checksum": skill.checksum,
                 "capability_requirements": list(skill.capability_requirements),
+                "entrypoints": [_entrypoint_to_dict(entry) for entry in skill.entrypoints],
             }
             for skill in self._skills
         ]
@@ -622,6 +671,7 @@ class SkillRegistry:
             "provenance": skill.provenance,
             "checksum": skill.checksum,
             "capability_requirements": list(skill.capability_requirements),
+            "entrypoints": [_entrypoint_to_dict(entry) for entry in skill.entrypoints],
             "content": skill.body,
         }
 
@@ -661,7 +711,15 @@ class SkillRegistry:
             "Apply the following skill instructions for this turn in addition to the base agent rules.",
         ]
         for skill in resolved:
-            sections.append(f"### {skill.skill_id}\n{skill.body}")
+            entrypoint_block = ""
+            if skill.entrypoints:
+                lines = ["Declared entrypoints:"]
+                for entry in skill.entrypoints:
+                    lines.append(
+                        f"- {entry.name}: {' '.join(entry.command)}"
+                    )
+                entrypoint_block = "\n\n" + "\n".join(lines)
+            sections.append(f"### {skill.skill_id}\n{skill.body}{entrypoint_block}")
         return "\n\n".join(sections)
 
     def _discover(self) -> tuple[SkillDefinition, ...]:
@@ -721,6 +779,7 @@ class SkillRegistry:
             provenance=str(frontmatter.get("provenance") or "").strip() or resolved_source.location,
             checksum=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
             capability_requirements=_normalize_list(frontmatter.get("capability_requirements")),
+            entrypoints=_normalize_entrypoints(frontmatter.get("entrypoints")),
         )
 
     def _source_for_path(self, skill_path: Path) -> SkillSourceDefinition:

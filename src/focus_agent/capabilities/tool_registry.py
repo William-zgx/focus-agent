@@ -4,6 +4,7 @@ import inspect
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
@@ -19,6 +20,7 @@ from ..skills.registry import (
     render_skills_search_json,
 )
 from .default_tools import get_default_tools
+from .skill_entrypoint_runner import run_skill_entrypoint_in_local_venv
 from .tool_manifest import StaticToolProvider, ToolManifest, ToolProvider, normalize_tool_metadata
 
 ToolArgValidator = Callable[[Mapping[str, Any]], None]
@@ -482,6 +484,27 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         """List configured skill sources and trust metadata."""
         return render_skill_sources_json(skill_registry)
 
+    @tool
+    def run_skill_entrypoint(
+        skill_id: str,
+        entrypoint: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> str:
+        """Run a declared local Skill entrypoint in an isolated local virtualenv sandbox."""
+        skill = skill_registry.resolve(skill_id)
+        if skill is None or not skill_registry.is_skill_enabled(skill_id):
+            raise ValueError(f"Skill '{skill_id}' not found or disabled.")
+        if str(skill.trust_level or "").strip().lower() not in {"", "trusted"}:
+            raise ValueError(f"Skill '{skill.skill_id}' is not trusted.")
+        if arguments is not None and not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object.")
+        return run_skill_entrypoint_in_local_venv(
+            workspace_root=Path(settings.workspace_root),
+            skill=skill,
+            entrypoint_name=entrypoint,
+            arguments=arguments or {},
+        )
+
     skills_list.description = settings.tool_catalog.skills_list.description
     skills_list.metadata = {
         "display_name": settings.tool_catalog.skills_list.label,
@@ -547,6 +570,20 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         "toolset": "skill",
         "intent_policies": ("workspace_lookup", "planning"),
     }
+    run_skill_entrypoint.metadata = {
+        "display_name": "Run Skill Entrypoint",
+        "parallel_safe": False,
+        "side_effect": True,
+        "side_effect_kind": "workspace_command",
+        "requires_workspace_write": True,
+        "requires_approval": True,
+        "risk_level": "medium",
+        "max_observation_chars": 20000,
+        "toolset": "workspace",
+        "intent_policies": ("execution",),
+        "intent_tags": ("command_execution", "skill_execution"),
+        "allowed_roles": ("executor",),
+    }
 
     tools: list[Any] = []
     if settings.tool_catalog.skills_list.enabled:
@@ -561,6 +598,7 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         tools.append(skills_refresh_index)
     if settings.tool_catalog.skill_sources.enabled:
         tools.append(skill_sources)
+    tools.append(run_skill_entrypoint)
     return tools
 
 

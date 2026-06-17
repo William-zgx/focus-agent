@@ -16,6 +16,7 @@ from .graph_evidence import (
     normalize_evidence_bundle,
     relevant_web_tool_call_ids,
 )
+from .graph_execution_contract import skill_execution_evidence_facts
 from .graph_tool_history_repair import _message_text
 
 _TOOL_CALL_REPAIR_FALLBACK_TEXT = (
@@ -91,6 +92,9 @@ def _latest_turn_messages(messages: list[Any]) -> list[Any]:
 
 
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    skill_answer = _fallback_skill_answer_from_tool_results(prompt_messages)
+    if skill_answer:
+        return skill_answer
     web_answer = _fallback_web_answer_from_tool_results(prompt_messages)
     if web_answer:
         return web_answer
@@ -99,6 +103,137 @@ def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
         return _TOOL_CALL_REPAIR_FALLBACK_TEXT
     unique_snippets = list(dict.fromkeys(snippets))
     return "我先根据已拿到的工具结果给出一个保守整理：\n" + "\n".join(unique_snippets[:10])
+
+
+def _fallback_skill_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    latest_turn = _latest_turn_messages(prompt_messages)
+    facts = skill_execution_evidence_facts(
+        latest_turn,
+        required_tools=("run_skill_entrypoint", "run_workspace_command"),
+    )
+    if not facts:
+        return ""
+    by_key = {str(fact.get("key") or ""): str(fact.get("value") or "") for fact in facts}
+    labels_by_key = {
+        str(fact.get("key") or ""): str(fact.get("label") or fact.get("key") or "")
+        for fact in facts
+    }
+    lines: list[str] = []
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", _latest_human_message_text(latest_turn)))
+    if chinese:
+        lines.append("我根据刚刚的 Skill 沙箱执行结果整理如下：")
+        run_id = by_key.get("run_id")
+        status = by_key.get("status")
+        generated = by_key.get("generated_date") or by_key.get("generated_at")
+        if run_id or status or generated:
+            parts = []
+            if status:
+                parts.append(f"状态 {status}")
+            if run_id:
+                parts.append(f"run_id {run_id}")
+            if generated:
+                parts.append(f"生成时间 {generated}")
+            lines.append(f"- 执行：{'，'.join(parts)}。")
+        code = by_key.get("code")
+        name = by_key.get("name")
+        if code or name:
+            lines.append(f"- 标的：{name or ''}（{code or '未知代码'}）。")
+        score = by_key.get("score")
+        if score:
+            lines.append(f"- 财务评分：{score}。")
+        for key, label in (
+            ("profitability.assessment", "盈利能力"),
+            ("solvency.assessment", "偿债能力"),
+            ("growth.assessment", "成长性"),
+            ("operation.assessment", "运营效率"),
+            ("anomalies.risk_level", "风险等级"),
+        ):
+            value = by_key.get(key)
+            if value:
+                lines.append(f"- {label}：{value}。")
+        valuation_parts = []
+        for key, label in (
+            ("valuation.平均内在价值", "平均内在价值"),
+            ("valuation.当前价格", "当前价格"),
+            ("valuation.建议买入价", "建议买入价"),
+            ("valuation.投资结论", "投资结论"),
+        ):
+            value = by_key.get(key)
+            if value:
+                valuation_parts.append(f"{label} {value}")
+        if valuation_parts:
+            lines.append(f"- 估值：{'；'.join(valuation_parts)}。")
+        step_lines = _skill_step_lines(by_key)
+        if step_lines:
+            lines.append(f"- 执行步骤：{'; '.join(step_lines)}。")
+        for key, value in _generic_skill_fact_lines(by_key).items():
+            label = labels_by_key.get(key) or key
+            lines.append(f"- {label}：{value}。")
+        return "\n".join(lines)
+
+    lines.append("Based on the latest Skill sandbox result:")
+    for key in (
+        "status",
+        "run_id",
+        "generated_date",
+        "code",
+        "name",
+        "score",
+        "profitability.assessment",
+        "solvency.assessment",
+        "growth.assessment",
+        "anomalies.risk_level",
+        "valuation.平均内在价值",
+        "valuation.当前价格",
+        "valuation.投资结论",
+    ):
+        value = by_key.get(key)
+        if value:
+            lines.append(f"- {key}: {value}")
+    for key, value in _generic_skill_fact_lines(by_key).items():
+        lines.append(f"- {labels_by_key.get(key) or key}: {value}")
+    return "\n".join(lines)
+
+
+def _generic_skill_fact_lines(facts_by_key: dict[str, str]) -> dict[str, str]:
+    handled = {
+        "status",
+        "run_id",
+        "generated_date",
+        "generated_at",
+        "code",
+        "name",
+        "score",
+        "profitability.assessment",
+        "solvency.assessment",
+        "growth.assessment",
+        "operation.assessment",
+        "anomalies.risk_level",
+        "valuation.平均内在价值",
+        "valuation.当前价格",
+        "valuation.建议买入价",
+        "valuation.投资结论",
+    }
+    generic: dict[str, str] = {}
+    for key, value in facts_by_key.items():
+        if key in handled or key.startswith("step:"):
+            continue
+        if not value:
+            continue
+        generic[key] = value
+        if len(generic) >= 6:
+            break
+    return generic
+
+
+def _skill_step_lines(facts_by_key: dict[str, str]) -> list[str]:
+    lines: list[str] = []
+    for key, value in facts_by_key.items():
+        if not key.startswith("step:"):
+            continue
+        step = key.split(":", 1)[1]
+        lines.append(f"{step} exit_code {value}")
+    return lines
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
