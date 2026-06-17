@@ -479,7 +479,7 @@ Namespace 由 `src/focus_agent/storage/namespaces.py` 管理，区分 root threa
 
 ## 12. Tool / Skill 概览
 
-Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md)。
+Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md)。代码执行沙箱的 canonical 文档是 [sandbox-execution.md](sandbox-execution.md)。
 
 分层：
 
@@ -489,6 +489,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - tool router：按 role、tool policy、risk、side effect 过滤工具。
 - skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具；管理员可全局关闭 Skill 系统或禁用单个 Skill，禁用项仍可见但不会参与搜索、触发或 prompt 注入。
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
+- 线程级沙箱执行：`run_workspace_command` 和声明式 `run_skill_entrypoint` 会构造 `SandboxExecutionRequest`，由 `SandboxExecutionService` 路由到 Docker backend 或显式 local fallback。同一 thread / branch 使用稳定 `sandbox_id` 和 `.focus_agent/sandboxes/threads/<sandbox_id>/workspace`；单次命令仍用 `run_id` 记录审计和输出。
 - live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。
 
 ## 13. Agent Governance 概览
@@ -695,6 +696,7 @@ Docker 本地联调用 [compose.yaml](../compose.yaml)，生产/预发模板用 
 - `compose.yaml` 包含 app + postgres，适合本地 Docker 联调。
 - `compose.prod.yaml` 不内置 Postgres，要求外部注入 `FOCUS_AGENT_DATABASE_URI`。
 - Dockerfile 使用前端构建阶段和 Python runtime 阶段。
+- `docker/sandbox.Dockerfile` 是独立的 sandbox execution image，用于工具/Skill 代码执行；通过 `make sandbox-image` 或 `scripts/ensure_sandbox_image.py` 准备，不等同于应用服务镜像。
 - `docker/entrypoint.sh` 准备 `/data` 下的默认配置和 fallback 路径。
 
 ## 19. 本地开发运行

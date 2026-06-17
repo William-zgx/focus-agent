@@ -26,6 +26,18 @@ To add an OpenAI-compatible chat model for one deployment, add provider/model me
 
 Skill settings are also local-first. Bundled skills are always available as the baseline catalog; optional project or user skills can live under `.focus_agent/skills` or another directory listed in `FOCUS_AGENT_SKILLS_DIRS`. Use `/app/admin/config` -> Capabilities to enable or disable the Skill system or individual skills. The Admin page persists local Skill settings such as `FOCUS_AGENT_SKILLS_ENABLED`, `SKILL_DISABLED_IDS`, and semantic-match controls to `.focus_agent/local.env`.
 
+Command and Skill script execution use the thread-level sandbox service. If you
+need Docker-backed execution, prepare the local image once:
+
+```bash
+make sandbox-image
+```
+
+When the image is missing, local development may fall back to `local_subprocess`
+or `local_venv`; the tool result marks `fallback_used=true` and includes a
+`fallback_reason`. Treat that as a development fallback, not the final security
+model. See [Sandbox Execution](sandbox-execution.md).
+
 If `AUTH_ENABLED=true`, replace the sample `AUTH_JWT_SECRET` before startup.
 The API refuses explicitly configured JWT secrets shorter than 32 characters or
 containing placeholder text such as `change`, `example`, or `replace`, even for
@@ -326,4 +338,5 @@ For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`
 - [Android App](android.md)
 - [Development Guide](development.md)
 - [Docker Deployment](docker-deployment.md)
+- [Sandbox Execution](sandbox-execution.md)
 - [Architecture](architecture.md)

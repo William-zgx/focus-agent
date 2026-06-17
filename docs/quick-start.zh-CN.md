@@ -38,6 +38,17 @@ Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配
 
 Skill 设置同样是 local-first。包内 bundled skills 提供基础 catalog；可选项目或用户 Skill 可以放在 `.focus_agent/skills`，也可以放在 `FOCUS_AGENT_SKILLS_DIRS` 指定的目录。通过 `/app/admin/config` 的「能力」分区可以启停整个 Skill 系统或单个 Skill；页面会把 `FOCUS_AGENT_SKILLS_ENABLED`、`SKILL_DISABLED_IDS` 和语义匹配等本地设置写入 `.focus_agent/local.env`。
 
+命令和 Skill 脚本执行会进入线程级沙箱服务。如果需要 Docker-backed
+执行，请先准备本地沙箱镜像：
+
+```bash
+make sandbox-image
+```
+
+当镜像缺失时，本地开发可能降级到 `local_subprocess` 或 `local_venv`；
+工具结果会带 `fallback_used=true` 和 `fallback_reason`。这只是开发降级
+路径，不是最终安全模型。详见 [Sandbox Execution](sandbox-execution.md)。
+
 如果 `AUTH_ENABLED=true`，启动前请替换示例 `AUTH_JWT_SECRET`。API 会拒绝长度小于 32 字符、或包含 `change`、`example`、`replace` 等占位文本的显式 JWT secret，即使是本地运行也一样。可用下面命令生成本地 secret：
 
 ```bash
@@ -299,4 +310,5 @@ uv run python scripts/ui_smoke_test.py \
 - [Android App](android.md)
 - [开发指南](development.zh-CN.md)
 - [Docker 部署说明](docker-deployment.md)
+- [Sandbox Execution](sandbox-execution.md)
 - [架构说明](architecture.md)

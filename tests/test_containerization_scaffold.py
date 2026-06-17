@@ -11,6 +11,7 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
         root / "compose.prod.yaml",
         root / "docker" / "entrypoint.sh",
         root / "docker" / "sandbox.Dockerfile",
+        root / "docs" / "sandbox-execution.md",
         root / "scripts" / "ensure_sandbox_image.py",
     ]
 
@@ -112,17 +113,36 @@ def test_containerization_docs_explain_current_boundary():
     architecture_text = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
     roadmap_text = (root / "docs" / "roadmap.md").read_text(encoding="utf-8")
     deployment_text = (root / "docs" / "docker-deployment.md").read_text(encoding="utf-8")
+    docs_index_text = (root / "docs" / "README.md").read_text(encoding="utf-8")
+    quick_start_text = (root / "docs" / "quick-start.md").read_text(encoding="utf-8")
+    quick_start_zh_text = (root / "docs" / "quick-start.zh-CN.md").read_text(
+        encoding="utf-8"
+    )
+    tool_skill_text = (root / "docs" / "tool-skill-design.md").read_text(encoding="utf-8")
+    sandbox_text = (root / "docs" / "sandbox-execution.md").read_text(encoding="utf-8")
 
     assert "docker compose up --build" in readme_text
     assert "FOCUS_AGENT_DATABASE_URI" in readme_text
     assert "compose.prod.yaml" in readme_text
+    assert "docs/sandbox-execution.md" in readme_text
     assert "docker compose up --build" in readme_zh_text
     assert "Postgres" in readme_zh_text
     assert "compose.prod.yaml" in readme_zh_text
+    assert "docs/sandbox-execution.md" in readme_zh_text
     assert "Docker / Compose 部署" in architecture_text
     assert "compose.prod.yaml" in architecture_text
+    assert "线程级沙箱执行" in architecture_text
     assert "compose.yaml" in roadmap_text
     assert "compose.prod.yaml" in roadmap_text
     assert "Docker 部署已分层" in roadmap_text
     assert "本地 Docker 联调" in deployment_text
     assert "生产/预发部署" in deployment_text
+    assert "Sandbox execution image" in deployment_text
+    assert "sandbox-execution.md" in docs_index_text
+    assert "make sandbox-image" in quick_start_text
+    assert "make sandbox-image" in quick_start_zh_text
+    assert "thread_persistent_copy" in tool_skill_text
+    assert "SandboxExecutionService" in sandbox_text
+    assert "run_workspace_command" in sandbox_text
+    assert "run_skill_entrypoint" in sandbox_text
+    assert "local_subprocess" in sandbox_text

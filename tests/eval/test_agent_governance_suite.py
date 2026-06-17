@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langchain.tools import tool as langchain_tool
 
 from .runner import load_dataset, run_case
@@ -25,6 +25,14 @@ def _has_tool_call(messages: list[Any], name: str) -> bool:
     return any(
         isinstance(message, AIMessage)
         and any(call.get("name") == name for call in (getattr(message, "tool_calls", None) or []))
+        for message in messages
+    )
+
+
+def _has_tool_result(messages: list[Any], tool_call_id: str) -> bool:
+    return any(
+        isinstance(message, ToolMessage)
+        and getattr(message, "tool_call_id", None) == tool_call_id
         for message in messages
     )
 
@@ -63,7 +71,11 @@ def _agent_governance_script(messages: list[Any], allow_tools: bool) -> AIMessag
         )
     mixed_readonly = "Tavily" in user_text and "web_search" in user_text
     if mixed_readonly:
-        if allow_tools and not _has_tool_call(messages, "search_code"):
+        if _has_tool_result(messages, "call-agent-governance-web"):
+            return AIMessage(
+                content="对比完成：workspace web_search implementation and latest Tavily docs."
+            )
+        if allow_tools and not _has_tool_result(messages, "call-agent-governance-search"):
             return AIMessage(
                 content="",
                 tool_calls=[

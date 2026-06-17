@@ -190,7 +190,7 @@ uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
 .venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
 ```
 
-sandbox Dockerfile 默认使用 `node:20-bookworm-slim`，不再依赖体积较大的 devcontainer 镜像。如果本地镜像源更稳定，可以给 `scripts/ensure_sandbox_image.py` 传 `--base-image`、`--apt-mirror` 或 `--apt-security-mirror`。`FOCUS_AGENT_SANDBOX_IMAGE` 可以指向其他受信任本地镜像。默认镜像不存在时，dev run 可能降级到 local backend，并在工具结果里带 `fallback_reason`；不要把这个降级路径当成最终安全模型。
+sandbox Dockerfile 默认使用 `node:20-bookworm-slim`，不再依赖体积较大的 devcontainer 镜像。如果本地镜像源更稳定，可以给 `scripts/ensure_sandbox_image.py` 传 `--base-image`、`--apt-mirror` 或 `--apt-security-mirror`。`FOCUS_AGENT_SANDBOX_IMAGE` 可以指向其他受信任本地镜像。默认镜像不存在时，dev run 可能降级到 local backend，并在工具结果里带 `fallback_reason`；不要把这个降级路径当成最终安全模型。执行契约和排障矩阵见 [sandbox-execution.md](sandbox-execution.md)。
 
 8. 如果改动影响 observability 页面或种子 trajectory 的浏览器链路：
 

@@ -183,7 +183,7 @@ uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
 .venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
 ```
 
-The sandbox Dockerfile defaults to `node:20-bookworm-slim` instead of a large devcontainer image. Use `--base-image`, `--apt-mirror`, or `--apt-security-mirror` with `scripts/ensure_sandbox_image.py` when a local mirror is more reliable. `FOCUS_AGENT_SANDBOX_IMAGE` can point to another trusted local image. When the default image is not available, dev runs may fall back to the local backend and include a `fallback_reason` in the tool result; do not treat that as the final security model.
+The sandbox Dockerfile defaults to `node:20-bookworm-slim` instead of a large devcontainer image. Use `--base-image`, `--apt-mirror`, or `--apt-security-mirror` with `scripts/ensure_sandbox_image.py` when a local mirror is more reliable. `FOCUS_AGENT_SANDBOX_IMAGE` can point to another trusted local image. When the default image is not available, dev runs may fall back to the local backend and include a `fallback_reason` in the tool result; do not treat that as the final security model. See [sandbox-execution.md](sandbox-execution.md) for the execution contract and troubleshooting matrix.
 
 8. If observability pages or seeded trajectory browser flows changed:
 

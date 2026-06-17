@@ -39,6 +39,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Access control, Admin Console, capability-centered settings, memory pipeline, governance feedback trends, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo read/edit, git, web, artifact, memory, productivity, and Skill catalog tools with guarded workspace command execution
+- Thread-level sandbox execution for workspace commands and declared Skill entrypoints, with Docker-first isolation and explicit local fallback metadata
 - Admin-managed runtime settings for model connections, tool providers, Skill enablement, Agent behavior, security/runtime policy, and low-frequency advanced options
 
 ## Repository Layout
@@ -85,6 +86,12 @@ Skill runtime settings are local-first as well. Bundled skills provide the
 baseline catalog, optional local skills live under `.focus_agent/skills`, and
 the Admin settings page can enable or disable the Skill system or individual
 skills without changing tracked source.
+
+Code execution uses a thread-level sandbox service. For Docker-backed command
+and Skill execution, prepare the sandbox image with `make sandbox-image`; local
+development can fall back to `local_subprocess` or `local_venv`, and those
+results are explicitly marked as fallback. See
+[docs/sandbox-execution.md](docs/sandbox-execution.md).
 
 Memory embedding is enabled by default when PostgreSQL memory is available. Local auto mode prefers Ollama `embeddinggemma`; install it explicitly with `ollama pull embeddinggemma`, or configure an OpenAI-compatible embedding endpoint.
 
@@ -185,6 +192,7 @@ Please use the GitHub issue templates for bugs, feature requests, and documentat
 - [Frontend SDK](frontend-sdk/README.md)
 - [Current Context Window](docs/context-window.md)
 - [Docker Deployment](docs/docker-deployment.md)
+- [Sandbox Execution](docs/sandbox-execution.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 

@@ -139,6 +139,11 @@ Supported metadata in this iteration:
 - `triggers`
 - `when_to_use`
 - `prompt_mode`
+- `primary_tools`
+- `recommended_tools`
+- `aliases`
+- `domains`
+- `entrypoints`
 
 The parser is intentionally minimal and optimized for bundled skills plus straightforward local overrides.
 
@@ -152,6 +157,37 @@ The parser is intentionally minimal and optimized for bundled skills plus straig
 6. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
 
 ![Skill prompt injection and tool narrowing](assets/diagrams/tool-skill-runtime.svg)
+
+### Executable Skill entrypoints
+
+Skills can opt into declared execution through `run_skill_entrypoint`. This is
+the only Skill path that should run a local script automatically. A Skill
+entrypoint declares command, dependencies, network need, timeout, memory, and
+output directory behavior in the Skill metadata:
+
+```yaml
+prompt_mode: execute
+primary_tools: [run_skill_entrypoint]
+recommended_tools: [run_skill_entrypoint, read_file, write_text_artifact]
+entrypoints:
+  analyze:
+    command: ["python3", "scripts/run_analysis.py"]
+    dependencies: ["pandas", "numpy"]
+    network: false
+    timeout_seconds: 300
+    memory_mb: 1024
+    output_dir_arg: --output-dir
+```
+
+Runtime rules:
+
+- `run_skill_entrypoint` only accepts declared entrypoints on trusted, enabled Skills.
+- Script paths must stay inside the Skill directory; absolute host paths, `python -c`, and undeclared entrypoints are rejected.
+- Declared dependencies are installed inside the sandbox cache or the local development fallback venv, not into the real repository.
+- The normal workspace mode is `thread_persistent_copy`: the sandbox sees a copied workspace that persists across turns for the same `sandbox_id`; writes do not automatically sync back to git.
+- Docker success can satisfy the Skill execution contract. `local_venv`, dependency errors, timeouts, and non-zero exits are observations and must not be counted as secure Docker success.
+
+The detailed execution contract is maintained in [sandbox-execution.md](sandbox-execution.md).
 
 ### Built-in skills
 
@@ -198,6 +234,7 @@ MCP-related workflows are represented as skills and tools today, for example Fas
 - Skill prompts are injected as plain text blocks; there is no scoring/ranking stage yet.
 - The system does not yet persist skill metadata snapshots or support linked reference files.
 - Semantic matching is configurable but intentionally conservative; prefix and explicit hint selection remain the most predictable activation path.
+- General Skill execution is declared-entrypoint only. The runtime does not expose arbitrary shell or host socket access through the Skill system.
 
 ## Connector Boundary
 
