@@ -9,7 +9,8 @@ import { appEnv } from "@/shared/config/env";
 export function useShellRouteState() {
 	const routeState = useRouterState({
 		select: (state) => {
-			const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
+			const lastMatch = state.matches[state.matches.length - 1];
+			const routeParams = (lastMatch?.params ?? {}) as Partial<
 				Record<"conversationId" | "sessionId" | "threadId" | "userId", string>
 			>;
 			const routeSearch = (state.location.search ?? {}) as Partial<
