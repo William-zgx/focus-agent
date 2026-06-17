@@ -57,9 +57,37 @@ flowchart TD
 ## 文件职责
 
 - [Dockerfile](../Dockerfile)：多阶段构建镜像，前端静态资源和 Alembic migration 文件打包进运行镜像
+- [docker/sandbox.Dockerfile](../docker/sandbox.Dockerfile)：独立的工具/Skill 执行镜像，用于 `SandboxExecutionService`，不参与应用容器镜像构建
+- [scripts/ensure_sandbox_image.py](../scripts/ensure_sandbox_image.py)：检查 Docker 版本、确认或构建 `focus-agent-sandbox:latest`
 - [compose.yaml](../compose.yaml)：本地 Docker 联调，包含应用与 Postgres
 - [compose.prod.yaml](../compose.prod.yaml)：生产/预发参考模板，应用连接外部 PostgreSQL
 - [docker/entrypoint.sh](../docker/entrypoint.sh)：准备 `/data` 下的默认配置文件并导出运行时路径；首次启动会从 `docs/local.env.example`、`docs/models.example.toml` 和 `docs/tools.example.toml` 拷贝初始 `/data/local.env`、`/data/models.toml`、`/data/tools.toml`；当 `DATABASE_URI` 存在时先执行 `alembic upgrade head`
+
+## Sandbox execution image
+
+应用服务镜像和工具执行沙箱镜像是两条链路：
+
+- `Dockerfile` 构建 Focus Agent API/Web 运行镜像。
+- `docker/sandbox.Dockerfile` 构建 `run_workspace_command` 和 `run_skill_entrypoint` 使用的执行镜像。
+
+本地或生产环境如果需要 Docker-backed 工具/Skill 执行，应先准备沙箱镜像：
+
+```bash
+make sandbox-image
+# 或直接运行：
+uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
+```
+
+沙箱镜像默认基础镜像是 `node:20-bookworm-slim`，并通过 apt 安装 Python venv、Go、Rust、编译工具和 git。网络不稳定时可以指定镜像源：
+
+```bash
+uv run python scripts/ensure_sandbox_image.py \
+  --image focus-agent-sandbox:latest \
+  --apt-mirror http://mirror.example/debian \
+  --apt-security-mirror http://mirror.example/debian-security
+```
+
+运行时通过 `FOCUS_AGENT_SANDBOX_IMAGE` 指向其他受信任本地镜像。`FOCUS_AGENT_SANDBOX_BACKEND=docker` 会要求 Docker 路径可用；默认 `auto` 模式在 dev 场景下可以降级到 local backend，并在工具结果里返回 `fallback_used` 和 `fallback_reason`。完整执行边界见 [sandbox-execution.md](sandbox-execution.md)。
 
 ## 本地 Docker 联调
 

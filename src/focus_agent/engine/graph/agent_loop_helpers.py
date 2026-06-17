@@ -484,6 +484,11 @@ def _skill_primary_tools(skill: SkillDefinition) -> list[str]:
         for tool_name in _normalized_skill_tool_names(getattr(skill, "primary_tools", ()))
         if tool_name
     ]
+    if getattr(skill, "entrypoints", ()):
+        return [
+            "run_skill_entrypoint",
+            *[tool_name for tool_name in explicit if tool_name != "run_skill_entrypoint"],
+        ]
     if explicit:
         return explicit
     recommended = _normalized_skill_tool_names(skill.recommended_tools)

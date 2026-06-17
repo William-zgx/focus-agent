@@ -322,7 +322,7 @@ export function Tabs<T extends string>({
 							}
 							if (event.key === "End") {
 								event.preventDefault();
-								const last = enabledItems.at(-1);
+								const last = enabledItems[enabledItems.length - 1];
 								if (last) {
 									onChange(last.id);
 									moveFocus(last.id);

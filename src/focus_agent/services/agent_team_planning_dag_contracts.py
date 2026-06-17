@@ -4,6 +4,28 @@ from typing import Any
 
 from .agent_team_planning_models import MissionDeliverable
 
+_SANDBOX_TASK_MARKERS = {
+    "build",
+    "debug",
+    "debugging",
+    "execution",
+    "implementation",
+    "test",
+    "testing",
+    "verification",
+}
+_SANDBOX_CAPABILITY_MARKERS = (
+    "build",
+    "code modification",
+    "command",
+    "execution",
+    "node",
+    "pytest",
+    "python",
+    "sandbox",
+    "test execution",
+)
+
 
 def _dedupe_values(values: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -17,8 +39,15 @@ def _dedupe_values(values: list[str]) -> list[str]:
     return deduped
 
 
-def _resource_claims_for_deliverable(deliverable: MissionDeliverable) -> list[str]:
-    return list(deliverable.resource_claims or _resource_claims_for_scope(deliverable.write_scope))
+def _resource_claims_for_deliverable(
+    deliverable: MissionDeliverable,
+    *,
+    sandbox_id: str | None = None,
+) -> list[str]:
+    claims = list(deliverable.resource_claims or _resource_claims_for_scope(deliverable.write_scope))
+    if sandbox_id and _deliverable_requires_sandbox(deliverable):
+        claims.append(f"sandbox:{_sanitize_resource_identifier(sandbox_id)}")
+    return _dedupe_values(claims)
 
 
 def _resource_claims_for_scope(write_scope: list[str]) -> list[str]:
@@ -28,6 +57,24 @@ def _resource_claims_for_scope(write_scope: list[str]) -> list[str]:
         if text:
             claims.append(f"file:{text}")
     return _dedupe_values(claims)
+
+
+def _deliverable_requires_sandbox(deliverable: MissionDeliverable) -> bool:
+    task_markers = {
+        str(deliverable.task_type or "").strip().lower(),
+        str(deliverable.task_kind or "").strip().lower(),
+    }
+    if any(marker in _SANDBOX_TASK_MARKERS for marker in task_markers):
+        return True
+    capabilities = " ".join(str(item or "").strip().lower() for item in deliverable.capability_requirements)
+    return any(marker in capabilities for marker in _SANDBOX_CAPABILITY_MARKERS)
+
+
+def _sanitize_resource_identifier(value: str) -> str:
+    text = str(value or "").strip()
+    sanitized = "".join(char if char.isalnum() or char in "_.-" else "-" for char in text)
+    sanitized = sanitized.strip(".-_")
+    return sanitized or "anonymous"
 
 
 def _contract_values(value: Any) -> list[str]:

@@ -78,7 +78,11 @@ function extractFunction(sourceText, functionName) {
 
 function loadFunctions(relativePath, functionNames) {
   const sourceText = readFileSync(path.join(repoRoot, relativePath), "utf8");
-  const snippet = functionNames.map((name) => extractFunction(sourceText, name)).join("\n\n");
+  const snippets = functionNames.map((name) => extractFunction(sourceText, name));
+  if (!functionNames.includes("hasOwn") && snippets.join("\n").includes("hasOwn(")) {
+    snippets.unshift(extractFunction(sourceText, "hasOwn"));
+  }
+  const snippet = snippets.join("\n\n");
   const transpiled = ts.transpileModule(snippet, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,

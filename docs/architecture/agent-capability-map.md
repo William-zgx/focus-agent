@@ -7,7 +7,7 @@ Current architecture capability map.
 | Capability | Tool coverage | Prompt coverage | Eval coverage | Notes |
 | --- | --- | --- | --- | --- |
 | planning | partial | registry introduced | smoke/agent_team datasets | Agent team planner and delegation planner exist, but prompt migration is incremental. |
-| execution | partial | registry introduced | smoke/tool trajectory checks | Tool registry has metadata and sandbox timeout hooks. |
+| execution | baseline | registry introduced | sandbox/tool/skill contract checks | Tool registry routes workspace commands and declared Skill entrypoints through thread-level sandbox execution with explicit fallback metadata. |
 | critic | partial | registry introduced | governance/review checks | Merge review now has a versioned prompt baseline. |
 | memory | production baseline | registry introduced | memory, memory_context, and embedding-path tests | PostgreSQL canonical memory is the source of truth; pgvector embeddings are a rebuildable semantic index used by hybrid retrieval when configured. |
 | skill_scout | partial | registry introduced | skill hints in eval schema | Skill registry is present; eval prompt pinning is now represented in cases. |

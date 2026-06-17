@@ -337,6 +337,7 @@ def test_settings_from_env_reads_models_from_catalog_doc(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("FOCUS_AGENT_MODEL_CATALOG_DOC", str(config_doc))
     monkeypatch.setenv("FOCUS_AGENT_TOOL_CATALOG_DOC", str(tools_doc))
+    monkeypatch.setenv("FOCUS_AGENT_LOCAL_ENV_FILE", str(tmp_path / "missing-local.env"))
     monkeypatch.setenv("TEMPERATURE", "0.4")
 
     settings = Settings.from_env()

@@ -23,7 +23,8 @@ import { useThreadPageDraftState } from "./use-thread-page-draft-state";
 export function ThreadPage() {
 	const { threadId, conversationId } = useRouterState({
 		select: (state) => {
-			const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
+			const lastMatch = state.matches[state.matches.length - 1];
+			const routeParams = (lastMatch?.params ?? {}) as Partial<
 				Record<"conversationId" | "threadId", string>
 			>;
 			return {

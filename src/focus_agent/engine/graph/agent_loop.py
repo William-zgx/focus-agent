@@ -28,6 +28,7 @@ from ..graph_evidence import (
 from ..graph_execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
+    skill_execution_evidence_facts,
     tool_result_names,
     verify_answer_against_evidence,
 )
@@ -595,6 +596,12 @@ def make_agent_loop_node(
             observed_at=observed_at or None,
             user_query=tool_intent_text,
         )
+        skill_evidence_facts = skill_execution_evidence_facts(
+            completed_turn_messages,
+            required_tools=[
+                str(item) for item in execution_contract.get("required_tools") or [] if str(item)
+            ],
+        )
         execution_contract = evaluate_execution_contract(
             execution_contract,
             tool_results_seen=tool_result_names(completed_turn_messages),
@@ -602,6 +609,7 @@ def make_agent_loop_node(
             available_tool_names=known_names,
             observed_at=observed_at or None,
             user_query=tool_intent_text,
+            skill_evidence_facts=skill_evidence_facts,
         )
         answer_verification = verify_answer_against_evidence(
             answer=_message_content_text(response)
@@ -619,7 +627,22 @@ def make_agent_loop_node(
             and not getattr(response, "tool_calls", None)
             and _live_web_answer_needs_repair(answer_verification)
         ):
-            if skill_execution_repair_count < 1 and available_tools:
+            if str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
+                response = AIMessage(
+                    content=_fallback_answer_from_tool_results(completed_turn_messages)
+                )
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
+                answer_verification = verify_answer_against_evidence(
+                    answer=_message_content_text(response),
+                    contract=execution_contract,
+                    evidence_ledger=evidence_ledger,
+                )
+                answer_verification = {
+                    **answer_verification,
+                    "repair_action_taken": "fallback_to_tool_results",
+                }
+                skill_execution_repair_taken = "fallback_to_tool_results"
+            elif skill_execution_repair_count < 1 and available_tools:
                 repair_prompt = apply_prompt_budget_guard(
                     [
                         prompt_messages[0],

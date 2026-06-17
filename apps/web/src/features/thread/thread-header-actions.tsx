@@ -29,7 +29,8 @@ export function ThreadHeaderActions({
 	const navigate = useNavigate();
 	const { conversationId, threadId, isReviewRoute } = useRouterState({
 		select: (state) => {
-			const routeParams = (state.matches.at(-1)?.params ?? {}) as Partial<
+			const lastMatch = state.matches[state.matches.length - 1];
+			const routeParams = (lastMatch?.params ?? {}) as Partial<
 				Record<"conversationId" | "threadId", string>
 			>;
 			return {

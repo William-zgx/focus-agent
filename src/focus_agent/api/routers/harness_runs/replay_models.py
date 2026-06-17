@@ -14,7 +14,7 @@ class HarnessRunRequest(BaseModel):
     thinking_mode: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     skill_hints: list[str] = Field(default_factory=list)
-    on_disconnect: Literal["cancel", "continue", "rollback"] = "cancel"
+    on_disconnect: Literal["cancel", "continue", "rollback"] = "rollback"
     multitask_strategy: Literal["reject", "interrupt", "rollback", "enqueue"] = "reject"
 
 
@@ -32,7 +32,7 @@ class HarnessResumeRequest(BaseModel):
 
     resume: Any
     metadata: dict[str, Any] = Field(default_factory=dict)
-    on_disconnect: Literal["cancel", "continue", "rollback"] = "cancel"
+    on_disconnect: Literal["cancel", "continue", "rollback"] = "rollback"
     multitask_strategy: Literal["reject", "interrupt", "rollback", "enqueue"] = "reject"
 
 

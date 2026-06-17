@@ -7,6 +7,17 @@ from ..core.types import PromptMode
 
 
 @dataclass(frozen=True, slots=True)
+class SkillEntrypoint:
+    name: str
+    command: tuple[str, ...]
+    dependencies: tuple[str, ...] = ()
+    network: bool = False
+    timeout_seconds: int | None = None
+    memory_mb: int | None = None
+    output_dir_arg: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SkillSourceDefinition:
     source_id: str
     source_type: str = "installed"
@@ -41,6 +52,7 @@ class SkillDefinition:
     provenance: str | None = None
     checksum: str | None = None
     capability_requirements: tuple[str, ...] = ()
+    entrypoints: tuple[SkillEntrypoint, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

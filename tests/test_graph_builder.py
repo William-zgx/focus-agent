@@ -543,10 +543,108 @@ def test_count_tool_call_rounds_since_latest_human_ignores_older_turns():
     ]
 
     assert _count_tool_call_rounds_since_latest_human(messages) == 2
+    assert _should_force_tool_free_answer(messages) is False
+
+
+def test_should_force_tool_free_answer_after_repeated_same_tool_failure():
+    messages = [
+        HumanMessage(content="查行情"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "missing.py"]},
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"status":"error","error":"missing script"}',
+            tool_call_id="call-1",
+            status="error",
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-2",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "missing.py"]},
+                }
+            ],
+        ),
+        ToolMessage(
+            content='{"status":"error","error":"missing script"}',
+            tool_call_id="call-2",
+            status="error",
+        ),
+    ]
+
+    assert _count_tool_call_rounds_since_latest_human(messages) == 2
     assert _should_force_tool_free_answer(messages) is True
 
 
-def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
+def test_should_force_tool_free_answer_after_repeated_string_exit_code_failure():
+    messages = [
+        HumanMessage(content="查行情"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                }
+            ],
+        ),
+        ToolMessage(content='{"exit_code":"1"}', tool_call_id="call-1"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call-2",
+                    "name": "run_workspace_command",
+                    "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                }
+            ],
+        ),
+        ToolMessage(content='{"exit_code":"1"}', tool_call_id="call-2"),
+    ]
+
+    assert _should_force_tool_free_answer(messages) is True
+
+
+def test_messages_for_model_repairs_dangling_tool_calls_before_provider_prompt():
+    state = {
+        "recent_messages": [],
+        "messages": [
+            HumanMessage(content="查行情"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "name": "run_workspace_command",
+                        "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                    }
+                ],
+            ),
+            HumanMessage(content="继续回答"),
+        ],
+    }
+
+    messages = _messages_for_model(state)
+
+    assert isinstance(messages[1], AIMessage)
+    assert isinstance(messages[2], ToolMessage)
+    assert messages[2].tool_call_id == "call-1"
+    assert messages[2].status == "error"
+    assert messages[2].artifact["runtime"]["dangling_tool_call_repaired"] is True
+    assert isinstance(messages[3], HumanMessage)
+
+
+def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):
             self.owner = owner
@@ -624,9 +722,10 @@ def test_graph_forces_tool_free_answer_after_two_tool_rounds(monkeypatch):
     tool_enabled_calls = [item for item in fake_model.invocations if item["allow_tools"]]
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
 
-    # The live-web execution contract now performs the first mandatory search
-    # deterministically before handing any follow-up tool choice to the model.
-    assert len(tool_enabled_calls) == 1
+    # The first mandatory search is deterministic; the model then receives
+    # three follow-up tool opportunities before the four-round cap forces
+    # synthesis without tools.
+    assert len(tool_enabled_calls) == 3
     assert len(tool_free_calls) == 2
     assert any(
         isinstance(message, SystemMessage) and "Do not call more tools" in message.content
@@ -2917,6 +3016,51 @@ def test_graph_adds_active_skill_primary_tools_for_execution_contract(
     assert result.value["plan_meta"]["execution_contract"]["required_tools"] == ["stock_quote"]
 
 
+def test_entrypoint_skill_infers_run_skill_entrypoint_primary_tool(tmp_path):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "china-stock-analysis"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: china-stock-analysis",
+                "description: Analyze China A-share financial statements.",
+                "aliases: china-stock-analysis, A股分析",
+                "domains: finance, a-stock",
+                "recommended_tools: read_file, write_text_artifact",
+                "prompt_mode: execute",
+                "entrypoints:",
+                "  analyze_a_stock:",
+                '    command: ["python3", "scripts/run_analysis.py"]',
+                "    timeout_seconds: 300",
+                "---",
+                "# China Stock Analysis",
+                "Run the declared entrypoint.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = SkillRegistry([tmp_path / ".focus_agent" / "skills"])
+    base_plan = build_tool_intent_plan(
+        "使用 china-stock-analysis 分析 000063",
+        active_skill_ids=["china-stock-analysis"],
+    )
+
+    skill_plan = build_active_skill_execution_plan(
+        skill_registry=registry,
+        active_skill_ids=["china-stock-analysis"],
+        text="使用 china-stock-analysis 分析 000063",
+        workspace_root=tmp_path,
+        base_intent_plan=base_plan,
+    )
+    merged = apply_skill_execution_plan(base_plan, skill_plan)
+
+    assert skill_plan is not None
+    assert skill_plan.primary_tools == ["run_skill_entrypoint"]
+    assert merged.policy == "execution"
+    assert merged.preferred_first_tool == "run_skill_entrypoint"
+
+
 def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, monkeypatch):
     skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
     skill_dir.mkdir(parents=True)
@@ -3031,6 +3175,164 @@ def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, mon
         "retry_skill_primary_tool"
     )
     assert result.value["plan_meta"]["skill_execution_answer_repair_count"] == 1
+
+
+def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(
+    tmp_path, monkeypatch
+):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "china-stock-analysis"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: china-stock-analysis",
+                "description: Analyze China A-share financial statements.",
+                "aliases: china-stock-analysis, A股分析",
+                "primary_tools: run_skill_entrypoint",
+                "recommended_tools: run_skill_entrypoint, read_file",
+                "prompt_mode: execute",
+                "---",
+                "# China Stock Analysis",
+                "Run the declared entrypoint and answer from its output.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            has_tool_result = any(isinstance(message, ToolMessage) for message in prompt_messages)
+            if has_tool_result:
+                return AIMessage(content="这是 2019-2023 年旧版报告，当前股价 30.18 元。")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "skill-entrypoint-1",
+                        "name": "run_skill_entrypoint",
+                        "args": {
+                            "skill_id": "china-stock-analysis",
+                            "entrypoint": "analyze_a_stock",
+                            "arguments": {"code": "000063", "years": 5},
+                        },
+                    }
+                ],
+            )
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def run_skill_entrypoint(
+        skill_id: str,
+        entrypoint: str,
+        arguments: dict | None = None,
+    ) -> str:
+        """Run a declared Skill entrypoint."""
+        del skill_id, entrypoint, arguments
+        return json.dumps(
+            {
+                "status": "completed",
+                "skill_id": "china-stock-analysis",
+                "entrypoint": "analyze_a_stock",
+                "run_id": "run-skill-20260617",
+                "exit_code": 0,
+                "timed_out": False,
+                "stdout": json.dumps(
+                    {
+                        "status": "completed",
+                        "code": "000063",
+                        "years": 5,
+                        "generated_at": "2026-06-17T02:04:20",
+                        "steps": [
+                            {"name": "fetch_stock_data", "exit_code": 0},
+                            {"name": "analyze_financials", "exit_code": 0},
+                            {"name": "calculate_valuation", "exit_code": 0},
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+            ensure_ascii=False,
+        )
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        skill_registry=SkillRegistry([tmp_path / ".focus_agent" / "skills"]),
+        tool_registry=ToolRegistry(tools=(read_file, run_skill_entrypoint)),
+    )
+    config = {"configurable": {"thread_id": "thread-skill-grounding"}}
+    context = RequestContext(user_id="user-1", root_thread_id="route-skill-grounding")
+
+    interrupted = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "调用 china-stock-analysis 技能分析中兴通讯 000063，"
+                        "请直接使用 run_skill_entrypoint。"
+                    )
+                )
+            ],
+            "active_skill_ids": ["china-stock-analysis"],
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    assert interrupted.interrupts
+    interrupt_payload = getattr(interrupted.interrupts[0], "value", None)
+
+    result = graph.invoke(
+        Command(
+            resume={
+                "kind": "tool_approval",
+                "interrupt_id": interrupt_payload["interrupt_id"],
+                "tool_call_id": "skill-entrypoint-1",
+                "approved": True,
+            }
+        ),
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+
+    assert "run-skill-20260617" in final_answer
+    assert "2026-06-17" in final_answer
+    assert "30.18" not in final_answer
+    assert result.value["plan_meta"]["answer_verification"]["repair_action_taken"] == (
+        "fallback_to_tool_results"
+    )
 
 
 def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):

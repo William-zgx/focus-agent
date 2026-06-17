@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from focus_agent.api.main import create_app
+from focus_agent.config import Settings
 from focus_agent.core.agent_team import AgentTeamTaskStatus
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
@@ -474,6 +475,49 @@ def test_agent_team_api_session_run_returns_queued_running_view_and_waiting_depe
     assert [item["kwargs"] for item in background_work.submissions] == [
         {"task_id": queued_candidate_id, "user_id": "anonymous"}
     ]
+
+
+def test_agent_team_api_session_run_surfaces_invalid_dag_as_blocked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    background_work = RecordingBackgroundWork()
+    service = AgentTeamService(
+        branch_service=None,
+        background_work=background_work,
+        settings=Settings(
+            multi_agent_v2_enabled=True,
+            multi_agent_dag_scheduler_enabled=True,
+            agent_role_max_parallel_runs=2,
+        ),
+    )
+    client = _client(monkeypatch, tmp_path, agent_team_service=service)
+    session_id = client.post(
+        "/v1/agent-team/sessions",
+        json={"root_thread_id": "root-1", "goal": "Expose invalid DAG"},
+    ).json()["session"]["session_id"]
+    task_id = client.post(
+        f"/v1/agent-team/sessions/{session_id}/tasks",
+        json={
+            "role": "backend_executor",
+            "goal": "Task with missing parent",
+            "dependencies": ["missing-task-id"],
+            "create_branch": False,
+        },
+    ).json()["task"]["task_id"]
+
+    run_response = client.post(f"/v1/agent-team/sessions/{session_id}/run")
+
+    assert run_response.status_code == 200
+    view = run_response.json()
+    by_id = {task["task_id"]: task for task in view["tasks"]}
+    assert view["session"]["status"] == "failed"
+    assert by_id[task_id]["status"] == "blocked"
+    assert by_id[task_id]["run_status"] == "blocked"
+    assert by_id[task_id]["execution_status"] == "scheduler_blocked"
+    assert "depends on unknown task" in by_id[task_id]["last_error"]
+    assert view["run"]["scheduled_task_ids"] == []
+    assert view["scheduler"]["blocked_task_ids"] == [task_id]
+    assert background_work.submissions == []
 
 
 def test_agent_team_api_run_does_not_revive_cancelled_session(

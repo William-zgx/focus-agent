@@ -119,6 +119,82 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
     assert record.trajectory[0].observation_truncated is True
 
 
+def test_failed_turn_trajectory_does_not_fallback_to_old_answer():
+    started = utc_now()
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="failed",
+        final_values={
+            "messages": [
+                HumanMessage(content="old question"),
+                AIMessage(content="old answer"),
+                HumanMessage(content="new question"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "run_workspace_command",
+                            "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                        }
+                    ],
+                ),
+            ],
+            "llm_calls": 3,
+            "task_brief": "new question",
+        },
+        initial_message_count=2,
+        initial_llm_calls=2,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=10),
+        error="insufficient tool messages following tool_calls",
+    )
+
+    assert record.answer is None
+    assert record.error == "insufficient tool messages following tool_calls"
+    assert record.user_message == "new question"
+
+
+def test_interrupted_success_turn_trajectory_does_not_fallback_to_old_answer():
+    started = utc_now()
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={
+            "messages": [
+                HumanMessage(content="old question"),
+                AIMessage(content="old answer"),
+                HumanMessage(content="new question"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "run_workspace_command",
+                            "args": {"command": ["python3", "scripts/stocks_client.py"]},
+                        }
+                    ],
+                ),
+            ],
+            "llm_calls": 3,
+            "task_brief": "new question",
+        },
+        initial_message_count=2,
+        initial_llm_calls=2,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=10),
+    )
+
+    assert record.answer is None
+    assert record.user_message == "new question"
+
+
 def test_build_turn_trajectory_record_hides_process_narration_answer():
     started = utc_now()
     record = build_turn_trajectory_record(

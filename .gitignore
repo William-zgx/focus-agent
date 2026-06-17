@@ -1,6 +1,7 @@
 .DS_Store
 .idea/
 .claude/
+.trae/
 .env
 .focus_agent/
 .focus_agent/local.env

@@ -121,6 +121,32 @@ def test_loop_detection_detects_repeated_tool_call_signature():
     assert detected.repetitions == 2
 
 
+def test_loop_detection_detects_consecutive_tool_call_round_exhaustion():
+    messages = [
+        HumanMessage(content="find it"),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call-1", "name": "lookup", "args": {"query": "one"}}],
+        ),
+        ToolMessage(content="{}", tool_call_id="call-1"),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call-2", "name": "lookup", "args": {"query": "two"}}],
+        ),
+        ToolMessage(content="{}", tool_call_id="call-2"),
+    ]
+
+    detected = LoopDetectionMiddleware(
+        max_repetitions=3,
+        max_consecutive_tool_call_rounds=2,
+    ).detect(messages)
+
+    assert detected is not None
+    assert detected.reason == "too_many_consecutive_tool_call_rounds"
+    assert detected.signature == "tool_call_round"
+    assert detected.repetitions == 2
+
+
 def test_loop_detection_can_force_fallback_answer():
     middleware = LoopDetectionMiddleware(max_repetitions=2, on_detected="return_fallback")
 

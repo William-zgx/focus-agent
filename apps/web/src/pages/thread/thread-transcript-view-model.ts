@@ -31,7 +31,7 @@ export function useThreadTranscriptViewModel({
 			return baseMessages;
 		}
 
-		const lastMessage = baseMessages.at(-1);
+		const lastMessage = baseMessages[baseMessages.length - 1];
 		const lastType = String(lastMessage?.type || "").toLowerCase();
 		const lastContent = String(lastMessage?.content ?? "");
 		if (lastType === "human" && lastContent === pendingUserMessage.content) {
@@ -83,7 +83,7 @@ export function useThreadTranscriptViewModel({
 			streamState?.toolEvents?.length ||
 			streamState?.failed,
 	);
-	const lastTranscriptMessage = transcriptMessages.at(-1);
+	const lastTranscriptMessage = transcriptMessages[transcriptMessages.length - 1];
 	const streamToolCallCount = streamState?.toolCalls?.length ?? 0;
 	const streamToolEventCount = streamState?.toolEvents?.length ?? 0;
 

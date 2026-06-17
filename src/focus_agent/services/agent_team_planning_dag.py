@@ -124,6 +124,7 @@ def compile_mission_dag(
     max_tasks: int | None = None,
     plan_source: str = "model",
     context_refs: list[dict[str, Any]] | None = None,
+    sandbox_id: str | None = None,
 ) -> list[AgentTeamTaskDraft]:
     limit = max(1, int(max_tasks or len(deliverables)))
     selected = list(deliverables[:limit])
@@ -159,7 +160,10 @@ def compile_mission_dag(
                 capability_requirements=_dedupe_values(deliverable.capability_requirements),
                 risk_level=deliverable.risk_level or profile.risk_level,
                 write_scope=list(deliverable.write_scope),
-                resource_claims=_resource_claims_for_deliverable(deliverable),
+                resource_claims=_resource_claims_for_deliverable(
+                    deliverable,
+                    sandbox_id=sandbox_id,
+                ),
                 replan_policy={"replan_when": list(deliverable.replan_when)},
                 plan_source=plan_source,
             )

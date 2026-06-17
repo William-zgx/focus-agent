@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from threading import Event, Thread
+from typing import Any
 
 from focus_agent.agent_delegation_models import AgentArtifact, AgentTask
 from focus_agent.agent_execution_types import SubagentConfig, SubagentRunResult
@@ -12,6 +13,7 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.repositories.agent_team_repository import InMemoryAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
+from focus_agent.services.agent_team_workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
 
 
 class SubmitOnlyBackgroundWork:
@@ -140,7 +142,25 @@ class ComplexDeliverableExecutor:
             status="completed",
             summary=artifact.summary,
             artifacts=[artifact],
-            execution_mode="inline",
+            execution_mode=self.mode,
+        )
+
+
+class NoopWorkspaceService:
+    def ensure_workspace(self, *, session: Any, task: Any) -> AgentTeamWorkspace:
+        return AgentTeamWorkspace(
+            workspace_id=f"{session.session_id}:{task.task_id}",
+            workspace_path="/tmp/focus-agent-test-workspace",
+            workspace_branch="codex/test-workspace",
+            base_commit="test-base",
+        )
+
+    def collect_status(self, workspace_path: Any) -> AgentTeamWorkspaceStatus:
+        return AgentTeamWorkspaceStatus(
+            changed_files=[],
+            diff_summary="",
+            workspace_status="clean",
+            porcelain=[],
         )
 
 
@@ -192,7 +212,11 @@ def test_dependent_task_receives_session_contract_and_dependency_outputs() -> No
     assert dependency_context["dependency_task_ids"] == [producer.task_id]
     assert dependency_context["outputs"][0]["summary"] == "completed produce upstream evidence"
 
-    service = AgentTeamService(branch_service=None, executor=ComplexDeliverableExecutor())
+    service = AgentTeamService(
+        branch_service=None,
+        executor=ComplexDeliverableExecutor(),
+        workspace_service=NoopWorkspaceService(),
+    )
     session = service.create_session(
         root_thread_id="root-1",
         user_id="user-1",

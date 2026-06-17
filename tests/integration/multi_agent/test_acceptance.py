@@ -11,6 +11,7 @@ from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
     AgentTeamFinalAnswerStatus,
+    AgentTeamSessionStatus,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
@@ -440,6 +441,40 @@ def test_dag_scheduler_keeps_child_pending_until_dependency_done() -> None:
     assert statuses[parent.task_id] == AgentTeamTaskStatus.QUEUED
     assert statuses[child.task_id] == AgentTeamTaskStatus.PENDING
     assert len(background.submitted) == 1
+
+
+def test_dag_scheduler_blocks_invalid_graph_instead_of_silent_stall() -> None:
+    background = _QueuedOnlyBackground()
+    service = AgentTeamService(
+        branch_service=None,
+        settings=Settings(
+            multi_agent_v2_enabled=True,
+            multi_agent_dag_scheduler_enabled=True,
+            agent_role_max_parallel_runs=2,
+        ),
+        background_work=background,
+    )
+    session = service.create_session(user_id="user-1", goal="Invalid DAG")
+    task = service.create_task(
+        session_id=session.session_id,
+        user_id="user-1",
+        role=AgentTeamTaskRole.BACKEND_EXECUTOR,
+        goal="Task with missing parent",
+        dependencies=["missing-task-id"],
+        create_branch=False,
+    )
+
+    _, tasks = service.run_ready_tasks_once(session_id=session.session_id, user_id="user-1")
+    updated = {item.task_id: item for item in tasks}[task.task_id]
+
+    assert updated.status == AgentTeamTaskStatus.BLOCKED
+    assert updated.run_status == "blocked"
+    assert updated.execution_status == "scheduler_blocked"
+    assert "depends on unknown task" in (updated.last_error or "")
+    assert service.get_session(session.session_id, user_id="user-1").status == (
+        AgentTeamSessionStatus.FAILED
+    )
+    assert background.submitted == []
 
 
 def test_maintenance_tick_cleans_expired_runtime_state() -> None:

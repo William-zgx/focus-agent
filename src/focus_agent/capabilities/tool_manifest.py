@@ -122,6 +122,17 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_tags": ("command_execution", "verification"),
         "allowed_roles": ("executor",),
     },
+    "run_skill_entrypoint": {
+        "toolset": "workspace",
+        "side_effect": True,
+        "side_effect_kind": "workspace_command",
+        "requires_workspace_write": True,
+        "requires_approval": True,
+        "risk_level": "medium",
+        "intent_policies": ("execution",),
+        "intent_tags": ("command_execution", "skill_execution"),
+        "allowed_roles": ("executor",),
+    },
     "git_status": {
         "toolset": "workspace",
         "parallel_safe": True,

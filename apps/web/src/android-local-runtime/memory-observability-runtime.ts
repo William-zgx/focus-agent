@@ -92,9 +92,11 @@ export function localTrajectorySummary(
 	const humanMessages = messages.filter((message) => message.type === "human");
 	const aiMessages = messages.filter((message) => message.type === "ai");
 	const toolMessages = messages.filter((message) => message.type === "tool");
-	const userMessage = stringValue(humanMessages.at(-1)?.content);
+	const lastHumanMessage = humanMessages[humanMessages.length - 1];
+	const lastAiMessage = aiMessages[aiMessages.length - 1];
+	const userMessage = stringValue(lastHumanMessage?.content);
 	const answer = stringValue(
-		aiMessages.at(-1)?.content || thread.assistant_message,
+		lastAiMessage?.content || thread.assistant_message,
 	);
 	const inputTokens = Math.ceil(userMessage.length / 4);
 	const outputTokens = Math.ceil(answer.length / 4);

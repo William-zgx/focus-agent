@@ -764,10 +764,13 @@ class ChatService(
             user_id=user_id,
             require_writable=True,
         )
-        active_skill_ids = self._merged_skill_ids(
-            selection.skill_ids,
-            current_values.get("active_skill_ids", []),
-        )
+        if selection.selection_source in {"explicit", "mixed"} and selection.skill_ids:
+            active_skill_ids = tuple(selection.skill_ids)
+        else:
+            active_skill_ids = self._merged_skill_ids(
+                selection.skill_ids,
+                current_values.get("active_skill_ids", []),
+            )
         selected_model = model or self.runtime.settings.model
         active_skills = self._active_skill_metadata(active_skill_ids)
         message_metadata = self._skill_selection_metadata(

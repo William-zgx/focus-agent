@@ -39,6 +39,7 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - 带有访问控制、管理员控制台、按能力收拢的设置中心、记忆链路、治理反馈趋势和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
 - 提供仓库读写、git、网页、artifact、memory、productivity 和 Skill catalog 工具，并对 workspace 命令执行做保护
+- 为 workspace 命令和声明式 Skill entrypoint 提供线程级沙箱执行基座，默认 Docker 优先，并在本地降级时显式返回 fallback 元数据
 - 管理员可在设置中心维护模型连接、工具 provider、Skill 启停、Agent 行为、安全/运行时策略和低频高级选项
 
 ## 仓库结构
@@ -84,6 +85,11 @@ make api
 Skill runtime 也走 local-first 路径。包内 bundled skills 提供基础 catalog，
 可选本地 skill 放在 `.focus_agent/skills`，管理员设置页可以启停整个 Skill
 系统或单个 Skill，而不需要修改 tracked source。
+
+代码执行通过线程级沙箱服务进入统一入口。需要 Docker 隔离的 workspace
+命令和 Skill entrypoint，请先运行 `make sandbox-image` 准备执行镜像；本地
+开发可以降级到 `local_subprocess` 或 `local_venv`，结果会明确标记
+fallback。详情见 [docs/sandbox-execution.md](docs/sandbox-execution.md)。
 
 PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优先 Ollama `embeddinggemma`，请显式执行 `ollama pull embeddinggemma`，或配置 OpenAI-compatible embedding endpoint。
 
@@ -184,6 +190,7 @@ Bug、功能请求和文档改进请优先使用 GitHub issue templates。安全
 - [前端 SDK](frontend-sdk/README.md)
 - [当前上下文窗口](docs/context-window.md)
 - [Docker 部署说明](docs/docker-deployment.md)
+- [沙箱执行](docs/sandbox-execution.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 
