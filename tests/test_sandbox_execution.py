@@ -126,6 +126,168 @@ def test_docker_backend_reuses_thread_workspace_and_sandbox_id(tmp_path):
     assert first_payload["policy"]["network"] == "none"
 
 
+def _docker_exec_env_value(command: list[str], key: str) -> str:
+    prefix = f"{key}="
+    for index, token in enumerate(command):
+        if token != "-e" or index + 1 >= len(command):
+            continue
+        value = command[index + 1]
+        if value.startswith(prefix):
+            return value[len(prefix) :]
+    raise AssertionError(f"missing docker exec env {key}: {command}")
+
+
+def test_docker_backend_reuses_thread_container_when_enabled(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "tracked.txt").write_text("original\n", encoding="utf-8")
+    run_ids = iter(["run-reuse-1", "run-reuse-2"])
+    commands: list[list[str]] = []
+    container_running = False
+    sandbox_mount: Path | None = None
+
+    def fake_docker_run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        nonlocal container_running, sandbox_mount
+        del timeout
+        commands.append(command)
+        if command[1] == "inspect":
+            stdout = "true\n" if container_running else "false\n"
+            return subprocess.CompletedProcess(command, 1 if not container_running else 0, stdout, "")
+        if command[1] == "run":
+            sandbox_mount = _volume_host_path(command, "/sandbox")
+            container_running = True
+            return subprocess.CompletedProcess(command, 0, "container-id\n", "")
+        if command[1] == "exec":
+            assert sandbox_mount is not None
+            output_container_path = _docker_exec_env_value(command, "SANDBOX_OUTPUT")
+            assert output_container_path.startswith("/sandbox/")
+            output_path = sandbox_mount / output_container_path.removeprefix("/sandbox/")
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_path.joinpath("result.json").write_text(
+                json.dumps(
+                    {
+                        "exit_code": 0,
+                        "stdout": f"ran {len([cmd for cmd in commands if cmd[1] == 'exec'])}\n",
+                        "stderr": "",
+                        "timed_out": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(f"unexpected docker command: {command}")
+
+    backend = DockerSandboxBackend(
+        image="focus-agent-test:latest",
+        docker_runner=fake_docker_run,
+        run_id_factory=lambda: next(run_ids),
+        reuse_containers=True,
+    )
+    request = SandboxExecutionRequest(
+        workspace_root=workspace,
+        command=["python", "--version"],
+        cwd=".",
+        timeout_seconds=30,
+        max_output_chars=1000,
+        allow_network=False,
+        memory_mb=512,
+        tool_name="run_workspace_command",
+        thread_id="thread-reuse",
+    )
+
+    first = backend.run(request)
+    second = backend.run(request)
+
+    run_commands = [command for command in commands if command[1] == "run"]
+    exec_commands = [command for command in commands if command[1] == "exec"]
+    assert len(run_commands) == 1
+    assert len(exec_commands) == 2
+    assert "--rm" not in run_commands[0]
+    assert first.stdout == "ran 1\n"
+    assert second.stdout == "ran 2\n"
+    assert first.sandbox_id == second.sandbox_id
+    assert first.policy["container_reuse"] is True
+    assert second.policy["container_reuse"] is True
+
+
+def test_docker_backend_rebuilds_reusable_container_when_exec_finds_stopped_container(
+    tmp_path,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    commands: list[list[str]] = []
+    run_ids = iter(["run-rebuild-1"])
+    started_count = 0
+    exec_count = 0
+    removed = False
+    sandbox_mount: Path | None = None
+
+    def fake_docker_run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        nonlocal started_count, exec_count, removed, sandbox_mount
+        del timeout
+        commands.append(command)
+        if command[1] == "inspect":
+            if removed:
+                return subprocess.CompletedProcess(command, 1, "", "No such container")
+            return subprocess.CompletedProcess(command, 0, "true\n", "")
+        if command[1] == "rm":
+            removed = True
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1] == "run":
+            sandbox_mount = _volume_host_path(command, "/sandbox")
+            started_count += 1
+            removed = False
+            return subprocess.CompletedProcess(command, 0, "container-id\n", "")
+        if command[1] == "exec":
+            exec_count += 1
+            if exec_count == 1:
+                return subprocess.CompletedProcess(
+                    command,
+                    125,
+                    "",
+                    "Error response from daemon: Container is not running",
+                )
+            assert sandbox_mount is not None
+            output_path = (
+                sandbox_mount
+                / _docker_exec_env_value(command, "SANDBOX_OUTPUT").removeprefix("/sandbox/")
+            )
+            output_path.mkdir(parents=True, exist_ok=True)
+            output_path.joinpath("result.json").write_text(
+                json.dumps(
+                    {
+                        "exit_code": 0,
+                        "stdout": "rebuilt\n",
+                        "stderr": "",
+                        "timed_out": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(f"unexpected docker command: {command}")
+
+    backend = DockerSandboxBackend(
+        image="focus-agent-test:latest",
+        docker_runner=fake_docker_run,
+        run_id_factory=lambda: next(run_ids),
+        reuse_containers=True,
+    )
+    result = backend.run(
+        SandboxExecutionRequest(
+            workspace_root=workspace,
+            command=["python", "--version"],
+            thread_id="thread-rebuild",
+            timeout_seconds=30,
+        )
+    )
+
+    assert result.stdout == "rebuilt\n"
+    assert exec_count == 2
+    assert started_count == 1
+    assert any(command[1] == "rm" for command in commands)
+
+
 def test_docker_backend_refreshes_thread_workspace_from_host_between_runs(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

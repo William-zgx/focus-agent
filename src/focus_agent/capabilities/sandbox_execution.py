@@ -277,6 +277,7 @@ class DockerSandboxBackend:
         docker_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         run_ttl_seconds: int = _DEFAULT_RUN_TTL_SECONDS,
+        reuse_containers: bool | None = None,
     ) -> None:
         self.image = image
         self.docker_binary = docker_binary
@@ -284,6 +285,11 @@ class DockerSandboxBackend:
         self._check_image_available = docker_runner is None
         self._run_id_factory = run_id_factory or (lambda: uuid.uuid4().hex)
         self.run_ttl_seconds = max(0, int(run_ttl_seconds))
+        if reuse_containers is None:
+            reuse_containers = docker_runner is None and (
+                os.environ.get("FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS", "1") != "0"
+            )
+        self.reuse_containers = bool(reuse_containers)
 
     def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
         if self._check_image_available and not _docker_image_available(
@@ -320,23 +326,36 @@ class DockerSandboxBackend:
 
         started = time.monotonic()
         container_name = f"focus-agent-sandbox-{sandbox_id[:48]}-{run_id[:12]}"
-        docker_command = self._docker_command(
-            request=request,
-            run_id=run_id,
-            container_name=container_name,
-            run_root=run_root,
-            runner_path=runner_path,
-            request_path=request_path,
-            sandbox_workspace=sandbox_workspace,
-            sandbox_output=sandbox_output,
-            sandbox_tmp=sandbox_tmp,
-            sandbox_cache=sandbox_cache,
-        )
         try:
-            completed = self._docker_runner(
-                docker_command,
-                timeout=request.timeout_seconds + 10,
-            )
+            if self.reuse_containers:
+                container_name = self._thread_container_name(request)
+                completed = self._run_in_reusable_container(
+                    request=request,
+                    run_id=run_id,
+                    container_name=container_name,
+                    run_root=run_root,
+                    runner_path=runner_path,
+                    request_path=request_path,
+                    sandbox_workspace=sandbox_workspace,
+                    sandbox_tmp=sandbox_tmp,
+                    sandbox_cache=sandbox_cache,
+                )
+            else:
+                docker_command = self._docker_command(
+                    request=request,
+                    run_id=run_id,
+                    container_name=container_name,
+                    runner_path=runner_path,
+                    request_path=request_path,
+                    sandbox_workspace=sandbox_workspace,
+                    sandbox_output=sandbox_output,
+                    sandbox_tmp=sandbox_tmp,
+                    sandbox_cache=sandbox_cache,
+                )
+                completed = self._docker_runner(
+                    docker_command,
+                    timeout=request.timeout_seconds + 10,
+                )
         except FileNotFoundError as exc:
             raise SandboxBackendUnavailable("docker is not available") from exc
         except subprocess.TimeoutExpired as exc:
@@ -390,7 +409,6 @@ class DockerSandboxBackend:
         request: SandboxExecutionRequest,
         run_id: str,
         container_name: str,
-        run_root: Path,
         runner_path: Path,
         request_path: Path,
         sandbox_workspace: Path,
@@ -441,6 +459,175 @@ class DockerSandboxBackend:
         command.extend([self.image, "python", "/sandbox_runner.py"])
         return command
 
+    def _run_in_reusable_container(
+        self,
+        *,
+        request: SandboxExecutionRequest,
+        run_id: str,
+        container_name: str,
+        run_root: Path,
+        runner_path: Path,
+        request_path: Path,
+        sandbox_workspace: Path,
+        sandbox_tmp: Path,
+        sandbox_cache: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        sandbox_root = sandbox_workspace.parent
+        self._ensure_thread_container(
+            request=request,
+            container_name=container_name,
+            sandbox_root=sandbox_root,
+            sandbox_workspace=sandbox_workspace,
+            sandbox_tmp=sandbox_tmp,
+            sandbox_cache=sandbox_cache,
+        )
+        run_container_root = f"/sandbox/runs/{run_id}"
+        command = [
+            self.docker_binary,
+            "exec",
+            "-e",
+            "SANDBOX_INPUT=/workspace_input",
+            "-e",
+            "SANDBOX_WORKSPACE=/workspace",
+            "-e",
+            f"SANDBOX_OUTPUT={run_container_root}/output",
+            "-e",
+            "SANDBOX_CACHE=/sandbox/cache",
+            "-e",
+            f"SANDBOX_REQUEST={run_container_root}/{_REQUEST_FILENAME}",
+            "-e",
+            f"HOME={run_container_root}/output",
+            "-e",
+            "XDG_CACHE_HOME=/sandbox/cache",
+            "-e",
+            "PYTHONUNBUFFERED=1",
+        ]
+        for key, value in _sandbox_env(request.env).items():
+            command.extend(["-e", f"{key}={value}"])
+        command.extend(
+            [
+                container_name,
+                "python",
+                f"{run_container_root}/{_RUNNER_FILENAME}",
+            ]
+        )
+        del run_root, runner_path, request_path
+        completed = self._docker_runner(command, timeout=request.timeout_seconds + 10)
+        if completed.returncode == 125 and _looks_like_container_missing_or_stopped(
+            completed.stderr or completed.stdout
+        ):
+            self._docker_runner(
+                [self.docker_binary, "rm", "-f", container_name],
+                timeout=10,
+            )
+            self._ensure_thread_container(
+                request=request,
+                container_name=container_name,
+                sandbox_root=sandbox_workspace.parent,
+                sandbox_workspace=sandbox_workspace,
+                sandbox_tmp=sandbox_tmp,
+                sandbox_cache=sandbox_cache,
+            )
+            completed = self._docker_runner(command, timeout=request.timeout_seconds + 10)
+        return completed
+
+    def _ensure_thread_container(
+        self,
+        *,
+        request: SandboxExecutionRequest,
+        container_name: str,
+        sandbox_root: Path,
+        sandbox_workspace: Path,
+        sandbox_tmp: Path,
+        sandbox_cache: Path,
+    ) -> None:
+        inspect = self._docker_runner(
+            [
+                self.docker_binary,
+                "inspect",
+                "-f",
+                "{{.State.Running}}",
+                container_name,
+            ],
+            timeout=10,
+        )
+        if inspect.returncode == 0 and inspect.stdout.strip().lower() == "true":
+            return
+        if inspect.returncode == 0:
+            _force_remove_container(self.docker_binary, container_name)
+        start = self._docker_runner(
+            self._thread_container_command(
+                request=request,
+                container_name=container_name,
+                sandbox_root=sandbox_root,
+                sandbox_workspace=sandbox_workspace,
+                sandbox_tmp=sandbox_tmp,
+                sandbox_cache=sandbox_cache,
+            ),
+            timeout=20,
+        )
+        if start.returncode != 0:
+            output = (start.stderr or start.stdout or "").strip()
+            if _looks_like_docker_unavailable(output) or start.returncode == 125:
+                raise SandboxBackendUnavailable(output or "docker container start failed")
+            raise RuntimeError(output or "docker container start failed")
+
+    def _thread_container_command(
+        self,
+        *,
+        request: SandboxExecutionRequest,
+        container_name: str,
+        sandbox_root: Path,
+        sandbox_workspace: Path,
+        sandbox_tmp: Path,
+        sandbox_cache: Path,
+    ) -> list[str]:
+        memory_mb = int(request.memory_mb or _DEFAULT_MEMORY_MB)
+        network = "bridge" if request.allow_network else "none"
+        command = [
+            self.docker_binary,
+            "run",
+            "-d",
+            "--name",
+            container_name,
+            "--network",
+            network,
+            "--memory",
+            f"{memory_mb}m",
+            "--pids-limit",
+            str(_DEFAULT_PIDS_LIMIT),
+            "--read-only",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "-e",
+            "HOME=/sandbox/output",
+            "-e",
+            "XDG_CACHE_HOME=/sandbox/cache",
+            "-e",
+            "PYTHONUNBUFFERED=1",
+            "-v",
+            f"{request.workspace_root}:/workspace_input:ro",
+            "-v",
+            f"{sandbox_workspace}:/workspace",
+            "-v",
+            f"{sandbox_root}:/sandbox",
+            "-v",
+            f"{sandbox_tmp}:/tmp",
+            "-v",
+            f"{sandbox_cache}:/sandbox/cache",
+            self.image,
+            "sleep",
+            "infinity",
+        ]
+        return command
+
+    def _thread_container_name(self, request: SandboxExecutionRequest) -> str:
+        sandbox_id = request.sandbox_id or _sanitize_sandbox_identifier("anonymous", prefix="sandbox")
+        network = "net" if request.allow_network else "none"
+        memory = int(request.memory_mb or _DEFAULT_MEMORY_MB)
+        suffix = _sanitize_sandbox_identifier(sandbox_id, prefix="sandbox")[:42]
+        return f"focus-agent-sandbox-{suffix}-{network}-{memory}"
+
     def _policy(self, request: SandboxExecutionRequest) -> dict[str, Any]:
         return {
             "backend": "docker",
@@ -450,6 +637,7 @@ class DockerSandboxBackend:
             "memory_mb": int(request.memory_mb or _DEFAULT_MEMORY_MB),
             "pids_limit": _DEFAULT_PIDS_LIMIT,
             "read_only_root": True,
+            "container_reuse": self.reuse_containers,
         }
 
 
@@ -752,11 +940,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-INPUT = Path("/workspace_input")
-WORKSPACE = Path("/workspace")
-OUTPUT = Path("/sandbox_output")
-CACHE = Path("/sandbox_cache")
-REQUEST = Path("/sandbox_request.json")
+INPUT = Path(os.environ.get("SANDBOX_INPUT", "/workspace_input"))
+WORKSPACE = Path(os.environ.get("SANDBOX_WORKSPACE", "/workspace"))
+OUTPUT = Path(os.environ.get("SANDBOX_OUTPUT", "/sandbox_output"))
+CACHE = Path(os.environ.get("SANDBOX_CACHE", "/sandbox_cache"))
+REQUEST = Path(os.environ.get("SANDBOX_REQUEST", "/sandbox_request.json"))
 RESULT = OUTPUT / "result.json"
 SKIP_NAMES = __SKIP_NAMES__
 SEED_MARKER = WORKSPACE / ".focus-agent-workspace-seeded"
@@ -978,6 +1166,15 @@ def _looks_like_docker_unavailable(output: str) -> bool:
         "cannot connect to the docker daemon" in lowered
         or "is the docker daemon running" in lowered
         or "command not found" in lowered
+    )
+
+
+def _looks_like_container_missing_or_stopped(output: str) -> bool:
+    lowered = output.lower()
+    return (
+        "no such container" in lowered
+        or "is not running" in lowered
+        or "container is not running" in lowered
     )
 
 

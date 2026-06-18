@@ -292,6 +292,11 @@ def _run_workspace_command_payload_succeeded(message: ToolMessage) -> bool:
         return True
     if not isinstance(payload, Mapping):
         return True
+    if payload.get("fallback_used") is True:
+        return False
+    sandbox_backend = str(payload.get("sandbox_backend") or "").strip().lower()
+    if sandbox_backend.startswith("local"):
+        return False
     if payload.get("timed_out") is True:
         return False
     status = str(payload.get("status") or "").strip().lower()

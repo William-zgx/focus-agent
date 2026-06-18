@@ -198,6 +198,7 @@ class _LocalVenvSkillEntrypointBackend:
             workspace_mode="host",
             network_policy="host",
             resource_limits={},
+            degraded_reason="local_host_execution",
         )
 
 

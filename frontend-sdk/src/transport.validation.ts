@@ -31,6 +31,14 @@ function hasString(value: Record<string, unknown>, key: string): boolean {
   return typeof value[key] === "string";
 }
 
+function optionalString(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || typeof value[key] === "string";
+}
+
+function optionalRecordOrNull(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || value[key] === null || isRecord(value[key]);
+}
+
 export function isFocusAgentEventName(value: string): value is FocusAgentEventName {
   return KNOWN_EVENT_NAMES.has(value as FocusAgentEventName);
 }
@@ -55,25 +63,46 @@ export function validateFocusAgentEventPayload(
         (payload.args_delta === undefined || typeof payload.args_delta === "string")
       );
     case "message.completed":
-      return hasString(payload, "content");
+      return hasString(payload, "content") && optionalRecordOrNull(payload, "task_outcome");
     case "run.status":
       return hasString(payload, "phase");
     case "run.failed":
-      return hasString(payload, "error") && hasString(payload, "message");
+      return (
+        hasString(payload, "error") &&
+        hasString(payload, "message") &&
+        optionalRecordOrNull(payload, "thread_state") &&
+        optionalRecordOrNull(payload, "task_outcome")
+      );
     case "run.rollback.failed":
       return (
         (payload.error === undefined || typeof payload.error === "string") &&
-        (payload.message === undefined || typeof payload.message === "string")
+        (payload.message === undefined || typeof payload.message === "string") &&
+        optionalRecordOrNull(payload, "rollback_result")
       );
     case "run.interrupt":
       return hasString(payload, "action");
     case "server_shutdown":
+      return optionalString(payload, "message");
     case "run.rollback.started":
     case "run.rollback.succeeded":
       return true;
     case "run.closed":
     case "run.completed":
-      return hasString(payload, "status");
+      return (
+        hasString(payload, "status") &&
+        optionalRecordOrNull(payload, "thread_state") &&
+        optionalRecordOrNull(payload, "task_outcome")
+      );
+    case "tool.requested":
+      return optionalString(payload, "tool_name") && optionalString(payload, "tool_call_id");
+    case "tool.error":
+    case "tool.result":
+      return (
+        optionalString(payload, "tool_name") &&
+        optionalString(payload, "tool_call_id") &&
+        optionalRecordOrNull(payload, "runtime") &&
+        optionalRecordOrNull(payload, "tool_outcome")
+      );
     default:
       return true;
   }

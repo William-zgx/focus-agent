@@ -370,6 +370,39 @@ def test_resource_lock_release_allows_new_claim(mode: LockMode) -> None:
     assert second is not None
 
 
+def test_resource_lock_release_session_releases_all_session_claims() -> None:
+    manager = InMemoryResourceLockManager()
+    first = manager.try_acquire(
+        resource_id="file:src/a.py",
+        agent_id="agent:a",
+        session_id="session:a",
+        mode=LockMode.EXCLUSIVE,
+        ttl_seconds=30,
+    )
+    second = manager.try_acquire(
+        resource_id="file:src/b.py",
+        agent_id="agent:b",
+        session_id="session:a",
+        mode=LockMode.EXCLUSIVE,
+        ttl_seconds=30,
+    )
+    other = manager.try_acquire(
+        resource_id="file:src/c.py",
+        agent_id="agent:c",
+        session_id="session:b",
+        mode=LockMode.EXCLUSIVE,
+        ttl_seconds=30,
+    )
+    assert first is not None
+    assert second is not None
+    assert other is not None
+
+    assert manager.release_session("session:a") == 2
+
+    active = manager.list_active_claims()
+    assert [claim.claim_id for claim in active] == [other.claim_id]
+
+
 @pytest.mark.parametrize("ttl_seconds", [0, -1, 0.001, 30])
 def test_resource_lock_heartbeat_extends_only_live_claims(ttl_seconds: float) -> None:
     manager = InMemoryResourceLockManager()
@@ -405,8 +438,20 @@ def test_postgres_resource_lock_acquire_heartbeat_release_and_cleanup() -> None:
     assert claim.resource_id == "file:src/shared.py"
     assert live is True
     assert expired == 1
-    assert "INSERT INTO agent_resource_claims" in cursor.executed[2][0]
-    assert "UPDATE agent_resource_claims" in cursor.executed[4][0]
+    assert "pg_advisory_xact_lock" in cursor.executed[0][0]
+    assert cursor.executed[0][1] == ("session:a", "file:src/shared.py")
+    assert "INSERT INTO agent_resource_claims" in cursor.executed[3][0]
+    assert "UPDATE agent_resource_claims" in cursor.executed[5][0]
+
+
+def test_postgres_resource_lock_release_session_marks_claims_released() -> None:
+    cursor = _FakeCursor([[{"claim_id": "c1"}, {"claim_id": "c2"}]])
+    manager = PostgresResourceLockManager("postgresql://unit-test")
+    manager._connect = lambda: _FakeConn(cursor)  # type: ignore[method-assign]
+
+    assert manager.release_session("session:a") == 2
+    assert "WHERE session_id = %s AND released = FALSE" in cursor.executed[0][0]
+    assert cursor.executed[0][1] == ("session:a",)
 
 
 def test_postgres_resource_lock_returns_none_on_conflict() -> None:

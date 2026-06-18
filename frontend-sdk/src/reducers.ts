@@ -353,10 +353,10 @@ export function reduceStreamEvent(
 	const terminalRuntimeOutcome = (data: Record<string, unknown>) => {
 		const threadState = threadStateValue(data);
 		return (
-			runtimeOutcomeValue(data.runtime_outcome) ??
-			runtimeOutcomeValue(threadState?.runtime_outcome) ??
 			runtimeOutcomeValue(data.task_outcome) ??
-			runtimeOutcomeValue(threadState?.task_outcome)
+			runtimeOutcomeValue(threadState?.task_outcome) ??
+			runtimeOutcomeValue(data.runtime_outcome) ??
+			runtimeOutcomeValue(threadState?.runtime_outcome)
 		);
 	};
 
@@ -367,7 +367,7 @@ export function reduceStreamEvent(
 	case "message.completed": {
 		const updated = applyVisibleTextCompleted(state, event.data.content);
 		const taskOutcome = runtimeOutcomeValue(event.data.task_outcome);
-		const runtimeOutcome = runtimeOutcomeValue(event.data.runtime_outcome) ?? taskOutcome;
+		const runtimeOutcome = taskOutcome ?? runtimeOutcomeValue(event.data.runtime_outcome);
 		return {
 			...updated,
 			taskOutcome: taskOutcome ?? updated.taskOutcome,

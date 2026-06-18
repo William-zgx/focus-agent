@@ -17,6 +17,7 @@ log/
 node_modules/
 frontend-sdk/node_modules/
 frontend-sdk/dist/
+frontend-sdk/dist-validation/
 apps/web/dist/
 src/*.egg-info/
 src/**/__pycache__/

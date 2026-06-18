@@ -186,6 +186,7 @@ Runtime rules:
 - Declared dependencies are installed inside the sandbox cache or the local development fallback venv, not into the real repository.
 - The normal workspace mode is `thread_persistent_copy`: the sandbox sees a copied workspace that persists across turns for the same `sandbox_id`; writes do not automatically sync back to git.
 - Docker success can satisfy the Skill execution contract. `local_venv`, dependency errors, timeouts, and non-zero exits are observations and must not be counted as secure Docker success.
+- The local Skill execution inventory is tracked in [skill-execution-matrix.md](skill-execution-matrix.md). Script-backed Skills must have declared entrypoints; host-control Skills must use a broker or explicit high-risk approval instead of the general sandbox.
 
 The detailed execution contract is maintained in [sandbox-execution.md](sandbox-execution.md).
 

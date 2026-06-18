@@ -279,6 +279,8 @@ def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
     assert payload["skill_id"] == "demo-skill"
     assert payload["entrypoint"] == "hello"
     assert payload["sandbox_backend"] == "local_venv"
+    assert payload["fallback_used"] is True
+    assert payload["degraded_reason"] == "local_host_execution"
     assert "Ada" in payload["stdout"]
     assert "sk-test-secret" not in payload["stdout"]
     stdout_payload = json.loads(payload["stdout"])

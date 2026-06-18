@@ -8,11 +8,15 @@ export interface FocusAgentRuntimeOutcome extends Record<string, unknown> {
   status?: string;
   tool_call_id?: string;
   tool_name?: string;
+  turn_id?: string | null;
+  human_turn_index?: number | null;
   attempt_index?: number;
   max_attempts?: number;
   retryable?: boolean;
+  contract_satisfied?: boolean;
   fallback_used?: boolean;
   fallback_group?: string | null;
+  degraded_reason?: string | null;
   recovery_of_tool_call_id?: string | null;
   error_category?: string | null;
   error_message?: string | null;

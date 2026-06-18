@@ -95,6 +95,21 @@ class InMemoryResourceLockManager:
                 self._claims.pop(claim.claim_id, None)
             self._prune_wait_graph()
 
+    def release_session(self, session_id: str) -> int:
+        session_id = str(session_id or "").strip()
+        if not session_id:
+            return 0
+        with self._lock:
+            claim_ids = [
+                claim_id
+                for claim_id, claim in self._claims.items()
+                if claim.session_id == session_id
+            ]
+            for claim_id in claim_ids:
+                self._claims.pop(claim_id, None)
+            self._prune_wait_graph()
+            return len(claim_ids)
+
     def list_active_claims(self) -> list[ResourceClaim]:
         with self._lock:
             self._drop_expired(time.monotonic())
@@ -161,6 +176,10 @@ class PostgresResourceLockManager:
         expires_at = self._expires_at(ttl_seconds)
         with self._connect() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                    (session_id, resource_id),
+                )
                 cur.execute(
                     """
                     UPDATE agent_resource_claims
@@ -251,6 +270,23 @@ class PostgresResourceLockManager:
                     """,
                     (claim.claim_id, claim.agent_id),
                 )
+
+    def release_session(self, session_id: str) -> int:
+        session_id = str(session_id or "").strip()
+        if not session_id:
+            return 0
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE agent_resource_claims
+                    SET released = TRUE, updated_at = now()
+                    WHERE session_id = %s AND released = FALSE
+                    RETURNING claim_id
+                    """,
+                    (session_id,),
+                )
+                return len(cur.fetchall())
 
     def list_active_claims(self) -> list[ResourceClaim]:
         with self._connect() as conn:

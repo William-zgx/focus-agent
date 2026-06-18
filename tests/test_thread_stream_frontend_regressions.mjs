@@ -1196,6 +1196,61 @@ test("SDK stream validator accepts canonical backend lifecycle events", () => {
   }
 });
 
+test("SDK stream validator rejects malformed canonical outcome payloads", () => {
+  const { validateFocusAgentEvent } = loadModule("frontend-sdk/src/transport.validation.ts");
+
+  assert.equal(
+    validateFocusAgentEvent({
+      event: "run.completed",
+      data: { status: "succeeded", task_outcome: "answered" },
+    }),
+    false,
+  );
+  assert.equal(
+    validateFocusAgentEvent({
+      event: "tool.result",
+      data: { tool_name: "run_workspace_command", tool_outcome: "ok" },
+    }),
+    false,
+  );
+});
+
+test("SDK stream reducer prefers canonical task outcome over legacy runtime outcome", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  let state = createInitialStreamState();
+  state = reduceStreamEvent(state, {
+    event: "message.completed",
+    data: {
+      content: "done",
+      task_outcome: { status: "answered", answer_basis: "canonical" },
+      runtime_outcome: { status: "failed", answer_basis: "legacy" },
+    },
+  });
+
+  assert.equal(state.taskOutcome.status, "answered");
+  assert.equal(state.runtimeOutcome.status, "answered");
+  assert.equal(state.runtimeOutcome.answer_basis, "canonical");
+
+  state = reduceStreamEvent(state, {
+    event: "run.failed",
+    data: {
+      error: "boom",
+      message: "failed",
+      task_outcome: { status: "blocked", answer_basis: "canonical-terminal" },
+      runtime_outcome: { status: "failed", answer_basis: "legacy-terminal" },
+      thread_state: {
+        task_outcome: { status: "answered", answer_basis: "stale-thread" },
+        runtime_outcome: { status: "failed", answer_basis: "legacy-thread" },
+      },
+    },
+  });
+
+  assert.equal(state.taskOutcome.status, "blocked");
+  assert.equal(state.runtimeOutcome.status, "blocked");
+  assert.equal(state.runtimeOutcome.answer_basis, "canonical-terminal");
+});
+
 test("stream reducer keeps tool failure history after recovered result", () => {
   const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 

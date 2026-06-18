@@ -298,6 +298,8 @@ Fallback planner 仍要保留契约完整性：当旧字段如 `input_items`、`
 - `/run` 先在 session scheduler lock 内把 runnable task 原子地置为 `queued`，再提交 durable/background job。
 - 如果 job enqueue 失败，task 必须回滚为 `pending`，清空 `queued_at` 和 claim 字段，并写入 `execution_status="enqueue_failed"`；不能留下无人执行的 `queued`。
 - worker claim task 后，长任务执行期间会周期性 heartbeat task claim；启用 resource lock 时也 heartbeat 每个 `ResourceClaim`。
+- Postgres resource lock 在检查/写入同一 `session_id + resource_id` 前使用事务级 advisory lock，避免多进程同时看到空锁后双占。
+- resource lock 支持按 session 批量 release，终态 cleanup 可以幂等释放遗留锁。
 - 如果资源锁不可用，task 回到 `pending` 并标记 `waiting_resource_lock`，等待下一轮调度。
 - 执行完成前如果 claim 已丢失，成功结果不能写入 task output；任务按 attempt/max_attempts 回到 `queued` 或 `failed`。
 - 同一 session 的 scheduler lock 只保护调度状态；跨进程并行依赖 Postgres repository / coordination backend 的原子 claim 和资源锁。

@@ -1,6 +1,19 @@
 ---
 name: finviz-screener
 description: Build and open FinViz screener URLs from natural language requests. Use when user wants to screen stocks, find stocks matching criteria, filter by fundamentals or technicals, or asks to open FinViz with specific conditions. Supports both Japanese and English input (e.g., "高配当で成長している小型株を探したい", "Find oversold large caps with high ROE").
+triggers: finviz-screener:,finviz:,stock-screen:
+when_to_use: "Use when the user asks to build a FinViz screener URL or screen US stocks by valuation, fundamental, technical, sector, theme, or ownership filters."
+prompt_mode: execute
+primary_tools: run_skill_entrypoint
+recommended_tools: run_skill_entrypoint,read_file,write_text_artifact
+capability_requirements: "Python 3 stdlib; optional browser integration only through a host-control broker; network access only when opening or verifying the generated FinViz URL."
+entrypoints:
+  build_url:
+    command: [python3, scripts/open_finviz_screener.py]
+    dependencies: []
+    network: true
+    timeout_seconds: 60
+    memory_mb: 512
 ---
 
 

@@ -1,6 +1,22 @@
 ---
 name: china-stock-analysis
 description: A股价值投资分析工具，提供股票筛选、个股深度分析、行业对比和估值计算功能。基于价值投资理论，使用akshare获取公开财务数据，适合低频交易的普通投资者。
+triggers: china-stock-analysis:,a-stock-analysis:,a股分析:
+when_to_use: "Use when the user asks to analyze a Chinese A-share stock, screen A-share companies, compare A-share fundamentals, or calculate value-investing valuation metrics."
+aliases: A股分析,财报分析,股票估值,china-stock-analysis
+domains: finance,a-stock,valuation
+prompt_mode: execute
+primary_tools: run_skill_entrypoint
+recommended_tools: run_skill_entrypoint,read_file,write_text_artifact
+capability_requirements: "Python 3; akshare, pandas, numpy; network access to public market and financial data providers; financial outputs must be labeled analytical support, not investment advice."
+entrypoints:
+  analyze_a_stock:
+    command: [python3, scripts/run_analysis.py]
+    dependencies: [akshare, pandas, numpy]
+    network: true
+    timeout_seconds: 300
+    memory_mb: 2048
+    output_dir_arg: --output-dir
 ---
 
 # China Stock Analysis Skill

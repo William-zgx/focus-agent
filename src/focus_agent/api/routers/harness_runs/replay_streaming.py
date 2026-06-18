@@ -315,11 +315,13 @@ async def _produce_run_stream(
                     fallback_branch_meta=branch_meta,
                 )
                 message_text = str(branch_recommendation_result.get("message") or "")
+                final_task_outcome = final_values.get("task_outcome")
                 if message_text and not looks_like_textual_tool_call_artifact(message_text):
                     await publish(
                         "message.completed",
                         content=message_text,
                         source="branch_recommendation",
+                        **_task_outcome_event_payload(final_task_outcome),
                     )
                 _record_harness_turn_and_schedule(
                     chat=chat,
@@ -345,6 +347,7 @@ async def _produce_run_stream(
                     thread_state=branch_recommendation_result.get("thread_state"),
                     branch_action=branch_recommendation_result.get("branch_action"),
                     branch_decision=branch_recommendation_result.get("branch_decision"),
+                    **_task_outcome_event_payload(final_task_outcome),
                 )
                 return
         async for chunk in runtime.harness.stream_chunks(
@@ -558,7 +561,22 @@ async def _produce_run_stream(
         )
         record = runtime.run_manager.get(run_id)
         if record is None or not record.abort_event.is_set():
-            await publish("run.failed", error="CancelledError", message="Run was cancelled.")
+            failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
+            failed_thread_state = _safe_failed_thread_state(
+                chat=chat,
+                thread_id=thread_id,
+                user_id=user_id,
+                context=context,
+                branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
+            )
+            await publish(
+                "run.failed",
+                error="CancelledError",
+                message="Run was cancelled.",
+                **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
+                **_task_outcome_event_payload(failed_values.get("task_outcome")),
+            )
     except Exception as exc:  # noqa: BLE001
         record = runtime.run_manager.get(run_id)
         if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
@@ -713,7 +731,22 @@ async def _produce_branch_action_run_stream(
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
         record = runtime.run_manager.get(run_id)
         if record is None or not record.abort_event.is_set():
-            await publish("run.failed", error="CancelledError", message="Run was cancelled.")
+            failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
+            failed_thread_state = _safe_failed_thread_state(
+                chat=chat,
+                thread_id=thread_id,
+                user_id=user_id,
+                context=context,
+                branch_meta=branch_meta,
+                trace_correlation=trace_correlation,
+            )
+            await publish(
+                "run.failed",
+                error="CancelledError",
+                message="Run was cancelled.",
+                **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
+                **_task_outcome_event_payload(failed_values.get("task_outcome")),
+            )
     except Exception as exc:  # noqa: BLE001
         record = runtime.run_manager.get(run_id)
         if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):

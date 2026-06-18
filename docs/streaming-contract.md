@@ -105,7 +105,7 @@ Tool activity should be rendered from structured events, not from assistant text
 - `task.update` carries process-level progress and may be shown in processing cards.
 - `state.update` is for raw state/debug panels and should not be rendered as assistant answer text.
 
-`message.completed`, `run.completed`, and `run.failed` may carry graph-authored `task_outcome`. `run.failed` should include the latest sanitized `thread_state` whenever the thread is known, so the UI can render the non-empty failure state and avoid reusing an old assistant answer. Clients should render these fields as status metadata and must not infer final task success from raw tool payload shape. The canonical outcome state machine is documented in [runtime-outcomes.md](runtime-outcomes.md).
+`message.completed`, `run.completed`, and `run.failed` must carry graph-authored `task_outcome` when one is available. `run.failed` should include the latest sanitized `thread_state` whenever the thread is known, so the UI can render the non-empty failure state and avoid reusing an old assistant answer. `task_outcome` is canonical; `runtime_outcome` / `runtimeOutcome` are legacy compatibility fields only, and clients must prefer `task_outcome` when both are present. Clients should render these fields as status metadata and must not infer final task success from raw tool payload shape. The canonical outcome state machine is documented in [runtime-outcomes.md](runtime-outcomes.md).
 
 The SDK reducer derives `processingSteps` from reasoning, tool call, tool lifecycle, and task events. New UI should use `processingSteps` as the canonical processing-card input. `toolCalls`, `toolEvents`, and `reasoningText` remain available as raw/debug/backcompat state.
 

@@ -71,6 +71,7 @@ flowchart LR
 - [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget、branch promotion 和 legacy fallback / migration 背景。
 - [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、Skill 管理配置、live-web evidence contract、productivity tools、运行时策略和扩展检查项。
 - [sandbox-execution.md](sandbox-execution.md)：`run_workspace_command`、`run_skill_entrypoint`、`SandboxExecutionService`、Docker image、local fallback、线程级 workspace 生命周期和验证矩阵。
+- [skill-execution-matrix.md](skill-execution-matrix.md)：本地 Skill 的执行分类、entrypoint 覆盖、host-control broker 边界和 smoke 验收矩阵。
 - [android.md](android.md)：Capacitor Android shell、SDK local transport、Android local runtime 模块图、移动端能力边界和 smoke 验证。
 
 ## Operations And Release / 运维发布

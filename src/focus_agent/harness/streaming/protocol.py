@@ -24,6 +24,7 @@ CANONICAL_EVENTS = frozenset(
         "run.completed",
         "run.failed",
         "run.closed",
+        "server_shutdown",
     }
 )
 

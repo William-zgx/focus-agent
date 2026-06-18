@@ -86,15 +86,18 @@ export function asRuntimeOutcome(
 export function findTaskOutcome(
 	turn: FocusAgentTrajectoryTurnDetail,
 ): FocusAgentRuntimeOutcome | null {
-	const directOutcome =
-		asRuntimeOutcome(turn.task_outcome) ??
-		asRuntimeOutcome(turn.runtime_outcome);
+	const directOutcome = asRuntimeOutcome(turn.task_outcome);
 	if (directOutcome) return directOutcome;
-	if (!isRecord(turn.plan_meta)) return null;
+	if (isRecord(turn.plan_meta)) {
+		const planOutcome = asRuntimeOutcome(turn.plan_meta.task_outcome);
+		if (planOutcome) return planOutcome;
+	}
 	return (
-		asRuntimeOutcome(turn.plan_meta.task_outcome) ??
-		asRuntimeOutcome(turn.plan_meta.runtime_outcome) ??
-		asRuntimeOutcome(turn.plan_meta.agent_runtime_outcome)
+		asRuntimeOutcome(turn.runtime_outcome) ??
+		(isRecord(turn.plan_meta)
+			? asRuntimeOutcome(turn.plan_meta.runtime_outcome) ??
+				asRuntimeOutcome(turn.plan_meta.agent_runtime_outcome)
+			: null)
 	);
 }
 

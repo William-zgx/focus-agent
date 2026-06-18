@@ -1,6 +1,9 @@
 ---
 name: stock-metrics
 description: Extract specific stock metrics from website data.
+triggers: stock-metrics:,extract-stock-metrics:
+when_to_use: "Use when website or scraped text is already available and the user needs stock price, market cap, company name, PE, EPS, or dividend values extracted into a structured answer."
+prompt_mode: synthesize
 ---
 
 

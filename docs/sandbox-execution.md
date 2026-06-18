@@ -96,10 +96,15 @@ Docker runs use these defaults:
 - no Docker socket, host home directory, SSH agent, or provider secrets mounted
 - stdout/stderr truncation and output file enumeration in the structured result
 
-The current implementation reuses thread-level workspace/cache, but starts a
-fresh Docker container per command. Long-lived container reuse is a future
-optimization; callers must rely on `sandbox_id` and `workspace_mode`, not
-container identity.
+The current implementation reuses thread-level workspace/cache and, by default
+in real Docker mode, reuses a thread-level container for matching sandbox image,
+network, memory, uid/gid, and mount policy. If the container is missing or no
+longer running, the backend rebuilds it and continues using the same
+`sandbox_id` workspace. Unit tests with a fake Docker runner can disable reuse
+to keep command construction deterministic.
+
+Set `FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS=0` to force the legacy one-container
+per command path while debugging Docker lifecycle issues.
 
 ## Local Fallbacks
 
@@ -183,6 +188,7 @@ Important environment variables:
 | `FOCUS_AGENT_SANDBOX_BACKEND` | `auto`, `docker`, or `local` |
 | `FOCUS_AGENT_SANDBOX_IMAGE` | Docker image tag, default `focus-agent-sandbox:latest` |
 | `FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK` | `1` allows dev fallback in `auto`; `0` fails closed |
+| `FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS` | `1` reuses thread-level Docker containers; `0` forces per-command containers |
 
 `FOCUS_AGENT_SANDBOX_BACKEND=docker` disables local fallback. Use it when you
 need to prove Docker execution is available.
@@ -264,8 +270,6 @@ workspace.
 
 ## Known Gaps
 
-- Docker containers are not long-lived yet; workspace/cache persistence is
-  thread-level, container lifecycle is still per command.
 - Local fallbacks are best-effort development paths, not strong isolation.
 - Network control is Docker-level only in v1. Host-local fallback cannot provide
   reliable network isolation.
