@@ -16,6 +16,7 @@ from ...config import Settings
 from ...core.context.policy import apply_prompt_budget_guard
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
+from ...core.runtime_outcome import build_task_outcome
 from ...core.state import AgentState, append_agent_state_record
 from ...core.types import Plan
 from ...skills import SkillRegistry
@@ -37,6 +38,7 @@ from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answe
 from ..graph_turn_helpers import (
     _TOOL_EXHAUSTION_NOTE,
     _context_budget_from_state,
+    _degraded_answer_from_tool_results,
     _ensure_reasoning_content_for_tool_call_history,
     _fallback_answer_from_tool_results,
     _invoke_with_tool_result_fallback,
@@ -95,6 +97,10 @@ _READ_ONLY_SKILL_TOOL_RE = re.compile(
     r"(?![a-z0-9_])",
     re.IGNORECASE,
 )
+_PRIMARY_OUTCOME_ROLES = frozenset({"primary"})
+_ALTERNATIVE_OUTCOME_ROLES = frozenset({"alternative"})
+_FAILED_OUTCOME_STATUSES = frozenset({"failed", "blocked"})
+_SUCCESS_OUTCOME_STATUSES = frozenset({"succeeded", "recovered"})
 
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
@@ -116,6 +122,55 @@ def _web_fetch_args(preferred_args: dict[str, Any] | None, fallback_text: str) -
     if not match:
         return args
     return {"url": match.group(0).rstrip(".,!?;:，。！？；：")}
+
+
+def _should_force_degraded_skill_recovery_answer(
+    state: AgentState,
+    *,
+    primary_tool_names: Sequence[str] = (),
+) -> bool:
+    """Stop tool storms after a Skill primary path is exhausted and fallback evidence exists."""
+
+    outcomes = [
+        dict(item)
+        for item in state.get("tool_outcomes") or []
+        if isinstance(item, Mapping)
+    ]
+    if not outcomes:
+        return False
+    primary_tools = {str(name).strip() for name in primary_tool_names if str(name).strip()}
+    if not primary_tools:
+        primary_tools = {"run_skill_entrypoint", "run_workspace_command"}
+    primary_exhausted = any(
+        (
+            str(item.get("tool_name") or "") in primary_tools
+            or str(item.get("evidence_role") or "") in _PRIMARY_OUTCOME_ROLES
+        )
+        and str(item.get("status") or "") in _FAILED_OUTCOME_STATUSES
+        and _outcome_attempt_index(item) >= _outcome_max_attempts(item)
+        for item in outcomes
+    )
+    if not primary_exhausted:
+        return False
+    return any(
+        str(item.get("evidence_role") or "") in _ALTERNATIVE_OUTCOME_ROLES
+        and str(item.get("status") or "") in _SUCCESS_OUTCOME_STATUSES
+        for item in outcomes
+    )
+
+
+def _outcome_attempt_index(outcome: Mapping[str, Any]) -> int:
+    try:
+        return max(1, int(outcome.get("attempt_index") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _outcome_max_attempts(outcome: Mapping[str, Any]) -> int:
+    try:
+        return max(1, int(outcome.get("max_attempts") or 1))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _model_for_stream_phase(
@@ -224,6 +279,7 @@ def make_agent_loop_node(
                 )
         tool_exposure = _turn_tool_exposure_from_intent_plan(tool_intent_plan)
         temporal_anchor_forced = False
+        forced_degraded_skill_recovery = False
         available_tools = _tools_for_policy_compat(
             tool_policy,
             all_tools,
@@ -573,6 +629,19 @@ def make_agent_loop_node(
                 model_with_tools_for=quarantined_model_with_tools_for,
             )
         response = _repair_and_dedupe_tool_calls(response)
+        if (
+            getattr(response, "tool_calls", None)
+            and tool_policy == "execution"
+            and tool_intent_plan.skill_execution_plan is not None
+            and _should_force_degraded_skill_recovery_answer(
+                state,
+                primary_tool_names=tool_intent_plan.skill_execution_plan.primary_tools,
+            )
+        ):
+            response = AIMessage(
+                content=_degraded_answer_from_tool_results(_latest_turn_messages(state_messages))
+            )
+            forced_degraded_skill_recovery = True
         completed_turn_messages = _latest_turn_messages([*state_messages, response])
         if not getattr(response, "tool_calls", None) and _should_replace_unfound_workspace_answer(
             _message_content_text(response),
@@ -627,9 +696,12 @@ def make_agent_loop_node(
             and not getattr(response, "tool_calls", None)
             and _live_web_answer_needs_repair(answer_verification)
         ):
-            if str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
+            if (
+                forced_degraded_skill_recovery
+                or str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results"
+            ):
                 response = AIMessage(
-                    content=_fallback_answer_from_tool_results(completed_turn_messages)
+                    content=_degraded_answer_from_tool_results(completed_turn_messages)
                 )
                 completed_turn_messages = _latest_turn_messages([*state_messages, response])
                 answer_verification = verify_answer_against_evidence(
@@ -786,6 +858,20 @@ def make_agent_loop_node(
             and not citation_refs
             and not state.get("citations")
         )
+        current_tool_outcomes = list(state.get("tool_outcomes") or [])
+        task_outcome = (
+            None
+            if getattr(response, "tool_calls", None)
+            else build_task_outcome(
+                user_goal=tool_intent_text,
+                execution_contract=execution_contract,
+                answer_verification=answer_verification,
+                evidence_ledger=evidence_ledger,
+                tool_outcomes=current_tool_outcomes,
+                final_answer=_message_content_text(response),
+                repair_action_taken=skill_execution_repair_taken or live_web_repair_taken,
+            )
+        )
         updates: dict[str, Any] = {
             "messages": [response],
             "llm_calls": state.get("llm_calls", 0) + 1,
@@ -794,6 +880,8 @@ def make_agent_loop_node(
             "execution_contract": execution_contract,
             "answer_verification": answer_verification,
         }
+        if task_outcome is not None:
+            updates["task_outcome"] = task_outcome
         if citation_refs:
             updates["citations"] = citation_refs
         intent_dumped = tool_intent_plan.model_dump(mode="json")
@@ -822,6 +910,8 @@ def make_agent_loop_node(
                 turn_metadata["active_skill_ids"] = selected_skill_ids
         if str(execution_contract.get("policy") or "") == "skill_execution":
             turn_metadata["execution_contract"] = execution_contract
+        if task_outcome is not None:
+            turn_metadata["task_outcome"] = task_outcome
         if skill_execution_repair_taken:
             turn_metadata["answer_verification"] = answer_verification
         if turn_metadata:
@@ -853,13 +943,24 @@ def make_agent_loop_node(
             source="agent_loop",
             domain="observability",
         )
+        if task_outcome is not None:
+            append_agent_state_record(
+                updates,
+                "task_outcome",
+                task_outcome,
+                source="agent_loop",
+                domain="observability",
+            )
         updates["plan_meta"] = {
             **(state.get("plan_meta") or {}),
             "tool_intent_plan": intent_dumped,
             "execution_contract": execution_contract,
             "evidence_ledger": evidence_ledger,
             "answer_verification": answer_verification,
+            "tool_outcomes": current_tool_outcomes,
         }
+        if task_outcome is not None:
+            updates["plan_meta"]["task_outcome"] = task_outcome
         if live_web_repair_taken == "retry_web_search":
             updates["plan_meta"]["live_web_answer_repair_count"] = live_web_repair_count + 1
         if skill_execution_repair_taken == "retry_skill_primary_tool":

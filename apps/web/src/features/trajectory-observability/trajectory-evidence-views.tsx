@@ -2,9 +2,12 @@ import type { FocusAgentTrajectoryTurnDetail } from "@focus-agent/web-sdk";
 
 import {
 	compactSnippet,
+	findStepRuntimeOutcome,
 	findStepRuntimeSignal,
 	formatDuration,
 	formatMetric,
+	outcomeTone,
+	readOutcomeText,
 	severityClass,
 	stepObservationPreview,
 } from "./trajectory-utils";
@@ -36,6 +39,20 @@ function TimelineEvidenceRow({
 		"span_id",
 		"spanId",
 	]);
+	const stepOutcome = findStepRuntimeOutcome(selectedStep);
+	const outcomeStatus = readOutcomeText(stepOutcome, ["status"]);
+	const outcomeErrorCategory = readOutcomeText(stepOutcome, ["error_category"]);
+	const outcomeFallbackGroup = readOutcomeText(stepOutcome, ["fallback_group"]);
+	const outcomeFallbackUsed = readOutcomeText(stepOutcome, ["fallback_used"]);
+	const outcomeRecoveryOf = readOutcomeText(stepOutcome, [
+		"recovery_of_tool_call_id",
+	]);
+	const outcomeAttemptIndex = readOutcomeText(stepOutcome, ["attempt_index"]);
+	const outcomeMaxAttempts = readOutcomeText(stepOutcome, ["max_attempts"]);
+	const outcomeAttempt =
+		outcomeAttemptIndex && outcomeMaxAttempts
+			? `${outcomeAttemptIndex}/${outcomeMaxAttempts}`
+			: outcomeAttemptIndex;
 
 	return (
 		<div
@@ -69,6 +86,32 @@ function TimelineEvidenceRow({
 					{runtimeTrace ? (
 						<span className="fa-observability-pill is-neutral">trace</span>
 					) : null}
+					{outcomeStatus ? (
+						<span
+							className={`fa-observability-pill is-${outcomeTone(outcomeStatus)}`}
+						>{`outcome ${outcomeStatus}`}</span>
+					) : null}
+					{outcomeErrorCategory ? (
+						<span className="fa-observability-pill is-danger">
+							{outcomeErrorCategory}
+						</span>
+					) : null}
+					{outcomeFallbackUsed === "true" && !outcomeFallbackGroup ? (
+						<span className="fa-observability-pill is-warning">fallback</span>
+					) : null}
+					{outcomeFallbackGroup ? (
+						<span className="fa-observability-pill is-warning">
+							{`fallback ${outcomeFallbackGroup}`}
+						</span>
+					) : null}
+					{outcomeRecoveryOf ? (
+						<span className="fa-observability-pill is-neutral">recovered</span>
+					) : null}
+					{outcomeAttempt ? (
+						<span className="fa-observability-pill is-neutral">
+							{`attempt ${outcomeAttempt}`}
+						</span>
+					) : null}
 				</div>
 				{selectedStep.runtime ? (
 					<div className="fa-observability-step-runtime">
@@ -80,6 +123,9 @@ function TimelineEvidenceRow({
 							<span>{`Request · ${runtimeRequest}`}</span>
 						) : null}
 						{runtimeTrace ? <span>{`Trace · ${runtimeTrace}`}</span> : null}
+						{outcomeRecoveryOf ? (
+							<span>{`Recovered · ${outcomeRecoveryOf}`}</span>
+						) : null}
 					</div>
 				) : null}
 				<p className="fa-observability-step-preview">
@@ -93,6 +139,14 @@ function TimelineEvidenceRow({
 					</summary>
 					<pre>{selectedStep.observation || selectedStep.error || "—"}</pre>
 				</details>
+				{stepOutcome ? (
+					<details className="fa-observability-raw-toggle">
+						<summary>
+							{isChineseUi ? "查看 step outcome" : "View step outcome"}
+						</summary>
+						<pre>{JSON.stringify(stepOutcome, null, 2)}</pre>
+					</details>
+				) : null}
 			</div>
 		</div>
 	);

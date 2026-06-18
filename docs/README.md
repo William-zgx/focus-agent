@@ -27,6 +27,7 @@ flowchart LR
     Topics --> AgentTeam["Agent Team Workbench"]
     Topics --> Admin["Admin Console"]
     Topics --> Streaming["Streaming Contract"]
+    Topics --> Outcomes["Runtime Outcomes"]
     Topics --> ContextWindow["Context Window"]
     Topics --> Productivity["Productivity System"]
     Topics --> Memory["Memory v2"]
@@ -65,6 +66,7 @@ flowchart LR
 - [agent-team-workbench.md](agent-team-workbench.md)：Agent Team Mission Runner 的目标驱动规划、DAG 执行、最终答案、API、持久化边界和多 Agent 开发验收口径。
 - [admin-console.md](admin-console.md)：设置中心、能力管理、Skill 启停、管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。
 - [streaming-contract.md](streaming-contract.md)：SSE 事件模型、`message.delta` 可见文本边界、工具协议隔离、SDK reducer 和处理过程卡契约。
+- [runtime-outcomes.md](runtime-outcomes.md)：ToolOutcome / TaskOutcome 状态机、retry/recovery/degraded answer 策略、Stream/API/SDK/Observability 合同和验证矩阵。
 - [context-window.md](context-window.md)：当前上下文窗口用量、发送栏 Context Meter、手动/自动压缩、API/SDK 和 `token_usage` 边界。
 - [memory-system-v2.md](memory-system-v2.md)：PostgreSQL canonical memory、pgvector embedding、namespace、检索、写入、审计、forget、branch promotion 和 legacy fallback / migration 背景。
 - [tool-skill-design.md](tool-skill-design.md)：Tool / Skill / Connector / Storage 的边界、Skill 管理配置、live-web evidence contract、productivity tools、运行时策略和扩展检查项。
@@ -90,7 +92,7 @@ flowchart LR
 - 根目录 README 只做轻入口和当前定位说明，不承载长篇操作说明。
 - `docs/README.md` 是 `docs/` 的唯一导航入口；新增文档应先确认归属分组和 canonical 位置。
 - 后端路由、Pydantic response model 或 SDK 类型变化时，必须同步 `docs/api/openapi.json`、`frontend-sdk/src/types/__generated__.ts` 和必要的 `tests/contracts/*.json` snapshot；本地运行 `make sdk-openapi-types-check` 与 `make contract-check`。
-- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Branch Decisions、Auth / Access、Agent Team、Admin Console、Streaming Contract、Context Window、Memory、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
+- `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Branch Decisions、Auth / Access、Agent Team、Admin Console、Streaming Contract、Runtime Outcomes、Context Window、Memory、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
 - `development.md` / `development.zh-CN.md` 讲本地开发与验证命令；release provider 细节放到 `ci/github-actions-release-gate.md`。
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 阶段性方案、执行记录和草稿不要长期堆在 `docs/`，应放到 issue、PR 或项目管理工具。

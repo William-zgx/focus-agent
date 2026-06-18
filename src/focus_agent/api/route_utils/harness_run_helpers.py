@@ -30,6 +30,15 @@ def _canonical_payload_extras(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tool_result_is_error(item: dict[str, Any]) -> bool:
+    status = str(item.get("status") or "").strip().lower()
+    if status in {"error", "failed"}:
+        return True
+    tool_outcome = item.get("tool_outcome")
+    if isinstance(tool_outcome, dict):
+        return str(tool_outcome.get("status") or "").strip().lower() in {
+            "failed",
+            "blocked",
+        }
     content = str(item.get("content") or "").lower()
     return '"status": "error"' in content or '"status":"error"' in content
 

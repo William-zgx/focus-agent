@@ -16438,8 +16438,26 @@
           "default": "",
           "type": "string"
         },
+        "task_outcome": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "thread_id": {
           "type": "string"
+        },
+        "tool_outcomes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "trace": {
           "additionalProperties": true,
@@ -16797,8 +16815,26 @@
           "default": "",
           "type": "string"
         },
+        "task_outcome": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "thread_id": {
           "type": "string"
+        },
+        "tool_outcomes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "trace": {
           "additionalProperties": true,
@@ -17851,6 +17887,46 @@
             }
           ]
         },
+        "tool_blocked_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_failure_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_fallback_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_recovered_steps": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "turn_count": {
           "anyOf": [
             {
@@ -17885,7 +17961,15 @@
           "default": 0,
           "type": "integer"
         },
+        "total_blocked_task_outcomes": {
+          "default": 0,
+          "type": "integer"
+        },
         "total_cache_hits": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_degraded_answers": {
           "default": 0,
           "type": "integer"
         },
@@ -17897,7 +17981,23 @@
           "default": 0,
           "type": "integer"
         },
+        "total_tool_blocked": {
+          "default": 0,
+          "type": "integer"
+        },
         "total_tool_calls": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_tool_failures": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_tool_fallback_uses": {
+          "default": 0,
+          "type": "integer"
+        },
+        "total_tool_recovered": {
           "default": 0,
           "type": "integer"
         },
@@ -17991,6 +18091,10 @@
         },
         "tool": {
           "type": "string"
+        },
+        "tool_outcome": {
+          "additionalProperties": true,
+          "type": "object"
         }
       },
       "required": [
@@ -18226,12 +18330,30 @@
             }
           ]
         },
+        "task_outcome": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "thread_id": {
           "type": "string"
         },
         "tool_calls": {
           "default": 0,
           "type": "integer"
+        },
+        "tool_outcomes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "trace_id": {
           "anyOf": [
@@ -18577,12 +18699,30 @@
             }
           ]
         },
+        "task_outcome": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "thread_id": {
           "type": "string"
         },
         "tool_calls": {
           "default": 0,
           "type": "integer"
+        },
+        "tool_outcomes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
         },
         "trace_id": {
           "anyOf": [

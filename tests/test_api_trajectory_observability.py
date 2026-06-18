@@ -182,7 +182,12 @@ class _FakeTrajectoryRepo:
                     "fallback_used": True,
                     "fallback_group": "web_search",
                     "parallel_batch_size": None,
-                    "runtime": {},
+                    "runtime": {"tool_outcome": {"status": "recovered"}},
+                    "tool_outcome": {
+                        "tool_call_id": "tool-1",
+                        "tool_name": "web_search",
+                        "status": "recovered",
+                    },
                     "observation_truncated": False,
                     "error": None,
                     "created_at": datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
@@ -297,6 +302,7 @@ def test_trajectory_api_list_detail_and_stats(
     assert detail_response.json()["item"]["request_id"] == "req-query"
     assert detail_response.json()["item"]["trace_id"] == "trace-query"
     assert detail_response.json()["item"]["trajectory"][0]["tool"] == "web_search"
+    assert detail_response.json()["item"]["trajectory"][0]["tool_outcome"]["status"] == "recovered"
 
 
 def test_trajectory_batch_promote_preview_filters_failed_turns_and_honors_limit(

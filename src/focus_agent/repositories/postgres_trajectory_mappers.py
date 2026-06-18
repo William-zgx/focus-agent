@@ -47,6 +47,9 @@ class PostgresTrajectoryMapperMixin:
 
     @staticmethod
     def _step_params(turn_id: str, step_index: int, step: TrajectoryStep) -> dict[str, Any]:
+        runtime = dict(step.runtime or {})
+        if step.tool_outcome:
+            runtime.setdefault("tool_outcome", dict(step.tool_outcome))
         return {
             "turn_id": turn_id,
             "step_index": step_index,
@@ -60,12 +63,14 @@ class PostgresTrajectoryMapperMixin:
             "fallback_used": step.fallback_used,
             "fallback_group": step.fallback_group,
             "parallel_batch_size": step.parallel_batch_size,
-            "runtime": Jsonb(step.runtime),
+            "runtime": Jsonb(runtime),
         }
 
     @staticmethod
     def _row_to_turn_summary(row: dict[str, Any]) -> dict[str, Any]:
         metrics = as_dict(row.get("metrics"))
+        plan_meta = as_dict(row.get("plan_meta"))
+        task_outcome, tool_outcomes = outcome_projection(plan_meta)
         return {
             "id": str(row["id"]),
             "schema_version": int(row["schema_version"]),
@@ -94,7 +99,9 @@ class PostgresTrajectoryMapperMixin:
             "finished_at": row.get("finished_at"),
             "created_at": row.get("created_at"),
             "metrics": metrics,
-            "plan_meta": as_dict(row.get("plan_meta")),
+            "plan_meta": plan_meta,
+            "task_outcome": task_outcome,
+            "tool_outcomes": tool_outcomes,
             "latency_ms": float(metrics.get("latency_ms") or 0.0),
             "tool_calls": int(metrics.get("tool_calls") or 0),
             "llm_calls": int(metrics.get("llm_calls") or 0),
@@ -146,6 +153,7 @@ class PostgresTrajectoryMapperMixin:
 
     @staticmethod
     def _row_to_step_dict(row: dict[str, Any]) -> dict[str, Any]:
+        runtime = as_dict(row.get("runtime"))
         return {
             "turn_id": str(row["turn_id"]),
             "step_index": int(row["step_index"]),
@@ -159,12 +167,14 @@ class PostgresTrajectoryMapperMixin:
             "fallback_used": bool(row.get("fallback_used", False)),
             "fallback_group": optional_text(row.get("fallback_group")),
             "parallel_batch_size": optional_int(row.get("parallel_batch_size")),
-            "runtime": as_dict(row.get("runtime")),
+            "runtime": runtime,
+            "tool_outcome": as_dict(runtime.get("tool_outcome")),
             "created_at": row.get("created_at"),
         }
 
     @staticmethod
     def _step_dict_to_model(step_row: dict[str, Any]) -> TrajectoryStep:
+        runtime = as_dict(step_row.get("runtime"))
         return TrajectoryStep(
             tool=str(step_row["tool"]),
             args=as_dict(step_row.get("args")),
@@ -175,7 +185,8 @@ class PostgresTrajectoryMapperMixin:
             fallback_used=bool(step_row.get("fallback_used", False)),
             fallback_group=optional_text(step_row.get("fallback_group")),
             parallel_batch_size=optional_int(step_row.get("parallel_batch_size")),
-            runtime=as_dict(step_row.get("runtime")),
+            runtime=runtime,
+            tool_outcome=as_dict(step_row.get("tool_outcome") or runtime.get("tool_outcome")),
             observation_truncated=bool(step_row.get("observation_truncated", False)),
         )
 
@@ -205,6 +216,17 @@ def as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     return {}
+
+
+def outcome_projection(plan_meta: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    task_outcome = plan_meta.get("task_outcome")
+    tool_outcomes = plan_meta.get("tool_outcomes")
+    return (
+        dict(task_outcome) if isinstance(task_outcome, dict) else None,
+        [dict(item) for item in tool_outcomes if isinstance(item, dict)]
+        if isinstance(tool_outcomes, list)
+        else [],
+    )
 
 
 def iso_datetime(value: Any) -> str | None:

@@ -1,3 +1,7 @@
+import json
+
+from langchain.messages import ToolMessage
+
 from focus_agent.core.tool_protocol import (
     looks_like_potential_textual_tool_call_prefix,
     looks_like_textual_tool_call_artifact,
@@ -9,6 +13,7 @@ from focus_agent.transport.stream_events import (
     extract_reasoning_delta,
     extract_tool_call_chunks,
     extract_tool_requests_from_updates,
+    extract_tool_results_from_updates,
     extract_visible_text_candidate_delta,
     extract_visible_text_delta,
     looks_like_potential_stream_visible_text_artifact_prefix,
@@ -764,6 +769,104 @@ def test_extract_tool_requests_from_updates():
             "args": {"q": "branch tree"},
         }
     ]
+
+
+def test_extract_tool_results_from_updates_preserves_runtime_status_and_outcome():
+    tool_outcome = {
+        "outcome_id": "call-1:1",
+        "tool_call_id": "call-1",
+        "tool_name": "run_workspace_command",
+        "status": "blocked",
+        "error_category": "approval",
+    }
+    updates = {
+        "tool_executor": {
+            "messages": [
+                ToolMessage(
+                    content=json.dumps({"status": "error", "error": "approval denied"}),
+                    tool_call_id="call-1",
+                    status="error",
+                    artifact={
+                        "tool_name": "run_workspace_command",
+                        "runtime": {
+                            "duration_ms": 12.5,
+                            "tool_approval_denied": True,
+                        },
+                    },
+                )
+            ],
+            "tool_outcomes": [tool_outcome],
+        }
+    }
+
+    results = extract_tool_results_from_updates(updates)
+
+    assert results == [
+        {
+            "node": "tool_executor",
+            "tool_call_id": "call-1",
+            "id": "call-1",
+            "content": '{"status": "error", "error": "approval denied"}',
+            "name": "run_workspace_command",
+            "tool_name": "run_workspace_command",
+            "status": "error",
+            "runtime": {
+                "duration_ms": 12.5,
+                "tool_approval_denied": True,
+            },
+            "tool_outcome": tool_outcome,
+        }
+    ]
+
+
+def test_extract_tool_results_from_updates_preserves_retry_lineage_from_outcomes():
+    failed_outcome = {
+        "outcome_id": "call-1:1",
+        "tool_call_id": "call-1",
+        "tool_name": "flaky_lookup",
+        "status": "failed",
+        "attempt_index": 1,
+        "max_attempts": 2,
+        "retryable": True,
+        "error_category": "timeout",
+        "error_message": "temporary timeout",
+    }
+    recovered_outcome = {
+        "outcome_id": "call-1:2",
+        "tool_call_id": "call-1",
+        "tool_name": "flaky_lookup",
+        "status": "recovered",
+        "attempt_index": 2,
+        "max_attempts": 2,
+        "retryable": False,
+        "error_category": "none",
+        "error_message": "",
+    }
+    updates = {
+        "tool_executor": {
+            "messages": [
+                ToolMessage(
+                    content="ok",
+                    tool_call_id="call-1",
+                    status="success",
+                    artifact={
+                        "tool_name": "flaky_lookup",
+                        "runtime": {"duration_ms": 3.0},
+                    },
+                )
+            ],
+            "tool_outcomes": [failed_outcome, recovered_outcome],
+        }
+    }
+
+    results = extract_tool_results_from_updates(updates)
+
+    assert [item["status"] for item in results] == ["error", "success"]
+    assert [item["tool_outcome"]["status"] for item in results] == ["failed", "recovered"]
+    assert results[0]["content"] == "temporary timeout"
+    assert results[0]["runtime"]["attempt_index"] == 1
+    assert results[1]["content"] == "ok"
+    assert results[1]["runtime"]["duration_ms"] == 3.0
 
 
 def test_sanitize_stream_metadata():

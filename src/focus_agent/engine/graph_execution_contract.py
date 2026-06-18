@@ -257,6 +257,8 @@ def skill_execution_evidence_facts(
         tool_name = call_names_by_id.get(str(message.tool_call_id or "").strip(), "")
         if required and tool_name not in required and tool_name != "read_file":
             continue
+        if tool_name and not _tool_message_counts_as_success(message, tool_name):
+            continue
         payload = _json_message_payload(message)
         if not isinstance(payload, Mapping):
             continue
@@ -292,12 +294,43 @@ def _run_workspace_command_payload_succeeded(message: ToolMessage) -> bool:
         return True
     if payload.get("timed_out") is True:
         return False
+    status = str(payload.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure"}:
+        return False
+    if payload.get("error"):
+        return False
+    for key in ("ok", "success"):
+        if payload.get(key) is False:
+            return False
+    for key in ("stdout", "stderr", "output"):
+        if _embedded_command_payload_failed(payload.get(key)):
+            return False
     if "exit_code" not in payload:
         return True
     try:
         return int(payload.get("exit_code")) == 0
     except (TypeError, ValueError):
         return False
+
+
+def _embedded_command_payload_failed(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    status = str(payload.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure"}:
+        return True
+    if payload.get("error"):
+        return True
+    for key in ("ok", "success"):
+        if payload.get(key) is False:
+            return True
+    return False
 
 
 def _run_skill_entrypoint_payload_succeeded(message: ToolMessage) -> bool:

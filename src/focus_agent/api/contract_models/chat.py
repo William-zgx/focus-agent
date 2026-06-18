@@ -152,6 +152,8 @@ class ThreadStateResponse(BaseModel):
     merge_queue: list[dict[str, Any]] = Field(default_factory=list)
     active_skill_ids: list[str] = Field(default_factory=list)
     active_skills: list[ThreadActiveSkillResponse] = Field(default_factory=list)
+    tool_outcomes: list[dict[str, Any]] = Field(default_factory=list)
+    task_outcome: dict[str, Any] | None = None
     messages: list[ThreadMessageResponse | dict[str, Any]] = Field(default_factory=list)
     interrupts: list[Any] = Field(default_factory=list)
     branch_actions: list[BranchActionProposal] = Field(default_factory=list)

@@ -97,9 +97,11 @@ This layered filtering is not redundant. Each layer protects a different failure
 Tool activity should be rendered from structured events, not from assistant text:
 
 - `tool.call.delta` carries streamed call arguments in `args_delta`; optional `id` / `tool_call_id` and `name` / `tool_name` are included when known.
-- `tool.requested`, `tool.result`, and `tool.error` represent tool lifecycle state. If a custom payload lacks a call id, it is downgraded to `state.update`.
+- `tool.requested`, `tool.result`, and `tool.error` represent tool lifecycle state. `tool.result` / `tool.error` payloads carry `runtime` and graph-authored `tool_outcome` when available. If a custom payload lacks a call id, it is downgraded to `state.update`.
 - `task.update` carries process-level progress and may be shown in processing cards.
 - `state.update` is for raw state/debug panels and should not be rendered as assistant answer text.
+
+`message.completed`, `run.completed`, and `run.failed` may carry graph-authored `task_outcome`. Clients should render these fields as status metadata and must not infer final task success from raw tool payload shape. The canonical outcome state machine is documented in [runtime-outcomes.md](runtime-outcomes.md).
 
 The SDK reducer derives `processingSteps` from reasoning, tool call, tool lifecycle, and task events. New UI should use `processingSteps` as the canonical processing-card input. `toolCalls`, `toolEvents`, and `reasoningText` remain available as raw/debug/backcompat state.
 

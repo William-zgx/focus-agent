@@ -173,6 +173,8 @@ class AgentState(TypedDict, total=False):
     evidence_ledger: list[dict[str, Any]]
     execution_contract: dict[str, Any] | None
     answer_verification: dict[str, Any] | None
+    tool_outcomes: Annotated[list[dict[str, Any]], operator.add]
+    task_outcome: dict[str, Any] | None
 
     # Written by Delegation Runtime when multi-agent role runs are planned or
     # enforced. It stays in plan_meta for observability and replay.
@@ -267,6 +269,8 @@ def initial_agent_state() -> AgentState:
         "evidence_ledger": [],
         "execution_contract": None,
         "answer_verification": None,
+        "tool_outcomes": [],
+        "task_outcome": None,
         "agent_delegation_plan": None,
         "agent_runs": [],
         "model_route_decision": None,

@@ -54,6 +54,67 @@ def test_prepare_resume_payload_uses_langgraph_command_resume():
     }
 
 
+def test_stream_harness_resume_skips_pre_turn_branch_recommendation(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _RunManager:
+        async def attach_task(self, run_id: str, task: asyncio.Task[None]):
+            captured["attached_run_id"] = run_id
+            await task
+
+    async def fake_create_run_record(**kwargs):
+        captured["create_kwargs"] = kwargs
+        return SimpleNamespace(run_id="run-resume-1")
+
+    def fake_produce_run_stream(**kwargs):
+        captured["produce_kwargs"] = kwargs
+
+        async def noop():
+            return None
+
+        return noop()
+
+    def fake_run_event_streaming_response(**kwargs):
+        captured["response_kwargs"] = kwargs
+        return SimpleNamespace(kind="streaming-response")
+
+    monkeypatch.setattr(
+        harness_runs,
+        "_prepare_resume_payload",
+        lambda **kwargs: (
+            Command(resume={"approved": True}),
+            SimpleNamespace(root_thread_id="root-1"),
+            {"branch": "main"},
+            {"messages": []},
+        ),
+    )
+    monkeypatch.setattr(harness_runs, "_capture_run_rollback_target", lambda **kwargs: None)
+    monkeypatch.setattr(harness_runs, "_create_run_record", fake_create_run_record)
+    monkeypatch.setattr(harness_runs, "_produce_run_stream", fake_produce_run_stream)
+    monkeypatch.setattr(harness_runs, "_run_event_streaming_response", fake_run_event_streaming_response)
+
+    async def scenario():
+        response = await harness_runs.stream_harness_resume(
+            thread_id="thread-1",
+            payload=harness_runs.HarnessResumeRequest(resume={"approved": True}),
+            request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
+            runtime=SimpleNamespace(run_manager=_RunManager()),
+            chat=SimpleNamespace(),
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+
+        assert response.kind == "streaming-response"
+        assert captured["attached_run_id"] == "run-resume-1"
+        produce_kwargs = captured["produce_kwargs"]
+        assert produce_kwargs["kind"] == "chat.resume"
+        assert produce_kwargs["skip_branch_recommendation"] is True
+        assert produce_kwargs["request_id"] == "request-1"
+        assert produce_kwargs["thread_id"] == "thread-1"
+        assert produce_kwargs["user_id"] == "user-1"
+
+    asyncio.run(scenario())
+
+
 def test_branch_recommendation_timeout_uses_configured_value():
     assert (
         harness_runs._branch_recommendation_timeout_seconds(

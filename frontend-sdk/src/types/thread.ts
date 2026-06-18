@@ -1,5 +1,6 @@
 import type {
 	ContextUsageResponse,
+	FocusAgentRuntimeOutcome,
 	FocusAgentTokenUsageSummary,
 } from "./common.js";
 import type {
@@ -141,6 +142,8 @@ export interface ThreadStateResponse {
 	merge_queue: FocusAgentImportedConclusion[];
 	active_skill_ids: string[];
 	active_skills: ThreadActiveSkillResponse[];
+	tool_outcomes?: FocusAgentRuntimeOutcome[];
+	task_outcome?: FocusAgentRuntimeOutcome | null;
 	messages: Array<ThreadMessageResponse | Record<string, unknown>>;
 	interrupts: unknown[];
 	branch_actions: FocusAgentBranchActionProposal[];

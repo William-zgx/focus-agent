@@ -125,6 +125,8 @@ def _build_trajectory_detail_response(
     created_at: Any = None,
 ) -> TrajectoryTurnDetailResponse:
     metrics = dict(getattr(record, "metrics", {}) or {})
+    plan_meta = dict(getattr(record, "plan_meta", {}) or {})
+    task_outcome, tool_outcomes = _outcome_projection(plan_meta)
     payload = {
         "id": str(record.id),
         "schema_version": int(record.schema_version),
@@ -151,7 +153,9 @@ def _build_trajectory_detail_response(
         "selected_thinking_mode": record.selected_thinking_mode,
         "plan": record.plan,
         "reflection": record.reflection,
-        "plan_meta": dict(getattr(record, "plan_meta", {}) or {}),
+        "plan_meta": plan_meta,
+        "task_outcome": task_outcome,
+        "tool_outcomes": tool_outcomes,
         "metrics": metrics,
         "error": record.error,
         "started_at": record.started_at,
@@ -165,6 +169,17 @@ def _build_trajectory_detail_response(
         "trajectory": [TrajectoryStepResponse.model_validate(step) for step in step_rows],
     }
     return TrajectoryTurnDetailResponse.model_validate(payload)
+
+
+def _outcome_projection(plan_meta: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    task_outcome = plan_meta.get("task_outcome")
+    tool_outcomes = plan_meta.get("tool_outcomes")
+    return (
+        dict(task_outcome) if isinstance(task_outcome, dict) else None,
+        [dict(item) for item in tool_outcomes if isinstance(item, dict)]
+        if isinstance(tool_outcomes, list)
+        else [],
+    )
 
 
 def _build_trajectory_stats_response(stats: dict[str, Any]) -> TrajectoryTurnStatsResponse:

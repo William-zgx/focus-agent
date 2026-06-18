@@ -3,9 +3,10 @@ import type {
   FocusAgentEventName,
   FocusAgentStreamState,
   FocusAgentStreamStep,
-  FocusAgentStreamStepStatus,
-  FocusAgentToolCallEvent,
-  FocusAgentToolEvent,
+	FocusAgentStreamStepStatus,
+	FocusAgentToolCallEvent,
+	FocusAgentToolEvent,
+	FocusAgentRuntimeOutcome,
 } from "./types.js";
 import { safeVisibleText, safeVisibleTextTransition } from "./toolProtocol.js";
 
@@ -22,12 +23,14 @@ export function createInitialStreamState(): FocusAgentStreamState {
     activePhase: undefined,
     toolCalls: [],
     toolEvents: [],
-    interrupts: [],
-    branchActions: [],
-    latestTurnState: undefined,
-    isClosed: false,
-    failed: undefined,
-  };
+		interrupts: [],
+		branchActions: [],
+		latestTurnState: undefined,
+		taskOutcome: null,
+		runtimeOutcome: null,
+		isClosed: false,
+		failed: undefined,
+	};
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -158,13 +161,22 @@ function upsertToolLifecycleStep(
   state: FocusAgentStreamState,
   event: FocusAgentToolEvent,
 ): FocusAgentStreamState {
-  const name = toolNameForEvent(event);
-  const id = toolStepIdForEvent(event);
-  const existing = state.processingSteps.find((step) => step.kind === "tool" && step.id === id);
-  const result = event.data.output ?? event.data.result ?? event.data.content;
-  const summary =
-    compactText(event.data.message) ??
-    compactText(result) ??
+	const name = toolNameForEvent(event);
+	const id = toolStepIdForEvent(event);
+	const existing = state.processingSteps.find((step) => step.kind === "tool" && step.id === id);
+	const result = event.data.output ?? event.data.result ?? event.data.content;
+	const toolOutcome =
+		typeof event.data.tool_outcome === "object" &&
+		event.data.tool_outcome !== null
+			? (event.data.tool_outcome as FocusAgentRuntimeOutcome)
+			: null;
+	const runtime =
+		typeof event.data.runtime === "object" && event.data.runtime !== null
+			? (event.data.runtime as Record<string, unknown>)
+			: undefined;
+	const summary =
+		compactText(event.data.message) ??
+		compactText(result) ??
     compactText(event.data.error);
   const argsText =
     event.event === "tool.requested"
@@ -176,13 +188,15 @@ function upsertToolLifecycleStep(
     label: name ?? existing?.label ?? "Tool",
     status: stepStatusForToolEvent(event.event),
     content: summary ?? existing?.content,
-    name: name ?? existing?.name,
-    argsText,
-    result: result ?? existing?.result,
-    metadata: event.data.metadata,
-    namespace: event.data.namespace,
-    eventName: event.event,
-  });
+		name: name ?? existing?.name,
+		argsText,
+		result: result ?? existing?.result,
+		metadata: event.data.metadata,
+		namespace: event.data.namespace,
+		eventName: event.event,
+		runtime: runtime ?? existing?.runtime,
+		toolOutcome: toolOutcome ?? existing?.toolOutcome,
+	});
 }
 
 function upsertTaskStep(
@@ -306,13 +320,45 @@ export function reduceStreamEvent(
   state: FocusAgentStreamState,
   event: FocusAgentEvent,
 ): FocusAgentStreamState {
-  switch (event.event) {
+	const runtimeOutcomeValue = (
+		value: unknown,
+	): FocusAgentRuntimeOutcome | null =>
+		typeof value === "object" && value !== null
+			? (value as FocusAgentRuntimeOutcome)
+			: null;
+	const threadStateValue = (data: Record<string, unknown>) =>
+		typeof data.thread_state === "object" && data.thread_state !== null
+			? (data.thread_state as Record<string, unknown>)
+			: undefined;
+	const terminalTaskOutcome = (data: Record<string, unknown>) => {
+		const threadState = threadStateValue(data);
+		return (
+			runtimeOutcomeValue(data.task_outcome) ??
+			runtimeOutcomeValue(threadState?.task_outcome)
+		);
+	};
+	const terminalRuntimeOutcome = (data: Record<string, unknown>) => {
+		const threadState = threadStateValue(data);
+		return (
+			runtimeOutcomeValue(data.runtime_outcome) ??
+			runtimeOutcomeValue(threadState?.runtime_outcome)
+		);
+	};
+
+	switch (event.event) {
     case "message.delta": {
       return applyVisibleTextDelta(state, event.data.delta);
     }
-    case "message.completed": {
-      return applyVisibleTextCompleted(state, event.data.content);
-    }
+	case "message.completed": {
+		const updated = applyVisibleTextCompleted(state, event.data.content);
+		const taskOutcome = runtimeOutcomeValue(event.data.task_outcome);
+		const runtimeOutcome = runtimeOutcomeValue(event.data.runtime_outcome);
+		return {
+			...updated,
+			taskOutcome: taskOutcome ?? updated.taskOutcome,
+			runtimeOutcome: runtimeOutcome ?? updated.runtimeOutcome,
+		};
+	}
     case "reasoning.delta": {
       return applyReasoningDelta(state, event as FocusAgentEvent<"reasoning.delta">);
     }
@@ -332,23 +378,36 @@ export function reduceStreamEvent(
       return upsertTaskStep(state, event);
     case "run.status":
       return { ...state, activePhase: event.data.phase };
-    case "run.completed":
-      return {
-        ...state,
-        activePhase: event.data.status,
-        latestTurnState: event.data.thread_state ?? state.latestTurnState,
-        isClosed: true,
-      };
+	case "run.completed":
+		return {
+			...state,
+			activePhase: event.data.status,
+			latestTurnState: event.data.thread_state ?? state.latestTurnState,
+			taskOutcome:
+				terminalTaskOutcome(event.data) ??
+				state.taskOutcome,
+			runtimeOutcome:
+				terminalRuntimeOutcome(event.data) ??
+				state.runtimeOutcome,
+			isClosed: true,
+		};
     case "run.interrupt":
       return { ...state, activePhase: event.data.action };
-    case "run.failed":
-      return {
-        ...state,
-        processingSteps: failOpenProcessingSteps(state),
-        activePhase: "failed",
-        failed: event.data,
-        isClosed: true,
-      };
+	case "run.failed":
+		return {
+			...state,
+			processingSteps: failOpenProcessingSteps(state),
+			activePhase: "failed",
+			failed: event.data,
+			latestTurnState: event.data.thread_state ?? state.latestTurnState,
+			taskOutcome:
+				terminalTaskOutcome(event.data) ??
+				state.taskOutcome,
+			runtimeOutcome:
+				terminalRuntimeOutcome(event.data) ??
+				state.runtimeOutcome,
+			isClosed: true,
+		};
     case "run.closed":
       return { ...state, isClosed: true };
     default:

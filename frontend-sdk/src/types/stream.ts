@@ -3,6 +3,7 @@ import type {
   FocusAgentBranchActionProposal,
   FocusAgentBranchRecord,
 } from "./branch.js";
+import type { FocusAgentRuntimeOutcome } from "./common.js";
 
 export type FocusAgentStreamChannel =
   | "message"
@@ -58,6 +59,8 @@ export interface MessageCompletedPayload extends FocusAgentBaseEventPayload {
   content: string;
   message_id?: string;
   source?: string;
+  task_outcome?: FocusAgentRuntimeOutcome | null;
+  runtime_outcome?: FocusAgentRuntimeOutcome | null;
 }
 
 export interface ReasoningDeltaPayload extends FocusAgentBaseEventPayload {
@@ -89,6 +92,8 @@ export interface ToolLifecyclePayload extends FocusAgentBaseEventPayload {
   tool_call_id?: string;
   message?: string;
   output?: unknown;
+  runtime?: Record<string, unknown>;
+  tool_outcome?: FocusAgentRuntimeOutcome | null;
 }
 
 export interface RunMetadataPayload extends FocusAgentBaseEventPayload {
@@ -113,6 +118,8 @@ export interface RunCompletedPayload extends FocusAgentBaseEventPayload {
   source_node?: string;
   status: string;
   thread_state?: Record<string, unknown>;
+  task_outcome?: FocusAgentRuntimeOutcome | null;
+  runtime_outcome?: FocusAgentRuntimeOutcome | null;
   branch_action?: FocusAgentBranchActionProposal | null;
   branch_record?: FocusAgentBranchRecord | null;
   navigation?: FocusAgentBranchActionNavigation | null;
@@ -125,6 +132,9 @@ export interface RunFailedPayload extends FocusAgentBaseEventPayload {
   source_node?: string;
   error: string;
   message: string;
+  thread_state?: Record<string, unknown>;
+  task_outcome?: FocusAgentRuntimeOutcome | null;
+  runtime_outcome?: FocusAgentRuntimeOutcome | null;
 }
 
 export interface RunInterruptPayload extends FocusAgentBaseEventPayload {
@@ -199,6 +209,8 @@ export interface FocusAgentStreamStepBase {
   metadata?: FocusAgentStreamMetadata;
   namespace?: string[];
   eventName?: FocusAgentEventName;
+  runtime?: Record<string, unknown>;
+  toolOutcome?: FocusAgentRuntimeOutcome | null;
 }
 
 export interface FocusAgentReasoningStreamStep extends FocusAgentStreamStepBase {
@@ -260,6 +272,8 @@ export interface FocusAgentStreamState {
   interrupts: unknown[];
   branchActions: FocusAgentBranchActionProposal[];
   latestTurnState?: Record<string, unknown>;
+  taskOutcome?: FocusAgentRuntimeOutcome | null;
+  runtimeOutcome?: FocusAgentRuntimeOutcome | null;
   isClosed: boolean;
   failed?: RunFailedPayload;
 }

@@ -86,6 +86,12 @@ class PostgresTrajectoryStatsMixin:
                 COALESCE(SUM(COALESCE((t.metrics ->> 'llm_calls')::INT, 0)), 0)::INT AS total_llm_calls,
                 COALESCE(SUM(COALESCE((t.metrics ->> 'cache_hits')::INT, 0)), 0)::INT AS total_cache_hits,
                 COALESCE(SUM(COALESCE((t.metrics ->> 'fallback_uses')::INT, 0)), 0)::INT AS total_fallback_uses,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'tool_failures')::INT, 0)), 0)::INT AS total_tool_failures,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'tool_blocked')::INT, 0)), 0)::INT AS total_tool_blocked,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'tool_recovered')::INT, 0)), 0)::INT AS total_tool_recovered,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'tool_fallback_uses')::INT, 0)), 0)::INT AS total_tool_fallback_uses,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'degraded_answers')::INT, 0)), 0)::INT AS total_degraded_answers,
+                COALESCE(SUM(COALESCE((t.metrics ->> 'blocked_task_outcomes')::INT, 0)), 0)::INT AS total_blocked_task_outcomes,
                 COALESCE(AVG(COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0)), 0)::DOUBLE PRECISION AS avg_latency_ms,
                 COALESCE(MAX(COALESCE((t.metrics ->> 'latency_ms')::DOUBLE PRECISION, 0)), 0)::DOUBLE PRECISION AS max_latency_ms
             FROM focus_trajectory_turns t
@@ -158,6 +164,10 @@ class PostgresTrajectoryStatsMixin:
                 COUNT(DISTINCT t.id)::INT AS turn_count,
                 COALESCE(SUM(CASE WHEN s.cache_hit THEN 1 ELSE 0 END), 0)::INT AS cache_hit_steps,
                 COALESCE(SUM(CASE WHEN s.fallback_used THEN 1 ELSE 0 END), 0)::INT AS fallback_steps,
+                COALESCE(SUM(CASE WHEN s.runtime -> 'tool_outcome' ->> 'status' = 'failed' THEN 1 ELSE 0 END), 0)::INT AS tool_failure_steps,
+                COALESCE(SUM(CASE WHEN s.runtime -> 'tool_outcome' ->> 'status' = 'blocked' THEN 1 ELSE 0 END), 0)::INT AS tool_blocked_steps,
+                COALESCE(SUM(CASE WHEN s.runtime -> 'tool_outcome' ->> 'status' = 'recovered' THEN 1 ELSE 0 END), 0)::INT AS tool_recovered_steps,
+                COALESCE(SUM(CASE WHEN (s.runtime -> 'tool_outcome' ->> 'fallback_used')::BOOLEAN THEN 1 ELSE 0 END), 0)::INT AS tool_fallback_steps,
                 COALESCE(AVG(s.duration_ms), 0)::DOUBLE PRECISION AS avg_duration_ms
             FROM focus_trajectory_turns t
             JOIN focus_trajectory_steps s ON s.turn_id = t.id

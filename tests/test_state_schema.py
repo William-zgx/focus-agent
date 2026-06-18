@@ -81,6 +81,8 @@ def test_initial_agent_state_populates_governance_defaults():
     assert state["delegated_artifacts"] == []
     assert state["artifact_synthesis_result"] is None
     assert state["critic_gate_result"] is None
+    assert state["tool_outcomes"] == []
+    assert state["task_outcome"] is None
     assert state["memory_write_requests"] == []
     assert state["memory_write_result"] == {}
 
@@ -139,6 +141,8 @@ def test_normalize_agent_state_backfills_new_fields_without_overwriting_existing
     assert normalized["delegated_artifacts"] == []
     assert normalized["artifact_synthesis_result"] is None
     assert normalized["critic_gate_result"] is None
+    assert normalized["tool_outcomes"] == []
+    assert normalized["task_outcome"] is None
     assert normalized["memory_write_requests"] == []
     assert normalized["memory_write_result"] == {}
 
@@ -169,6 +173,8 @@ def test_agent_state_domains_cover_existing_wire_fields():
     assert "governance_records" in state_domain_fields("observability")
     assert "llm_calls" in state_domain_fields("observability")
     assert "branch_action_audit" in state_domain_fields("observability")
+    assert "tool_outcomes" in state_domain_fields("observability")
+    assert "task_outcome" in state_domain_fields("observability")
     assert state_domains_for_field("role_route_plan") == (
         "governance",
         "observability",
@@ -202,6 +208,8 @@ def test_governance_schema_guard_blocks_new_top_level_fields():
         "critic_gate_result",
         "execution_contract",
         "answer_verification",
+        "tool_outcomes",
+        "task_outcome",
         "memory_write_result",
     }
     assert set(GOVERNANCE_RECORD_MIRROR_KEYS.values()) <= set(GOVERNANCE_TOP_LEVEL_FIELD_ALLOWLIST)

@@ -7,6 +7,7 @@ import {
 	StoryGrid,
 	type SupplementalContextItem,
 	SupplementalContextPanel,
+	TaskOutcomeCard,
 } from "./trajectory-detail-sections";
 import { TrajectoryEmptyState } from "./trajectory-states";
 import type { EvidenceMode, ReviewSummary } from "./trajectory-utils";
@@ -60,6 +61,8 @@ export function TrajectoryDetailPanel({
 					reviewSummary={reviewSummary}
 				/>
 			) : null}
+
+			<TaskOutcomeCard isChineseUi={isChineseUi} selected={selected} />
 
 			<EvidenceStage
 				correlationCoverage={correlationCoverage}

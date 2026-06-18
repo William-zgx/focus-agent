@@ -4538,6 +4538,43 @@
         "title": "AgentTeamRunMetadata",
         "type": "object"
       },
+      "AgentTeamSchedulerMetadata": {
+        "properties": {
+          "blocked_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Task Ids",
+            "type": "array"
+          },
+          "max_tasks": {
+            "default": 0,
+            "title": "Max Tasks",
+            "type": "integer"
+          },
+          "max_waves": {
+            "default": 0,
+            "title": "Max Waves",
+            "type": "integer"
+          },
+          "ready_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ready Task Ids",
+            "type": "array"
+          },
+          "waiting_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Waiting Task Ids",
+            "type": "array"
+          }
+        },
+        "title": "AgentTeamSchedulerMetadata",
+        "type": "object"
+      },
       "AgentTeamSessionContract": {
         "properties": {
           "created_at": {
@@ -4800,6 +4837,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/AgentTeamRunMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scheduler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTeamSchedulerMetadata"
               },
               {
                 "type": "null"
@@ -9450,7 +9497,7 @@
             "type": "string"
           },
           "on_disconnect": {
-            "default": "cancel",
+            "default": "rollback",
             "enum": [
               "cancel",
               "continue",
@@ -9538,7 +9585,7 @@
             "type": "string"
           },
           "on_disconnect": {
-            "default": "cancel",
+            "default": "rollback",
             "enum": [
               "cancel",
               "continue",
@@ -11543,9 +11590,29 @@
             "title": "Selected Thinking Mode",
             "type": "string"
           },
+          "task_outcome": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Outcome"
+          },
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
+          },
+          "tool_outcomes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Outcomes",
+            "type": "array"
           },
           "trace": {
             "additionalProperties": true,
@@ -11949,9 +12016,29 @@
             "title": "Selected Thinking Mode",
             "type": "string"
           },
+          "task_outcome": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Outcome"
+          },
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
+          },
+          "tool_outcomes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Outcomes",
+            "type": "array"
           },
           "trace": {
             "additionalProperties": true,
@@ -13169,6 +13256,50 @@
             ],
             "title": "Step Count"
           },
+          "tool_blocked_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Blocked Steps"
+          },
+          "tool_failure_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Failure Steps"
+          },
+          "tool_fallback_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Fallback Steps"
+          },
+          "tool_recovered_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Recovered Steps"
+          },
           "turn_count": {
             "anyOf": [
               {
@@ -13209,9 +13340,19 @@
             "title": "Succeeded Count",
             "type": "integer"
           },
+          "total_blocked_task_outcomes": {
+            "default": 0,
+            "title": "Total Blocked Task Outcomes",
+            "type": "integer"
+          },
           "total_cache_hits": {
             "default": 0,
             "title": "Total Cache Hits",
+            "type": "integer"
+          },
+          "total_degraded_answers": {
+            "default": 0,
+            "title": "Total Degraded Answers",
             "type": "integer"
           },
           "total_fallback_uses": {
@@ -13224,9 +13365,29 @@
             "title": "Total Llm Calls",
             "type": "integer"
           },
+          "total_tool_blocked": {
+            "default": 0,
+            "title": "Total Tool Blocked",
+            "type": "integer"
+          },
           "total_tool_calls": {
             "default": 0,
             "title": "Total Tool Calls",
+            "type": "integer"
+          },
+          "total_tool_failures": {
+            "default": 0,
+            "title": "Total Tool Failures",
+            "type": "integer"
+          },
+          "total_tool_fallback_uses": {
+            "default": 0,
+            "title": "Total Tool Fallback Uses",
+            "type": "integer"
+          },
+          "total_tool_recovered": {
+            "default": 0,
+            "title": "Total Tool Recovered",
             "type": "integer"
           },
           "turn_count": {
@@ -13334,6 +13495,11 @@
           "tool": {
             "title": "Tool",
             "type": "string"
+          },
+          "tool_outcome": {
+            "additionalProperties": true,
+            "title": "Tool Outcome",
+            "type": "object"
           }
         },
         "required": [
@@ -13599,6 +13765,18 @@
             ],
             "title": "Task Brief"
           },
+          "task_outcome": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Outcome"
+          },
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
@@ -13607,6 +13785,14 @@
             "default": 0,
             "title": "Tool Calls",
             "type": "integer"
+          },
+          "tool_outcomes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Outcomes",
+            "type": "array"
           },
           "trace_id": {
             "anyOf": [
@@ -14001,6 +14187,18 @@
             ],
             "title": "Task Brief"
           },
+          "task_outcome": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Outcome"
+          },
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
@@ -14009,6 +14207,14 @@
             "default": 0,
             "title": "Tool Calls",
             "type": "integer"
+          },
+          "tool_outcomes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Outcomes",
+            "type": "array"
           },
           "trace_id": {
             "anyOf": [

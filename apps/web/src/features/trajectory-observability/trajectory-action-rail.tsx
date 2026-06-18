@@ -42,6 +42,9 @@ type TrajectoryActionRailProps = {
 		non_succeeded_count?: number;
 		total_fallback_uses?: number;
 		total_cache_hits?: number;
+		total_tool_failures?: number;
+		total_tool_recovered?: number;
+		total_degraded_answers?: number;
 	};
 	toolFilter: string;
 };
@@ -160,6 +163,30 @@ export function TrajectoryActionRail({
 					))}
 				</div>
 				<div className="fa-observability-status-strip">
+					<div>
+						<span>{isChineseUi ? "工具失败" : "Tool failures"}</span>
+						<strong>
+							{isStatsLoading
+								? "…"
+								: formatMetric(statsOverview?.total_tool_failures, 0)}
+						</strong>
+					</div>
+					<div>
+						<span>{isChineseUi ? "工具恢复" : "Recovered tools"}</span>
+						<strong>
+							{isStatsLoading
+								? "…"
+								: formatMetric(statsOverview?.total_tool_recovered, 0)}
+						</strong>
+					</div>
+					<div>
+						<span>{isChineseUi ? "降级回答" : "Degraded answers"}</span>
+						<strong>
+							{isStatsLoading
+								? "…"
+								: formatMetric(statsOverview?.total_degraded_answers, 0)}
+						</strong>
+					</div>
 					<div>
 						<span>{isChineseUi ? "失败数" : "Failed turns"}</span>
 						<strong>

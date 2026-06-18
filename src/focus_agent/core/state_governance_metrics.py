@@ -33,6 +33,12 @@ GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
     "agent_task_ledger_tasks",
     "delegated_artifacts",
     "critic_gate_rejected",
+    "tool_failures",
+    "tool_blocked",
+    "tool_recovered",
+    "tool_fallback_uses",
+    "degraded_answers",
+    "blocked_task_outcomes",
 )
 
 
@@ -139,6 +145,28 @@ def answer_verification_metrics(payload: Any) -> Mapping[str, int]:
     }
 
 
+def tool_outcome_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, list):
+        return {}
+    outcomes = [item for item in payload if isinstance(item, Mapping)]
+    return {
+        "tool_failures": len([item for item in outcomes if item.get("status") == "failed"]),
+        "tool_blocked": len([item for item in outcomes if item.get("status") == "blocked"]),
+        "tool_recovered": len([item for item in outcomes if item.get("status") == "recovered"]),
+        "tool_fallback_uses": len([item for item in outcomes if item.get("fallback_used")]),
+    }
+
+
+def task_outcome_metrics(payload: Any) -> Mapping[str, int]:
+    if not isinstance(payload, Mapping):
+        return {}
+    status = str(payload.get("status") or "")
+    return {
+        "degraded_answers": 1 if status == "degraded_answer" else 0,
+        "blocked_task_outcomes": 1 if status == "blocked" else 0,
+    }
+
+
 def model_route_metrics(payload: Any) -> Mapping[str, int]:
     if not isinstance(payload, Mapping):
         return {}
@@ -219,6 +247,8 @@ __all__ = [
     "memory_curator_metrics",
     "memory_write_metrics",
     "model_route_metrics",
+    "task_outcome_metrics",
+    "tool_outcome_metrics",
     "tool_intent_metrics",
     "tool_route_metrics",
 ]

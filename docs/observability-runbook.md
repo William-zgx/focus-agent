@@ -174,6 +174,13 @@ Evidence modes:
 - `zero_step`: compact fallback when the turn has no recorded trajectory steps; the workbench switches to direct evidence instead of leaving an empty timeline shell.
 - `missing_detail`: explicit degraded state when the detail payload is unavailable; treat this as an observability gap and verify API/runtime readiness before drawing conclusions.
 
+Outcome review:
+
+- The Outcome panel is the first place to confirm whether the graph classified the final task as `answered`, `degraded_answer`, `blocked`, or `failed`.
+- Tool attempts are linked by `tool_call_id`, `attempt_index`, `recovery_of_tool_call_id`, `fallback_used`, and `fallback_group`; use these fields to distinguish a recovered transient failure from an unresolved tool failure.
+- Stats include outcome counters such as tool failures, recovered tools, tool fallback uses, degraded answers, and blocked task outcomes. These counters come from graph-authored runtime outcomes, not UI inference.
+- If a final answer exposes raw tool metadata such as `run_id`, `command`, or `stdout_truncated` as the main answer, treat it as a runtime outcome regression. See [runtime-outcomes.md](runtime-outcomes.md).
+
 ## 4. Correlate By Request And Trace
 
 The current observability model carries these correlation fields through persisted trajectory records and runtime metadata:

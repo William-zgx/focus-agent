@@ -1,4 +1,8 @@
-import type { FocusAgentTrajectoryStep } from "@focus-agent/web-sdk";
+import type {
+	FocusAgentRuntimeOutcome,
+	FocusAgentTrajectoryStep,
+	FocusAgentTrajectoryTurnDetail,
+} from "@focus-agent/web-sdk";
 
 import { isRecord } from "./trajectory-search-utils";
 
@@ -71,4 +75,96 @@ export function findStepRuntimeSignal(
 	aliases: readonly string[],
 ) {
 	return findNestedMetadataValue(step.runtime, aliases);
+}
+
+export function asRuntimeOutcome(
+	value: unknown,
+): FocusAgentRuntimeOutcome | null {
+	return isRecord(value) ? (value as FocusAgentRuntimeOutcome) : null;
+}
+
+export function findTaskOutcome(
+	turn: FocusAgentTrajectoryTurnDetail,
+): FocusAgentRuntimeOutcome | null {
+	const directOutcome =
+		asRuntimeOutcome(turn.task_outcome) ??
+		asRuntimeOutcome(turn.runtime_outcome);
+	if (directOutcome) return directOutcome;
+	if (!isRecord(turn.plan_meta)) return null;
+	return (
+		asRuntimeOutcome(turn.plan_meta.task_outcome) ??
+		asRuntimeOutcome(turn.plan_meta.runtime_outcome) ??
+		asRuntimeOutcome(turn.plan_meta.agent_runtime_outcome)
+	);
+}
+
+export function findToolOutcomes(
+	turn: FocusAgentTrajectoryTurnDetail,
+): FocusAgentRuntimeOutcome[] {
+	const directOutcomes = Array.isArray(turn.tool_outcomes)
+		? turn.tool_outcomes
+		: null;
+	const planMetaOutcomes =
+		isRecord(turn.plan_meta) && Array.isArray(turn.plan_meta.tool_outcomes)
+			? turn.plan_meta.tool_outcomes
+			: null;
+	return (directOutcomes ?? planMetaOutcomes ?? []).flatMap((item) => {
+		const outcome = asRuntimeOutcome(item);
+		return outcome ? [outcome] : [];
+	});
+}
+
+export function findStepRuntimeOutcome(
+	step: FocusAgentTrajectoryStep,
+): FocusAgentRuntimeOutcome | null {
+	const runtime = isRecord(step.runtime) ? step.runtime : null;
+	return (
+		asRuntimeOutcome(step.tool_outcome) ??
+		asRuntimeOutcome(step.outcome) ??
+		asRuntimeOutcome(runtime?.tool_outcome) ??
+		asRuntimeOutcome(runtime?.outcome) ??
+		asRuntimeOutcome(runtime?.runtime_outcome)
+	);
+}
+
+export function readOutcomeText(
+	outcome: FocusAgentRuntimeOutcome | null | undefined,
+	aliases: readonly string[],
+) {
+	if (!outcome) return "";
+	for (const alias of aliases) {
+		if (alias in outcome) {
+			const text = stringifyMetadataValue(outcome[alias]);
+			if (text) return text;
+		}
+	}
+	return "";
+}
+
+export function outcomeTone(status: string) {
+	const normalized = status.toLowerCase();
+	if (
+		normalized === "succeeded" ||
+		normalized === "success" ||
+		normalized === "answered" ||
+		normalized === "verified"
+	) {
+		return "success";
+	}
+	if (
+		normalized.includes("recover") ||
+		normalized.includes("degrad") ||
+		normalized.includes("fallback") ||
+		normalized === "skipped"
+	) {
+		return "warning";
+	}
+	if (
+		normalized.includes("fail") ||
+		normalized.includes("block") ||
+		normalized.includes("error")
+	) {
+		return "danger";
+	}
+	return "neutral";
 }

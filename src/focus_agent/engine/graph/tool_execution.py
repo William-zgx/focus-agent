@@ -20,6 +20,7 @@ from ...capabilities.tool_runtime import (
 )
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
+from ...core.runtime_outcome import build_tool_outcomes_from_messages
 from ...core.state import AgentState, append_agent_state_record
 from ..graph_turn_helpers import (
     _canonicalize_tool_call_args,
@@ -62,6 +63,7 @@ def make_tool_executor_node(
             turn_id=str(turn_index or 1),
         )
         execution_inputs: list[ToolExecutionInput] = []
+        execution_inputs_by_index: dict[int, ToolExecutionInput] = {}
         cache_scope_keys: dict[int, str] = {}
         invalidation_scope_keys = [
             turn_scope_key,
@@ -262,26 +264,111 @@ def make_tool_executor_node(
                     )
                     continue
             execution_inputs.append(execution_input)
+            execution_inputs_by_index[index] = execution_input
             cache_scope_keys[index] = build_cache_scope_key(
                 scope=runtime_meta.cache_scope,
                 root_thread_id=root_thread_id,
                 branch_id=branch_id,
                 turn_id=str(turn_index or 1),
             )
-        for result in execute_tool_calls(
+        initial_results = execute_tool_calls(
             execution_inputs,
             context_budget=context_budget,
             cache_store=tool_result_cache,
             cache_scope_keys=cache_scope_keys,
             invalidation_scope_keys=invalidation_scope_keys,
             max_parallel_workers=max(1, int(max_parallel_workers or 1)),
-        ):
+        )
+        for result in initial_results:
             messages_by_index[result.index] = result.message
+
+        initial_messages = [messages_by_index[index] for index in sorted(messages_by_index)]
+        tool_outcomes = build_tool_outcomes_from_messages(
+            [last_message, *initial_messages],
+            prior_outcomes=state.get("tool_outcomes") or [],
+        )
+        retry_inputs = _retryable_failed_inputs(
+            tool_outcomes,
+            execution_inputs_by_index=execution_inputs_by_index,
+        )
+        if retry_inputs:
+            append_agent_state_record(
+                updates,
+                "tool_retry",
+                [
+                    {
+                        "tool_call_id": item.tool_call_id,
+                        "tool_name": item.tool_name,
+                        "attempt_index": 2,
+                    }
+                    for item in retry_inputs
+                ],
+                source="tool_executor",
+                domain="observability",
+            )
+            retry_results = execute_tool_calls(
+                retry_inputs,
+                context_budget=context_budget,
+                cache_store=tool_result_cache,
+                cache_scope_keys=cache_scope_keys,
+                invalidation_scope_keys=invalidation_scope_keys,
+                max_parallel_workers=max(1, int(max_parallel_workers or 1)),
+            )
+            for result in retry_results:
+                messages_by_index[result.index] = result.message
+            retry_messages = [result.message for result in retry_results]
+            tool_outcomes.extend(
+                build_tool_outcomes_from_messages(
+                    [last_message, *retry_messages],
+                    prior_outcomes=[*(state.get("tool_outcomes") or []), *tool_outcomes],
+                )
+            )
+
         result_messages = [messages_by_index[index] for index in sorted(messages_by_index)]
         updates["messages"] = result_messages
+        if tool_outcomes:
+            append_agent_state_record(
+                updates,
+                "tool_outcomes",
+                tool_outcomes,
+                source="tool_executor",
+                domain="observability",
+            )
         return updates
 
     return tool_executor
+
+
+def _retryable_failed_inputs(
+    outcomes: list[dict[str, Any]],
+    *,
+    execution_inputs_by_index: Mapping[int, ToolExecutionInput],
+) -> list[ToolExecutionInput]:
+    retry_call_ids = {
+        str(outcome.get("tool_call_id") or "")
+        for outcome in outcomes
+        if str(outcome.get("status") or "") == "failed"
+        and bool(outcome.get("retryable"))
+        and int(outcome.get("attempt_index") or 1) < int(outcome.get("max_attempts") or 1)
+    }
+    if not retry_call_ids:
+        return []
+    retry_inputs: list[ToolExecutionInput] = []
+    for item in execution_inputs_by_index.values():
+        if item.tool_call_id not in retry_call_ids:
+            continue
+        if item.runtime.side_effect and not _retryable_side_effect_allowed(item):
+            continue
+        retry_inputs.append(item)
+    return retry_inputs
+
+
+def _retryable_side_effect_allowed(item: ToolExecutionInput) -> bool:
+    if item.tool_name not in {"run_workspace_command", "run_skill_entrypoint"}:
+        return False
+    if str(item.runtime.side_effect_kind or "") != "workspace_command":
+        return False
+    return bool(item.runtime.requires_approval)
 
 
 def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:

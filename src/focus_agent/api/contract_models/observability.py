@@ -19,6 +19,7 @@ class TrajectoryStepResponse(BaseModel):
     fallback_group: str | None = None
     parallel_batch_size: int | None = None
     runtime: dict[str, Any] = Field(default_factory=dict)
+    tool_outcome: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
 
 
@@ -51,6 +52,8 @@ class TrajectoryTurnSummaryResponse(BaseModel):
     created_at: datetime | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
     plan_meta: dict[str, Any] = Field(default_factory=dict)
+    tool_outcomes: list[dict[str, Any]] = Field(default_factory=list)
+    task_outcome: dict[str, Any] | None = None
     latency_ms: float = 0.0
     tool_calls: int = 0
     llm_calls: int = 0
@@ -85,6 +88,12 @@ class TrajectoryStatsOverviewResponse(BaseModel):
     total_llm_calls: int = 0
     total_cache_hits: int = 0
     total_fallback_uses: int = 0
+    total_tool_failures: int = 0
+    total_tool_blocked: int = 0
+    total_tool_recovered: int = 0
+    total_tool_fallback_uses: int = 0
+    total_degraded_answers: int = 0
+    total_blocked_task_outcomes: int = 0
     avg_latency_ms: float = 0.0
     max_latency_ms: float = 0.0
 
@@ -96,6 +105,10 @@ class TrajectoryStatsBucketResponse(BaseModel):
     avg_latency_ms: float | None = None
     cache_hit_steps: int | None = None
     fallback_steps: int | None = None
+    tool_failure_steps: int | None = None
+    tool_blocked_steps: int | None = None
+    tool_recovered_steps: int | None = None
+    tool_fallback_steps: int | None = None
     avg_duration_ms: float | None = None
 
 

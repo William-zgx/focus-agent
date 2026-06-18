@@ -1,5 +1,6 @@
 import json
 import time
+from types import SimpleNamespace
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool
@@ -2069,7 +2070,7 @@ def test_graph_falls_back_when_live_web_answer_denies_available_search_evidence(
     assert result.value["answer_verification"]["repair_action_taken"] == "fallback_to_tool_results"
 
 
-def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkeypatch):
+def test_graph_retries_live_web_search_once_when_result_has_no_evidence(monkeypatch):
     web_calls = []
 
     @tool
@@ -2101,9 +2102,13 @@ def test_graph_does_not_retry_live_web_search_when_result_has_no_evidence(monkey
         for message in result.value["messages"]
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None)
     ]
-    assert len(web_calls) == 1
-    assert "稍后" in final_answers[-1]
+    assert len(web_calls) == 2
+    assert [item["attempt_index"] for item in result.value["tool_outcomes"]] == [1, 2]
+    assert [item["status"] for item in result.value["tool_outcomes"]] == ["failed", "failed"]
     assert result.value["answer_verification"]["repair_action_taken"] == "answer_with_uncertainty"
+    assert result.value["task_outcome"]["status"] == "degraded_answer"
+    assert "run_id" not in final_answers[-1]
+    assert "stdout_truncated" not in final_answers[-1]
     assert "live_web_answer_repair_count" not in result.value["plan_meta"]
 
 
@@ -3327,12 +3332,201 @@ def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(
 
     final_answer = result.value["messages"][-1].content
 
-    assert "run-skill-20260617" in final_answer
-    assert "2026-06-17" in final_answer
+    assert "不能给出完整结论" in final_answer
+    assert "run-skill-20260617" not in final_answer
     assert "30.18" not in final_answer
     assert result.value["plan_meta"]["answer_verification"]["repair_action_taken"] == (
         "fallback_to_tool_results"
     )
+    assert result.value["task_outcome"]["status"] == "degraded_answer"
+
+
+def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(
+    tmp_path, monkeypatch
+):
+    skill_dir = tmp_path / ".focus_agent" / "skills" / "china-stock-analysis"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: china-stock-analysis",
+                "description: Analyze China A-share financial statements.",
+                "aliases: china-stock-analysis, A股分析",
+                "primary_tools: run_skill_entrypoint",
+                "recommended_tools: run_skill_entrypoint, web_search, read_file",
+                "prompt_mode: execute",
+                "---",
+                "# China Stock Analysis",
+                "Run the declared entrypoint and use web_search only as fallback evidence.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            tool_messages = [item for item in prompt_messages if isinstance(item, ToolMessage)]
+            if any(item.tool_call_id == "web-fallback-1" for item in tool_messages):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "web-fallback-2",
+                            "name": "web_search",
+                            "args": {"query": "000063 more evidence"},
+                        }
+                    ],
+                )
+            if any(item.tool_call_id == "skill-entrypoint-1" for item in tool_messages):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "web-fallback-1",
+                            "name": "web_search",
+                            "args": {"query": "000063 fallback evidence"},
+                        }
+                    ],
+                )
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "skill-entrypoint-1",
+                        "name": "run_skill_entrypoint",
+                        "args": {
+                            "skill_id": "china-stock-analysis",
+                            "entrypoint": "analyze_a_stock",
+                            "arguments": {"code": "000063"},
+                        },
+                    }
+                ],
+            )
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    skill_calls = 0
+    web_calls = []
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a workspace file."""
+        return path
+
+    @tool
+    def run_skill_entrypoint(
+        skill_id: str,
+        entrypoint: str,
+        arguments: dict | None = None,
+    ) -> str:
+        """Run a declared Skill entrypoint."""
+        nonlocal skill_calls
+        skill_calls += 1
+        del skill_id, entrypoint, arguments
+        return json.dumps(
+            {
+                "status": "failed",
+                "exit_code": 1,
+                "timed_out": False,
+                "error": "temporary network timeout while fetching quote",
+            },
+            ensure_ascii=False,
+        )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the live web."""
+        web_calls.append(query)
+        return json.dumps(
+            {
+                "query": query,
+                "results": [
+                    {
+                        "title": "000063 fallback quote",
+                        "url": "https://example.com/000063",
+                        "snippet": "替代来源只能确认 000063 需要继续核验，不能补全完整行情数字。",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        skill_registry=SkillRegistry([tmp_path / ".focus_agent" / "skills"]),
+        tool_registry=ToolRegistry(tools=(read_file, run_skill_entrypoint, web_search)),
+    )
+    config = {"configurable": {"thread_id": "thread-skill-recovery-degraded"}}
+    context = RequestContext(
+        user_id="user-1",
+        root_thread_id="route-skill-recovery-degraded",
+    )
+
+    interrupted = graph.invoke(
+        {
+            "messages": [HumanMessage(content="使用 china-stock-analysis 分析 000063")],
+            "active_skill_ids": ["china-stock-analysis"],
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+    assert interrupted.interrupts
+    interrupt_payload = getattr(interrupted.interrupts[0], "value", None)
+
+    result = graph.invoke(
+        Command(
+            resume={
+                "kind": "tool_approval",
+                "interrupt_id": interrupt_payload["interrupt_id"],
+                "tool_call_id": "skill-entrypoint-1",
+                "approved": True,
+            }
+        ),
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    outcomes = result.value["tool_outcomes"]
+    final_answer = result.value["messages"][-1].content
+
+    assert skill_calls == 2
+    assert web_calls == ["000063 fallback evidence"]
+    assert [item["status"] for item in outcomes] == ["failed", "failed", "succeeded"]
+    assert result.value["task_outcome"]["status"] == "degraded_answer"
+    assert result.value["task_outcome"]["repair_action_taken"] == "fallback_to_tool_results"
+    assert "Skill 主路径没有拿到可验证的业务结果" in final_answer
+    assert "web-fallback-2" not in [
+        call["id"]
+        for message in result.value["messages"]
+        if isinstance(message, AIMessage)
+        for call in (getattr(message, "tool_calls", None) or [])
+    ]
 
 
 def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):
@@ -4680,6 +4874,134 @@ def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypa
     assert tool_messages[-1].status == "error"
     assert isinstance(messages[-1], AIMessage)
     assert messages[-1].content == "handled"
+
+
+def test_graph_tool_executor_retries_retryable_failure_once(monkeypatch):
+    calls = 0
+
+    @tool
+    def flaky_lookup(query: str) -> str:
+        """Flaky read-only lookup."""
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("temporary network connection reset")
+        return f"ok:{query}"
+
+    flaky_lookup.metadata = {
+        "parallel_safe": True,
+        "cacheable": False,
+    }
+
+    def _assert_retry_prompt(prompt_messages):
+        tool_messages = [message for message in prompt_messages if isinstance(message, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert tool_messages[-1].status == "success"
+        assert tool_messages[-1].content == "ok:oops"
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {
+                "id": "flaky-1",
+                "name": "flaky_lookup",
+                "args": {"query": "oops"},
+            }
+        ],
+        final_answer="handled retry",
+        on_final_invoke=_assert_retry_prompt,
+    )
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(flaky_lookup,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="please inspect the flaky thing")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-retry"),
+        version="v2",
+    )
+
+    outcomes = result.value["tool_outcomes"]
+    assert calls == 2
+    assert [item["status"] for item in outcomes] == ["failed", "recovered"]
+    assert [item["attempt_index"] for item in outcomes] == [1, 2]
+    assert result.value["task_outcome"]["status"] == "answered"
+    assert result.value["messages"][-1].content == "handled retry"
+
+
+def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
+    from focus_agent.engine.graph.tool_execution import _retryable_failed_inputs
+
+    workspace_input = SimpleNamespace(
+        tool_call_id="cmd-1",
+        tool_name="run_workspace_command",
+        runtime=SimpleNamespace(
+            side_effect=True,
+            side_effect_kind="workspace_command",
+            requires_approval=True,
+        ),
+    )
+    skill_entrypoint_input = SimpleNamespace(
+        tool_call_id="skill-1",
+        tool_name="run_skill_entrypoint",
+        runtime=SimpleNamespace(
+            side_effect=True,
+            side_effect_kind="workspace_command",
+            requires_approval=True,
+        ),
+    )
+    patch_input = SimpleNamespace(
+        tool_call_id="patch-1",
+        tool_name="apply_patch",
+        runtime=SimpleNamespace(
+            side_effect=True,
+            side_effect_kind="workspace_write",
+            requires_approval=True,
+        ),
+    )
+    outcomes = [
+        {
+            "tool_call_id": "cmd-1",
+            "status": "failed",
+            "retryable": True,
+            "attempt_index": 1,
+            "max_attempts": 2,
+        },
+        {
+            "tool_call_id": "skill-1",
+            "status": "failed",
+            "retryable": True,
+            "attempt_index": 1,
+            "max_attempts": 2,
+        },
+        {
+            "tool_call_id": "patch-1",
+            "status": "failed",
+            "retryable": True,
+            "attempt_index": 1,
+            "max_attempts": 2,
+        },
+    ]
+
+    retry_inputs = _retryable_failed_inputs(
+        outcomes,
+        execution_inputs_by_index={
+            0: workspace_input,
+            1: skill_entrypoint_input,
+            2: patch_input,
+        },
+    )
+
+    assert retry_inputs == [workspace_input, skill_entrypoint_input]
 
 
 def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):

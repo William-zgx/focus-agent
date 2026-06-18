@@ -4479,6 +4479,25 @@ export interface components {
             /** Scheduled Task Ids */
             scheduled_task_ids?: string[];
         };
+        /** AgentTeamSchedulerMetadata */
+        AgentTeamSchedulerMetadata: {
+            /** Blocked Task Ids */
+            blocked_task_ids?: string[];
+            /**
+             * Max Tasks
+             * @default 0
+             */
+            max_tasks: number;
+            /**
+             * Max Waves
+             * @default 0
+             */
+            max_waves: number;
+            /** Ready Task Ids */
+            ready_task_ids?: string[];
+            /** Waiting Task Ids */
+            waiting_task_ids?: string[];
+        };
         /** AgentTeamSessionContract */
         AgentTeamSessionContract: {
             /** Created At */
@@ -4563,6 +4582,7 @@ export interface components {
             pending_tool_approvals?: components["schemas"]["AgentTeamToolApprovalContract"][];
             planning?: components["schemas"]["AgentTeamPlanningMetadata"] | null;
             run?: components["schemas"]["AgentTeamRunMetadata"] | null;
+            scheduler?: components["schemas"]["AgentTeamSchedulerMetadata"] | null;
             session: components["schemas"]["AgentTeamSessionContract"];
             /** Tasks */
             tasks?: components["schemas"]["AgentTeamTaskContract"][];
@@ -6172,7 +6192,7 @@ export interface components {
             multitask_strategy: "reject" | "interrupt" | "rollback" | "enqueue";
             /**
              * On Disconnect
-             * @default cancel
+             * @default rollback
              * @enum {string}
              */
             on_disconnect: "cancel" | "continue" | "rollback";
@@ -6212,7 +6232,7 @@ export interface components {
             multitask_strategy: "reject" | "interrupt" | "rollback" | "enqueue";
             /**
              * On Disconnect
-             * @default cancel
+             * @default rollback
              * @enum {string}
              */
             on_disconnect: "cancel" | "continue" | "rollback";
@@ -6912,8 +6932,16 @@ export interface components {
              * @default
              */
             selected_thinking_mode: string;
+            /** Task Outcome */
+            task_outcome?: {
+                [key: string]: unknown;
+            } | null;
             /** Thread Id */
             thread_id: string;
+            /** Tool Outcomes */
+            tool_outcomes?: {
+                [key: string]: unknown;
+            }[];
             /** Trace */
             trace?: {
                 [key: string]: unknown;
@@ -7068,8 +7096,16 @@ export interface components {
              * @default
              */
             selected_thinking_mode: string;
+            /** Task Outcome */
+            task_outcome?: {
+                [key: string]: unknown;
+            } | null;
             /** Thread Id */
             thread_id: string;
+            /** Tool Outcomes */
+            tool_outcomes?: {
+                [key: string]: unknown;
+            }[];
             /** Trace */
             trace?: {
                 [key: string]: unknown;
@@ -7586,6 +7622,14 @@ export interface components {
             key: string;
             /** Step Count */
             step_count?: number | null;
+            /** Tool Blocked Steps */
+            tool_blocked_steps?: number | null;
+            /** Tool Failure Steps */
+            tool_failure_steps?: number | null;
+            /** Tool Fallback Steps */
+            tool_fallback_steps?: number | null;
+            /** Tool Recovered Steps */
+            tool_recovered_steps?: number | null;
             /** Turn Count */
             turn_count?: number | null;
         };
@@ -7612,10 +7656,20 @@ export interface components {
              */
             succeeded_count: number;
             /**
+             * Total Blocked Task Outcomes
+             * @default 0
+             */
+            total_blocked_task_outcomes: number;
+            /**
              * Total Cache Hits
              * @default 0
              */
             total_cache_hits: number;
+            /**
+             * Total Degraded Answers
+             * @default 0
+             */
+            total_degraded_answers: number;
             /**
              * Total Fallback Uses
              * @default 0
@@ -7627,10 +7681,30 @@ export interface components {
              */
             total_llm_calls: number;
             /**
+             * Total Tool Blocked
+             * @default 0
+             */
+            total_tool_blocked: number;
+            /**
              * Total Tool Calls
              * @default 0
              */
             total_tool_calls: number;
+            /**
+             * Total Tool Failures
+             * @default 0
+             */
+            total_tool_failures: number;
+            /**
+             * Total Tool Fallback Uses
+             * @default 0
+             */
+            total_tool_fallback_uses: number;
+            /**
+             * Total Tool Recovered
+             * @default 0
+             */
+            total_tool_recovered: number;
             /**
              * Turn Count
              * @default 0
@@ -7684,6 +7758,10 @@ export interface components {
             step_index?: number | null;
             /** Tool */
             tool: string;
+            /** Tool Outcome */
+            tool_outcome?: {
+                [key: string]: unknown;
+            };
         };
         /** TrajectoryTurnDetailEnvelopeResponse */
         TrajectoryTurnDetailEnvelopeResponse: {
@@ -7767,6 +7845,10 @@ export interface components {
             status: string;
             /** Task Brief */
             task_brief?: string | null;
+            /** Task Outcome */
+            task_outcome?: {
+                [key: string]: unknown;
+            } | null;
             /** Thread Id */
             thread_id: string;
             /**
@@ -7774,6 +7856,10 @@ export interface components {
              * @default 0
              */
             tool_calls: number;
+            /** Tool Outcomes */
+            tool_outcomes?: {
+                [key: string]: unknown;
+            }[];
             /** Trace Id */
             trace_id?: string | null;
             /** Trajectory */
@@ -7901,6 +7987,10 @@ export interface components {
             status: string;
             /** Task Brief */
             task_brief?: string | null;
+            /** Task Outcome */
+            task_outcome?: {
+                [key: string]: unknown;
+            } | null;
             /** Thread Id */
             thread_id: string;
             /**
@@ -7908,6 +7998,10 @@ export interface components {
              * @default 0
              */
             tool_calls: number;
+            /** Tool Outcomes */
+            tool_outcomes?: {
+                [key: string]: unknown;
+            }[];
             /** Trace Id */
             trace_id?: string | null;
             /** Turn Index */

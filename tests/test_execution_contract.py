@@ -316,6 +316,66 @@ def test_skill_execution_contract_ignores_failed_workspace_command_payload():
     assert evaluated["status"] == "missing_required_tools"
 
 
+def test_skill_execution_contract_ignores_workspace_command_stdout_business_error():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_workspace_command",
+                    "args": {"cwd": ".focus_agent/skills/stocks"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "command": ["python3", "scripts/stocks_client.py", "history", "003035.SZ"],
+                    "cwd": ".focus_agent/skills/stocks",
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "stdout": json.dumps(
+                        {
+                            "error": "Failed to fetch history for 003035.SZ",
+                            "data_source": "Yahoo Finance",
+                        }
+                    ),
+                    "stderr": "",
+                }
+            ),
+            tool_call_id="skill-1",
+        ),
+    ]
+    contract = build_execution_contract(
+        policy="execution",
+        available_tool_names=["run_workspace_command"],
+        skill_execution_plan={
+            "selected_skill_ids": ["stocks"],
+            "primary_tools": ["run_workspace_command"],
+            "policy_override": "execution",
+        },
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=[],
+        available_tool_names=["run_workspace_command"],
+        skill_evidence_facts=skill_execution_evidence_facts(
+            messages,
+            required_tools=["run_workspace_command"],
+        ),
+    )
+
+    assert tool_result_names(messages) == []
+    assert skill_execution_evidence_facts(
+        messages,
+        required_tools=["run_workspace_command"],
+    ) == []
+    assert evaluated["status"] == "missing_required_tools"
+
+
 def test_skill_execution_answer_must_reference_latest_skill_observation():
     messages = [
         AIMessage(

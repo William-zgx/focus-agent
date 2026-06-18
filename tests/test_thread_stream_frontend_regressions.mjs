@@ -1275,6 +1275,21 @@ test("SDK stream stops waiting after terminal v2 run events", () => {
 	);
 });
 
+test("SDK stream does not replay initial run creation POST before a run id exists", () => {
+	const clientSource = readFileSync(
+		path.join(repoRoot, "frontend-sdk/src/client.ts"),
+		"utf8",
+	);
+	const compactClientSource = compactSource(clientSource);
+
+	assert.equal(
+		compactClientSource.includes(
+			"if (!resumePath) { throw error; } attempt += 1;",
+		),
+		true,
+	);
+});
+
 test("stream reducer consumes v2 harness run events without visible_text dependencies", () => {
 	const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
 

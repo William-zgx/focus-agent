@@ -177,6 +177,9 @@ export class FocusAgentClient {
 				return;
 			} catch (error) {
 				if (options.signal?.aborted) return;
+				if (!resumePath) {
+					throw error;
+				}
 				attempt += 1;
 				const delay = Math.min(1000 * 2 ** Math.min(attempt - 1, 4), 15000);
 				await sleep(delay, options.signal);

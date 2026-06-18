@@ -447,6 +447,8 @@ def response_payload(
         "merge_decision": values.get("merge_decision"),
         "merge_queue": values.get("merge_queue", []),
         "active_skill_ids": values.get("active_skill_ids", []),
+        "tool_outcomes": values.get("tool_outcomes", []),
+        "task_outcome": values.get("task_outcome"),
         "messages": thread_state_messages(
             thread_messages,
             limit=message_limit,

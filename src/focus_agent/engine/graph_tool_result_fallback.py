@@ -92,17 +92,64 @@ def _latest_turn_messages(messages: list[Any]) -> list[Any]:
 
 
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
-    skill_answer = _fallback_skill_answer_from_tool_results(prompt_messages)
-    if skill_answer:
-        return skill_answer
-    web_answer = _fallback_web_answer_from_tool_results(prompt_messages)
+    return _degraded_answer_from_tool_results(prompt_messages)
+
+
+def _degraded_answer_from_tool_results(prompt_messages: list[Any]) -> str:
+    latest_turn = _latest_turn_messages(prompt_messages)
+    latest_user = _latest_human_message_text(latest_turn)
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", latest_user))
+    web_answer = _fallback_web_answer_from_tool_results(latest_turn)
+    failure = _latest_failed_tool_summary(latest_turn)
+
     if web_answer:
-        return web_answer
-    snippets = _tool_result_snippets(prompt_messages)
-    if not snippets:
-        return _TOOL_CALL_REPAIR_FALLBACK_TEXT
-    unique_snippets = list(dict.fromkeys(snippets))
-    return "我先根据已拿到的工具结果给出一个保守整理：\n" + "\n".join(unique_snippets[:10])
+        if not failure:
+            return web_answer
+        if chinese:
+            return (
+                "Skill 主路径没有拿到可验证的业务结果，我先基于替代证据给出保守结论：\n"
+                f"{web_answer}\n\n"
+                "需要保留的不确定性："
+                f"{failure or '主工具执行失败'}；未被替代来源确认的价格、业绩或时点数字不应视为最终行情。"
+            )
+        return (
+            "The primary Skill path did not return verifiable business data. "
+            "Here is a conservative answer from alternative evidence:\n"
+            f"{web_answer}\n\n"
+            "Uncertainty to keep: "
+            f"{failure or 'the primary tool failed'}; prices, performance metrics, or timestamps "
+            "not confirmed by the alternative source should not be treated as final."
+        )
+
+    snippets = _safe_tool_result_snippets(latest_turn)
+    if snippets:
+        if chinese:
+            return (
+                "我先根据当前已拿到的证据做保守整理：\n"
+                + "\n".join(snippets[:8])
+                + "\n\n需要保留的不确定性："
+                f"{failure or '工具路径未能完成充分确认'}；未被证据直接支持的价格、业绩或时点数字不能补全。"
+            )
+        return (
+            "Here is a conservative synthesis from the evidence currently available:\n"
+            + "\n".join(snippets[:8])
+            + "\n\nUncertainty to keep: "
+            f"{failure or 'the tool path did not fully verify the answer'}; prices, performance metrics, "
+            "or timestamps not directly supported by evidence should not be filled in."
+        )
+
+    if chinese:
+        return (
+            "目前不能给出完整结论。已尝试执行工具或 Skill，但没有拿到可验证的业务数据"
+            f"{f'：{failure}' if failure else '。'}\n"
+            "基于当前证据，只能保守判断：关键价格波动、业绩信息或来源仍缺失，不能编造完整行情数字。"
+        )
+    return (
+        "I cannot provide a complete conclusion yet. The tool or Skill path did not return "
+        f"verifiable business data{f': {failure}' if failure else '.'}\n"
+        "Based on the current evidence, the missing price movement, performance details, or "
+        "sources remain unconfirmed, so I should not invent complete market figures."
+    )
 
 
 def _fallback_skill_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -122,18 +169,6 @@ def _fallback_skill_answer_from_tool_results(prompt_messages: list[Any]) -> str:
     chinese = bool(re.search(r"[\u4e00-\u9fff]", _latest_human_message_text(latest_turn)))
     if chinese:
         lines.append("我根据刚刚的 Skill 沙箱执行结果整理如下：")
-        run_id = by_key.get("run_id")
-        status = by_key.get("status")
-        generated = by_key.get("generated_date") or by_key.get("generated_at")
-        if run_id or status or generated:
-            parts = []
-            if status:
-                parts.append(f"状态 {status}")
-            if run_id:
-                parts.append(f"run_id {run_id}")
-            if generated:
-                parts.append(f"生成时间 {generated}")
-            lines.append(f"- 执行：{'，'.join(parts)}。")
         code = by_key.get("code")
         name = by_key.get("name")
         if code or name:
@@ -163,19 +198,13 @@ def _fallback_skill_answer_from_tool_results(prompt_messages: list[Any]) -> str:
                 valuation_parts.append(f"{label} {value}")
         if valuation_parts:
             lines.append(f"- 估值：{'；'.join(valuation_parts)}。")
-        step_lines = _skill_step_lines(by_key)
-        if step_lines:
-            lines.append(f"- 执行步骤：{'; '.join(step_lines)}。")
         for key, value in _generic_skill_fact_lines(by_key).items():
             label = labels_by_key.get(key) or key
             lines.append(f"- {label}：{value}。")
-        return "\n".join(lines)
+        return "\n".join(lines) if len(lines) > 1 else ""
 
     lines.append("Based on the latest Skill sandbox result:")
     for key in (
-        "status",
-        "run_id",
-        "generated_date",
         "code",
         "name",
         "score",
@@ -192,7 +221,57 @@ def _fallback_skill_answer_from_tool_results(prompt_messages: list[Any]) -> str:
             lines.append(f"- {key}: {value}")
     for key, value in _generic_skill_fact_lines(by_key).items():
         lines.append(f"- {labels_by_key.get(key) or key}: {value}")
-    return "\n".join(lines)
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _latest_failed_tool_summary(messages: list[Any]) -> str:
+    pending_calls: dict[str, str] = {}
+    failures: list[str] = []
+    for message in _latest_turn_messages(messages):
+        if isinstance(message, AIMessage):
+            for call in getattr(message, "tool_calls", None) or []:
+                if not isinstance(call, dict):
+                    continue
+                call_id = str(call.get("id") or "").strip()
+                if call_id:
+                    pending_calls[call_id] = str(call.get("name") or "tool").strip() or "tool"
+            continue
+        if not isinstance(message, ToolMessage):
+            continue
+        call_id = str(getattr(message, "tool_call_id", "") or "")
+        tool_name = pending_calls.get(call_id, "tool")
+        status = str(getattr(message, "status", "success") or "success").lower()
+        payload = None
+        raw = _message_text(message)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+        failure = _payload_failure_summary(payload)
+        if status == "error" or failure:
+            failures.append(f"{tool_name} {failure or 'returned an error'}")
+    return _truncate_inline("; ".join(failures[-2:]), max_chars=260)
+
+
+def _payload_failure_summary(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("error", "message", "stderr"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return _truncate_inline(value, max_chars=180)
+    status = str(payload.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure"}:
+        return f"returned status {status}"
+    stdout = payload.get("stdout")
+    if isinstance(stdout, str) and stdout.strip():
+        try:
+            stdout_payload = json.loads(stdout)
+        except json.JSONDecodeError:
+            return ""
+        if isinstance(stdout_payload, dict):
+            return _payload_failure_summary(stdout_payload)
+    return ""
 
 
 def _generic_skill_fact_lines(facts_by_key: dict[str, str]) -> dict[str, str]:
@@ -234,6 +313,31 @@ def _skill_step_lines(facts_by_key: dict[str, str]) -> list[str]:
         step = key.split(":", 1)[1]
         lines.append(f"{step} exit_code {value}")
     return lines
+
+
+def _safe_tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
+    forbidden_markers = (
+        "run_id",
+        "command",
+        "stdout_truncated",
+        "stderr_truncated",
+        "outputs_truncated",
+        "sandbox",
+        "exit_code",
+        "cwd",
+        "duration_ms",
+        "工具 ",
+    )
+    safe: list[str] = []
+    for snippet in _tool_result_snippets(prompt_messages):
+        normalized = str(snippet or "").strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if any(marker in lowered for marker in forbidden_markers):
+            continue
+        safe.append(normalized)
+    return list(dict.fromkeys(safe))
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -721,7 +825,7 @@ def _has_tool_result_messages(prompt_messages: list[Any]) -> bool:
 
 
 def _tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
-    return AIMessage(content=_fallback_answer_from_tool_results(prompt_messages))
+    return AIMessage(content=_degraded_answer_from_tool_results(prompt_messages))
 
 
 def _invoke_tool_result_synthesis(
@@ -779,6 +883,7 @@ __all__ = [
     "_truncate_inline",
     "_latest_turn_messages",
     "_fallback_answer_from_tool_results",
+    "_degraded_answer_from_tool_results",
     "_tool_call_args_summary",
     "_tool_runtime_summary",
     "_tool_observation_summary",

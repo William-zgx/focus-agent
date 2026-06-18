@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
+from ..core.runtime_outcome import tool_outcome_from_message
 from ..core.state import (
     governance_metrics_from_record_payloads,
     governance_plan_meta_projection,
@@ -32,6 +34,7 @@ class TrajectoryStep:
     fallback_group: str | None = None
     parallel_batch_size: int | None = None
     runtime: dict[str, Any] = field(default_factory=dict)
+    tool_outcome: dict[str, Any] = field(default_factory=dict)
     observation_truncated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -45,6 +48,9 @@ class TrajectoryStep:
             "fallback_used": self.fallback_used,
             "fallback_group": self.fallback_group,
             "parallel_batch_size": self.parallel_batch_size,
+            "runtime": self.runtime,
+            "tool_outcome": self.tool_outcome,
+            "observation_truncated": self.observation_truncated,
         }
 
 
@@ -126,10 +132,13 @@ def extract_trajectory_steps(
     messages: list[Any],
     *,
     observation_max_chars: int = 4000,
+    tool_outcomes: Sequence[Mapping[str, Any]] | None = None,
 ) -> list[TrajectoryStep]:
     """Pair AI tool calls with matching ToolMessage observations."""
     pending_calls: dict[str, dict[str, Any]] = {}
     steps: list[TrajectoryStep] = []
+    canonical_tool_outcomes = _tool_outcomes_by_call_id(tool_outcomes or ())
+    derived_tool_outcomes: list[dict[str, Any]] = []
     max_chars = max(int(observation_max_chars), 0)
 
     for msg in messages or []:
@@ -155,37 +164,73 @@ def extract_trajectory_steps(
         runtime_info = {}
         if isinstance(artifact, dict) and isinstance(artifact.get("runtime"), dict):
             runtime_info = dict(artifact.get("runtime") or {})
+        call_id = str(msg.tool_call_id)
+        outcomes_for_call = canonical_tool_outcomes.get(call_id) or []
+        if not outcomes_for_call:
+            outcomes_for_call = [
+                tool_outcome_from_message(
+                    msg,
+                    call_names_by_id={call_id: call["name"]},
+                    prior_outcomes=derived_tool_outcomes,
+                )
+            ]
+        latest_outcome_index = len(outcomes_for_call) - 1
 
-        observation = str(getattr(msg, "content", ""))
-        truncated = len(observation) > max_chars if max_chars else bool(observation)
-        if max_chars:
-            observation = observation[:max_chars]
-        else:
-            observation = ""
-        is_error = getattr(msg, "status", "success") == "error"
-        steps.append(
-            TrajectoryStep(
-                tool=call["name"],
-                args=call["args"],
-                observation=observation,
-                duration_ms=float(runtime_info.get("duration_ms") or 0.0),
-                error=observation if is_error else None,
-                cache_hit=bool(runtime_info.get("cache_hit", False)),
-                fallback_used=bool(runtime_info.get("fallback_used", False)),
-                fallback_group=(
-                    str(runtime_info.get("fallback_group"))
-                    if runtime_info.get("fallback_group")
-                    else None
-                ),
-                parallel_batch_size=(
-                    int(runtime_info["parallel_batch_size"])
-                    if runtime_info.get("parallel_batch_size") is not None
-                    else None
-                ),
-                runtime=runtime_info,
-                observation_truncated=truncated,
+        for outcome_index, raw_tool_outcome in enumerate(outcomes_for_call):
+            tool_outcome = dict(raw_tool_outcome)
+            derived_tool_outcomes.append(tool_outcome)
+            use_actual_message = outcome_index == latest_outcome_index
+            step_runtime = (
+                dict(runtime_info)
+                if use_actual_message
+                else _runtime_from_synthetic_tool_outcome(tool_outcome)
             )
-        )
+            step_runtime.setdefault("tool_outcome", tool_outcome)
+            observation = (
+                str(getattr(msg, "content", ""))
+                if use_actual_message
+                else _synthetic_observation_from_tool_outcome(tool_outcome)
+            )
+            truncated = len(observation) > max_chars if max_chars else bool(observation)
+            if max_chars:
+                observation = observation[:max_chars]
+            else:
+                observation = ""
+            is_error = (
+                (use_actual_message and getattr(msg, "status", "success") == "error")
+                or str(tool_outcome.get("status") or "") in {"failed", "blocked"}
+            )
+            steps.append(
+                TrajectoryStep(
+                    tool=call["name"],
+                    args=call["args"],
+                    observation=observation,
+                    duration_ms=float(step_runtime.get("duration_ms") or 0.0),
+                    error=observation if is_error else None,
+                    cache_hit=bool(step_runtime.get("cache_hit", False)),
+                    fallback_used=bool(
+                        step_runtime.get("fallback_used", False)
+                        or tool_outcome.get("fallback_used", False)
+                    ),
+                    fallback_group=(
+                        str(
+                            step_runtime.get("fallback_group")
+                            or tool_outcome.get("fallback_group")
+                        )
+                        if step_runtime.get("fallback_group") or tool_outcome.get("fallback_group")
+                        else None
+                    ),
+                    parallel_batch_size=(
+                        int(step_runtime["parallel_batch_size"])
+                        if step_runtime.get("parallel_batch_size") is not None
+                        else None
+                    ),
+                    runtime=step_runtime,
+                    tool_outcome=tool_outcome,
+                    observation_truncated=truncated,
+                )
+            )
+        continue
 
     return steps
 
@@ -224,6 +269,7 @@ def build_turn_trajectory_record(
     steps = extract_trajectory_steps(
         trajectory_messages,
         observation_max_chars=observation_max_chars,
+        tool_outcomes=final_values.get("tool_outcomes") or [],
     )
     if answer:
         selected_answer = answer
@@ -285,6 +331,44 @@ def build_turn_trajectory_record(
         finished_at=finished_at,
         trajectory=steps,
     )
+
+
+def _tool_outcomes_by_call_id(
+    tool_outcomes: Sequence[Mapping[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    indexed: dict[str, list[dict[str, Any]]] = {}
+    for outcome in tool_outcomes or ():
+        call_id = str(outcome.get("tool_call_id") or "").strip()
+        if call_id:
+            indexed.setdefault(call_id, []).append(dict(outcome))
+    return indexed
+
+
+def _runtime_from_synthetic_tool_outcome(tool_outcome: Mapping[str, Any]) -> dict[str, Any]:
+    runtime: dict[str, Any] = {
+        "tool_outcome": dict(tool_outcome),
+        "attempt_index": tool_outcome.get("attempt_index"),
+        "max_attempts": tool_outcome.get("max_attempts"),
+        "retryable": tool_outcome.get("retryable"),
+        "fallback_used": tool_outcome.get("fallback_used"),
+        "fallback_group": tool_outcome.get("fallback_group"),
+        "error_category": tool_outcome.get("error_category"),
+    }
+    if tool_outcome.get("duration_ms") is not None:
+        runtime["duration_ms"] = tool_outcome.get("duration_ms")
+    if tool_outcome.get("cache_hit") is not None:
+        runtime["cache_hit"] = tool_outcome.get("cache_hit")
+    return runtime
+
+
+def _synthetic_observation_from_tool_outcome(tool_outcome: Mapping[str, Any]) -> str:
+    error_message = str(tool_outcome.get("error_message") or "").strip()
+    if error_message:
+        return error_message
+    tool_name = str(tool_outcome.get("tool_name") or "tool").strip()
+    attempt = tool_outcome.get("attempt_index")
+    status = str(tool_outcome.get("status") or "completed").strip()
+    return f"{tool_name} attempt {attempt or '?'} {status}".strip()
 
 
 def _build_metrics(

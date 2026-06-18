@@ -69,6 +69,10 @@ router = APIRouter(prefix="/v2", tags=["harness-runs"])
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
 
 
+def _task_outcome_event_payload(task_outcome: Any) -> dict[str, Any]:
+    return {"task_outcome": task_outcome} if task_outcome is not None else {}
+
+
 def _is_cancel_cleanup_exception(exc: BaseException) -> bool:
     return isinstance(exc, ValueError) and "generator already executing" in str(exc)
 
@@ -189,6 +193,7 @@ async def stream_harness_resume(
             initial_values=initial_values,
             request_id=getattr(request.state, "request_id", None),
             kind="chat.resume",
+            skip_branch_recommendation=True,
         )
     )
     await runtime.run_manager.attach_task(run_record.run_id, producer)
@@ -456,6 +461,7 @@ async def _produce_run_stream(
             thread_id=thread_id,
             user_id=user_id,
         )
+        final_task_outcome = final_values.get("task_outcome")
         final_messages = list(final_values.get("messages", []) or [])
         appended_messages = (
             final_messages[initial_message_count:]
@@ -476,6 +482,7 @@ async def _produce_run_stream(
                 "message.completed",
                 content=final_visible_text,
                 source=final_visible_source,
+                **_task_outcome_event_payload(final_task_outcome),
             )
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
@@ -511,7 +518,12 @@ async def _produce_run_stream(
             payload=payload,
             answer=thread_state.get("assistant_message") or final_visible_text or None,
         )
-        await publish("run.completed", status="succeeded", thread_state=thread_state)
+        await publish(
+            "run.completed",
+            status="succeeded",
+            thread_state=thread_state,
+            **_task_outcome_event_payload(final_task_outcome),
+        )
     except asyncio.CancelledError:
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
         mark_branch_handoff_decision_outcome(
@@ -547,6 +559,7 @@ async def _produce_run_stream(
             error=str(exc),
         )
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
+        failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
         _record_harness_turn_and_schedule(
             chat=chat,
             thread_id=thread_id,
@@ -554,7 +567,7 @@ async def _produce_run_stream(
             root_thread_id=context.root_thread_id,
             kind=kind,
             status="failed",
-            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
+            final_values=failed_values,
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
@@ -563,7 +576,12 @@ async def _produce_run_stream(
             payload=payload,
             error=str(exc),
         )
-        await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
+        await publish(
+            "run.failed",
+            error=exc.__class__.__name__,
+            message=str(exc),
+            **_task_outcome_event_payload(failed_values.get("task_outcome")),
+        )
     finally:
         await _close_run_stream(
             runtime=runtime,
@@ -624,12 +642,14 @@ async def _produce_branch_action_run_stream(
             fallback_context=context,
             fallback_branch_meta=branch_meta,
         )
+        final_task_outcome = final_values.get("task_outcome")
         message_text = str(result.get("message") or "")
         if message_text and not looks_like_textual_tool_call_artifact(result["message"]):
             await publish(
                 "message.completed",
                 content=message_text,
                 source="branch_action",
+                **_task_outcome_event_payload(final_task_outcome),
             )
         _record_harness_turn_and_schedule(
             chat=chat,
@@ -656,6 +676,7 @@ async def _produce_branch_action_run_stream(
             branch_action=result.get("branch_action"),
             branch_record=result.get("branch_record"),
             navigation=result.get("navigation"),
+            **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:
         await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
@@ -668,6 +689,7 @@ async def _produce_branch_action_run_stream(
             await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
             return
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
+        failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
         _record_harness_turn_and_schedule(
             chat=chat,
             thread_id=thread_id,
@@ -675,7 +697,7 @@ async def _produce_branch_action_run_stream(
             root_thread_id=context.root_thread_id,
             kind=kind,
             status="failed",
-            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
+            final_values=failed_values,
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
@@ -684,7 +706,12 @@ async def _produce_branch_action_run_stream(
             payload={"messages": input_messages},
             error=str(exc),
         )
-        await publish("run.failed", error=exc.__class__.__name__, message=str(exc))
+        await publish(
+            "run.failed",
+            error=exc.__class__.__name__,
+            message=str(exc),
+            **_task_outcome_event_payload(failed_values.get("task_outcome")),
+        )
     finally:
         await _close_run_stream(
             runtime=runtime,

@@ -53,6 +53,64 @@ def test_extract_trajectory_steps_preserves_runtime_metadata():
     assert steps[0].fallback_used is True
     assert steps[0].fallback_group == "web_search"
     assert steps[0].parallel_batch_size == 2
+    assert steps[0].tool_outcome["status"] == "recovered"
+    step_payload = steps[0].to_dict()
+    assert step_payload["runtime"]["fallback_used"] is True
+    assert step_payload["tool_outcome"]["tool_call_id"] == "tool-1"
+    assert step_payload["tool_outcome"]["status"] == "recovered"
+    assert step_payload["observation_truncated"] is False
+
+
+def test_extract_trajectory_steps_preserves_retry_lineage_from_outcomes():
+    steps = extract_trajectory_steps(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "tool-1",
+                        "name": "flaky_lookup",
+                        "args": {"query": "focus"},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content="ok",
+                tool_call_id="tool-1",
+                status="success",
+                artifact={"runtime": {"duration_ms": 4.0}},
+            ),
+        ],
+        observation_max_chars=100,
+        tool_outcomes=[
+            {
+                "outcome_id": "tool-1:1",
+                "tool_call_id": "tool-1",
+                "tool_name": "flaky_lookup",
+                "status": "failed",
+                "attempt_index": 1,
+                "max_attempts": 2,
+                "retryable": True,
+                "error_message": "temporary timeout",
+            },
+            {
+                "outcome_id": "tool-1:2",
+                "tool_call_id": "tool-1",
+                "tool_name": "flaky_lookup",
+                "status": "recovered",
+                "attempt_index": 2,
+                "max_attempts": 2,
+                "retryable": False,
+            },
+        ],
+    )
+
+    assert len(steps) == 2
+    assert [step.tool_outcome["status"] for step in steps] == ["failed", "recovered"]
+    assert steps[0].error == "temporary timeout"
+    assert steps[0].runtime["attempt_index"] == 1
+    assert steps[1].observation == "ok"
+    assert steps[1].duration_ms == 4.0
 
 
 def test_build_turn_trajectory_record_uses_only_current_turn_messages():
@@ -93,6 +151,16 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
             "selected_model": "openai:gpt-4.1-mini",
             "selected_thinking_mode": "disabled",
             "task_brief": "read README",
+            "tool_outcomes": [
+                {
+                    "outcome_id": "tool-1:2",
+                    "tool_call_id": "tool-1",
+                    "tool_name": "read_file",
+                    "status": "recovered",
+                    "fallback_used": True,
+                    "fallback_group": "filesystem",
+                }
+            ],
         },
         initial_message_count=1,
         initial_llm_calls=1,
@@ -117,6 +185,10 @@ def test_build_turn_trajectory_record_uses_only_current_turn_messages():
     assert record.metrics["tool_calls"] == 1
     assert record.trajectory[0].observation == "abc"
     assert record.trajectory[0].observation_truncated is True
+    assert record.trajectory[0].tool_outcome["outcome_id"] == "tool-1:2"
+    assert record.trajectory[0].fallback_used is True
+    assert record.trajectory[0].fallback_group == "filesystem"
+    assert record.trajectory[0].to_dict()["observation_truncated"] is True
 
 
 def test_failed_turn_trajectory_does_not_fallback_to_old_answer():
@@ -553,6 +625,12 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
                 "total_llm_calls": 1,
                 "total_cache_hits": 1,
                 "total_fallback_uses": 1,
+                "total_tool_failures": 2,
+                "total_tool_blocked": 0,
+                "total_tool_recovered": 1,
+                "total_tool_fallback_uses": 1,
+                "total_degraded_answers": 1,
+                "total_blocked_task_outcomes": 0,
                 "avg_latency_ms": 250.0,
                 "max_latency_ms": 250.0,
             }
@@ -569,6 +647,10 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
                 "turn_count": 1,
                 "cache_hit_steps": 1,
                 "fallback_steps": 1,
+                "tool_failure_steps": 1,
+                "tool_blocked_steps": 0,
+                "tool_recovered_steps": 1,
+                "tool_fallback_steps": 1,
                 "avg_duration_ms": 12.5,
             }
         ],
@@ -616,7 +698,11 @@ def test_postgres_trajectory_repository_get_turn_and_stats(monkeypatch):
     assert record.trace_id == "trace-1"
     assert record.trajectory[0].tool == "web_search"
     assert stats["overview"]["turn_count"] == 1
+    assert stats["overview"]["total_tool_failures"] == 2
+    assert stats["overview"]["total_tool_recovered"] == 1
+    assert stats["overview"]["total_degraded_answers"] == 1
     assert stats["by_model"][0]["key"] == "openai:gpt-4.1-mini"
     assert stats["by_day"][0]["key"] == "2026-04-22"
     assert stats["by_tool"][0]["key"] == "web_search"
+    assert stats["by_tool"][0]["tool_recovered_steps"] == 1
     assert any("focus_trajectory_steps" in sql for sql in executed)

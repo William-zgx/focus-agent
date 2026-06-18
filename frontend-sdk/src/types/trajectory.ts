@@ -1,3 +1,5 @@
+import type { FocusAgentRuntimeOutcome } from "./common.js";
+
 export interface FocusAgentTrajectoryFilters {
   turn_id?: string;
   turn_ids?: string[];
@@ -59,6 +61,8 @@ export interface FocusAgentTrajectoryStep {
   fallback_group?: string | null;
   parallel_batch_size?: number | null;
   runtime?: Record<string, unknown>;
+  tool_outcome?: FocusAgentRuntimeOutcome | null;
+  outcome?: FocusAgentRuntimeOutcome | null;
   observation_truncated?: boolean;
 }
 
@@ -91,6 +95,9 @@ export interface FocusAgentTrajectoryTurnSummary {
   created_at?: string | null;
   metrics: FocusAgentTrajectoryMetrics;
   plan_meta: Record<string, unknown>;
+  task_outcome?: FocusAgentRuntimeOutcome | null;
+  runtime_outcome?: FocusAgentRuntimeOutcome | null;
+  tool_outcomes?: FocusAgentRuntimeOutcome[];
   latency_ms: number;
   tool_calls: number;
   llm_calls: number;
@@ -131,7 +138,17 @@ export interface FocusAgentTrajectoryStatsRow {
   total_llm_calls?: number;
   total_cache_hits?: number;
   total_fallback_uses?: number;
+  total_tool_failures?: number;
+  total_tool_blocked?: number;
+  total_tool_recovered?: number;
+  total_tool_fallback_uses?: number;
+  total_degraded_answers?: number;
+  total_blocked_task_outcomes?: number;
   max_latency_ms?: number;
+  tool_failure_steps?: number;
+  tool_blocked_steps?: number;
+  tool_recovered_steps?: number;
+  tool_fallback_steps?: number;
   [key: string]: unknown;
 }
 

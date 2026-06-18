@@ -9,8 +9,12 @@ import type { EvidenceMode, ReviewSummary } from "./trajectory-utils";
 import {
 	compactDetailQuestion,
 	compactSnippet,
+	findTaskOutcome,
+	findToolOutcomes,
 	formatBranchRoleLabel,
 	formatSceneLabel,
+	outcomeTone,
+	readOutcomeText,
 	statusTone,
 } from "./trajectory-utils";
 
@@ -57,6 +61,98 @@ export function ReviewSummaryCard({
 						<strong>{item.value}</strong>
 					</div>
 				))}
+			</div>
+		</article>
+	);
+}
+
+export function TaskOutcomeCard({
+	isChineseUi,
+	selected,
+}: {
+	isChineseUi: boolean;
+	selected: FocusAgentTrajectoryTurnDetail;
+}) {
+	const taskOutcome = findTaskOutcome(selected);
+	const toolOutcomes = findToolOutcomes(selected);
+	if (!taskOutcome && toolOutcomes.length === 0) return null;
+
+	const status = readOutcomeText(taskOutcome, ["status"]) || "unrecorded";
+	const rows = [
+		{
+			id: "policy",
+			labelZh: "策略",
+			labelEn: "Policy",
+			value: readOutcomeText(taskOutcome, ["policy"]),
+		},
+		{
+			id: "answer_basis",
+			labelZh: "回答依据",
+			labelEn: "Answer basis",
+			value: readOutcomeText(taskOutcome, ["answer_basis"]),
+		},
+		{
+			id: "repair_action_taken",
+			labelZh: "修复动作",
+			labelEn: "Repair action",
+			value: readOutcomeText(taskOutcome, ["repair_action_taken"]),
+		},
+		{
+			id: "degradation_reason",
+			labelZh: "降级原因",
+			labelEn: "Degradation reason",
+			value: readOutcomeText(taskOutcome, ["degradation_reason"]),
+		},
+		{
+			id: "evidence_count",
+			labelZh: "证据数",
+			labelEn: "Evidence count",
+			value: readOutcomeText(taskOutcome, ["evidence_count"]),
+		},
+		{
+			id: "tool_outcomes",
+			labelZh: "工具 Outcome",
+			labelEn: "Tool outcomes",
+			value: toolOutcomes.length ? String(toolOutcomes.length) : "",
+		},
+	];
+
+	return (
+		<article className="fa-trajectory-workbench-context-panel">
+			<div className="fa-trajectory-workbench-section-head">
+				<div>
+					<p>{isChineseUi ? "运行 Outcome" : "Runtime outcome"}</p>
+					<h3>Task Outcome</h3>
+				</div>
+				<span className={`fa-observability-pill is-${outcomeTone(status)}`}>
+					{status}
+				</span>
+			</div>
+			<div className="fa-trajectory-workbench-context-grid">
+				{rows.map((item) => (
+					<div key={item.id} className="fa-observability-meta-item">
+						<span>{isChineseUi ? item.labelZh : item.labelEn}</span>
+						<strong>{item.value || "—"}</strong>
+					</div>
+				))}
+			</div>
+			<div className="fa-trajectory-workbench-raw-stack">
+				{taskOutcome ? (
+					<details className="fa-observability-raw-toggle">
+						<summary>
+							{isChineseUi ? "查看 Task Outcome" : "View Task Outcome"}
+						</summary>
+						<pre>{JSON.stringify(taskOutcome, null, 2)}</pre>
+					</details>
+				) : null}
+				{toolOutcomes.length ? (
+					<details className="fa-observability-raw-toggle">
+						<summary>
+							{isChineseUi ? "查看 Tool Outcomes" : "View Tool Outcomes"}
+						</summary>
+						<pre>{JSON.stringify(toolOutcomes, null, 2)}</pre>
+					</details>
+				) : null}
 			</div>
 		</article>
 	);
