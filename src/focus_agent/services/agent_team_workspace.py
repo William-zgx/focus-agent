@@ -105,6 +105,13 @@ class AgentTeamWorkspaceService:
         removed: list[str] = []
         errors: list[str] = []
         for target in targets:
+            if not (target / ".git").exists():
+                try:
+                    shutil.rmtree(target)
+                    removed.append(str(target))
+                except OSError as exc:
+                    errors.append(str(exc))
+                continue
             args = ["worktree", "remove"]
             if force:
                 args.append("--force")
@@ -114,6 +121,10 @@ class AgentTeamWorkspaceService:
                 removed.append(str(target))
             else:
                 errors.append(result.stderr.strip() or f"Failed to remove {target}")
+        prune = self._git("worktree", "prune", check=False)
+        pruned = prune.returncode == 0
+        if not pruned:
+            errors.append(prune.stderr.strip() or "Failed to prune git worktree metadata")
         if delete_empty_session_dir:
             session_dir = self.worktrees_root / session_id
             if session_dir.exists():
@@ -121,7 +132,7 @@ class AgentTeamWorkspaceService:
                     session_dir.rmdir()
                 except OSError:
                     pass
-        return {"removed": removed, "errors": errors}
+        return {"removed": removed, "errors": errors, "pruned": pruned}
 
     def _cleanup_targets(self, *, session_id: str, task_id: str | None) -> list[Path]:
         session_dir = self.worktrees_root / session_id

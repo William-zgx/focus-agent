@@ -6,7 +6,11 @@ const KNOWN_EVENT_NAMES = new Set<FocusAgentEventName>([
   "run.completed",
   "run.failed",
   "run.interrupt",
+  "run.rollback.started",
+  "run.rollback.succeeded",
+  "run.rollback.failed",
   "run.closed",
+  "server_shutdown",
   "heartbeat",
   "state.update",
   "message.delta",
@@ -56,8 +60,17 @@ export function validateFocusAgentEventPayload(
       return hasString(payload, "phase");
     case "run.failed":
       return hasString(payload, "error") && hasString(payload, "message");
+    case "run.rollback.failed":
+      return (
+        (payload.error === undefined || typeof payload.error === "string") &&
+        (payload.message === undefined || typeof payload.message === "string")
+      );
     case "run.interrupt":
       return hasString(payload, "action");
+    case "server_shutdown":
+    case "run.rollback.started":
+    case "run.rollback.succeeded":
+      return true;
     case "run.closed":
     case "run.completed":
       return hasString(payload, "status");

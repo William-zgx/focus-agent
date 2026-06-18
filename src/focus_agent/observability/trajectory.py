@@ -275,8 +275,6 @@ def build_turn_trajectory_record(
         selected_answer = answer
     elif current_turn_answer := _latest_final_ai_text(appended_messages):
         selected_answer = current_turn_answer
-    elif status == "succeeded" and not appended_messages:
-        selected_answer = _latest_final_ai_text(final_messages)
     else:
         selected_answer = None
     if selected_answer is not None:

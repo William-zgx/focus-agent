@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-05-30
+更新时间：2026-06-18
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -35,6 +35,9 @@ run.status
 run.completed
 run.failed
 run.interrupt
+run.rollback.started
+run.rollback.succeeded
+run.rollback.failed
 run.closed
 server_shutdown
 heartbeat
@@ -49,7 +52,8 @@ tool.result
 task.update
 ```
 
-Clients should treat `run.completed`, `run.failed`, `run.closed`, and
+Clients should treat `run.completed`, `run.failed`, `run.closed`,
+`run.rollback.failed`, and
 `server_shutdown` as terminal or reconnect-relevant turn signals. `heartbeat` is
 transport liveness only. `server_shutdown` is emitted during graceful shutdown so
 clients can stop reading the current stream and resume or reconnect according to
@@ -101,7 +105,7 @@ Tool activity should be rendered from structured events, not from assistant text
 - `task.update` carries process-level progress and may be shown in processing cards.
 - `state.update` is for raw state/debug panels and should not be rendered as assistant answer text.
 
-`message.completed`, `run.completed`, and `run.failed` may carry graph-authored `task_outcome`. Clients should render these fields as status metadata and must not infer final task success from raw tool payload shape. The canonical outcome state machine is documented in [runtime-outcomes.md](runtime-outcomes.md).
+`message.completed`, `run.completed`, and `run.failed` may carry graph-authored `task_outcome`. `run.failed` should include the latest sanitized `thread_state` whenever the thread is known, so the UI can render the non-empty failure state and avoid reusing an old assistant answer. Clients should render these fields as status metadata and must not infer final task success from raw tool payload shape. The canonical outcome state machine is documented in [runtime-outcomes.md](runtime-outcomes.md).
 
 The SDK reducer derives `processingSteps` from reasoning, tool call, tool lifecycle, and task events. New UI should use `processingSteps` as the canonical processing-card input. `toolCalls`, `toolEvents`, and `reasoningText` remain available as raw/debug/backcompat state.
 
@@ -123,6 +127,8 @@ tool.call.delta -> running
 tool.result -> completed
 tool.error -> failed
 ```
+
+When a tool fails and later recovers, reducers should preserve `toolOutcomeHistory` on the processing step. The UI may summarize the final state as completed, but the failed observation remains part of the current turn audit trail.
 
 `task.update` only accepts `pending`, `running`, `completed`, and `failed`; unknown statuses are treated as `running`.
 

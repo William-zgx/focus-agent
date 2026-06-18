@@ -31,6 +31,15 @@ class FakeBranchService:
         return SimpleNamespace(branch_id="branch-1", child_thread_id="child-1")
 
 
+class CleanupRecordingWorkspaceService:
+    def __init__(self) -> None:
+        self.cleanup_calls: list[dict[str, object]] = []
+
+    def cleanup_workspace(self, **kwargs: object) -> dict[str, object]:
+        self.cleanup_calls.append(kwargs)
+        return {"removed": [], "errors": [], "pruned": True}
+
+
 def _git(cwd, *args: str) -> None:
     result = subprocess.run(
         ["git", *args],
@@ -161,6 +170,31 @@ def test_agent_team_workspace_service_creates_worktree_and_collects_status(tmp_p
     assert status.workspace_status == "dirty"
     assert status.changed_files == ["agent-team.txt"]
     assert "agent-team.txt" in status.diff_summary
+
+
+def test_agent_team_workspace_cleanup_removes_orphan_directory_and_prunes(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is required for worktree metadata collection")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "focus-agent@example.test")
+    _git(repo, "config", "user.name", "Focus Agent Test")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "init")
+
+    service = AgentTeamWorkspaceService(repo_root=repo)
+    orphan = repo / ".focus_agent" / "worktrees" / "session-1" / "task-1"
+    orphan.mkdir(parents=True)
+    (orphan / "stale.txt").write_text("stale\n", encoding="utf-8")
+
+    result = service.cleanup_workspace(session_id="session-1", force=True)
+
+    assert orphan.exists() is False
+    assert str(orphan) in result["removed"]
+    assert result["pruned"] is True
+    assert result["errors"] == []
 
 
 def test_agent_team_service_lists_sessions_with_filters() -> None:
@@ -622,7 +656,8 @@ def test_agent_team_merge_bundle_old_payload_fields_remain_compatible() -> None:
 
 
 def test_agent_team_service_records_outputs_and_prepares_merge_bundle() -> None:
-    service = AgentTeamService(branch_service=None)
+    workspace_service = CleanupRecordingWorkspaceService()
+    service = AgentTeamService(branch_service=None, workspace_service=workspace_service)  # type: ignore[arg-type]
     session = service.create_session(root_thread_id="root-1", user_id="user-1", goal="Build MVP")
     task = service.create_task(
         session_id=session.session_id,
@@ -657,6 +692,9 @@ def test_agent_team_service_records_outputs_and_prepares_merge_bundle() -> None:
     )
     assert decision.accepted_tasks == [task.task_id]
     assert service.get_session(session.session_id, user_id="user-1").status == "completed"
+    assert workspace_service.cleanup_calls == [
+        {"session_id": session.session_id, "force": True}
+    ]
 
 
 def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) -> None:

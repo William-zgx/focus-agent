@@ -50,7 +50,7 @@ Default mode is `thread_persistent_copy`:
 
 - The real repository is mounted read-only into Docker as `/workspace_input`.
 - The sandbox workspace lives at `.focus_agent/sandboxes/threads/<sandbox_id>/workspace`.
-- The workspace copy is seeded once per sandbox and then persists across turns.
+- Before each Docker run, the host workspace snapshot is refreshed into the sandbox workspace. This prevents Docker from running stale code after the real repository changes while still keeping sandbox-only outputs and cache directories separate.
 - Command output is per run: `.focus_agent/sandboxes/threads/<sandbox_id>/runs/<run_id>/output`.
 - Docker cache and dependency venvs live under the thread sandbox cache.
 - Writes inside the sandbox do not automatically modify the real repository.
@@ -115,10 +115,17 @@ Both return structured output and always mark:
 - `workspace_mode: host`
 - `network_policy: host`
 - `fallback_reason` when Docker was the attempted primary backend
+- `degraded_reason: local_host_execution`
 
 These fallbacks are useful for local development and trusted Skill smoke tests,
 but they are not a strong sandbox. They do not provide Docker-level filesystem,
 network, or process isolation.
+
+Fallback results may be used by the Agent as degraded evidence, but they must not
+satisfy assertions that require secure Docker execution. In particular,
+`run_skill_entrypoint` fallback payloads do not satisfy the strong Skill
+execution contract; the Agent should report the degraded path or continue with
+safe alternative evidence.
 
 ## Tool Integration
 
@@ -147,6 +154,10 @@ Successful Docker entrypoint results satisfy the Skill execution contract.
 Dependency errors, timeouts, non-zero exits, and local fallback results are
 returned as observations, not silently counted as secure Docker success.
 
+Project Skills are not trusted merely because they live under a scanned path.
+The runner still checks the declared entrypoint, Skill enablement/trust metadata,
+relative script path boundaries, and dependency declarations before execution.
+
 ## Multi-Agent Coordination
 
 Agent Team planning attaches `sandbox:<root_thread_id>` resource claims to
@@ -154,6 +165,11 @@ execution, build, test, and code-modification tasks. The existing resource-lock
 manager serializes conflicting tasks in the same Agent Team session. This keeps
 parallel workers from writing the same persistent thread sandbox at the same
 time.
+
+During long task execution, Agent Team periodically heartbeats both the task
+claim and acquired sandbox/resource locks. If enqueue or lease maintenance fails,
+the task is moved back to a retryable pending state or marked with a clear
+blocked/failed status instead of remaining orphaned in `queued`.
 
 The current lock scope is per Agent Team session. It is not a global host-level
 Docker capacity controller.

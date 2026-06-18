@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-05-30
+更新时间：2026-06-18
 
 本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
 
@@ -293,6 +293,22 @@ Fallback planner 仍要保留契约完整性：当旧字段如 `input_items`、`
 
 `AgentTeamRunService` 会运行依赖已满足的 ready tasks。委派执行时，每个 subagent 都会收到 session 目标、task contract 和上游依赖任务 outputs，避免下游任务只拿到元指令而缺少真实用户目标或前置产出。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或 `Fake delegated...` summary 时，`final_answer_status` 必须是 `placeholder`，`recommended_next_action` 必须是 `request_changes`。如果已完成任务声明了 `evidence_required` 但 output / artifact / verification summary 中缺少对应证据，merge bundle 会补充风险并要求变更。
 
+调度状态机要求：
+
+- `/run` 先在 session scheduler lock 内把 runnable task 原子地置为 `queued`，再提交 durable/background job。
+- 如果 job enqueue 失败，task 必须回滚为 `pending`，清空 `queued_at` 和 claim 字段，并写入 `execution_status="enqueue_failed"`；不能留下无人执行的 `queued`。
+- worker claim task 后，长任务执行期间会周期性 heartbeat task claim；启用 resource lock 时也 heartbeat 每个 `ResourceClaim`。
+- 如果资源锁不可用，task 回到 `pending` 并标记 `waiting_resource_lock`，等待下一轮调度。
+- 执行完成前如果 claim 已丢失，成功结果不能写入 task output；任务按 attempt/max_attempts 回到 `queued` 或 `failed`。
+- 同一 session 的 scheduler lock 只保护调度状态；跨进程并行依赖 Postgres repository / coordination backend 的原子 claim 和资源锁。
+
+工作区生命周期：
+
+- 可写任务使用 `.focus_agent/worktrees/{session_id}/{task_id}` 下的 per-task git worktree。
+- merge decision 进入 `completed` 或 `cancelled/discard` 后，会尝试清理 session worktrees。
+- `cleanup_workspace()` 会优先使用 `git worktree remove`；对 AgentTeam 自己目录下的 orphan/stale 目录使用目录删除，并执行 `git worktree prune` 清理元数据。
+- 系统不会自动提交、push 或合并 worktree 改动；真实采纳仍通过 merge review / explicit apply 路径完成。
+
 当前 API：
 
 ```text
@@ -434,11 +450,12 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
 3. 模型规划不可用时自动降级到保守 fallback，并在 UI 中提示。
 4. 通过 `/run` 或 task-level `/run` 按依赖推进 ready tasks。
 5. 真实执行任务可创建 per-task git worktree，并在 task/output 中记录 `workspace_path`、`workspace_branch`、changed files、diff summary、test evidence 和 workspace status。
-6. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
-7. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
-8. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
-9. 用户记录 accepted / rejected tasks 的 merge decision。
-10. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
+6. task claim、resource lock 和 enqueue 失败均进入明确状态，避免长期卡在无主 `queued` / `running`。
+7. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
+8. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
+9. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
+10. 用户记录 accepted / rejected tasks 的 merge decision。
+11. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
 
 当前仍不支持：
 
@@ -452,6 +469,8 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
 - 后端可以创建 session / task，并为 task 关联 branch。
 - `/plan` 能生成动态 DAG，重复调用默认幂等，`replace_existing=true` 可重拆。
 - `/run` 只推进依赖满足的 ready tasks，并把 output / artifact / evidence 回写到 session view。
+- enqueue 失败不会留下无主 `queued`；长任务执行会 heartbeat claim/resource lock。
+- session 完成、取消或 discard 后，AgentTeam worktree 清理会移除正常 worktree、orphan 目录并 prune git worktree metadata。
 - fake output 会生成 `placeholder` final answer，不能显示为可交付。
 - fixture/真实 output 能生成 `ready` final answer，并包含用户目标相关内容。
 - SDK 暴露完整 AgentTeam 类型和 client 方法。
@@ -479,6 +498,12 @@ uv run pytest tests/test_agent_team_cockpit_frontend.py tests/test_agent_team_fr
 pnpm --filter @focus-agent/web-app check
 pnpm --filter @focus-agent/web-sdk check
 pnpm --filter @focus-agent/web-sdk build
+```
+
+调度/资源锁相关改动至少补充：
+
+```bash
+.venv/bin/python -m pytest tests/test_agent_team_multi_agent.py tests/test_agent_team_service.py -q
 ```
 
 新增 eval 后补充：

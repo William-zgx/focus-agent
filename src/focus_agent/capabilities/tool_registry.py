@@ -98,6 +98,7 @@ class ToolRuntimeMeta:
     allowed_roles: tuple[str, ...] = ()
     requires_approval: bool = False
     side_effect_kind: str | None = None
+    retry_safe: bool = False
     requires_network: bool = False
     requires_workspace_write: bool = False
     intent_policies: tuple[str, ...] = ()
@@ -167,6 +168,7 @@ class ToolRuntimeMeta:
             side_effect_kind=(
                 str(normalized["side_effect_kind"]) if normalized.get("side_effect_kind") else None
             ),
+            retry_safe=bool(normalized.get("retry_safe", False)),
             requires_network=bool(normalized.get("requires_network", False)),
             requires_workspace_write=bool(normalized.get("requires_workspace_write", False)),
             intent_policies=tuple(

@@ -74,7 +74,12 @@ class InMemoryResourceLockManager:
         expires_at = time.monotonic() + max(float(ttl_seconds or 0.0), 0.001)
         with self._lock:
             current = self._claims.get(claim.claim_id)
-            if current != claim or current.expires_at <= time.monotonic():
+            if (
+                current is None
+                or current.session_id != claim.session_id
+                or current.agent_id != claim.agent_id
+                or current.expires_at <= time.monotonic()
+            ):
                 return False
             self._claims[claim.claim_id] = replace(current, expires_at=expires_at)
             return True
@@ -82,7 +87,11 @@ class InMemoryResourceLockManager:
     def release(self, claim: ResourceClaim) -> None:
         with self._lock:
             current = self._claims.get(claim.claim_id)
-            if current == claim:
+            if (
+                current is not None
+                and current.session_id == claim.session_id
+                and current.agent_id == claim.agent_id
+            ):
                 self._claims.pop(claim.claim_id, None)
             self._prune_wait_graph()
 

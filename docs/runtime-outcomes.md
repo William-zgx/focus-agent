@@ -15,6 +15,7 @@ Runtime Outcome is the graph-level source of truth for tool and task completion.
 - `skipped`
 
 Each record carries the tool call lineage: `tool_call_id`, `tool_name`, `attempt_index`, `max_attempts`, `retryable`, fallback metadata, recovery source, error category/message, evidence role, duration, and cache hit.
+It also carries turn-scoped fields: `turn_id`, `human_turn_index`, `contract_satisfied`, and `degraded_reason`.
 
 `TaskOutcome` is emitted by `agent_loop` only after evidence ledger, execution contract, answer verification, and repair/degraded synthesis complete. Status values are fixed:
 
@@ -25,6 +26,8 @@ Each record carries the tool call lineage: `tool_call_id`, `tool_name`, `attempt
 
 The task record captures `user_goal`, `policy`, `answer_basis`, `repair_action_taken`, `degradation_reason`, `evidence_count`, related `tool_outcome_ids`, and warnings.
 
+`TaskOutcome` is always computed from the current human turn's `ToolOutcome` records. Historical outcomes remain available for observability and UI history, but they must not decide whether the latest user turn succeeded, degraded, blocked, or failed.
+
 ## Runtime Flow
 
 ```mermaid
@@ -32,7 +35,7 @@ flowchart TD
     Model["Model tool calls"] --> Exec["tool_executor"]
     Exec --> ToolOutcome["ToolOutcome ledger"]
     ToolOutcome --> Retry{"Retryable failure?"}
-    Retry -- "yes, once" --> Exec
+    Retry -- "yes, if retry_safe/idempotent" --> Exec
     Retry -- "no" --> Loop["agent_loop"]
     Loop --> Evidence["Evidence ledger + execution contract"]
     Evidence --> Verify["Answer verification"]
@@ -46,10 +49,24 @@ The graph, not stream consumers or UI reducers, decides whether a tool failed, r
 ## Recovery Policy
 
 - Retryable tool failures are retried at most once in the tool executor. The message history keeps the final tool result only; the outcome ledger records both failed and recovered attempts.
-- Blocked, validation, approval-denied, duplicate, and side-effect tool results are not silently retried.
+- Side-effect tools are not auto-retried unless their runtime metadata explicitly marks them `retry_safe`.
+- Blocked, validation, approval-denied, duplicate, sandbox-blocked, and policy-blocked results are not silently retried.
 - Skill primary tool failures can be repaired through a graph repair pass or alternative evidence such as recommended supporting tools and web evidence.
 - If evidence remains insufficient, the final answer must be a conservative degraded synthesis or an explicit blocked/failed reason.
+- If a Skill primary path fails and fallback evidence exists, but a later repair tool is blocked by budget/policy/validation, the assistant must still produce a final failure/degraded explanation instead of leaving a trailing assistant `tool_calls` message.
 - Financial answers may degrade, but they must name missing evidence and must not fabricate unconfirmed price or performance figures.
+
+## Blocking Semantics
+
+`blocked` is a hard task outcome. It is used when the current turn cannot legally or safely continue without an external intervention, for example:
+
+- approval is pending or denied,
+- policy or validation rejects the requested action,
+- sandbox execution is blocked,
+- a per-turn tool budget blocks further calls,
+- dangling tool-call protocol repair had to synthesize an error observation.
+
+`degraded_answer` is softer: the assistant can still answer with partial or alternative evidence, and no unresolved current-turn blocker remains. Local sandbox fallback can be useful evidence, but it is marked degraded and cannot satisfy a strong Docker-sandbox or Skill execution contract.
 
 ## Contract Surfaces
 
@@ -58,6 +75,8 @@ The graph, not stream consumers or UI reducers, decides whether a tool failed, r
 - Thread state includes `tool_outcomes` and `task_outcome`.
 - Trajectory steps include `runtime.tool_outcome` and a top-level `tool_outcome`; turn summary/detail include `tool_outcomes` and `task_outcome`.
 - Observability stats aggregate outcome counters such as tool failures, recovered tools, fallback uses, degraded answers, and blocked task outcomes.
+
+Synthetic `protocol_repair` outcomes are audit records. They keep provider prompts valid after dangling `tool_calls`, but they do not satisfy required-tool execution contracts.
 
 ## Validation
 

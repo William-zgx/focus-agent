@@ -345,6 +345,11 @@ def _run_skill_entrypoint_payload_succeeded(message: ToolMessage) -> bool:
         return False
     if payload.get("timed_out") is not False:
         return False
+    if payload.get("fallback_used") is True:
+        return False
+    sandbox_backend = str(payload.get("sandbox_backend") or "").strip().lower()
+    if sandbox_backend.startswith("local"):
+        return False
     status = str(payload.get("status") or "").strip().lower()
     if status != "completed":
         return False

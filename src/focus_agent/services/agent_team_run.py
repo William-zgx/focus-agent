@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 from uuid import uuid4
 
@@ -84,6 +85,76 @@ from .agent_team_run_helpers import (
     _team_role_for_agent_role,
 )
 from .agent_team_workspace import AgentTeamWorkspaceService
+
+
+class _AgentTeamLeaseHeartbeat:
+    def __init__(
+        self,
+        service: Any,
+        *,
+        task: AgentTeamTask,
+        resource_claims: list[ResourceClaim],
+    ) -> None:
+        self._service = service
+        self._task_id = task.task_id
+        self._claim_token = task.claim_token or ""
+        self._resource_claims = list(resource_claims)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        resource_ttl = float(
+            getattr(service.settings, "multi_agent_resource_lock_ttl_seconds", 60.0) or 60.0
+        )
+        configured_interval = float(
+            getattr(service.settings, "multi_agent_resource_lock_heartbeat_seconds", 15.0)
+            or 15.0
+        )
+        self._resource_ttl = max(resource_ttl, 0.001)
+        self._interval = max(0.001, min(configured_interval, self._resource_ttl / 3.0))
+
+    def start(self) -> None:
+        if not self._claim_token and not self._resource_claims:
+            return
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"agent-team-lease-heartbeat:{self._task_id}",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(self._interval * 2.0, 0.05))
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval):
+            if not self._heartbeat_once():
+                self._stop.set()
+                return
+
+    def _heartbeat_once(self) -> bool:
+        if self._claim_token:
+            try:
+                alive = self._service.repository.heartbeat_task_claim(
+                    task_id=self._task_id,
+                    claim_token=self._claim_token,
+                    ttl_seconds=_AGENT_TEAM_TASK_CLAIM_TTL_SECONDS,
+                )
+            except Exception:  # noqa: BLE001
+                return False
+            if not alive:
+                return False
+        lock_backend = getattr(self._service.coordination_backend, "resource_locks", None)
+        if lock_backend is None:
+            return True
+        for claim in self._resource_claims:
+            try:
+                alive = bool(lock_backend.heartbeat(claim, ttl_seconds=self._resource_ttl))
+            except Exception:  # noqa: BLE001
+                return False
+            if not alive:
+                return False
+        return True
 
 
 class AgentTeamRunMixin:
@@ -211,11 +282,17 @@ class AgentTeamRunMixin:
             ]
             self.repository.save_tasks_bulk(queued_tasks)
             for queued in queued_tasks:
-                self._enqueue_task_run(task_id=queued.task_id, user_id=user_id)
-            if runnable:
-                self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
-            else:
-                self._refresh_session_status(session_id)
+                try:
+                    enqueued = self._enqueue_task_run(task_id=queued.task_id, user_id=user_id)
+                except Exception as exc:  # noqa: BLE001
+                    enqueued = False
+                    error = f"Failed to enqueue agent team task: {exc}"
+                else:
+                    error = "Failed to enqueue agent team task."
+                if enqueued:
+                    continue
+                self._mark_task_enqueue_failed(queued.task_id, error=error)
+            self._refresh_session_status(session_id)
         session = self.get_session(session_id, user_id=user_id)
         return session, self.list_tasks(session_id=session_id, user_id=user_id)
 
@@ -345,8 +422,36 @@ class AgentTeamRunMixin:
         with self._scheduler_lock(queued.session_id):
             self.repository.save_task(queued)
             self._touch_session(queued.session_id, status=AgentTeamSessionStatus.RUNNING)
-        self._enqueue_task_run(task_id=task_id, user_id=user_id)
+        try:
+            enqueued = self._enqueue_task_run(task_id=task_id, user_id=user_id)
+        except Exception as exc:  # noqa: BLE001
+            enqueued = False
+            error = f"Failed to enqueue agent team task: {exc}"
+        else:
+            error = "Failed to enqueue agent team task."
+        if not enqueued:
+            with self._scheduler_lock(queued.session_id):
+                self._mark_task_enqueue_failed(task_id, error=error)
+                self._refresh_session_status(queued.session_id)
         return self.get_task(task_id, user_id=user_id)
+
+    def _mark_task_enqueue_failed(self, task_id: str, *, error: str) -> AgentTeamTask:
+        current = self.repository.get_task(task_id)
+        failed = current.model_copy(
+            update={
+                "status": AgentTeamTaskStatus.PENDING,
+                "run_status": None,
+                "execution_status": "enqueue_failed",
+                "last_error": error,
+                "claim_token": None,
+                "claim_owner": None,
+                "claimed_until": None,
+                "queued_at": None,
+                "updated_at": _now(),
+            }
+        )
+        self.repository.save_task(failed)
+        return failed
 
     def run_task_claimed(self, *, task_id: str, user_id: str) -> AgentTeamTask:
         owner = f"agent-team:{uuid4().hex}"
@@ -383,9 +488,12 @@ class AgentTeamRunMixin:
                 self.repository.save_task(task)
                 self._refresh_session_status(task.session_id)
             return task
+        heartbeat = _AgentTeamLeaseHeartbeat(self, task=claimed, resource_claims=resource_claims)
+        heartbeat.start()
         try:
             result = self._execute_task_body(claimed, user_id=user_id)
         except Exception as exc:  # noqa: BLE001
+            heartbeat.stop()
             current = self.get_task(task_id, user_id=user_id)
             final_status = (
                 AgentTeamTaskStatus.FAILED
@@ -430,6 +538,7 @@ class AgentTeamRunMixin:
                     self._enqueue_task_run(task_id=task_id, user_id=user_id)
                 self._refresh_session_status(task.session_id)
             return task
+        heartbeat.stop()
 
         latest = self.get_task(task_id, user_id=user_id)
         final_status = result.final_status

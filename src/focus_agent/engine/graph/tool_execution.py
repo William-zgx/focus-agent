@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from langchain.messages import HumanMessage, ToolMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
@@ -56,6 +56,7 @@ def make_tool_executor_node(
         turn_index = sum(
             1 for message in state.get("messages", []) if isinstance(message, HumanMessage)
         )
+        turn_id = str(turn_index or 1)
         turn_scope_key = build_cache_scope_key(
             scope="turn",
             root_thread_id=root_thread_id,
@@ -78,7 +79,9 @@ def make_tool_executor_node(
         seen_tool_call_signatures: set[str] = set()
         updates: dict[str, Any] = {}
         route_plan = _route_plan_mapping(state.get("tool_route_plan"))
-        tool_call_counts: dict[str, int] = {}
+        tool_call_counts: dict[str, int] = _tool_call_counts_since_latest_human(
+            state.get("messages", [])[:-1]
+        )
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
@@ -269,7 +272,7 @@ def make_tool_executor_node(
                 scope=runtime_meta.cache_scope,
                 root_thread_id=root_thread_id,
                 branch_id=branch_id,
-                turn_id=str(turn_index or 1),
+                turn_id=turn_id,
             )
         initial_results = execute_tool_calls(
             execution_inputs,
@@ -286,6 +289,8 @@ def make_tool_executor_node(
         tool_outcomes = build_tool_outcomes_from_messages(
             [last_message, *initial_messages],
             prior_outcomes=state.get("tool_outcomes") or [],
+            turn_id=turn_id,
+            human_turn_index=turn_index or 1,
         )
         retry_inputs = _retryable_failed_inputs(
             tool_outcomes,
@@ -321,6 +326,8 @@ def make_tool_executor_node(
                 build_tool_outcomes_from_messages(
                     [last_message, *retry_messages],
                     prior_outcomes=[*(state.get("tool_outcomes") or []), *tool_outcomes],
+                    turn_id=turn_id,
+                    human_turn_index=turn_index or 1,
                 )
             )
 
@@ -368,7 +375,23 @@ def _retryable_side_effect_allowed(item: ToolExecutionInput) -> bool:
         return False
     if str(item.runtime.side_effect_kind or "") != "workspace_command":
         return False
-    return bool(item.runtime.requires_approval)
+    return bool(item.runtime.requires_approval and getattr(item.runtime, "retry_safe", False))
+
+
+def _tool_call_counts_since_latest_human(messages: list[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for message in reversed(messages or []):
+        if isinstance(message, HumanMessage):
+            break
+        if not isinstance(message, AIMessage):
+            continue
+        for call in getattr(message, "tool_calls", None) or ():
+            if not isinstance(call, Mapping):
+                continue
+            tool_name = str(call.get("name") or "").strip()
+            if tool_name:
+                counts[tool_name] = counts.get(tool_name, 0) + 1
+    return counts
 
 
 def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:

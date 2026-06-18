@@ -1,6 +1,6 @@
 # Admin Console 操作与实现手册
 
-更新时间：2026-06-06
+更新时间：2026-06-18
 
 Admin Console 是 Focus Agent 当前的管理员访问治理入口，用于管理运行时设置、能力开关、持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。普通登录、注册、账号自助页面和 token/session 语义见 [auth-access.md](auth-access.md)。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
 
@@ -93,6 +93,13 @@ Skill catalog 即使在全局关闭时仍可展示；关闭全局 Skill 或禁�
 
 本地 Android runtime 会复用同一套配置页面，但模型 API key 保存到 App 本机安全存储，不发送到 Focus Agent HTTP 后端。Web/backend 模式下仍应把 provider secrets 放在 `.focus_agent/local.env`、环境变量或部署 secret manager 中。
 
+安全边界：
+
+- Admin model config 不允许持久化非空 `api_key_default`。Provider secret 必须通过 `api_key_env`、`.focus_agent/local.env`、环境变量或部署 secret manager 引用。
+- 清空 `api_key_default` 的空字符串只表示删除旧值；不能把真实密钥写进 catalog 或 tracked config。
+- Skill 目录配置必须在 workspace 内，或使用后端明确 allowlist 的安全路径；不能配置 workspace root 本身、`..` 逃逸路径或任意宿主机大目录。
+- `SKILL_INSTALL_DIRECTORY` 同样受 workspace 边界约束，避免 Admin 页面把 Skill 扫描扩展成不受控的宿主文件遍历。
+
 ## 5. 审计事件
 
 `/app/admin/audit-events` 面向管理员治理复盘。列表支持按 actor、resource type、resource id 和 decision 过滤，并通过 URL query 保留当前筛选与选中事件。详情抽屉展示 actor、resource、decision、reason、request id 和 metadata。
@@ -165,5 +172,7 @@ make frontend-android-runtime-smoke
 - 不要绕过 reason 字段执行角色、状态、会话或密码变更。
 - 不要把 `AUTH_ENABLED=false` 的 anonymous principal 当作管理员。
 - 不要把 Web/backend provider secret 写入 tracked config；Android local runtime 的 App 内 key 存储只适用于移动端本地 transport。
+- 不要通过 Admin config 写入真实 `api_key_default`；保存失败是预期安全行为，应改用 env/secret 引用。
+- 不要把 Skill 目录指向 workspace 外、workspace root、home 目录或其他大范围宿主目录。
 - 不要把 MCP Server 管理能力写成已完整落地；当前设置中心只保留扩展连接入口，后端合同接入后再开放真实启停、测试和 secret mask。
 - 不要只在前端隐藏 Skill；禁用 Skill 必须同步到后端 registry，使自动选择、前缀触发和 prompt 注入都跳过禁用项。

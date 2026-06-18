@@ -269,6 +269,43 @@ def test_run_skill_entrypoint_docker_payload_satisfies_contract():
     assert tool_result_names(messages) == ["run_skill_entrypoint"]
 
 
+def test_run_skill_entrypoint_local_fallback_does_not_satisfy_contract():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "skill-1",
+                    "name": "run_skill_entrypoint",
+                    "args": {
+                        "skill_id": "china-stock-analysis",
+                        "entrypoint": "analyze_a_stock",
+                    },
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "status": "completed",
+                    "skill_id": "china-stock-analysis",
+                    "entrypoint": "analyze_a_stock",
+                    "run_id": "run-local-1",
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "sandbox_backend": "local_subprocess",
+                    "fallback_used": True,
+                    "degraded_reason": "local_host_execution",
+                    "stdout": json.dumps({"status": "completed", "code": "000063"}),
+                }
+            ),
+            tool_call_id="skill-1",
+        ),
+    ]
+
+    assert tool_result_names(messages) == []
+
+
 def test_skill_execution_contract_ignores_failed_workspace_command_payload():
     messages = [
         AIMessage(

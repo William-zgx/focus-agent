@@ -2667,6 +2667,10 @@ def test_produce_run_stream_records_failed_turn_trajectory_and_reports_run_faile
             "source_node": "harness",
             "error": "RuntimeError",
             "message": "stream failed for test",
+            "thread_state": {
+                "thread_id": "thread-1",
+                "messages": [{"type": "ai", "content": "done"}],
+            },
         }
         assert events[-1][0] == "run.closed"
         assert statuses[-1][0] is RunStatus.ERROR

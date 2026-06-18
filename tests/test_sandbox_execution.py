@@ -126,6 +126,54 @@ def test_docker_backend_reuses_thread_workspace_and_sandbox_id(tmp_path):
     assert first_payload["policy"]["network"] == "none"
 
 
+def test_docker_backend_refreshes_thread_workspace_from_host_between_runs(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "tracked.txt").write_text("original\n", encoding="utf-8")
+    run_ids = iter(["run-refresh-1", "run-refresh-2"])
+    observed_contents: list[str] = []
+
+    def fake_docker_run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        del timeout
+        sandbox_workspace = _volume_host_path(command, "/workspace")
+        sandbox_output = _volume_host_path(command, "/sandbox_output")
+        observed_contents.append((sandbox_workspace / "tracked.txt").read_text(encoding="utf-8"))
+        (sandbox_output / "result.json").write_text(
+            json.dumps(
+                {
+                    "exit_code": 0,
+                    "stdout": "ok\n",
+                    "stderr": "",
+                    "timed_out": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    backend = DockerSandboxBackend(
+        image="focus-agent-test:latest",
+        docker_runner=fake_docker_run,
+        run_id_factory=lambda: next(run_ids),
+    )
+    request = SandboxExecutionRequest(
+        workspace_root=workspace,
+        command=["python", "--version"],
+        cwd=".",
+        timeout_seconds=30,
+        max_output_chars=1000,
+        allow_network=False,
+        tool_name="run_workspace_command",
+        thread_id="thread-refresh",
+    )
+
+    backend.run(request)
+    (workspace / "tracked.txt").write_text("updated\n", encoding="utf-8")
+    backend.run(request)
+
+    assert observed_contents == ["original\n", "updated\n"]
+
+
 def test_docker_backend_runs_in_isolated_workspace_with_network_disabled(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -238,10 +286,12 @@ def test_sandbox_service_falls_back_to_local_backend_with_visible_reason(tmp_pat
     payload = result.to_payload()
     assert payload["fallback_used"] is True
     assert payload["fallback_reason"] == "docker is not available"
+    assert payload["degraded_reason"] == "local_host_execution"
     assert payload["workspace_mode"] == "host"
     assert payload["network_policy"] == "host"
     assert payload["policy"]["fallback"] is True
     assert payload["policy"]["fallback_reason"] == "docker is not available"
+    assert payload["policy"]["degraded_reason"] == "local_host_execution"
 
 
 def test_docker_backend_cleans_old_run_directories(tmp_path):

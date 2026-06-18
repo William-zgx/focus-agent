@@ -267,6 +267,28 @@ def test_interrupted_success_turn_trajectory_does_not_fallback_to_old_answer():
     assert record.user_message == "new question"
 
 
+def test_success_turn_without_appended_messages_does_not_fallback_to_old_answer():
+    started = utc_now()
+    final_messages = [
+        HumanMessage(content="old question"),
+        AIMessage(content="old answer"),
+    ]
+    record = build_turn_trajectory_record(
+        thread_id="thread-1",
+        user_id="owner-1",
+        root_thread_id="root-1",
+        kind="chat.turn",
+        status="succeeded",
+        final_values={"messages": final_messages, "llm_calls": 1},
+        initial_message_count=len(final_messages),
+        initial_llm_calls=1,
+        started_at=started,
+        finished_at=started + timedelta(milliseconds=10),
+    )
+
+    assert record.answer is None
+
+
 def test_build_turn_trajectory_record_hides_process_narration_answer():
     started = utc_now()
     record = build_turn_trajectory_record(

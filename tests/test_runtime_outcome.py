@@ -109,6 +109,32 @@ def test_tool_outcome_attempt_index_is_per_tool_call_id():
     assert retry["recovery_of_tool_call_id"] == "history-1"
 
 
+def test_tool_outcome_carries_turn_scope_metadata():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "lookup-1", "name": "run_workspace_command", "args": {}},
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps({"status": "completed", "exit_code": 0}),
+            tool_call_id="lookup-1",
+        ),
+    ]
+
+    outcome = build_tool_outcomes_from_messages(
+        messages,
+        turn_id="turn-7",
+        human_turn_index=7,
+    )[0]
+
+    assert outcome["turn_id"] == "turn-7"
+    assert outcome["human_turn_index"] == 7
+    assert outcome["contract_satisfied"] is True
+    assert outcome["degraded_reason"] == ""
+
+
 def test_tool_outcome_marks_fallback_success_as_recovered():
     failed = {
         "outcome_id": "search-1:1",
@@ -137,6 +163,63 @@ def test_tool_outcome_marks_fallback_success_as_recovered():
     assert recovered["fallback_group"] == "web_search"
     assert recovered["recovery_of_tool_call_id"] == "search-1"
     assert recovered["duration_ms"] == 42
+
+
+def test_task_outcome_filters_tool_outcomes_to_current_turn():
+    previous_turn_failure = {
+        "outcome_id": "old:1",
+        "tool_call_id": "old",
+        "tool_name": "run_workspace_command",
+        "status": "failed",
+        "error_message": "old failure",
+        "turn_id": "turn-1",
+        "human_turn_index": 1,
+    }
+    current_turn_success = {
+        "outcome_id": "new:1",
+        "tool_call_id": "new",
+        "tool_name": "run_workspace_command",
+        "status": "succeeded",
+        "turn_id": "turn-2",
+        "human_turn_index": 2,
+    }
+
+    outcome = build_task_outcome(
+        user_goal="answer current question",
+        execution_contract={"status": "not_required", "policy": "direct_answer"},
+        answer_verification={"status": "not_required"},
+        tool_outcomes=[previous_turn_failure, current_turn_success],
+        final_answer="current answer",
+        current_turn_id="turn-2",
+        current_human_turn_index=2,
+    )
+
+    assert outcome["status"] == "answered"
+    assert outcome["tool_outcome_ids"] == ["new:1"]
+    assert outcome["warnings"] == []
+
+
+def test_blocked_tool_outcome_blocks_task_without_contract_block():
+    outcome = build_task_outcome(
+        user_goal="run a command",
+        execution_contract={"status": "not_required", "policy": "direct_answer"},
+        answer_verification={"status": "not_required"},
+        tool_outcomes=[
+            {
+                "outcome_id": "approval:1",
+                "tool_call_id": "approval",
+                "tool_name": "run_workspace_command",
+                "status": "blocked",
+                "error_category": "approval",
+                "error_message": "approval denied",
+            }
+        ],
+        final_answer="不能继续。",
+    )
+
+    assert outcome["status"] == "blocked"
+    assert outcome["answer_basis"] == "blocked"
+    assert outcome["degradation_reason"] == "approval denied"
 
 
 def test_task_outcome_distinguishes_answered_degraded_and_blocked():

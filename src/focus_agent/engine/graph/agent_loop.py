@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from langchain.messages import AIMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 
 from ...agent_delegation import build_failure_records, build_review_queue
@@ -141,13 +141,19 @@ def _should_force_degraded_skill_recovery_answer(
     primary_tools = {str(name).strip() for name in primary_tool_names if str(name).strip()}
     if not primary_tools:
         primary_tools = {"run_skill_entrypoint", "run_workspace_command"}
+    blocked_recovery_boundary = any(
+        str(item.get("status") or "") == "blocked" for item in outcomes
+    )
     primary_exhausted = any(
         (
             str(item.get("tool_name") or "") in primary_tools
             or str(item.get("evidence_role") or "") in _PRIMARY_OUTCOME_ROLES
         )
         and str(item.get("status") or "") in _FAILED_OUTCOME_STATUSES
-        and _outcome_attempt_index(item) >= _outcome_max_attempts(item)
+        and (
+            _outcome_attempt_index(item) >= _outcome_max_attempts(item)
+            or blocked_recovery_boundary
+        )
         for item in outcomes
     )
     if not primary_exhausted:
@@ -859,6 +865,10 @@ def make_agent_loop_node(
             and not state.get("citations")
         )
         current_tool_outcomes = list(state.get("tool_outcomes") or [])
+        current_human_turn_index = sum(
+            1 for message in state_messages if isinstance(message, HumanMessage)
+        )
+        current_turn_id = str(current_human_turn_index or 1)
         task_outcome = (
             None
             if getattr(response, "tool_calls", None)
@@ -870,6 +880,8 @@ def make_agent_loop_node(
                 tool_outcomes=current_tool_outcomes,
                 final_answer=_message_content_text(response),
                 repair_action_taken=skill_execution_repair_taken or live_web_repair_taken,
+                current_turn_id=current_turn_id,
+                current_human_turn_index=current_human_turn_index or 1,
             )
         )
         updates: dict[str, Any] = {

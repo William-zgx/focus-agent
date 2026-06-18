@@ -263,6 +263,63 @@ def test_admin_config_updates_models_tools_and_policies(
     }.issubset(actions)
 
 
+def test_admin_config_rejects_provider_api_key_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, model_path, _tool_path, _local_env_path = _build_client(
+        monkeypatch, tmp_path
+    )
+    service.create_user(user_id="admin-1", roles=["admin"])
+    headers = _headers(settings, "admin-1")
+
+    response = client.patch(
+        "/v1/admin/config/models",
+        headers=headers,
+        json={
+            "reason": "do not persist secrets",
+            "providers": [
+                {
+                    "id": "openai",
+                    "label": "OpenAI",
+                    "backend_provider": "openai",
+                    "api_key_env": "OPENAI_API_KEY",
+                    "api_key_default": "sk-secret-should-not-be-written",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "api_key_default" in response.json()["message"]
+    assert "sk-secret-should-not-be-written" not in model_path.read_text(encoding="utf-8")
+
+
+def test_admin_config_rejects_skill_paths_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, _model_path, _tool_path, _local_env_path = _build_client(
+        monkeypatch, tmp_path
+    )
+    service.create_user(user_id="admin-1", roles=["admin"])
+    headers = _headers(settings, "admin-1")
+    original_skill_directories = settings.skill_directories
+    outside_workspace = tmp_path.parent / "outside-skills"
+
+    response = client.patch(
+        "/v1/admin/config/skills",
+        headers=headers,
+        json={
+            "reason": "reject unsafe path",
+            "skill_directories": [str(outside_workspace)],
+            "install_directory": "../outside-skills",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "workspace" in response.json()["message"]
+    assert settings.skill_directories == original_skill_directories
+
+
 def test_admin_config_updates_and_refreshes_skills(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

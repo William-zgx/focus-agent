@@ -158,16 +158,19 @@ def update_admin_skill_config(
         settings.skills_enabled = bool(payload.enabled)
         updates[_SKILLS_ENABLED_ENV] = settings.skills_enabled
     if payload.skill_directories is not None:
-        settings.skill_directories = _coerce_string_tuple(
+        settings.skill_directories = _coerce_skill_path_tuple(
+            settings,
             payload.skill_directories,
             field_name="skill_directories",
             allow_empty=False,
         )
         updates[_SKILL_DIRECTORIES_ENV] = _csv_env_value(settings.skill_directories)
     if payload.install_directory is not None:
-        install_directory = str(payload.install_directory).strip()
-        if not install_directory:
-            raise AdminConfigError("install_directory cannot be empty.")
+        install_directory = _validate_skill_path(
+            settings,
+            payload.install_directory,
+            field_name="install_directory",
+        )
         settings.skill_install_directory = install_directory
         updates[_SKILL_INSTALL_DIRECTORY_ENV] = install_directory
     if payload.sources_enabled is not None:
@@ -568,6 +571,37 @@ def _coerce_string_tuple(
     return tuple(dict.fromkeys(items))
 
 
+def _coerce_skill_path_tuple(
+    settings: Any,
+    values: list[str],
+    *,
+    field_name: str,
+    allow_empty: bool = True,
+) -> tuple[str, ...]:
+    items = [
+        _validate_skill_path(settings, value, field_name=field_name)
+        for value in values
+        if str(value or "").strip()
+    ]
+    if not allow_empty and not items:
+        raise AdminConfigError(f"{field_name} cannot be empty.")
+    return tuple(dict.fromkeys(items))
+
+
+def _validate_skill_path(settings: Any, value: str, *, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise AdminConfigError(f"{field_name} cannot be empty.")
+    path = Path(text).expanduser()
+    if not path.is_absolute() and any(part == ".." for part in path.parts):
+        raise AdminConfigError(f"{field_name} must stay inside the workspace.")
+    workspace_root = Path(getattr(settings, "workspace_root", ".") or ".").expanduser().resolve()
+    resolved = path.resolve() if path.is_absolute() else (workspace_root / path).resolve()
+    if resolved == workspace_root or workspace_root not in resolved.parents:
+        raise AdminConfigError(f"{field_name} must stay inside the workspace.")
+    return text
+
+
 def _csv_env_value(values: tuple[str, ...]) -> str:
     return ",".join(values)
 
@@ -719,6 +753,7 @@ def _provider_payloads(
     providers: list[ProviderConfig] = []
     for payload in payloads:
         existing = current_by_id.get(payload.id)
+        api_key_default = _provider_api_key_default(payload, existing)
         providers.append(
             ProviderConfig(
                 id=payload.id,
@@ -730,12 +765,23 @@ def _provider_payloads(
                 base_url_env=payload.base_url_env,
                 base_url_default=payload.base_url_default,
                 api_key_env=payload.api_key_env,
-                api_key_default=payload.api_key_default
-                if payload.api_key_default is not None
-                else (existing.api_key_default if existing is not None else None),
+                api_key_default=api_key_default,
             )
         )
     return providers
+
+
+def _provider_api_key_default(
+    payload: AdminModelProviderConfigPayload,
+    existing: ProviderConfig | None,
+) -> str | None:
+    if payload.api_key_default is None:
+        return existing.api_key_default if existing is not None else None
+    if str(payload.api_key_default).strip():
+        raise AdminConfigError(
+            "api_key_default cannot be persisted by Admin config; use api_key_env instead."
+        )
+    return None
 
 
 def _model_payloads(

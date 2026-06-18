@@ -77,6 +77,28 @@ def _is_cancel_cleanup_exception(exc: BaseException) -> bool:
     return isinstance(exc, ValueError) and "generator already executing" in str(exc)
 
 
+def _safe_failed_thread_state(
+    *,
+    chat: ChatService,
+    thread_id: str,
+    user_id: str,
+    context: Any,
+    branch_meta: Any,
+    trace_correlation: Any,
+) -> dict[str, Any] | None:
+    try:
+        return chat._response_payload(
+            thread_id=thread_id,
+            user_id=user_id,
+            context=context,
+            branch_meta=branch_meta,
+            interrupts=chat._safe_get_interrupts(thread_id),
+            trace_correlation=trace_correlation,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @router.post("/threads/{thread_id:path}/runs/stream")
 async def stream_harness_run(
     thread_id: str,
@@ -560,6 +582,14 @@ async def _produce_run_stream(
         )
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
+        failed_thread_state = _safe_failed_thread_state(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            context=context,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+        )
         _record_harness_turn_and_schedule(
             chat=chat,
             thread_id=thread_id,
@@ -580,6 +610,7 @@ async def _produce_run_stream(
             "run.failed",
             error=exc.__class__.__name__,
             message=str(exc),
+            **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
             **_task_outcome_event_payload(failed_values.get("task_outcome")),
         )
     finally:
@@ -690,6 +721,14 @@ async def _produce_branch_action_run_stream(
             return
         await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
         failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
+        failed_thread_state = _safe_failed_thread_state(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            context=context,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+        )
         _record_harness_turn_and_schedule(
             chat=chat,
             thread_id=thread_id,
@@ -710,6 +749,7 @@ async def _produce_branch_action_run_stream(
             "run.failed",
             error=exc.__class__.__name__,
             message=str(exc),
+            **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
             **_task_outcome_event_payload(failed_values.get("task_outcome")),
         )
     finally:

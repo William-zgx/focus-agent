@@ -3472,6 +3472,7 @@ def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(
             },
             ensure_ascii=False,
         )
+    web_search.metadata = {"max_calls_per_turn": 1}
 
     graph = build_graph(
         settings=Settings(workspace_root=str(tmp_path)),
@@ -3515,18 +3516,13 @@ def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(
     outcomes = result.value["tool_outcomes"]
     final_answer = result.value["messages"][-1].content
 
-    assert skill_calls == 2
+    assert skill_calls == 1
     assert web_calls == ["000063 fallback evidence"]
-    assert [item["status"] for item in outcomes] == ["failed", "failed", "succeeded"]
-    assert result.value["task_outcome"]["status"] == "degraded_answer"
+    assert [item["status"] for item in outcomes] == ["failed", "succeeded", "blocked"]
+    assert result.value["task_outcome"]["status"] == "blocked"
     assert result.value["task_outcome"]["repair_action_taken"] == "fallback_to_tool_results"
     assert "Skill 主路径没有拿到可验证的业务结果" in final_answer
-    assert "web-fallback-2" not in [
-        call["id"]
-        for message in result.value["messages"]
-        if isinstance(message, AIMessage)
-        for call in (getattr(message, "tool_calls", None) or [])
-    ]
+    assert not getattr(result.value["messages"][-1], "tool_calls", None)
 
 
 def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(monkeypatch):
@@ -4596,6 +4592,28 @@ class _SingleRoundToolModel:
         return AIMessage(content=self.final_answer)
 
 
+class _TwoRoundToolModel:
+    def __init__(self, *, first_tool_calls, second_tool_calls, final_answer: str = "done"):
+        self.first_tool_calls = first_tool_calls
+        self.second_tool_calls = second_tool_calls
+        self.final_answer = final_answer
+        self.invocations = 0
+
+    def bind_tools(self, _tools):
+        return self
+
+    def with_config(self, _config):
+        return self
+
+    def invoke(self, _prompt_messages):
+        self.invocations += 1
+        if self.invocations == 1:
+            return AIMessage(content="", tool_calls=self.first_tool_calls)
+        if self.invocations == 2:
+            return AIMessage(content="", tool_calls=self.second_tool_calls)
+        return AIMessage(content=self.final_answer)
+
+
 class _RecordingMemoryStore:
     def __init__(self):
         self.put_calls = []
@@ -4938,7 +4956,7 @@ def test_graph_tool_executor_retries_retryable_failure_once(monkeypatch):
     assert result.value["messages"][-1].content == "handled retry"
 
 
-def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
+def test_graph_tool_executor_allows_retry_for_retry_safe_approved_workspace_command_only():
     from focus_agent.engine.graph.tool_execution import _retryable_failed_inputs
 
     workspace_input = SimpleNamespace(
@@ -4948,6 +4966,7 @@ def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
             side_effect=True,
             side_effect_kind="workspace_command",
             requires_approval=True,
+            retry_safe=True,
         ),
     )
     skill_entrypoint_input = SimpleNamespace(
@@ -4957,6 +4976,7 @@ def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
             side_effect=True,
             side_effect_kind="workspace_command",
             requires_approval=True,
+            retry_safe=True,
         ),
     )
     patch_input = SimpleNamespace(
@@ -4966,6 +4986,7 @@ def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
             side_effect=True,
             side_effect_kind="workspace_write",
             requires_approval=True,
+            retry_safe=True,
         ),
     )
     outcomes = [
@@ -5002,6 +5023,54 @@ def test_graph_tool_executor_allows_retry_for_approved_workspace_command_only():
     )
 
     assert retry_inputs == [workspace_input, skill_entrypoint_input]
+
+
+def test_graph_tool_executor_does_not_retry_side_effect_without_retry_safe_metadata():
+    from focus_agent.engine.graph.tool_execution import _retryable_failed_inputs
+
+    workspace_input = SimpleNamespace(
+        tool_call_id="cmd-1",
+        tool_name="run_workspace_command",
+        runtime=SimpleNamespace(
+            side_effect=True,
+            side_effect_kind="workspace_command",
+            requires_approval=True,
+            retry_safe=False,
+        ),
+    )
+    retry_safe_input = SimpleNamespace(
+        tool_call_id="cmd-2",
+        tool_name="run_workspace_command",
+        runtime=SimpleNamespace(
+            side_effect=True,
+            side_effect_kind="workspace_command",
+            requires_approval=True,
+            retry_safe=True,
+        ),
+    )
+    outcomes = [
+        {
+            "tool_call_id": "cmd-1",
+            "status": "failed",
+            "retryable": True,
+            "attempt_index": 1,
+            "max_attempts": 2,
+        },
+        {
+            "tool_call_id": "cmd-2",
+            "status": "failed",
+            "retryable": True,
+            "attempt_index": 1,
+            "max_attempts": 2,
+        },
+    ]
+
+    retry_inputs = _retryable_failed_inputs(
+        outcomes,
+        execution_inputs_by_index={0: workspace_input, 1: retry_safe_input},
+    )
+
+    assert retry_inputs == [retry_safe_input]
 
 
 def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
@@ -5053,6 +5122,60 @@ def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
     assert lookup_calls == 1
     assert tool_messages[0].status == "success"
     assert tool_messages[1].status == "error"
+    assert denied_payload["runtime"]["max_calls_per_turn_exceeded"] is True
+
+
+def test_graph_tool_executor_enforces_max_calls_across_tool_rounds(monkeypatch):
+    lookup_calls = 0
+
+    @tool
+    def limited_lookup(query: str) -> str:
+        """Lookup with a per-turn call budget."""
+        nonlocal lookup_calls
+        lookup_calls += 1
+        return query
+
+    limited_lookup.metadata = {
+        "allowed_roles": ("executor",),
+        "intent_policies": ("execution",),
+        "max_calls_per_turn": 1,
+    }
+
+    fake_model = _TwoRoundToolModel(
+        first_tool_calls=[
+            {"id": "limited-1", "name": "limited_lookup", "args": {"query": "alpha"}},
+        ],
+        second_tool_calls=[
+            {"id": "limited-2", "name": "limited_lookup", "args": {"query": "beta"}},
+        ],
+        final_answer="handled limit",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(limited_lookup,)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="run limited lookups repeatedly")],
+            "selected_model": "openai:fake",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="limit-tool-rounds"),
+        version="v2",
+    )
+
+    tool_messages = [
+        message for message in result.value["messages"] if isinstance(message, ToolMessage)
+    ]
+    denied_payload = json.loads(tool_messages[-1].content)
+    assert lookup_calls == 1
+    assert tool_messages[0].status == "success"
+    assert tool_messages[-1].status == "error"
     assert denied_payload["runtime"]["max_calls_per_turn_exceeded"] is True
 
 

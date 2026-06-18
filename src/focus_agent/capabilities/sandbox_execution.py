@@ -144,6 +144,7 @@ class SandboxExecutionResult:
     workspace_mode: str = _WORKSPACE_MODE_COPY_DISCARD
     network_policy: str | None = None
     resource_limits: dict[str, Any] = field(default_factory=dict)
+    degraded_reason: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -171,6 +172,8 @@ class SandboxExecutionResult:
         }
         if self.fallback_reason:
             payload["fallback_reason"] = self.fallback_reason
+        if self.degraded_reason:
+            payload["degraded_reason"] = self.degraded_reason
         if self.skill_id:
             payload["skill_id"] = self.skill_id
         if self.entrypoint:
@@ -306,6 +309,10 @@ class DockerSandboxBackend:
         )
         for path in (sandbox_workspace, sandbox_output, sandbox_tmp, sandbox_cache):
             path.mkdir(parents=True, exist_ok=True)
+        _sync_workspace_snapshot(
+            source_root=request.workspace_root,
+            target_root=sandbox_workspace,
+        )
         runner_path = run_root / _RUNNER_FILENAME
         request_path = run_root / _REQUEST_FILENAME
         _write_runner(runner_path)
@@ -538,8 +545,10 @@ def _with_fallback_reason(
     payload = result.to_payload()
     payload["fallback_reason"] = fallback_reason
     payload["fallback_used"] = True
+    payload["degraded_reason"] = "local_host_execution"
     policy = dict(payload.get("policy") or {})
     policy["fallback_reason"] = fallback_reason
+    policy["degraded_reason"] = "local_host_execution"
     payload["policy"] = policy
     return SandboxExecutionResult(**payload)
 
@@ -567,6 +576,9 @@ def _result_from_parts(
     status = "timeout" if timed_out else ("completed" if exit_code == 0 else "failed")
     network_policy = str(policy.get("network") or ("host" if backend.startswith("local") else "none"))
     workspace_mode = str(policy.get("workspace") or request.workspace_mode)
+    degraded_reason = "local_host_execution" if backend.startswith("local") else None
+    if degraded_reason:
+        policy = {**policy, "degraded_reason": degraded_reason}
     memory_mb = int(request.memory_mb or _DEFAULT_MEMORY_MB)
     resource_limits: dict[str, Any] = {}
     if backend == "docker":
@@ -598,6 +610,7 @@ def _result_from_parts(
         workspace_mode=workspace_mode,
         network_policy=network_policy,
         resource_limits=resource_limits,
+        degraded_reason=degraded_reason,
     )
 
 
@@ -612,6 +625,48 @@ def _write_request(path: Path, request: SandboxExecutionRequest) -> None:
         "sandbox_id": request.sandbox_id,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _sync_workspace_snapshot(*, source_root: Path, target_root: Path) -> None:
+    target_root.mkdir(parents=True, exist_ok=True)
+    for child in source_root.iterdir():
+        if child.name in _COPY_SKIP_NAMES or child.name == ".git":
+            continue
+        target = target_root / child.name
+        if child.name == ".focus_agent":
+            skills = child / "skills"
+            if skills.is_dir():
+                skills_target = target / "skills"
+                if skills_target.exists() and not skills_target.is_dir():
+                    skills_target.unlink()
+                skills_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(
+                    skills,
+                    skills_target,
+                    symlinks=False,
+                    ignore=_copytree_ignore,
+                    dirs_exist_ok=True,
+                )
+            continue
+        if child.is_dir():
+            if target.exists() and not target.is_dir():
+                target.unlink()
+            shutil.copytree(
+                child,
+                target,
+                symlinks=False,
+                ignore=_copytree_ignore,
+                dirs_exist_ok=True,
+            )
+        elif child.is_file():
+            if target.exists() and target.is_dir():
+                shutil.rmtree(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(child, target)
+
+
+def _copytree_ignore(_dir: str, names: list[str]) -> set[str]:
+    return {name for name in names if name in _COPY_SKIP_NAMES or name == ".focus_agent"}
 
 
 def _sandbox_paths(

@@ -273,6 +273,11 @@ class AgentTeamMergeMixin:
                     }
                 )
             )
+        if next_status in {AgentTeamSessionStatus.COMPLETED, AgentTeamSessionStatus.CANCELLED}:
+            try:
+                self.workspace_service.cleanup_workspace(session_id=session_id, force=True)
+            except Exception:  # noqa: BLE001
+                pass
         return decision
 
     def create_merge_review(

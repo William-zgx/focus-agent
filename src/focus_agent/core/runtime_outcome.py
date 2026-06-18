@@ -60,6 +60,8 @@ def build_tool_outcomes_from_messages(
     messages: Sequence[Any],
     *,
     prior_outcomes: Sequence[Mapping[str, Any]] = (),
+    turn_id: str | None = None,
+    human_turn_index: int | None = None,
 ) -> list[dict[str, Any]]:
     """Derive authoritative ToolOutcome records from AI tool calls and ToolMessages."""
 
@@ -81,6 +83,8 @@ def build_tool_outcomes_from_messages(
             message,
             call_names_by_id=call_names_by_id,
             prior_outcomes=[*prior_outcomes, *outcomes],
+            turn_id=turn_id,
+            human_turn_index=human_turn_index,
         )
         outcomes.append(outcome)
     return outcomes
@@ -91,6 +95,8 @@ def tool_outcome_from_message(
     *,
     call_names_by_id: Mapping[str, str] | None = None,
     prior_outcomes: Sequence[Mapping[str, Any]] = (),
+    turn_id: str | None = None,
+    human_turn_index: int | None = None,
 ) -> dict[str, Any]:
     tool_call_id = str(getattr(message, "tool_call_id", "") or "").strip()
     artifact = getattr(message, "artifact", None)
@@ -111,6 +117,10 @@ def tool_outcome_from_message(
     )
     fallback_group = _string_or_none(runtime_info.get("fallback_group"))
     fallback_used = bool(runtime_info.get("fallback_used") or fallback_group)
+    resolved_turn_id = _string_or_none(turn_id) or _string_or_none(runtime_info.get("turn_id")) or ""
+    resolved_human_turn_index = _int_or_none(human_turn_index)
+    if resolved_human_turn_index is None:
+        resolved_human_turn_index = _int_or_none(runtime_info.get("human_turn_index"))
     recovery_of_tool_call_id = ""
     prior_failed = _latest_prior_failure(
         prior_outcomes,
@@ -130,17 +140,27 @@ def tool_outcome_from_message(
     )
     max_attempts = 2 if retryable or status in {"failed", "recovered"} else max(1, attempt_index)
     outcome_id = f"{tool_call_id or tool_name}:{attempt_index}"
+    degraded_reason = _degraded_tool_reason(
+        status=status,
+        fallback_used=fallback_used,
+        runtime_info=runtime_info,
+        error_message=error_message,
+    )
     return {
         "outcome_id": outcome_id,
         "tool_call_id": tool_call_id,
         "tool_name": tool_name,
         "status": status,
+        "turn_id": resolved_turn_id,
+        "human_turn_index": resolved_human_turn_index,
         "attempt_index": attempt_index,
         "max_attempts": max_attempts,
         "retryable": retryable,
         "fallback_used": fallback_used,
         "fallback_group": fallback_group,
         "recovery_of_tool_call_id": recovery_of_tool_call_id,
+        "contract_satisfied": _contract_satisfied(status=status, fallback_used=fallback_used),
+        "degraded_reason": degraded_reason,
         "error_category": error_category,
         "error_message": error_message,
         "evidence_role": _evidence_role(tool_name=tool_name, status=status),
@@ -158,13 +178,23 @@ def build_task_outcome(
     tool_outcomes: Sequence[Mapping[str, Any]] = (),
     final_answer: str = "",
     repair_action_taken: str = "",
+    current_turn_id: str | None = None,
+    current_human_turn_index: int | None = None,
 ) -> dict[str, Any]:
     contract = dict(execution_contract or {})
     verification = dict(answer_verification or {})
     policy = str(contract.get("policy") or "direct_answer").strip() or "direct_answer"
     contract_status = str(contract.get("status") or "not_required")
     verification_status = str(verification.get("status") or "not_required")
-    failed_outcomes = _unresolved_failed_outcomes(tool_outcomes)
+    current_tool_outcomes = _current_turn_tool_outcomes(
+        tool_outcomes,
+        current_turn_id=current_turn_id,
+        current_human_turn_index=current_human_turn_index,
+    )
+    failed_outcomes = _unresolved_failed_outcomes(current_tool_outcomes)
+    blocked_outcomes = [
+        item for item in failed_outcomes if str(item.get("status") or "") == "blocked"
+    ]
     evidence_count = _evidence_count(contract=contract, evidence_ledger=evidence_ledger)
     final_answer_text = str(final_answer or "").strip()
     repair_action = repair_action_taken or str(verification.get("repair_action_taken") or "")
@@ -174,7 +204,7 @@ def build_task_outcome(
         failed_outcomes=failed_outcomes,
     )
 
-    if contract_status == "blocked" or verification_status == "blocked":
+    if contract_status == "blocked" or verification_status == "blocked" or blocked_outcomes:
         status: TaskOutcomeStatus = "blocked"
         answer_basis = "blocked"
     elif not final_answer_text:
@@ -208,7 +238,7 @@ def build_task_outcome(
         "evidence_count": evidence_count,
         "tool_outcome_ids": [
             str(item.get("outcome_id") or item.get("tool_call_id") or "")
-            for item in tool_outcomes
+            for item in current_tool_outcomes
             if str(item.get("outcome_id") or item.get("tool_call_id") or "")
         ],
         "warnings": warnings,
@@ -460,6 +490,54 @@ def _unresolved_failed_outcomes(
     ]
 
 
+def _current_turn_tool_outcomes(
+    tool_outcomes: Sequence[Mapping[str, Any]],
+    *,
+    current_turn_id: str | None,
+    current_human_turn_index: int | None,
+) -> list[Mapping[str, Any]]:
+    if not tool_outcomes:
+        return []
+    turn_id = str(current_turn_id or "").strip()
+    if turn_id:
+        scoped = [item for item in tool_outcomes if str(item.get("turn_id") or "") == turn_id]
+        return scoped
+    turn_index = _int_or_none(current_human_turn_index)
+    if turn_index is not None:
+        scoped = [
+            item
+            for item in tool_outcomes
+            if _int_or_none(item.get("human_turn_index")) == turn_index
+        ]
+        return scoped
+    return [dict(item) for item in tool_outcomes]
+
+
+def _contract_satisfied(*, status: str, fallback_used: bool) -> bool:
+    return status in {"succeeded", "recovered"} and not fallback_used
+
+
+def _degraded_tool_reason(
+    *,
+    status: str,
+    fallback_used: bool,
+    runtime_info: Mapping[str, Any],
+    error_message: str,
+) -> str:
+    for key in ("degraded_reason", "fallback_reason", "error", "reason"):
+        value = _string_or_none(runtime_info.get(key))
+        if value:
+            return value
+    if fallback_used:
+        backend = _string_or_none(runtime_info.get("sandbox_backend"))
+        if backend and backend.startswith("local"):
+            return "local_host_execution"
+        return "fallback_used"
+    if status in {"failed", "blocked"}:
+        return error_message
+    return ""
+
+
 def _degradation_reason(
     *,
     status: TaskOutcomeStatus,
@@ -512,6 +590,15 @@ def _float_or_none(value: Any) -> float | None:
         return None
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return None
 

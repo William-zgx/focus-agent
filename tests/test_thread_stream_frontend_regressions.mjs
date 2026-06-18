@@ -1155,14 +1155,86 @@ test("stream reducer maintains processing steps alongside canonical run fields",
       thread_id: "thread-1",
       error: "boom",
       message: "failed",
+      thread_state: {
+        task_outcome: { status: "blocked", answer_basis: "blocked" },
+      },
     },
   });
   const failedReasoningStep = state.processingSteps.find((step) => step.kind === "reasoning");
   assert.equal(state.activePhase, "failed");
   assert.equal(state.failed.error, "boom");
+  assert.equal(state.taskOutcome.status, "blocked");
+  assert.equal(state.runtimeOutcome.status, "blocked");
   assert.equal(state.isClosed, true);
   assert.equal(failedReasoningStep.status, "completed");
   assert.equal(toolStep.status, "completed");
+});
+
+test("SDK stream validator accepts canonical backend lifecycle events", () => {
+  const {
+    isFocusAgentEventName,
+    validateFocusAgentEvent,
+  } = loadModule("frontend-sdk/src/transport.validation.ts");
+
+  for (const eventName of [
+    "run.rollback.started",
+    "run.rollback.succeeded",
+    "run.rollback.failed",
+    "server_shutdown",
+  ]) {
+    assert.equal(isFocusAgentEventName(eventName), true, eventName);
+    assert.equal(
+      validateFocusAgentEvent({
+        event: eventName,
+        data: eventName === "run.rollback.failed"
+          ? { error: "rollback failed", message: "failed" }
+          : {},
+      }),
+      true,
+      eventName,
+    );
+  }
+});
+
+test("stream reducer keeps tool failure history after recovered result", () => {
+  const { createInitialStreamState, reduceStreamEvent } = loadSdkStreamFunctions();
+
+  let state = reduceStreamEvent(createInitialStreamState(), {
+    event: "tool.error",
+    data: {
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      message: "temporary timeout",
+      tool_outcome: {
+        outcome_id: "call-1:1",
+        tool_call_id: "call-1",
+        status: "failed",
+        error_message: "temporary timeout",
+      },
+    },
+  });
+  state = reduceStreamEvent(state, {
+    event: "tool.result",
+    data: {
+      thread_id: "thread-1",
+      tool_call_id: "call-1",
+      tool_name: "web_search",
+      output: "ok",
+      tool_outcome: {
+        outcome_id: "call-1:2",
+        tool_call_id: "call-1",
+        status: "recovered",
+      },
+    },
+  });
+
+  const step = state.processingSteps.find((item) => item.kind === "tool" && item.id === "call-1");
+  assert.equal(step.status, "completed");
+  assert.equal(step.toolOutcome.status, "recovered");
+  assert.equal(step.toolOutcomeHistory.length, 2);
+  assert.equal(step.toolOutcomeHistory[0].status, "failed");
+  assert.equal(step.toolOutcomeHistory[1].status, "recovered");
 });
 
 test("SDK stream preserves canonical v2 events without legacy alias rewriting", async () => {

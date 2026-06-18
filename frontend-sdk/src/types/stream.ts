@@ -17,6 +17,9 @@ export type FocusAgentEventName =
   | "run.completed"
   | "run.failed"
   | "run.interrupt"
+  | "run.rollback.started"
+  | "run.rollback.succeeded"
+  | "run.rollback.failed"
   | "run.closed"
   | "server_shutdown"
   | "heartbeat"
@@ -146,6 +149,15 @@ export interface RunInterruptPayload extends FocusAgentBaseEventPayload {
   message?: string;
 }
 
+export interface RunRollbackPayload extends FocusAgentBaseEventPayload {
+  run_id?: string;
+  turn_id?: string;
+  sequence?: number;
+  source_node?: string;
+  error?: string;
+  message?: string;
+}
+
 export interface RunClosedPayload extends FocusAgentBaseEventPayload {
   run_id?: string;
   turn_id?: string;
@@ -179,6 +191,9 @@ export interface FocusAgentEventPayloadMap {
   "run.completed": RunCompletedPayload;
   "run.failed": RunFailedPayload;
   "run.interrupt": RunInterruptPayload;
+  "run.rollback.started": RunRollbackPayload;
+  "run.rollback.succeeded": RunRollbackPayload;
+  "run.rollback.failed": RunRollbackPayload;
   "run.closed": RunClosedPayload;
   "server_shutdown": ServerShutdownPayload;
   "heartbeat": RunMetadataPayload;
@@ -211,6 +226,7 @@ export interface FocusAgentStreamStepBase {
   eventName?: FocusAgentEventName;
   runtime?: Record<string, unknown>;
   toolOutcome?: FocusAgentRuntimeOutcome | null;
+  toolOutcomeHistory?: FocusAgentRuntimeOutcome[];
 }
 
 export interface FocusAgentReasoningStreamStep extends FocusAgentStreamStepBase {

@@ -178,6 +178,18 @@ function upsertToolLifecycleStep(
 		compactText(event.data.message) ??
 		compactText(result) ??
     compactText(event.data.error);
+	const existingHistory = existing?.toolOutcomeHistory ?? [];
+	const toolOutcomeHistory = toolOutcome
+		? [
+				...existingHistory.filter(
+					(item) =>
+						!item.outcome_id ||
+						!toolOutcome.outcome_id ||
+						item.outcome_id !== toolOutcome.outcome_id,
+				),
+				toolOutcome,
+			]
+		: existingHistory;
   const argsText =
     event.event === "tool.requested"
       ? compactText(event.data.args) ?? existing?.argsText
@@ -196,6 +208,7 @@ function upsertToolLifecycleStep(
 		eventName: event.event,
 		runtime: runtime ?? existing?.runtime,
 		toolOutcome: toolOutcome ?? existing?.toolOutcome,
+		toolOutcomeHistory,
 	});
 }
 
@@ -341,7 +354,9 @@ export function reduceStreamEvent(
 		const threadState = threadStateValue(data);
 		return (
 			runtimeOutcomeValue(data.runtime_outcome) ??
-			runtimeOutcomeValue(threadState?.runtime_outcome)
+			runtimeOutcomeValue(threadState?.runtime_outcome) ??
+			runtimeOutcomeValue(data.task_outcome) ??
+			runtimeOutcomeValue(threadState?.task_outcome)
 		);
 	};
 
@@ -352,7 +367,7 @@ export function reduceStreamEvent(
 	case "message.completed": {
 		const updated = applyVisibleTextCompleted(state, event.data.content);
 		const taskOutcome = runtimeOutcomeValue(event.data.task_outcome);
-		const runtimeOutcome = runtimeOutcomeValue(event.data.runtime_outcome);
+		const runtimeOutcome = runtimeOutcomeValue(event.data.runtime_outcome) ?? taskOutcome;
 		return {
 			...updated,
 			taskOutcome: taskOutcome ?? updated.taskOutcome,
