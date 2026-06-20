@@ -341,7 +341,9 @@ export function executeLocalAppTool(
 		message = `${results.length} local skills matched.`;
 	} else if (name === "skill_view") {
 		const requested = stringValue(args.name) || stringValue(args.skill_id);
-		const skill = requested ? resolveLocalSkill(requested) : ANDROID_LOCAL_SKILLS[0];
+		const skill = requested
+			? resolveLocalSkill(requested)
+			: ANDROID_LOCAL_SKILLS[0];
 		output = skill
 			? {
 					success: true,

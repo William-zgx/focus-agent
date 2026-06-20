@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-05-16
+Updated: 2026-06-20
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -50,6 +50,7 @@ Typical interpretation:
 
 - `/healthz` is `200` but `/readyz` is `503`: the process is alive but one or more runtime checks are degraded.
 - `/readyz` is `200` and `trajectory_recorder.ready=false`: runtime is serving, but trajectory persistence is not available.
+- `/readyz` includes `background_jobs.ready=false`: local or production job queues have pending, retrying, or dead-lettered work. Treat release and smoke evidence as degraded until the queue drains or the pending jobs are explained.
 
 Alert guidance should use the existing `/metrics` scrape. Start with these signals before adding custom exporters:
 

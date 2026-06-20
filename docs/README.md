@@ -1,6 +1,6 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-06-18
+更新时间：2026-06-20
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight and describe the current platform-scale positioning; deeper guides live here and are grouped by use case.
 
@@ -17,6 +17,7 @@ flowchart LR
     Understand --> Architecture["Architecture"]
     Understand --> Roadmap["Roadmap"]
     Develop --> DevGuide["Development Guide"]
+    Develop --> Validation["Validation Runbook"]
     Develop --> EvalGuide["Agent Evaluation"]
     Develop --> SDK["Frontend SDK"]
     Develop --> Android["Android App"]
@@ -44,6 +45,7 @@ flowchart LR
 - [../README.md](../README.md) / [../README.zh-CN.md](../README.zh-CN.md)：项目介绍、最短启动路径和核心入口。
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：本地初始化、repo-local PostgreSQL、Vite 开发模式和本地鉴权。
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：日常开发命令、验证矩阵、真实浏览器 smoke 和常见工作流。
+- [validation-runbook.md](validation-runbook.md)：跨运行时、沙箱、Skill、SDK、Web、Agent Team、Observability 和 release-health 的全面本地验证口径。
 - [agent-evaluation.md](agent-evaluation.md)：Agent / model eval 分层、case taxonomy、judges、reports、CI 策略和多 Agent 执行 ownership。
 - [android.md](android.md)：Capacitor Android 包、App 内本地 runtime、移动端能力边界和 Android smoke。
 

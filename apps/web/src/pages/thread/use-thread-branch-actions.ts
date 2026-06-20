@@ -1,7 +1,7 @@
-import {
-	type FocusAgentBranchActionExecuteResponse,
-	type FocusAgentBranchActionNavigation,
-	type FocusAgentBranchActionProposal,
+import type {
+	FocusAgentBranchActionExecuteResponse,
+	FocusAgentBranchActionNavigation,
+	FocusAgentBranchActionProposal,
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";

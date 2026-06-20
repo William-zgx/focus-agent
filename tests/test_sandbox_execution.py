@@ -10,7 +10,7 @@ from focus_agent.capabilities import sandbox_execution
 from focus_agent.capabilities.sandbox_execution import (
     DockerSandboxBackend,
     LocalSubprocessSandboxBackend,
-    SandboxBackendUnavailable,
+    SandboxBackendUnavailableError,
     SandboxExecutionRequest,
     SandboxExecutionResult,
     SandboxExecutionService,
@@ -413,7 +413,7 @@ def test_sandbox_service_falls_back_to_local_backend_with_visible_reason(tmp_pat
 
         def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
             del request
-            raise SandboxBackendUnavailable("docker is not available")
+            raise SandboxBackendUnavailableError("docker is not available")
 
     service = SandboxExecutionService(
         primary_backend=_UnavailableBackend(),
@@ -541,7 +541,7 @@ def test_docker_backend_missing_image_error_includes_preflight_command(tmp_path,
     )
     backend = DockerSandboxBackend(image="missing-sandbox:latest")
 
-    with pytest.raises(SandboxBackendUnavailable) as exc_info:
+    with pytest.raises(SandboxBackendUnavailableError) as exc_info:
         backend.run(
             SandboxExecutionRequest(
                 workspace_root=tmp_path,

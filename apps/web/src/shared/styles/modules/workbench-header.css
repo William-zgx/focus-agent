@@ -130,6 +130,16 @@
 	overflow: visible;
 }
 
+.fa-chat-header-primary-actions,
+.fa-chat-header-nav {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	flex-wrap: nowrap;
+	min-width: max-content;
+}
+
 .fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)
 	.fa-new-branch-button,
 .fa-chat-header-actions:has(.fa-focus-branches-button.is-renaming)
@@ -159,16 +169,6 @@
 
 .fa-chat-header-actions::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border) 76%);
-}
-
-.fa-chat-header-primary-actions,
-.fa-chat-header-nav {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 10px;
-	flex-wrap: nowrap;
-	min-width: max-content;
 }
 
 .fa-chat-toolbar-pill,

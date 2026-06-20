@@ -86,6 +86,12 @@ def resolve_chrome_path(explicit: str | None) -> str:
     raise RuntimeError("Google Chrome was not found. Pass --chrome-path or set CHROME_PATH.")
 
 
+def chrome_runtime_flags() -> list[str]:
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        return ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
+    return []
+
+
 def pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -449,6 +455,7 @@ def run_ui_smoke_test(
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-search-engine-choice-screen",
+            *chrome_runtime_flags(),
             "--new-window",
             "about:blank",
         ],

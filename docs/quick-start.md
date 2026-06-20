@@ -271,6 +271,7 @@ make frontend-android-runtime-smoke
 ## 10. One-Command Local Modes
 
 - `make serve` / `make serve-dev`: frontend Vite dev server + backend API with reload
+- `API_RELOAD=0 make serve-dev`: same dev stack without backend reload for broad browser validation
 - `make serve-prod`: build the static frontend bundle first, then start only the backend without reload
 - `make dev`: backend only with `API_RELOAD=1`
 
@@ -327,6 +328,23 @@ Use a real, tool-using prompt when changing streaming, transport validation, or 
 
 For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`; `http://127.0.0.1:5173/app` may be handled differently by the dev server. The smoke script launches Chrome with a temporary user data directory, which avoids stale localStorage, extensions, and personal-profile auth state. If a manual browser opens a blank login page while the smoke script passes, retry with a clean profile or clear site data for `127.0.0.1` before treating it as an app regression.
 
+On SSH-only machines without a display server, set `CHROME_PATH` to a headless
+Chromium wrapper before running browser smoke:
+
+```bash
+cat > /tmp/focus-agent-chromium-headless <<'SH'
+#!/usr/bin/env bash
+exec /usr/bin/chromium --headless --no-sandbox "$@"
+SH
+chmod +x /tmp/focus-agent-chromium-headless
+export CHROME_PATH=/tmp/focus-agent-chromium-headless
+```
+
+After smoke completes, check `/readyz` as well as `/healthz`. A healthy process
+with degraded readiness, for example pending `background_jobs`, is not a clean
+end-to-end pass. For the complete local evidence path, see
+[Validation Runbook](validation-runbook.md).
+
 ## 13. Next Docs
 
 - [Memory System v2](memory-system-v2.md)
@@ -337,6 +355,7 @@ For the Vite dev server, keep the trailing slash in `http://127.0.0.1:5173/app/`
 - [Admin Console](admin-console.md)
 - [Android App](android.md)
 - [Development Guide](development.md)
+- [Validation Runbook](validation-runbook.md)
 - [Docker Deployment](docker-deployment.md)
 - [Sandbox Execution](sandbox-execution.md)
 - [Architecture](architecture.md)

@@ -95,8 +95,8 @@ export function findTaskOutcome(
 	return (
 		asRuntimeOutcome(turn.runtime_outcome) ??
 		(isRecord(turn.plan_meta)
-			? asRuntimeOutcome(turn.plan_meta.runtime_outcome) ??
-				asRuntimeOutcome(turn.plan_meta.agent_runtime_outcome)
+			? (asRuntimeOutcome(turn.plan_meta.runtime_outcome) ??
+				asRuntimeOutcome(turn.plan_meta.agent_runtime_outcome))
 			: null)
 	);
 }

@@ -83,7 +83,8 @@ export function useThreadTranscriptViewModel({
 			streamState?.toolEvents?.length ||
 			streamState?.failed,
 	);
-	const lastTranscriptMessage = transcriptMessages[transcriptMessages.length - 1];
+	const lastTranscriptMessage =
+		transcriptMessages[transcriptMessages.length - 1];
 	const streamToolCallCount = streamState?.toolCalls?.length ?? 0;
 	const streamToolEventCount = streamState?.toolEvents?.length ?? 0;
 

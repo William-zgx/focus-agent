@@ -58,6 +58,7 @@ make ci
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
+make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
@@ -73,6 +74,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ### 本地全链路开发
 
 - `make serve` / `make serve-dev`：同时启动前端 Vite dev server 和后端 API
+- `API_RELOAD=0 make serve-dev`：以同一套 dev 栈启动，但关闭后端 reload，适合完整浏览器验证
 - `make serve-prod`：先构建前端，再以非 reload 模式只启动后端
 
 ### 只跑前端
@@ -95,6 +97,8 @@ make ci
 ```bash
 make format-check
 ```
+
+如果是 runtime、sandbox、Skill、SDK、Web、Agent Team 或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
 
 2. 如果改动影响后端路由、stream 事件或 Web App 对 frontend SDK 的使用：
 
@@ -162,6 +166,7 @@ pnpm web:check
 make contract-check
 make web-check
 make web-build
+make ui-smoke-agent-team-adoption
 ```
 
 Agent Team 的 fake execution 只用于验证流程，必须展示为 `final_answer_status="placeholder"` 和 `request_changes`，不能被当成可交付最终答案。浏览器检查应确认默认 UI 不显示 raw fake run text，output id / artifact id 只出现在高级详情里。
@@ -180,6 +185,19 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 浏览器 smoke 会等待流式回复结束且文本稳定后再读取结果。涉及复杂工具调用时不要只用默认 OK 消息，应增加真实问题，以捕捉 `tool.call.delta` payload 等 transport 校验回归。
 
 `scripts/ui_smoke_test.py` 不会启动 API 或 Vite dev server。按默认参数运行前，请先确认 `http://127.0.0.1:8000/healthz` 和 `http://127.0.0.1:5173/app/` 已可访问。如果指向后端托管的静态 app，请先跑 `make web-build`。
+
+在只通过 SSH 连接、没有图形显示环境的机器上，先给 Playwright/Chrome 调用配置一个 headless wrapper：
+
+```bash
+cat > /tmp/focus-agent-chromium-headless <<'SH'
+#!/usr/bin/env bash
+exec /usr/bin/chromium --headless --no-sandbox "$@"
+SH
+chmod +x /tmp/focus-agent-chromium-headless
+export CHROME_PATH=/tmp/focus-agent-chromium-headless
+```
+
+长时间 browser smoke 或 Agent Team smoke 之后，要重新检查 `/readyz`，不要只看 `/healthz`。`background_jobs.ready=false` 表示进程还活着，但本地队列没有清空；在理解或清理 pending work 前，这次验证应记录为 degraded。
 
 如果改动影响 sandbox execution，请先构建或刷新标准执行镜像，再跑依赖 Docker 执行的浏览器或 API smoke：
 

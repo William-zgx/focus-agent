@@ -168,6 +168,11 @@ make frontend-qa
 
 If your change affects user-facing behavior, streaming events, auth, storage, or SDK types, include the relevant tests and update documentation in the same pull request.
 
+For broad runtime, sandbox, Skill, Agent Team, observability, or release-readiness
+work, follow [docs/validation-runbook.md](docs/validation-runbook.md). It
+combines source checks, OpenAPI/SDK drift guards, real-browser smoke, source
+smoke, and `/readyz` evidence into one local validation path.
+
 ## Contributing and Support
 
 Contributions are welcome when they keep the runtime understandable, tested, and easy to adapt. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup, pull request expectations, and issue-reporting guidance.
@@ -179,6 +184,7 @@ Please use the GitHub issue templates for bugs, feature requests, and documentat
 - [Docs Index](docs/README.md)
 - [Quick Start](docs/quick-start.md)
 - [Development Guide](docs/development.md)
+- [Validation Runbook](docs/validation-runbook.md)
 - [Architecture and module map](docs/architecture.md)
 - [Android App](docs/android.md)
 - [Auth / Access](docs/auth-access.md)

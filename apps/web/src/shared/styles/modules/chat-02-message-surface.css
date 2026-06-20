@@ -210,7 +210,6 @@
 	min-height: 0;
 	height: 100%;
 	padding: 0;
-	overflow: hidden;
 	/* The inner history owns scrolling; keep this shell from being scrolled by scrollIntoView. */
 	overflow: clip;
 	display: flex;

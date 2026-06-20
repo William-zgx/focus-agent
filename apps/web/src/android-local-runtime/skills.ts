@@ -43,7 +43,9 @@ export function localSkillSearchTerms(skill: SearchableLocalSkill): string[] {
 	]);
 }
 
-export function localSkillActivationTerms(skill: SearchableLocalSkill): string[] {
+export function localSkillActivationTerms(
+	skill: SearchableLocalSkill,
+): string[] {
 	return uniqueStrings([
 		skill.skill_id,
 		skill.name,

@@ -37,6 +37,7 @@ make ci
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
+make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
@@ -52,6 +53,7 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ### Full local development
 
 - `make serve` / `make serve-dev`: run frontend Vite dev server and backend API together
+- `API_RELOAD=0 make serve-dev`: run the same dev stack without backend reload for broad browser validation
 - `make serve-prod`: build the frontend bundle first, then run only the backend without reload
 
 ### Frontend only
@@ -74,6 +76,12 @@ make ci
 ```bash
 make format-check
 ```
+
+For broad runtime, sandbox, Skill, SDK, Web, Agent Team, or observability
+changes, use the full evidence path in [validation-runbook.md](validation-runbook.md).
+That runbook layers `make ci`, OpenAPI/SDK drift checks, source-level smoke,
+real-browser smoke, and `/readyz` verification so local validation has one
+shared pass/fail vocabulary.
 
 2. If backend routes, stream events, or frontend SDK usage changed:
 
@@ -153,6 +161,7 @@ For live-web changes, use a relative-time prompt such as "today", "tomorrow", or
 make contract-check
 make web-check
 make web-build
+make ui-smoke-agent-team-adoption
 ```
 
 Fake Agent Team execution is a workflow-only validation mode. It must surface as `final_answer_status="placeholder"` and `request_changes`, not as a deliverable answer. Browser checks should confirm the default UI hides raw fake run text and keeps output ids/artifact ids inside Advanced details.
@@ -173,6 +182,23 @@ The browser smoke waits for the assistant response to stabilize after streaming 
 `scripts/ui_smoke_test.py` does not start the API or Vite dev server. Before running it with defaults, make sure `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/` are already reachable. If you point it at the backend-served static app, run `make web-build` first.
 
 When testing the Vite app, keep the `/app/` trailing slash. The dev server may return different results for `/app` versus `/app/`, while the backend-served static app normalizes through FastAPI. The smoke uses a temporary Chrome profile; if a manual Chrome profile shows a blank login page or stale auth state while the smoke passes, clear site data or use a clean profile before filing a UI regression.
+
+On SSH-only machines without a display server, point Playwright/Chrome callers
+at a small headless wrapper before running browser smoke:
+
+```bash
+cat > /tmp/focus-agent-chromium-headless <<'SH'
+#!/usr/bin/env bash
+exec /usr/bin/chromium --headless --no-sandbox "$@"
+SH
+chmod +x /tmp/focus-agent-chromium-headless
+export CHROME_PATH=/tmp/focus-agent-chromium-headless
+```
+
+After long browser or Agent Team smoke runs, re-check `/readyz`, not only
+`/healthz`. `background_jobs.ready=false` means the process is alive but local
+queues have not drained, and the run should be recorded as degraded until the
+queue is cleared or the pending work is understood.
 
 If sandbox execution changed, build or refresh the standard execution image before browser or API smoke that expects Docker execution:
 

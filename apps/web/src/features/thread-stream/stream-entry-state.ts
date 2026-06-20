@@ -26,7 +26,9 @@ export interface SendMessageResult {
 }
 
 function hasOwn(object: object, key: PropertyKey): boolean {
-	return Object.prototype.hasOwnProperty.call(object, key);
+	return Reflect.ownKeys(object).includes(
+		typeof key === "number" ? String(key) : key,
+	);
 }
 
 export function resolveThinkingModeForRequest(

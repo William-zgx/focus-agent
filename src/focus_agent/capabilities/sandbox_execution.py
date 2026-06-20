@@ -58,7 +58,7 @@ _SENSITIVE_ENV_NAME_MARKERS = (
 )
 
 
-class SandboxBackendUnavailable(RuntimeError):
+class SandboxBackendUnavailableError(RuntimeError):
     pass
 
 
@@ -201,7 +201,7 @@ class SandboxExecutionService:
     def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
         try:
             return self.primary_backend.run(request)
-        except SandboxBackendUnavailable as exc:
+        except SandboxBackendUnavailableError as exc:
             if not self.allow_fallback or self.fallback_backend is None:
                 raise
             result = self.fallback_backend.run(request)
@@ -296,7 +296,7 @@ class DockerSandboxBackend:
             docker_binary=self.docker_binary,
             image=self.image,
         ):
-            raise SandboxBackendUnavailable(_docker_image_unavailable_message(self.image))
+            raise SandboxBackendUnavailableError(_docker_image_unavailable_message(self.image))
         run_id = self._run_id_factory()
         sandbox_id = _sandbox_id_for_request(request, run_id=run_id)
         request = replace(request, sandbox_id=sandbox_id)
@@ -357,7 +357,7 @@ class DockerSandboxBackend:
                     timeout=request.timeout_seconds + 10,
                 )
         except FileNotFoundError as exc:
-            raise SandboxBackendUnavailable("docker is not available") from exc
+            raise SandboxBackendUnavailableError("docker is not available") from exc
         except subprocess.TimeoutExpired as exc:
             _force_remove_container(self.docker_binary, container_name)
             duration_ms = round((time.monotonic() - started) * 1000, 3)
@@ -376,7 +376,7 @@ class DockerSandboxBackend:
         if completed.returncode == 125 and _looks_like_docker_unavailable(
             completed.stderr or completed.stdout
         ):
-            raise SandboxBackendUnavailable((completed.stderr or completed.stdout).strip())
+            raise SandboxBackendUnavailableError((completed.stderr or completed.stdout).strip())
 
         duration_ms = round((time.monotonic() - started) * 1000, 3)
         result_file = sandbox_output / _RESULT_FILENAME
@@ -569,7 +569,7 @@ class DockerSandboxBackend:
         if start.returncode != 0:
             output = (start.stderr or start.stdout or "").strip()
             if _looks_like_docker_unavailable(output) or start.returncode == 125:
-                raise SandboxBackendUnavailable(output or "docker container start failed")
+                raise SandboxBackendUnavailableError(output or "docker container start failed")
             raise RuntimeError(output or "docker container start failed")
 
     def _thread_container_command(
@@ -1226,7 +1226,7 @@ def _run_outputs(
 __all__ = [
     "DockerSandboxBackend",
     "LocalSubprocessSandboxBackend",
-    "SandboxBackendUnavailable",
+    "SandboxBackendUnavailableError",
     "SandboxExecutionRequest",
     "SandboxExecutionResult",
     "SandboxExecutionService",

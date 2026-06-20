@@ -243,6 +243,7 @@ make frontend-android-runtime-smoke
 ## 9. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
+- `API_RELOAD=0 make serve-dev`：使用同一套 dev 栈但关闭后端 reload，适合完整浏览器验证
 - `make serve-prod`：先构建静态前端，再以非 reload 模式启动后端
 - `make dev`：只启动后端，并启用 `API_RELOAD=1`
 

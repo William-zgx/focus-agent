@@ -1764,13 +1764,13 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   assert.equal(streamCacheSource.includes("Array.isArray(record.branch_actions)"), true);
   assert.equal(
     compactSource(streamCacheSource).includes(
-      "void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }); return;",
+      "void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId), }); return;",
     ),
     true,
   );
   assert.equal(
     compactSource(streamCacheSource).includes(
-      "if (threadState.thread_id !== threadId) { void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadState.thread_id), }); void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId) }); return; }",
+      "if (threadState.thread_id !== threadId) { void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadState.thread_id), }); void queryClient.invalidateQueries({ queryKey: queryKeys.thread(threadId), }); return; }",
     ),
     true,
   );

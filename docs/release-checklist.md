@@ -76,6 +76,12 @@ This writes `reports/release-gate/latest.json` with per-command labels, status, 
 make release-gate RELEASE_GATE_ARGS="--dry-run --only lint"
 ```
 
+For broad pre-release validation outside CI, start with
+[validation-runbook.md](validation-runbook.md). It defines the expected local
+evidence bundle across runtime outcomes, sandbox fallback metadata, Skill
+contracts, SDK/OpenAPI drift, Web source smoke, real-browser smoke, Agent Team,
+observability, and release-health readiness.
+
 For a fast API/SDK compatibility check before the full gate, run:
 
 ```bash
@@ -107,6 +113,7 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
 - Local Vite smoke URLs should use `http://127.0.0.1:5173/app/` with the trailing slash. Manual browser passes are useful, but personal Chrome profiles can carry stale localStorage, extensions, and auth state; prefer the smoke script's temporary Chrome profile for release evidence and use manual passes as an additional visual check.
+- On SSH-only release hosts, set `CHROME_PATH` to a headless Chromium wrapper before running browser smoke. The canonical wrapper and readiness follow-up are documented in `docs/validation-runbook.md`.
 - Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, settings center Overview/Connections/Capabilities navigation, Skill search and enablement toggles, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.

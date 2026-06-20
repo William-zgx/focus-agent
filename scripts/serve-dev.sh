@@ -13,7 +13,7 @@ WEB_HOST="${FOCUS_AGENT_WEB_HOST:-127.0.0.1}"
 WEB_PORT="${FOCUS_AGENT_WEB_PORT:-5173}"
 
 export PYTHONUNBUFFERED=1
-export API_RELOAD=1
+export API_RELOAD="${API_RELOAD:-1}"
 if [[ -n "${WATCHFILES_FORCE_POLLING:-}" ]]; then
   export WATCHFILES_FORCE_POLLING
 fi
@@ -31,7 +31,7 @@ assert_port_free "$WEB_PORT" "Web"
 
 trap_managed_processes
 
-log "Starting API on http://${API_HOST}:${API_PORT} (reload=1)"
+log "Starting API on http://${API_HOST}:${API_PORT} (reload=${API_RELOAD})"
 .venv/bin/focus-agent-api &
 register_managed_pid "$!"
 

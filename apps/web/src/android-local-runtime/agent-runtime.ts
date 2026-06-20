@@ -20,8 +20,6 @@ import {
 	ANDROID_LOCAL_SKILLS,
 	localSkillActivationMatchedTerms,
 	localSkillActivationScore,
-	localSkillMatchedTerms,
-	localSkillScore,
 } from "./skills";
 import { defaultAdminConfig } from "./state";
 
@@ -159,15 +157,24 @@ export function localSelectedSkills(
 		}
 		const matchedTerms = localSkillActivationMatchedTerms(skill, message);
 		if (!matchedTerms.length) return [];
-		return [{ score: matchedTerms.length + localSkillActivationScore(skill, message), skill }];
+		return [
+			{
+				score: matchedTerms.length + localSkillActivationScore(skill, message),
+				skill,
+			},
+		];
 	});
 	if (!scored.length) return ctx.localSkillCatalogItems().slice(0, 1);
 	scored.sort((left, right) => {
 		if (right.score !== left.score) return right.score - left.score;
-		return String(left.skill.skill_id).localeCompare(String(right.skill.skill_id));
+		return String(left.skill.skill_id).localeCompare(
+			String(right.skill.skill_id),
+		);
 	});
 	const topScore = scored[0]?.score ?? 0;
-	return scored.filter((item) => item.score === topScore).map((item) => item.skill);
+	return scored
+		.filter((item) => item.score === topScore)
+		.map((item) => item.skill);
 }
 
 export function localContextEvidenceRecord(

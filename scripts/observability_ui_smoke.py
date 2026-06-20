@@ -21,6 +21,7 @@ from observability_ui_browser import (
 from observability_ui_smoke_helpers import _tail_text
 from ui_smoke_test import (
     CdpWebSocket,
+    chrome_runtime_flags,
     create_demo_access_token,
     create_page_target,
     ensure_health,
@@ -360,6 +361,7 @@ def run_observability_ui_smoke_test(
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-search-engine-choice-screen",
+                *chrome_runtime_flags(),
                 "--new-window",
                 "about:blank",
             ],
