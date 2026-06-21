@@ -1298,6 +1298,24 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     assert tool_config_lookup.allowed_toolsets == ["workspace"]
 
 
+def test_tool_intent_plan_no_tool_request_overrides_skill_discovery_words():
+    chinese_plan = build_tool_intent_plan(
+        "请不要调用任何工具，也不要创建 Artifact；请直接用中文分点回答："
+        "Skill execution contract 和 trajectory UI 应如何设计？"
+    )
+    english_plan = build_tool_intent_plan(
+        "Do not call any tools; answer directly how a skill execution contract should "
+        "handle local fallback."
+    )
+
+    for plan in (chinese_plan, english_plan):
+        assert plan.policy == "direct_answer"
+        assert plan.preferred_first_tool is None
+        assert plan.allowed_toolsets == []
+        assert "skill" in plan.denied_toolsets
+        assert "explicit_no_tool" in plan.reason_codes
+
+
 def test_tool_intent_plan_prefers_skill_search_for_discovery_with_execution_words():
     plan = build_tool_intent_plan("我刚接手这个项目，有没有能做构建失败修复的 skill")
 

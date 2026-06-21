@@ -12,6 +12,10 @@ def test_ui_smoke_script_matches_bilingual_web_app_flow():
     assert "sendLabels = ['Send', 'Send message', '发送', '发送消息']" in script_text
     assert "proposalLabels = ['Generate conclusion', '生成带回结论']" in script_text
     assert "mergeFormLabels = ['Summary', '摘要']" in script_text
+    assert "DEFAULT_RESPONSE_TIMEOUT_SECONDS = 180.0" in script_text
+    assert "--response-timeout-seconds" in script_text
+    assert "stableAssistantResponseTimeoutMs" in script_text
+    assert "response_timeout_seconds + 300.0" in script_text
     assert "collect_browser_diagnostics" in script_text
 
 

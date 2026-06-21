@@ -19,6 +19,7 @@ from urllib import request as urllib_request
 DEFAULT_APP_URL = "http://127.0.0.1:5173/app/"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
 DEFAULT_MESSAGE = "请简短回复 OK"
+DEFAULT_RESPONSE_TIMEOUT_SECONDS = 180.0
 
 
 def _http_get_json(url: str) -> object:
@@ -121,7 +122,7 @@ def create_page_target(port: int, url: str) -> dict[str, object]:
 
 
 class CdpWebSocket:
-    def __init__(self, websocket_url: str):
+    def __init__(self, websocket_url: str, *, timeout_seconds: float = 180.0):
         parsed = urllib_parse.urlparse(websocket_url)
         self._host = parsed.hostname or "127.0.0.1"
         self._port = int(parsed.port or 80)
@@ -129,7 +130,7 @@ class CdpWebSocket:
         if parsed.query:
             self._path += f"?{parsed.query}"
         self._sock = socket.create_connection((self._host, self._port), timeout=30)
-        self._sock.settimeout(180)
+        self._sock.settimeout(max(30.0, timeout_seconds))
         self._handshake()
         self._next_id = 0
 
@@ -214,11 +215,13 @@ class CdpWebSocket:
             return result if isinstance(result, dict) else {}
 
 
-def build_smoke_expression(message: str) -> str:
+def build_smoke_expression(message: str, response_timeout_seconds: float) -> str:
     encoded_message = json.dumps(message, ensure_ascii=False)
+    response_timeout_ms = max(1000, int(response_timeout_seconds * 1000))
     return rf"""
 (async () => {{
   const smokeMessage = {encoded_message};
+  const stableAssistantResponseTimeoutMs = {response_timeout_ms};
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitFor = async (predicate, timeout = 20000, label = 'condition') => {{
     const started = Date.now();
@@ -365,9 +368,9 @@ def build_smoke_expression(message: str) -> str:
     const isStreamingUiActive = () =>
       Boolean(findButton(...stopLabels)) ||
       Boolean(document.querySelector('.fa-composer-shell.is-streaming')) ||
-      Boolean(document.querySelector('.fa-agent-run-bubble')) ||
+      Boolean(document.querySelector('.fa-agent-run-bubble.is-streaming')) ||
       Boolean(document.querySelector('.fa-message-role.is-streaming'));
-    while (Date.now() - started < 120000) {{
+    while (Date.now() - started < stableAssistantResponseTimeoutMs) {{
       const text = latestAssistantBubbleText();
       const hasAssistantReply =
         text &&
@@ -387,7 +390,11 @@ def build_smoke_expression(message: str) -> str:
       }}
       await sleep(250);
     }}
-    throw new Error('Timed out waiting for stable assistant natural-language response');
+    throw new Error(
+      'Timed out waiting for stable assistant natural-language response after ' +
+      stableAssistantResponseTimeoutMs +
+      'ms'
+    );
   }};
   const finalText = await stableAssistantBubbleText();
   result.lastResponseText = finalText;
@@ -442,6 +449,7 @@ def run_ui_smoke_test(
     chrome_path: str,
     message: str,
     keep_open: bool,
+    response_timeout_seconds: float = DEFAULT_RESPONSE_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
     ensure_health(health_url)
     demo_access_token = create_demo_access_token(health_url)
@@ -470,7 +478,8 @@ def run_ui_smoke_test(
         if not websocket_url:
             raise RuntimeError(f"Missing webSocketDebuggerUrl in target payload: {target!r}")
 
-        client = CdpWebSocket(websocket_url)
+        cdp_timeout_seconds = max(300.0, response_timeout_seconds + 300.0)
+        client = CdpWebSocket(websocket_url, timeout_seconds=cdp_timeout_seconds)
         try:
             client.send("Page.enable")
             client.send("Runtime.enable")
@@ -539,7 +548,7 @@ window.addEventListener("unhandledrejection", (event) => {
             response = client.send(
                 "Runtime.evaluate",
                 {
-                    "expression": build_smoke_expression(message),
+                    "expression": build_smoke_expression(message, response_timeout_seconds),
                     "awaitPromise": True,
                     "returnByValue": True,
                 },
@@ -597,6 +606,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep the dedicated Chrome window open after the smoke test.",
     )
+    parser.add_argument(
+        "--response-timeout-seconds",
+        type=float,
+        default=DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+        help="Seconds to wait for a stable assistant response before failing.",
+    )
     return parser.parse_args()
 
 
@@ -608,6 +623,7 @@ def main() -> int:
         chrome_path=resolve_chrome_path(args.chrome_path),
         message=str(args.message),
         keep_open=bool(args.keep_open),
+        response_timeout_seconds=float(args.response_timeout_seconds),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
