@@ -19,7 +19,7 @@ def test_quality_gate_scaffold_exposes_opt_in_stricter_checks():
     assert web_scripts["lint:full"] == "node ./scripts/run-biome.mjs lint src"
     assert web_scripts["format:check:full"] == "node ./scripts/run-biome.mjs format src"
     assert web_package["devDependencies"]["@biomejs/biome"] == "2.2.4"
-    assert web_package["devDependencies"]["@biomejs/cli-linux-x64-musl"] == "2.2.4"
+    assert "@biomejs/cli-linux-x64-musl" not in web_package["devDependencies"]
     assert (root / "apps" / "web" / "scripts" / "run-biome.mjs").is_file()
 
     assert "lint-strict" in root_scripts["check"]

@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import re
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -748,12 +748,10 @@ def _provider_payloads(
     current: tuple[ProviderConfig, ...],
 ) -> list[ProviderConfig]:
     if payloads is None:
-        return list(current)
-    current_by_id = {provider.id: provider for provider in current}
+        return [replace(provider, api_key_default=None) for provider in current]
     providers: list[ProviderConfig] = []
     for payload in payloads:
-        existing = current_by_id.get(payload.id)
-        api_key_default = _provider_api_key_default(payload, existing)
+        api_key_default = _provider_api_key_default(payload)
         providers.append(
             ProviderConfig(
                 id=payload.id,
@@ -773,10 +771,9 @@ def _provider_payloads(
 
 def _provider_api_key_default(
     payload: AdminModelProviderConfigPayload,
-    existing: ProviderConfig | None,
 ) -> str | None:
     if payload.api_key_default is None:
-        return existing.api_key_default if existing is not None else None
+        return None
     if str(payload.api_key_default).strip():
         raise AdminConfigError(
             "api_key_default cannot be persisted by Admin config; use api_key_env instead."

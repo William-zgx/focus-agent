@@ -22,6 +22,7 @@ _MAX_OUTPUT_BYTES = 50 * 1024 * 1024
 _RUNNER_FILENAME = "sandbox_runner.py"
 _REQUEST_FILENAME = "sandbox_request.json"
 _RESULT_FILENAME = "result.json"
+_WORKSPACE_MANIFEST_FILENAME = ".focus-agent-workspace-manifest.json"
 _DEFAULT_RUN_TTL_SECONDS = 7 * 24 * 60 * 60
 _WORKSPACE_MODE_COPY_DISCARD = "copy_discard"
 _WORKSPACE_MODE_THREAD_PERSISTENT_COPY = "thread_persistent_copy"
@@ -817,6 +818,17 @@ def _write_request(path: Path, request: SandboxExecutionRequest) -> None:
 
 def _sync_workspace_snapshot(*, source_root: Path, target_root: Path) -> None:
     target_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = target_root.parent / _WORKSPACE_MANIFEST_FILENAME
+    current_manifest = _workspace_snapshot_manifest(source_root)
+    previous_manifest = _read_workspace_snapshot_manifest(manifest_path)
+    if previous_manifest is None:
+        _prune_workspace_to_manifest(target_root=target_root, manifest=current_manifest)
+    else:
+        _delete_removed_snapshot_paths(
+            target_root=target_root,
+            previous_manifest=previous_manifest,
+            current_manifest=current_manifest,
+        )
     for child in source_root.iterdir():
         if child.name in _COPY_SKIP_NAMES or child.name == ".git":
             continue
@@ -851,6 +863,126 @@ def _sync_workspace_snapshot(*, source_root: Path, target_root: Path) -> None:
                 shutil.rmtree(target)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(child, target)
+    _write_workspace_snapshot_manifest(manifest_path, current_manifest)
+
+
+def _workspace_snapshot_manifest(source_root: Path) -> set[str]:
+    manifest: set[str] = set()
+    for child in source_root.iterdir():
+        if child.name in _COPY_SKIP_NAMES or child.name == ".git":
+            continue
+        if child.name == ".focus_agent":
+            skills = child / "skills"
+            if skills.is_dir():
+                manifest.add(".focus_agent")
+                _add_snapshot_manifest_entry(
+                    manifest,
+                    source=skills,
+                    relative_path=PurePosixPath(".focus_agent") / "skills",
+                )
+            continue
+        _add_snapshot_manifest_entry(
+            manifest,
+            source=child,
+            relative_path=PurePosixPath(child.name),
+        )
+    return manifest
+
+
+def _add_snapshot_manifest_entry(
+    manifest: set[str],
+    *,
+    source: Path,
+    relative_path: PurePosixPath,
+) -> None:
+    if source.is_dir():
+        manifest.add(relative_path.as_posix())
+        for child in source.iterdir():
+            if child.name in _COPY_SKIP_NAMES or child.name == ".focus_agent":
+                continue
+            _add_snapshot_manifest_entry(
+                manifest,
+                source=child,
+                relative_path=relative_path / child.name,
+            )
+    elif source.is_file():
+        manifest.add(relative_path.as_posix())
+
+
+def _read_workspace_snapshot_manifest(path: Path) -> set[str] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, list):
+        return None
+    manifest: set[str] = set()
+    for item in payload:
+        if not isinstance(item, str) or not _is_safe_manifest_path(item):
+            return None
+        manifest.add(item)
+    return manifest
+
+
+def _write_workspace_snapshot_manifest(path: Path, manifest: set[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(manifest), ensure_ascii=False), encoding="utf-8")
+
+
+def _is_safe_manifest_path(value: str) -> bool:
+    relative_path = PurePosixPath(value)
+    return bool(value) and not relative_path.is_absolute() and ".." not in relative_path.parts
+
+
+def _delete_removed_snapshot_paths(
+    *,
+    target_root: Path,
+    previous_manifest: set[str],
+    current_manifest: set[str],
+) -> None:
+    removed_paths = previous_manifest - current_manifest
+    for relative_path in sorted(
+        removed_paths,
+        key=lambda value: (value.count("/"), value),
+        reverse=True,
+    ):
+        _remove_snapshot_path(target_root / Path(relative_path))
+
+
+def _prune_workspace_to_manifest(*, target_root: Path, manifest: set[str]) -> None:
+    for child in list(target_root.iterdir()):
+        _prune_snapshot_entry_to_manifest(
+            target=child,
+            relative_path=PurePosixPath(child.name),
+            manifest=manifest,
+        )
+
+
+def _prune_snapshot_entry_to_manifest(
+    *,
+    target: Path,
+    relative_path: PurePosixPath,
+    manifest: set[str],
+) -> None:
+    if relative_path.as_posix() not in manifest:
+        _remove_snapshot_path(target)
+        return
+    if target.is_dir() and not target.is_symlink():
+        for child in list(target.iterdir()):
+            _prune_snapshot_entry_to_manifest(
+                target=child,
+                relative_path=relative_path / child.name,
+                manifest=manifest,
+            )
+
+
+def _remove_snapshot_path(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
 
 
 def _copytree_ignore(_dir: str, names: list[str]) -> set[str]:

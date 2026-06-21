@@ -336,6 +336,99 @@ def test_docker_backend_refreshes_thread_workspace_from_host_between_runs(tmp_pa
     assert observed_contents == ["original\n", "updated\n"]
 
 
+def test_docker_backend_removes_deleted_host_paths_from_thread_workspace_between_runs(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "kept.txt").write_text("kept\n", encoding="utf-8")
+    (workspace / "removed.txt").write_text("removed\n", encoding="utf-8")
+    nested = workspace / "pkg"
+    nested.mkdir()
+    (nested / "kept.py").write_text("print('kept')\n", encoding="utf-8")
+    (nested / "removed.py").write_text("print('removed')\n", encoding="utf-8")
+    skills = workspace / ".focus_agent" / "skills"
+    kept_skill = skills / "kept-skill"
+    removed_skill = skills / "removed-skill"
+    kept_skill.mkdir(parents=True)
+    removed_skill.mkdir(parents=True)
+    (kept_skill / "SKILL.md").write_text("# kept\n", encoding="utf-8")
+    (removed_skill / "SKILL.md").write_text("# removed\n", encoding="utf-8")
+    run_ids = iter(["run-delete-1", "run-delete-2"])
+    observed: list[dict[str, bool]] = []
+
+    def fake_docker_run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        del timeout
+        sandbox_workspace = _volume_host_path(command, "/workspace")
+        sandbox_output = _volume_host_path(command, "/sandbox_output")
+        observed.append(
+            {
+                "kept_file": (sandbox_workspace / "kept.txt").exists(),
+                "removed_file": (sandbox_workspace / "removed.txt").exists(),
+                "kept_nested": (sandbox_workspace / "pkg" / "kept.py").exists(),
+                "removed_nested": (sandbox_workspace / "pkg" / "removed.py").exists(),
+                "kept_skill": (
+                    sandbox_workspace / ".focus_agent" / "skills" / "kept-skill" / "SKILL.md"
+                ).exists(),
+                "removed_skill": (
+                    sandbox_workspace / ".focus_agent" / "skills" / "removed-skill" / "SKILL.md"
+                ).exists(),
+            }
+        )
+        (sandbox_output / "result.json").write_text(
+            json.dumps(
+                {
+                    "exit_code": 0,
+                    "stdout": "ok\n",
+                    "stderr": "",
+                    "timed_out": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    backend = DockerSandboxBackend(
+        image="focus-agent-test:latest",
+        docker_runner=fake_docker_run,
+        run_id_factory=lambda: next(run_ids),
+    )
+    request = SandboxExecutionRequest(
+        workspace_root=workspace,
+        command=["python", "--version"],
+        cwd=".",
+        timeout_seconds=30,
+        max_output_chars=1000,
+        allow_network=False,
+        tool_name="run_workspace_command",
+        thread_id="thread-delete-refresh",
+    )
+
+    backend.run(request)
+    (workspace / "removed.txt").unlink()
+    (nested / "removed.py").unlink()
+    (removed_skill / "SKILL.md").unlink()
+    removed_skill.rmdir()
+    backend.run(request)
+
+    assert observed == [
+        {
+            "kept_file": True,
+            "removed_file": True,
+            "kept_nested": True,
+            "removed_nested": True,
+            "kept_skill": True,
+            "removed_skill": True,
+        },
+        {
+            "kept_file": True,
+            "removed_file": False,
+            "kept_nested": True,
+            "removed_nested": False,
+            "kept_skill": True,
+            "removed_skill": False,
+        },
+    ]
+
+
 def test_docker_backend_runs_in_isolated_workspace_with_network_disabled(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

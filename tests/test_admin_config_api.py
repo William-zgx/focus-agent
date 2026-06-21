@@ -294,6 +294,101 @@ def test_admin_config_rejects_provider_api_key_default(
     assert "sk-secret-should-not-be-written" not in model_path.read_text(encoding="utf-8")
 
 
+def test_admin_config_drops_existing_provider_api_key_default_when_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, model_path, _tool_path, _local_env_path = _build_client(
+        monkeypatch, tmp_path
+    )
+    model_path.write_text(
+        """
+default_model = "openai:gpt-4.1-mini"
+model_choices = ["openai:gpt-4.1-mini"]
+
+[[providers]]
+id = "openai"
+label = "OpenAI"
+backend_provider = "openai"
+api_key_env = "OPENAI_API_KEY"
+api_key_default = "sk-existing-catalog-secret"
+
+[[models]]
+id = "openai:gpt-4.1-mini"
+label = "GPT-4.1 Mini"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    settings.model_catalog = load_model_catalog_toml(model_path.read_text(encoding="utf-8"))
+    service.create_user(user_id="admin-1", roles=["admin"])
+    headers = _headers(settings, "admin-1")
+
+    response = client.patch(
+        "/v1/admin/config/models",
+        headers=headers,
+        json={
+            "reason": "update provider without persisting old secrets",
+            "providers": [
+                {
+                    "id": "openai",
+                    "label": "OpenAI Updated",
+                    "backend_provider": "openai",
+                    "api_key_env": "OPENAI_API_KEY",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    saved_catalog = model_path.read_text(encoding="utf-8")
+    assert "sk-existing-catalog-secret" not in saved_catalog
+    assert "api_key_default" not in saved_catalog
+
+
+def test_admin_config_drops_existing_provider_api_key_default_when_providers_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, model_path, _tool_path, _local_env_path = _build_client(
+        monkeypatch, tmp_path
+    )
+    model_path.write_text(
+        """
+default_model = "openai:gpt-4.1-mini"
+model_choices = ["openai:gpt-4.1-mini"]
+
+[[providers]]
+id = "openai"
+label = "OpenAI"
+backend_provider = "openai"
+api_key_env = "OPENAI_API_KEY"
+api_key_default = "sk-existing-catalog-secret"
+
+[[models]]
+id = "openai:gpt-4.1-mini"
+label = "GPT-4.1 Mini"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    settings.model_catalog = load_model_catalog_toml(model_path.read_text(encoding="utf-8"))
+    service.create_user(user_id="admin-1", roles=["admin"])
+    headers = _headers(settings, "admin-1")
+
+    response = client.patch(
+        "/v1/admin/config/models",
+        headers=headers,
+        json={
+            "reason": "update model choices without persisting old secrets",
+            "model_choices": ["openai:gpt-4.1-mini"],
+        },
+    )
+
+    assert response.status_code == 200
+    saved_catalog = model_path.read_text(encoding="utf-8")
+    assert "sk-existing-catalog-secret" not in saved_catalog
+    assert "api_key_default" not in saved_catalog
+
+
 def test_admin_config_rejects_skill_paths_outside_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -46,9 +46,6 @@ importers:
       '@biomejs/biome':
         specifier: 2.2.4
         version: 2.2.4
-      '@biomejs/cli-linux-x64-musl':
-        specifier: 2.2.4
-        version: 2.2.4
       '@tailwindcss/vite':
         specifier: ^4.0.0
         version: 4.2.2(vite@8.0.8(@types/node@25.9.1)(jiti@2.6.1))
@@ -1386,7 +1383,8 @@ snapshots:
   '@biomejs/cli-linux-arm64@2.2.4':
     optional: true
 
-  '@biomejs/cli-linux-x64-musl@2.2.4': {}
+  '@biomejs/cli-linux-x64-musl@2.2.4':
+    optional: true
 
   '@biomejs/cli-linux-x64@2.2.4':
     optional: true

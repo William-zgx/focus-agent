@@ -36,7 +36,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
-    "@biomejs/cli-linux-x64-musl": "2.2.4",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
