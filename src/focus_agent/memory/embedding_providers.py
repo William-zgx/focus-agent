@@ -53,6 +53,7 @@ class DeterministicTestEmbeddingProvider:
 DEFAULT_OLLAMA_EMBEDDING_MODEL = "embeddinggemma"
 DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS = 768
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+DEFAULT_OLLAMA_PULL_TIMEOUT_SECONDS = 300.0
 DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS = 1536
 
@@ -201,7 +202,7 @@ def _ollama_model_available(provider: OllamaEmbeddingProvider) -> bool:
             timeout=provider.timeout_seconds,
         )
         decoded = _decode_json_response(response)
-    except (httpx.HTTPError, TimeoutError, ValueError):
+    except (httpx.HTTPError, httpx.InvalidURL, TimeoutError, ValueError):
         return False
 
     models = decoded.get("models") if isinstance(decoded, dict) else None
@@ -216,6 +217,32 @@ def _ollama_model_available(provider: OllamaEmbeddingProvider) -> bool:
         if name == expected or name == f"{expected}:latest" or name.split(":", 1)[0] == expected:
             return True
     return False
+
+
+def _ollama_pull_model(
+    provider: OllamaEmbeddingProvider,
+    *,
+    timeout_seconds: float = DEFAULT_OLLAMA_PULL_TIMEOUT_SECONDS,
+) -> None:
+    try:
+        response = _embedding_http_client(provider._http_client).post(
+            f"{provider.base_url}/api/pull",
+            json={"model": provider.model_id, "stream": False},
+            headers={"Content-Type": "application/json"},
+            timeout=max(float(timeout_seconds), provider.timeout_seconds),
+        )
+        decoded = _decode_json_response(response)
+    except (httpx.HTTPError, httpx.InvalidURL, TimeoutError, ValueError) as exc:
+        raise EmbeddingProviderConfigError(
+            "Ollama embedding model pull failed. "
+            f"Ensure Ollama is running and pull manually with: "
+            f"{ollama_embedding_install_hint(provider.model_id)}"
+        ) from exc
+
+    if isinstance(decoded, dict) and decoded.get("error"):
+        raise EmbeddingProviderConfigError(
+            "Ollama embedding model pull failed: " f"{decoded.get('error')}"
+        )
 
 
 def _embedding_http_client(http_client: httpx.Client | None) -> httpx.Client:
@@ -280,6 +307,7 @@ __all__ = [
     "DEFAULT_OLLAMA_BASE_URL",
     "DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS",
     "DEFAULT_OLLAMA_EMBEDDING_MODEL",
+    "DEFAULT_OLLAMA_PULL_TIMEOUT_SECONDS",
     "DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS",
     "DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL",
     "DeterministicTestEmbeddingProvider",

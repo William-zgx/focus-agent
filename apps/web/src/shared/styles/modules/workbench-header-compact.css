@@ -77,12 +77,6 @@
 	max-width: none;
 }
 
-.fa-conversation-switcher::after {
-	right: 12px;
-	width: 7px;
-	height: 7px;
-}
-
 .fa-conversation-select {
 	min-height: 34px;
 	padding: 8px 32px 8px 10px;

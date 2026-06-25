@@ -7,6 +7,7 @@ from .embedding_providers import (
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
     DEFAULT_OLLAMA_EMBEDDING_MODEL,
+    DEFAULT_OLLAMA_PULL_TIMEOUT_SECONDS,
     DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
     DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
     DeterministicTestEmbeddingProvider,
@@ -16,6 +17,7 @@ from .embedding_providers import (
     OpenAICompatibleEmbeddingProvider,
     _ollama_model_available,
     _ollama_native_base_url,
+    _ollama_pull_model,
     _validate_dimensions,
     ollama_embedding_install_hint,
 )
@@ -63,15 +65,20 @@ def _memory_embedding_backend(settings: Any) -> str:
 
 
 def _create_auto_memory_embedding_provider(settings: Any) -> EmbeddingProvider | None:
-    ollama_provider = _create_ollama_embedding_provider(settings)
-    if _ollama_model_available(ollama_provider):
+    ollama_provider = _create_ollama_embedding_provider(settings, ensure_model=False)
+    fallback_configured = _openai_compatible_fallback_configured(settings)
+    if _ollama_model_ready(
+        settings,
+        ollama_provider,
+        allow_auto_pull=not fallback_configured,
+    ):
         return ollama_provider
 
-    if not _openai_compatible_fallback_configured(settings):
+    if not fallback_configured:
         raise EmbeddingProviderConfigError(
             "Auto memory embedding provider unavailable. "
             f"Ollama model {ollama_provider.model_id!r} is not installed or Ollama is not running. "
-            f"Install it with: {ollama_embedding_install_hint(ollama_provider.model_id)}."
+            f"{_ollama_recovery_hint(settings, ollama_provider)}"
         )
 
     try:
@@ -97,18 +104,73 @@ def _create_auto_memory_embedding_provider(settings: Any) -> EmbeddingProvider |
         raise EmbeddingProviderConfigError(
             "Auto memory embedding provider unavailable. "
             f"Ollama model {ollama_provider.model_id!r} is not installed or Ollama is not running. "
-            f"Install it with: {ollama_embedding_install_hint(ollama_provider.model_id)}. "
+            f"{_ollama_recovery_hint(settings, ollama_provider)} "
             f"OpenAI-compatible fallback unavailable: {exc}"
         ) from exc
 
 
-def _create_ollama_embedding_provider(settings: Any) -> OllamaEmbeddingProvider:
+def _create_ollama_embedding_provider(
+    settings: Any,
+    *,
+    ensure_model: bool = True,
+) -> OllamaEmbeddingProvider:
     model_id = _ollama_embedding_model(settings)
-    return OllamaEmbeddingProvider(
+    provider = OllamaEmbeddingProvider(
         model_id=model_id,
         dimensions=_ollama_embedding_dimensions(settings, model_id=model_id),
         base_url=_ollama_embedding_base_url(settings),
         timeout_seconds=float(getattr(settings, "agent_memory_embedding_timeout_seconds", 30.0)),
+    )
+    if ensure_model and _ollama_auto_pull_enabled(settings):
+        _ensure_ollama_model_ready(settings, provider)
+    return provider
+
+
+def _ollama_model_ready(
+    settings: Any,
+    provider: OllamaEmbeddingProvider,
+    *,
+    allow_auto_pull: bool,
+) -> bool:
+    if _ollama_model_available(provider):
+        return True
+    if not allow_auto_pull or not _ollama_auto_pull_enabled(settings):
+        return False
+    _ollama_pull_model(
+        provider,
+        timeout_seconds=float(
+            getattr(
+                settings,
+                "agent_memory_embedding_pull_timeout_seconds",
+                DEFAULT_OLLAMA_PULL_TIMEOUT_SECONDS,
+            )
+        ),
+    )
+    return _ollama_model_available(provider)
+
+
+def _ensure_ollama_model_ready(settings: Any, provider: OllamaEmbeddingProvider) -> None:
+    if _ollama_model_ready(settings, provider, allow_auto_pull=True):
+        return
+    raise EmbeddingProviderConfigError(
+        "Ollama memory embedding provider unavailable. "
+        f"Ollama model {provider.model_id!r} is not installed or Ollama is not running. "
+        f"{_ollama_recovery_hint(settings, provider)}"
+    )
+
+
+def _ollama_auto_pull_enabled(settings: Any) -> bool:
+    return bool(getattr(settings, "agent_memory_embedding_auto_pull", False))
+
+
+def _ollama_recovery_hint(settings: Any, provider: OllamaEmbeddingProvider) -> str:
+    install = f"Install it with: {ollama_embedding_install_hint(provider.model_id)}."
+    if not _ollama_auto_pull_enabled(settings):
+        return install
+    return (
+        "Auto-pull is enabled, but the model is still unavailable. "
+        "Ensure Ollama is running, then retry or pull manually with: "
+        f"{ollama_embedding_install_hint(provider.model_id)}."
     )
 
 

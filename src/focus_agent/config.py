@@ -244,6 +244,8 @@ class Settings:
     agent_memory_embedding_api_key_env: str | None = "OPENAI_API_KEY"
     agent_memory_embedding_api_key: str | None = field(default=None, repr=False)
     agent_memory_embedding_batch_size: int = 32
+    agent_memory_embedding_auto_pull: bool = False
+    agent_memory_embedding_pull_timeout_seconds: float = 300.0
     agent_memory_vector_search_mode: str = "hybrid"
     agent_memory_vector_index_enabled: bool = False
     agent_memory_pgvector_extension_mode: str = "auto_create"

@@ -86,18 +86,20 @@
 	.fa-conversation-switcher {
 		gap: 4px;
 		width: auto;
-		min-width: 0;
-		max-width: min(360px, 42vw);
-		flex: 1 1 auto;
+		min-width: min(172px, 100%);
+		max-width: min(252px, 34vw);
+		flex: 0 1 min(220px, 34vw);
 	}
 
 	.fa-conversation-jump-select {
 		height: 34px;
-		padding: 8px 28px 8px 10px;
+		padding: 8px 30px 8px 10px;
 	}
 
-	.fa-conversation-switcher::after {
-		right: 44px;
+	.fa-conversation-jump::after {
+		right: 13px;
+		width: 7px;
+		height: 7px;
 	}
 
 	.fa-conversation-rename-button,

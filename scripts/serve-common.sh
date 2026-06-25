@@ -187,6 +187,24 @@ load_local_env_exports() {
   done < "$env_file"
 }
 
+enable_local_embedding_auto_pull_default() {
+  if [[ -z "${AGENT_MEMORY_EMBEDDING_AUTO_PULL+x}" ]]; then
+    export AGENT_MEMORY_EMBEDDING_AUTO_PULL=1
+  fi
+}
+
+normalize_no_proxy_for_httpx() {
+  local key value
+
+  for key in NO_PROXY no_proxy; do
+    if [[ -n "${!key+x}" ]]; then
+      value="${!key}"
+      value="${value//::1\/128/::1}"
+      export "$key=$value"
+    fi
+  done
+}
+
 pick_local_pg_port() {
   local requested_port="${FOCUS_AGENT_LOCAL_PG_PORT:-54329}"
   local candidate
