@@ -108,6 +108,8 @@ def test_memory_embedding_config_loads_agent_env_overrides() -> None:
             "AGENT_MEMORY_EMBEDDING_DIMENSIONS": "32",
             "AGENT_MEMORY_PGVECTOR_EXTENSION_MODE": "require-installed",
             "AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS": "4.5",
+            "AGENT_MEMORY_EMBEDDING_AUTO_PULL": "true",
+            "AGENT_MEMORY_EMBEDDING_PULL_TIMEOUT_SECONDS": "120",
             "AGENT_RETRIEVAL_BACKEND": "zvec",
             "AGENT_RETRIEVAL_FALLBACK_BACKEND": "postgres",
             "AGENT_ZVEC_ENABLED": "true",
@@ -124,6 +126,8 @@ def test_memory_embedding_config_loads_agent_env_overrides() -> None:
     assert values["agent_memory_embedding_dimensions"] == 32
     assert values["agent_memory_pgvector_extension_mode"] == "required"
     assert values["agent_memory_embedding_timeout_seconds"] == 4.5
+    assert values["agent_memory_embedding_auto_pull"] is True
+    assert values["agent_memory_embedding_pull_timeout_seconds"] == 120
     assert values["agent_retrieval_backend"] == "zvec"
     assert values["agent_retrieval_fallback_backend"] == "postgres"
     assert values["agent_zvec_enabled"] is True
@@ -252,6 +256,51 @@ def test_auto_embedding_provider_prefers_available_ollama_embeddinggemma(monkeyp
     }
 
 
+def test_auto_embedding_provider_pulls_missing_ollama_model_when_enabled(monkeypatch) -> None:
+    captured: dict[str, object] = {"tag_calls": 0}
+
+    def handler(method, url, payload, headers, timeout):
+        del headers
+        captured.setdefault("urls", []).append(url)
+        captured.setdefault("methods", []).append(method)
+        if url == "http://ollama.example.test/api/tags":
+            captured["tag_calls"] = int(captured["tag_calls"]) + 1
+            if captured["tag_calls"] == 1:
+                return {"models": []}
+            return {"models": [{"name": "embeddinggemma:latest"}]}
+        captured["pull_payload"] = payload
+        captured["pull_timeout"] = timeout
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        embedding_providers_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
+
+    provider = create_memory_embedding_provider(
+        Settings(
+            agent_memory_embedding_backend="auto",
+            agent_memory_embedding_base_url="http://ollama.example.test/v1",
+            agent_memory_embedding_api_key_env="",
+            agent_memory_embedding_api_key="",
+            agent_memory_embedding_auto_pull=True,
+            agent_memory_embedding_pull_timeout_seconds=120,
+            resolved_env={"UNRELATED": "1"},
+        )
+    )
+
+    assert isinstance(provider, OllamaEmbeddingProvider)
+    assert captured["urls"] == [
+        "http://ollama.example.test/api/tags",
+        "http://ollama.example.test/api/pull",
+        "http://ollama.example.test/api/tags",
+    ]
+    assert captured["methods"] == ["GET", "POST", "GET"]
+    assert captured["pull_payload"] == {"model": "embeddinggemma", "stream": False}
+    assert captured["pull_timeout"] == 120
+
+
 def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_available(
     monkeypatch,
 ) -> None:
@@ -275,6 +324,34 @@ def test_auto_embedding_provider_reports_ollama_install_hint_when_no_backend_ava
         agent_memory_embedding_api_key="",
     )
     with pytest.raises(EmbeddingProviderConfigError, match="ollama pull embeddinggemma"):
+        create_memory_embedding_provider(settings)
+
+
+def test_auto_embedding_provider_reports_auto_pull_failure_hint(monkeypatch) -> None:
+    def handler(method, url, payload, headers, timeout):
+        del payload, headers, timeout
+        if url == "http://ollama.example.test/api/tags":
+            return {"models": []}
+        assert method == "POST"
+        assert url == "http://ollama.example.test/api/pull"
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        embedding_providers_mod,
+        "shared_sync_http_client",
+        lambda: _FakeEmbeddingHttpClient(handler),
+    )
+
+    settings = Settings(
+        model="unknown-provider:missing",
+        agent_memory_embedding_backend="auto",
+        agent_memory_embedding_base_url="http://ollama.example.test",
+        agent_memory_embedding_api_key_env="",
+        agent_memory_embedding_api_key="",
+        agent_memory_embedding_auto_pull=True,
+        resolved_env={"UNRELATED": "1"},
+    )
+    with pytest.raises(EmbeddingProviderConfigError, match="Auto-pull is enabled"):
         create_memory_embedding_provider(settings)
 
 

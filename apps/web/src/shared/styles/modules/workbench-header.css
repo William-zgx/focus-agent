@@ -54,17 +54,6 @@
 	max-width: none;
 }
 
-.fa-conversation-switcher::after {
-	right: 14px;
-	top: 50%;
-	width: 9px;
-	height: 9px;
-	border-right-width: 1.8px;
-	border-bottom-width: 1.8px;
-	transform: translateY(-60%) rotate(45deg);
-	color: color-mix(in srgb, var(--fa-text) 64%, transparent);
-}
-
 .fa-conversation-select {
 	min-width: 0;
 	padding: 10px 40px 10px 14px;

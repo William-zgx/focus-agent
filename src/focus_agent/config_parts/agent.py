@@ -295,6 +295,16 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 )
             ),
         ),
+        "agent_memory_embedding_auto_pull": _env_bool(
+            env,
+            "AGENT_MEMORY_EMBEDDING_AUTO_PULL",
+            default=defaults.agent_memory_embedding_auto_pull,
+        ),
+        "agent_memory_embedding_pull_timeout_seconds": _float_env(
+            env,
+            "AGENT_MEMORY_EMBEDDING_PULL_TIMEOUT_SECONDS",
+            defaults.agent_memory_embedding_pull_timeout_seconds,
+        ),
         "agent_memory_vector_search_mode": (
             str(
                 env.get("AGENT_MEMORY_VECTOR_SEARCH_MODE")
