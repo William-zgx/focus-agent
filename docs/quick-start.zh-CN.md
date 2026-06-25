@@ -80,7 +80,7 @@ make api
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和 `memory_pgvector`。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
+其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和兼容/fallback 用的 `memory_pgvector`，默认嵌入式检索索引由 `retrieval_zvec` 表示。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
 
 ## 3. 本地托管 PostgreSQL
 
@@ -103,9 +103,20 @@ source .focus_agent/postgres/runtime.env
 psql "$DATABASE_URI"
 ```
 
-## 4. Memory Embedding 与 pgvector
+## 4. Memory Embedding 与 Zvec Retrieval
 
-PostgreSQL memory 是生产 canonical memory store。Postgres-backed 运行默认启用 Memory Embedding：
+PostgreSQL memory 是生产 canonical memory store。Zvec 是默认的可重建检索索引，覆盖 memory、artifact RAG、Skill matching、trajectory、branch context、Agent Team plan reuse、governance feedback、failure cases 和 workspace semantic search。
+
+默认检索配置：
+
+```env
+AGENT_RETRIEVAL_BACKEND=zvec
+AGENT_RETRIEVAL_FALLBACK_BACKEND=postgres
+AGENT_ZVEC_ENABLED=true
+AGENT_ZVEC_DATA_DIR=.focus_agent/zvec
+```
+
+Postgres-backed 运行默认启用 Memory Embedding：
 
 - `AGENT_MEMORY_EMBEDDING_ENABLED=true`
 - `AGENT_MEMORY_EMBEDDING_BACKEND=auto`
@@ -135,17 +146,22 @@ AGENT_MEMORY_EMBEDDING_API_KEY_ENV=OPENAI_API_KEY
 维护 CLI 可用于只读诊断和受控重建：
 
 ```bash
+focus-agent-retrieval-index doctor
+focus-agent-retrieval-index stats
+focus-agent-retrieval-index backfill --target all --limit 1000
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
 ```
 
-`rebuild` 只会删除并重建 `focus_memory_embeddings`，不会删除 `focus_memories`、audit events、tombstones、candidates 或 checkpoints。
+`focus-agent-retrieval-index rebuild` 只输出非破坏性重建指引：停止 writer，删除 `AGENT_ZVEC_DATA_DIR`，再执行 backfill。`focus-agent-memory-embedding rebuild` 只会删除并重建 `focus_memory_embeddings`，不会删除 `focus_memories`、audit events、tombstones、candidates 或 checkpoints。
 
-生产环境建议由 DBA 或迁移账号预装 Postgres `vector` extension，并让应用以校验模式启动：
+如果生产环境需要 pgvector fallback，建议由 DBA 或迁移账号预装 Postgres `vector` extension，并让应用以校验模式启动：
 
 ```env
 AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
 ```
+
+collection 名称、安全校验、backfill target 和多副本约束见 [Zvec Retrieval Index](retrieval-zvec.md)。
 
 ## 5. Runtime 协调
 

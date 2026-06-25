@@ -61,6 +61,7 @@ make ui-smoke-productivity
 make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
+focus-agent-retrieval-index doctor
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
@@ -246,14 +247,16 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_do
 
 ChatService 已按 branch action facade、streaming lifecycle、thread access、compaction、trajectory recording 和 turn-error helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
 
-12. 如果改动影响 Memory v2、embedding、pgvector、迁移或 memory retrieval：
+12. 如果改动影响 Memory v2、Zvec retrieval、embedding、pgvector fallback、迁移或 memory retrieval：
 
 ```bash
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
+uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py tests/test_default_tools.py
+focus-agent-retrieval-index doctor
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
-`doctor` 是只读诊断命令。它需要 Postgres `DATABASE_URI`，会检查 provider 选择、pgvector extension/table/dimensions/index 状态；本地 auto 模式缺少 `embeddinggemma` 时会输出 `ollama pull embeddinggemma` 提示。如果 API 是通过托管本地 Postgres 启动的，新 shell 里先 `source .focus_agent/postgres/runtime.env`。
+`focus-agent-retrieval-index doctor` 是只读诊断命令，会检查嵌入式 Zvec index 路径、readiness、当前 backend 和 fallback backend，且不输出 vector payload。`focus-agent-memory-embedding doctor` 需要 Postgres `DATABASE_URI`，会检查 provider 选择、pgvector extension/table/dimensions/index 状态；本地 auto 模式缺少 `embeddinggemma` 时会输出 `ollama pull embeddinggemma` 提示。如果 API 是通过托管本地 Postgres 启动的，新 shell 里先 `source .focus_agent/postgres/runtime.env`。
 如果改动 prompt 过滤，请覆盖无关个人偏好、称呼/口令记忆、sticky 语言/语气偏好，以及 `MemoryRetrievalPlan.selected_memory_ids`。
 
 13. 如果改动影响 runtime coordination、durable background jobs、thread turn lease 或 branch refresh 调度：

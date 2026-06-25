@@ -40,6 +40,7 @@ make ui-smoke-productivity
 make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
+focus-agent-retrieval-index doctor
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
@@ -247,14 +248,16 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_do
 
 ChatService is intentionally split across branch action facade, streaming lifecycle, thread access, compaction, trajectory recording, and turn-error helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
 
-12. If Memory v2, embedding, pgvector, migration, or memory retrieval changed:
+12. If Memory v2, Zvec retrieval, embedding, pgvector fallback, migration, or memory retrieval changed:
 
 ```bash
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
+uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py tests/test_default_tools.py
+focus-agent-retrieval-index doctor
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 ```
 
-The doctor command is read-only. It expects a Postgres `DATABASE_URI`, checks provider selection, pgvector extension/table/dimensions/index state, and prints the Ollama install hint when `embeddinggemma` is missing. For fresh local shells, source `.focus_agent/postgres/runtime.env` first if the API was started through the managed Postgres helper.
+The retrieval doctor is read-only and checks the embedded Zvec index path, readiness, configured backend, and fallback backend without exposing vector payloads. The memory embedding doctor expects a Postgres `DATABASE_URI`, checks provider selection, pgvector extension/table/dimensions/index state, and prints the Ollama install hint when `embeddinggemma` is missing. For fresh local shells, source `.focus_agent/postgres/runtime.env` first if the API was started through the managed Postgres helper.
 When prompt filtering changes, include cases for unrelated personal preferences, handle/passcode memories, sticky language/tone preferences, and `MemoryRetrievalPlan.selected_memory_ids`.
 
 13. If runtime coordination, durable background jobs, thread turn leases, or branch refresh scheduling changed:

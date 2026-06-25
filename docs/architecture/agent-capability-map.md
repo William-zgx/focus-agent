@@ -1,6 +1,6 @@
 # Agent Capability Map
 
-Updated: 2026-05-18
+Updated: 2026-06-25
 
 Current architecture capability map.
 
@@ -9,7 +9,8 @@ Current architecture capability map.
 | planning | partial | registry introduced | smoke/agent_team datasets | Agent team planner and delegation planner exist, but prompt migration is incremental. |
 | execution | baseline | registry introduced | sandbox/tool/skill contract checks | Tool registry routes workspace commands and declared Skill entrypoints through thread-level sandbox execution with explicit fallback metadata. |
 | critic | partial | registry introduced | governance/review checks | Merge review now has a versioned prompt baseline. |
-| memory | production baseline | registry introduced | memory, memory_context, and embedding-path tests | PostgreSQL canonical memory is the source of truth; pgvector embeddings are a rebuildable semantic index used by hybrid retrieval when configured. |
+| memory | production baseline | registry introduced | memory, memory_context, retrieval, and embedding-path tests | PostgreSQL canonical memory is the source of truth; Zvec is the default rebuildable retrieval index, with pgvector retained as a compatibility/fallback path when configured. |
+| retrieval_rag | shadow-first expansion | registry introduced | retrieval expansion and tool tests | Zvec covers memory, artifact chunks, skills, trajectory, branch context, agent-team plans, failure cases, governance feedback, and workspace chunks; every hit must hydrate canonical data before prompt/context use. |
 | skill_scout | partial | registry introduced | skill hints in eval schema | Skill registry is present; eval prompt pinning is now represented in cases. |
 
 Frozen contracts:

@@ -1,8 +1,8 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-05-18
+更新时间：2026-06-25
 
-本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、pgvector embedding、审计治理、legacy fallback 和后续风险。
+本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、Zvec-first retrieval、pgvector compatibility、审计治理、legacy fallback 和后续风险。跨 memory / artifact / skill / trajectory / workspace 的检索索引细节见 [Zvec Retrieval Index](retrieval-zvec.md)。
 
 ## 1. 定位
 
@@ -15,11 +15,11 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 在稳定 turn 结束后做保守启发式抽取，经 `MemoryPolicy` 和 `MemoryService` 写入 canonical store。
 - 分支和多 agent 产生的候选默认隔离，只有 merge/promotion 语义确认后才进入主线可依赖 memory。
 - PostgreSQL 独立业务表是生产 canonical storage；LangGraph Store 保留给 checkpoint/graph 兼容路径和本地 fallback。
-- pgvector embedding 默认启用，并作为 turn-level memory retrieval 的 hybrid 输入参与 RRF 合并；本地默认自动探测 Ollama `embeddinggemma`，`focus_memories` 仍是 canonical truth，`focus_memory_embeddings` 是可重建索引。
+- Zvec 是默认 retrieval index；memory 写入仍保存到 `focus_memories`，并 best-effort 同步到 Zvec。pgvector embedding 保留为兼容/fallback 路径；本地默认自动探测 Ollama `embeddinggemma`。
 
 当前明确不做：
 
-- 不引入 mandatory external vector database；pgvector 是 PostgreSQL 内的默认语义检索能力，不是外部向量库。
+- 不引入 mandatory external vector database；Zvec 是嵌入式可重建索引，pgvector 是 PostgreSQL 内的兼容/fallback 语义检索能力。
 - 不把 embedding 向量本身当 canonical memory；forget、权限、审计仍以 `focus_memories` 和 tombstone 为准。
 - 不通过 API/SDK/Web 返回 embedding 向量本身，只暴露状态、模型和更新时间等 metadata。
 - 不增加专用 memory summarizer model。
@@ -185,7 +185,7 @@ Schema v8-v10 创建 memory 业务表：
 | `focus_memory_audit_events` | append-only audit trail。 |
 | `focus_memory_tombstones` | soft forget tombstone。 |
 | `focus_memory_candidates` | multi-agent / branch candidate board。 |
-| `focus_memory_embeddings` | pgvector embedding index；默认启用，可在显式关闭 embedding 且不用 hybrid 时跳过创建。 |
+| `focus_memory_embeddings` | pgvector compatibility/fallback embedding index；可在显式关闭 embedding 且不用 hybrid 时跳过创建。 |
 
 ```mermaid
 erDiagram
@@ -283,21 +283,21 @@ Schema version 语义：
 
 - v8：创建 `focus_memories`、audit、tombstone、candidate 表。
 - v9：幂等清理历史 forgotten rows 中遗留的正文。
-- v10：按 extension mode 创建或校验 pgvector，创建 `focus_memory_embeddings` 和相关索引。当前默认 embedding backend 已启用且检索模式为 `hybrid`，因此有 `DATABASE_URI` 的默认启动会请求 v10 schema；显式关闭 embedding 且不使用 `hybrid` 时才不会强制创建 pgvector schema。
+- v10：按 extension mode 创建或校验 pgvector，创建 `focus_memory_embeddings` 和相关索引。当前默认 memory embedding / hybrid compatibility 仍会在有 `DATABASE_URI` 时请求 v10 schema；显式关闭 embedding 且不使用 `hybrid` 时才不会请求 pgvector schema。
 
-当前基础检索是 PostgreSQL FTS + `ILIKE` fallback + pgvector hybrid。`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
+当前基础检索是 Zvec-first + PostgreSQL fallback。PostgreSQL FTS + `ILIKE` 与 pgvector hybrid 仍保留为兼容路径；`AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` 已作为配置位存在，但 `pg_trgm` 不是当前启动硬依赖。
 
-### 4.1 pgvector Embedding 边界
+### 4.1 Zvec 与 pgvector 边界
 
-pgvector 默认启用，但它仍只是 canonical memory 的可重建语义索引：
+Zvec 默认启用，但它仍只是 canonical memory 的可重建 retrieval index：
 
 - canonical truth 仍是 `focus_memories` 和 `data_json` round-trip。
-- embedding 表只保存按 `memory_id` 关联的向量和索引 metadata，不能成为权限、forget、audit 或 migration 的唯一事实源。
+- Zvec document 和 pgvector embedding 表都不能成为权限、forget、audit 或 migration 的唯一事实源。
 - API/SDK/Web 只返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`；不会返回 `embedding`、`embedding_vector`、`vector` 等向量字段。
-- 检索仍必须先应用 namespace/read policy；embedding recall 只能在同一权限边界内补充召回或排序。
+- 检索仍必须先应用 namespace/read policy；Zvec / embedding recall 只能在同一权限边界内补充召回或排序。
 - provider/model/dimensions/content_hash 是幂等和多模型并存边界；同一 memory 内容变化时 repository 会先使同 provider/model 的旧 active embedding 失效，再写入新 hash，避免 stale vector 继续参与召回。
 - `OllamaEmbeddingProvider` 使用 native `/api/embed`；如果 `OLLAMA_BASE_URL` 或 `AGENT_MEMORY_EMBEDDING_BASE_URL` 以 `/v1` 结尾，会先规范化为 native base URL，再调用 `/api/tags` 和 `/api/embed`。
-- embedding 缺失、过期、provider 失败或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
+- Zvec 不可用、embedding 缺失、provider 失败或模型不匹配时，系统应继续走 PostgreSQL FTS + `ILIKE` fallback。
 
 ### 4.2 Embedding 分层策略
 
@@ -318,7 +318,7 @@ pgvector 默认启用，但它仍只是 canonical memory 的可重建语义索�
 - 规则、项目指令、短期上下文、工作记忆
 - forgotten、deleted、空正文/空摘要 record
 
-这些非 embedding 内容不是“不参与上下文”，而是不走向量召回：它们仍可通过 FTS、explicit context assembly、pinned/context state、skills、`AGENTS.md` 或专门 tool surface 进入 prompt。这样可以避免短期噪声、运行时观察和规则文本污染长期语义索引，也让 pgvector 表保持可重建、低噪声。
+这些非 embedding 内容不是“不参与上下文”，而是不走长期 memory vector recall：它们仍可通过 FTS、explicit context assembly、pinned/context state、skills、`AGENTS.md` 或专门 tool surface 进入 prompt。这样可以避免短期噪声、运行时观察和规则文本污染长期语义索引，也让 Zvec / pgvector 索引保持可重建、低噪声。
 
 ### 4.3 pgvector Extension 生命周期
 
@@ -338,7 +338,7 @@ flowchart TD
 
 - `auto_create`：本地开发、CI、短生命周期测试库可用。应用 migration 会执行 `CREATE EXTENSION IF NOT EXISTS vector`，要求连接账号有 extension 权限。
 - `required`：生产推荐。DBA 或迁移账号先执行 `CREATE EXTENSION IF NOT EXISTS vector`，应用账号启动时只校验，不尝试创建 extension。
-- 显式关闭 embedding backend 且不是 `hybrid` 模式时，runtime 不执行 v10，也不会要求 pgvector；默认配置会要求 pgvector schema 可用。
+- 显式关闭 embedding backend 且不是 `hybrid` 模式时，runtime 不执行 v10，也不会要求 pgvector；保留 pgvector fallback / compatibility 时需要该 schema 可用。
 - 维度由 `AGENT_MEMORY_EMBEDDING_DIMENSIONS` 决定；`embedding vector(N)` 不应在线改列类型。模型或维度变化应切换 `model_id` 并重建 shadow。
 - `AGENT_MEMORY_VECTOR_INDEX_ENABLED=true` 会创建 HNSW index，适合在 staging 或生产维护窗口打开；默认关闭，避免首次构建成本影响启动。
 
@@ -379,12 +379,16 @@ flowchart TD
     EmbSvc --> Runtime
     Runtime --> Retriever["MemoryRetriever(store, repository?)"]
     Runtime --> Writer["MemoryWriter(store, repository?)"]
+    Runtime --> RetrievalIndex["RetrievalIndex / Zvec"]
     Runtime --> Tools["Tool registry memory tools"]
     Runtime --> API["Memory API"]
     Retriever --> RepoPath{"repository available?"}
     RepoPath -- "yes" --> Canonical["focus_memories"]
     RepoPath -- "no" --> Legacy["LangGraph Store fallback"]
-    Retriever --> Vector{"shadow/hybrid + provider?"}
+    Retriever --> RetrievalIndex
+    Writer --> RetrievalIndex
+    RetrievalIndex --> Zvec["focus_memory collection"]
+    Retriever --> Vector{"pgvector fallback + provider?"}
     Vector -- "yes" --> Embeddings["focus_memory_embeddings"]
 ```
 
@@ -392,10 +396,11 @@ flowchart TD
 
 - 有 `DATABASE_URI`：初始化 `PostgresMemoryRepository`，并注入 retriever/writer/tool registry/API。
 - 无 `DATABASE_URI`：`runtime.memory_repository=None`，memory 走 legacy LangGraph Store fallback。
+- Zvec index 创建由 `AGENT_RETRIEVAL_BACKEND=zvec`、`AGENT_ZVEC_ENABLED` 和 `AGENT_ZVEC_DATA_DIR` 控制；Postgres 仍是 canonical memory store。
 - v10 schema setup 会在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时请求；pgvector extension 行为由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 决定，`auto_create` 会尝试创建，`required` 只校验已安装。
 - embedding provider 默认创建；显式设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false` 且未指定 backend 时会关闭，或可直接设置 `AGENT_MEMORY_EMBEDDING_BACKEND=disabled`。仅设置 `hybrid` 但没有 provider 时会回退 FTS。
 - 有 repository 且 provider 创建成功时，runtime 会把同一个 `MemoryEmbeddingService` 注入 writer、tool registry 和 turn-level retriever。
-- readiness 会在 Postgres 模式下检查 `memory_repository`，并通过 `memory_embedding_backend` 报告 provider 状态，通过 `memory_pgvector` 报告 extension/table/dimensions/index 状态。
+- readiness 会在 Postgres 模式下检查 `memory_repository`，并通过 `memory_embedding_backend` 报告 provider 状态，通过 `retrieval_zvec` 报告 Zvec index 状态，通过 `memory_pgvector` 报告兼容/fallback extension/table/dimensions/index 状态。
 - local fallback 不维护 pgvector shadow；API list/detail 类 endpoint 返回 `available=false` 或 records 中的 `embedding_*` metadata 为空，不能据此判断生产索引健康度。
 
 配置项：
@@ -406,6 +411,10 @@ flowchart TD
 | `AGENT_MEMORY_READ_SOURCE` | `postgres` | 已解析，当前 retriever 是 repository 优先、无 repository 时 legacy fallback。 |
 | `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。 |
 | `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` | `false` | 预留/可选增强配置位。 |
+| `AGENT_RETRIEVAL_BACKEND` | `zvec` | 默认 retrieval backend；`postgres` 可作为 fallback/兼容路径。 |
+| `AGENT_RETRIEVAL_FALLBACK_BACKEND` | `postgres` | Zvec 不可用时的在线回退后端。 |
+| `AGENT_ZVEC_ENABLED` | `true` | 是否启用嵌入式 Zvec retrieval index。 |
+| `AGENT_ZVEC_DATA_DIR` | `.focus_agent/zvec` | Zvec 本地 data dir；v1 要求单 writer，损坏时可删除后 backfill。 |
 | `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` | dev/test: `auto_create`; non-dev: `required` | pgvector extension 治理模式；生产推荐 `required`。 |
 | `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | 是否创建 HNSW vector index。 |
 | `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES` | `false` | 预留审批策略配置位；完整审批应继续接入 tool approval/governance。 |
@@ -429,11 +438,14 @@ flowchart TD
 维护命令：
 
 ```bash
+focus-agent-retrieval-index doctor
+focus-agent-retrieval-index stats
+focus-agent-retrieval-index backfill --target memory --limit 1000
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
 ```
 
-`doctor` 是只读检查；`rebuild` 只删除并重建 `focus_memory_embeddings` 和它的索引，不删除 `focus_memories` canonical 数据。维度从当前 provider 或 `AGENT_MEMORY_EMBEDDING_DIMENSIONS` 解析；旧 `vector(1536)` 表切到 `embeddinggemma` 的 `vector(768)` 时应走这个显式重建流程。
+`focus-agent-retrieval-index doctor/stats` 是 Zvec 只读检查；`backfill --target memory` 从 canonical memory 重建 `focus_memory` collection。`focus-agent-memory-embedding doctor` 是 pgvector 兼容路径只读检查；`rebuild` 只删除并重建 `focus_memory_embeddings` 和它的索引，不删除 `focus_memories` canonical 数据。
 
 ## 6. Namespace 与隔离
 
@@ -569,8 +581,8 @@ Prompt 过滤：
 - `MemoryRetrievalPlan.selected_memory_ids` 记录 policy/filter/budget 后真正进入 prompt 的 memory ids。
 - shadow 模式下，vector candidates 写入 `MemoryRetrievalPlan.vector_shadow`，不改变 FTS 排序和 prompt 注入顺序。
 - hybrid 模式下，FTS rank 和 vector rank 使用 RRF 合并；namespace/status/deleted_at 过滤仍在 SQL 层先执行。
-- provider 未启用、provider 失败、pgvector schema 不存在或维度不匹配时，retriever 回退到 FTS + `ILIKE`，并在 plan 中记录 `vector_status=disabled/failed/unsupported` 等状态，不暴露 provider 原始敏感错误。
-- 当前 production graph turn 的 retriever 在 runtime 注入 embedding provider 后可以走 shadow/hybrid；显式 `memory_search` tool 目前没有注入 embedding provider，Postgres 路径实际仍是 FTS/rerank/dedupe。
+- Zvec 或 provider 不可用、pgvector schema 不存在或维度不匹配时，retriever 回退到 FTS + `ILIKE`，并在 plan 中记录 `vector_status=disabled/failed/unsupported` 等状态，不暴露 provider 原始敏感错误。
+- production graph turn 和显式 `memory_search` tool 都会复用 runtime 注入的 embedding provider / retrieval index；无 provider 或无 index 时退回 Postgres FTS/rerank/dedupe。
 
 `render_memory_block()` 会输出 `<memory-context>` fenced block。`sanitize_memory_text()` 会移除伪造 `<memory-context>` 标签，并过滤常见 prompt injection / secret exfiltration 片段。Memory 是 recalled background context，不是 system/developer/user 指令，不能覆盖当前指令层级。
 
@@ -734,7 +746,7 @@ flowchart LR
 | Tool | Side effect | Parallel safe | Postgres 行为 |
 | --- | --- | --- | --- |
 | `memory_save` | yes | no | `MemoryService.upsert_request` + audit；runtime 注入 embedding service 时 best-effort 写 shadow。 |
-| `memory_search` | no | yes | `MemoryRetriever(repository=...)` search/rerank/dedupe；当前 Postgres tool path 不注入 embedding provider，因此实际是 FTS 主路径。 |
+| `memory_search` | no | yes | Zvec-first semantic search + canonical hydrate；Zvec/provider 不可用时退回 `MemoryRetriever(repository=...)` FTS/rerank/dedupe。 |
 | `memory_forget` | yes | no | `MemoryService.forget` + tombstone + audit；Postgres 下同步删除 `focus_memory_embeddings` rows。 |
 
 ```mermaid
@@ -754,7 +766,7 @@ sequenceDiagram
     Tool-->>Model: JSON memory_id/action
 
     Model->>Tool: memory_search(query)
-    Tool->>Retriever: _search_namespace + rerank + dedupe
+    Tool->>Retriever: Zvec-first search + hydrate, fallback FTS
     Retriever->>Repo: search
     Tool-->>Model: JSON results
 
@@ -770,7 +782,7 @@ Local fallback 下，这些 tools 保留 legacy LangGraph Store path。
 
 - graph path 的 `memory_save/search/forget` 参数由当前 `RequestContext` 绑定，不允许模型自由跨 user/root/namespace。
 - `memory_search` 默认读取当前 user profile 和当前 root main/episodic；只有 context 有 `branch_id/project_id` 时才加入当前 branch/project namespace。
-- 当前显式 `memory_search` tool 不会把模型 query 送到 embedding provider。turn-level `retrieve_memory` 才是 pgvector shadow/hybrid 的主要接入点；如果后续要让 tool search 也走 vector，需要给 tool retriever 注入同一 provider 并补权限/成本观测。
+- `memory_search` 的 Zvec 命中仍必须回查 canonical memory；forgotten/tombstoned、跨 user/root/namespace 或状态不允许的命中会被丢弃。
 - local fallback 的 `memory_forget` 仍是 store delete，没有 Postgres tombstone；生产 canonical 行为以 Postgres 为准。
 
 ## 13. API、SDK 与 Web Console
@@ -817,7 +829,7 @@ Web surface：
 - global memory/audit/candidate/forget 使用持久化 `AuthContext` role permissions：`memory:read`、`memory:audit`、`memory:forget`。仅 bearer token scope 不授予全局 memory 视图。
 - `MemoryRecordResponse.payload_redacted=true` 表示正文不可用；forgotten record 返回 `content=""`、`summary="[forgotten]"`。
 - `MemoryRecordResponse` 可选返回 `embedding_status`、`embedding_model_id`、`embedding_updated_at`，Memory Console 在列表和详情中展示这些 metadata。HTTP surface 不返回向量字段，candidate record payload 也应过滤向量 key。
-- readiness/health 的 component check 中包含 `memory_embedding_backend` 和 `memory_pgvector`；前者判断 embedding provider，后者判断 extension/table/dimensions/index。它们不代表 canonical memory API 是否可用。
+- readiness/health 的 component check 中包含 `memory_embedding_backend`、`retrieval_zvec` 和兼容用的 `memory_pgvector`。它们不代表 canonical memory API 是否可用。
 
 ## 14. Migration
 
@@ -947,7 +959,7 @@ embedding 相关观测不会记录向量值：
 - Forget 默认擦除 `focus_memories` 拆列和 `data_json` 中的正文；API/SDK/Web 用 `payload_redacted` 展示 tombstone 状态。
 - Postgres forget 同步删除 `focus_memory_embeddings` rows，避免 forgotten memory 通过语义 shadow 被召回。
 - pgvector smoke 验证发现并修复了 `MemoryEmbeddingSearchHit` 进入 retriever 后未 normalize 的问题；现在 vector hits 会统一转换成 `MemorySearchHit`。
-- runtime 注入 embedding provider 后，turn-level retrieval 可以记录 shadow candidates 或执行 hybrid RRF；显式 `memory_search` tool 当前仍是 FTS 主路径。
+- runtime 注入 embedding provider 和 retrieval index 后，turn-level retrieval 与显式 `memory_search` tool 都可以走 Zvec-first，并在索引不可用时回退 FTS。
 - `focus-agent-migrate-local-state` 报告中的 database URI 改为脱敏输出，legacy store 非 dict payload 也不会因 `dict(value)` 崩溃。
 - `MemoryCurator` 的 skipped 统计保留非 promotable candidate，不再在冲突检测前丢失 skip reason。
 
@@ -971,19 +983,18 @@ Memory API 已接入持久化角色权限和 thread/branch ownership；后续还
 
 ### 18.3 Search Quality
 
-当前基础排序由 PostgreSQL FTS + `ILIKE` 与 pgvector hybrid 共同构成；关键词明确的 memory 仍可由 FTS 命中，同义改写、隐式事实、长距离抽象主要依赖 embedding 候选补足。
+当前基础排序由 Zvec semantic retrieval 与 PostgreSQL FTS + `ILIKE` fallback 共同构成；关键词明确的 memory 仍可由 FTS 命中，同义改写、隐式事实、长距离抽象主要依赖 Zvec/embedding 候选补足。
 
-pgvector embedding 已默认启用：
+Zvec retrieval 已默认启用：
 
-- `focus_memory_embeddings` 是独立可重建索引表，`focus_memories` 仍是 canonical truth。
+- `focus_memory` collection 是独立可重建索引，`focus_memories` 仍是 canonical truth。
 - 默认配置为 `AGENT_MEMORY_EMBEDDING_ENABLED=true`、`AGENT_MEMORY_EMBEDDING_BACKEND=auto`、`AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma`、`AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`、`AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`。
 - auto backend 优先本地 Ollama `embeddinggemma`；缺模型时不会自动下载，也不会默认继承 chat provider 凭据，而是在 readiness / doctor 中给出 `ollama pull embeddinggemma`。
-- accepted/merged memory 写入会 best-effort 生成 embedding；embedding provider 失败不会回滚 canonical memory 写入，但 readiness 会报告 degraded。
-- `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 会用 RRF 合并 FTS rank 与 vector rank；`shadow` 可用于只观测 vector candidates。
-- namespace/read policy 仍是第一层权限边界；forget 会清理对应 shadow embedding；local fallback 不维护 pgvector shadow。
-- `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 把环境治理显式化：local/test 可 `auto_create`，生产推荐 `required` 并在应用启动前由 DBA/迁移账号预装 extension。
-- 显式 `memory_search` tool 当前尚未把 query embedding provider 接入 tool retriever；它能受益于 Postgres FTS、CJK fallback、rerank/dedupe，但不等同于 turn-level `retrieve_memory` 的 pgvector shadow/hybrid 能力。
-- 当前已用 `deterministic_test` provider 和真实 Postgres+pgvector smoke 验证过 shadow 写入、vector 召回、hybrid retriever 和 forget cleanup；生产 embedding model 的语义质量、成本、延迟和 hybrid 阈值还需要上线后用 shadow metrics 评估。
+- accepted/merged memory 写入会 best-effort 更新 Zvec；embedding provider 失败不会回滚 canonical memory 写入，但 readiness 会报告 degraded。
+- namespace/read policy 仍是第一层权限边界；forget 会清理对应 Zvec document 和 pgvector fallback rows；local fallback 不维护这些 shadow index。
+- pgvector compatibility 由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 治理：local/test 可 `auto_create`，生产如果需要 fallback 则推荐 `required` 并在应用启动前由 DBA/迁移账号预装 extension。
+- 显式 `memory_search` tool 和 turn-level `retrieve_memory` 都走同一套 provider / retrieval index 注入。
+- 当前已用 deterministic provider、in-memory fake index 和相关 Postgres/pgvector smoke 验证过 shadow 写入、vector 召回、hybrid retriever、Zvec fallback 和 forget cleanup；生产 embedding model 的语义质量、成本、延迟和 hybrid 阈值还需要上线后用 shadow metrics 评估。
 
 后续 search quality 可以继续优先做：
 
@@ -1020,7 +1031,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 - Postgres 是 production canonical。
 - local fallback 可用于裸跑、单测、离线迁移。
 - local fallback 不维护 pgvector shadow，不保证 `embedding_*` metadata；缺失 metadata 不应影响本地 search/write/forget 基础路径。
-- 离线 embedding backfill 会尝试按当前 provider dimensions 初始化 v10 pgvector schema；生产仍需要提前安装 `vector` extension，避免应用账号在 `required` 模式下创建 extension。
+- 离线 embedding backfill 会尝试按当前 provider dimensions 初始化 v10 pgvector schema；生产如果保留 pgvector fallback，仍需要提前安装 `vector` extension，避免应用账号在 `required` 模式下创建 extension。
 - migration/backfill 完成后应尽量避免 dual truth 长期存在。
 
 ## 19. 文件导航

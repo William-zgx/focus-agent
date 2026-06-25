@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-06-06
+更新时间：2026-06-25
 
 这份文档只回答两个问题：
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-06-06，以下能力已经应视为默认基线，而不是待启动事项：
+截至 2026-06-25，以下能力已经应视为默认基线，而不是待启动事项：
 
 - `apps/web` React Web App 已接管 `/app` 主入口，FastAPI 负责托管构建产物，并可在开发模式下跳转到 Vite dev server
 - `frontend-sdk` 已覆盖 conversation、thread resolution、branch tree、branch action、merge review、Agent Team、Admin、productivity、agent governance、observability 等核心 typed client 能力
@@ -36,6 +36,7 @@ flowchart LR
 - Agent Team Mission Runner 已从 legacy dispatch 升级为目标驱动的动态 Mission DAG：支持 standalone session、可选来源对话、模型优先规划、fallback contract defaults、task retry/cancel、执行证据汇总、Cockpit UI 和 `final_answer` synthesis
 - Agent Team Adoption / Governance Suite 已进入建设期：多 worktree 结果采纳、Notes/Tasks capture、Context/Memory evidence、Skill selection events、multi-agent coordination、Postgres-backed rate limit、branch decision events 和 feedback regression 统一进入 schema v17 与 nightly 证据链
 - Agent Governance 反馈趋势已接入：`GET /v1/agent/feedback/trend` 和 SDK `getAgentFeedbackTrend()` 会聚合负反馈、merge review 成功/冲突、skill 低置信/override、context drift、Notes/Tasks capture 与失败 trajectory 样本，供 Web governance console 和 Android local runtime smoke 使用
+- Zvec retrieval/RAG 已进入默认基线：`RetrievalIndex` 统一 memory、artifact chunk、Skill、trajectory 检索；branch context、Agent Team plan reuse、failure recovery、governance feedback 和 workspace semantic search 默认 shadow-first，所有命中都必须回查 Postgres 或文件系统 canonical source
 - Admin Console 已落地：`/app/admin/config` 以设置中心方式管理连接、能力、Skill、工具、Agent 行为、安全/运行时和高级配置，`/app/admin/users` 管理用户、状态、角色、会话和密码，`/app/admin/audit-events` 浏览管理员审计事件；admin 权限来自持久化用户角色，不来自 token scope
 - 第一轮工程化加固已落地：CORS、限流、请求 ID、统一错误信封、前端 bundle 分割
 - 本机启动链已统一到 `make api` / `make dev` / `make serve-dev` / `make serve-prod`，在 `DATABASE_URI` 未显式设置时会自动管理 repo-local PostgreSQL
@@ -75,10 +76,11 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 | 模块 | 当前状态 | 主要入口 | 下一步重点 |
 |------|----------|----------|------------|
 | Plan-Act-Reflect | 已落地并默认开启；`graph_builder.py` 保持图注册 facade，plan/reflect、agent loop、memory、tool executor、repair/policy 已按 `graph_*` 模块拆分 | `src/focus_agent/engine/graph_builder.py` `src/focus_agent/engine/graph_plan_nodes.py` | 优化 replan 质量、接模型角色分工 |
-| Memory | 读写闭环、Memory Curator 分支提升保护、candidate review/promotion、regression trend report 已接入 | `src/focus_agent/memory/` `scripts/memory_context_eval.py` `/app/agent/governance` | 继续扩 golden cases，把真实失败样本稳定接入 nightly |
+| Memory | 读写闭环、Memory Curator 分支提升保护、candidate review/promotion、Zvec-first retrieval、regression trend report 已接入 | `src/focus_agent/memory/` [memory-system-v2.md](memory-system-v2.md) `scripts/memory_context_eval.py` `/app/agent/governance` | 继续扩 golden cases，把真实失败样本稳定接入 nightly |
+| Retrieval / RAG | Zvec 作为默认可重建检索索引，覆盖 memory、artifact chunks、Skill、trajectory；branch/team/failure/governance/workspace 扩展项 shadow-first | [retrieval-zvec.md](retrieval-zvec.md) `src/focus_agent/retrieval/` `src/focus_agent/capabilities/default_tool_modules/` | 补长期 eval/benchmark、观测 fallback rate 和 hydrate failure、逐项把达标 shadow signal 切 Zvec-first |
 | Context Engineering | v2 已接入长上下文压缩决策、artifact refs、角色上下文视图与治理台预览；当前线程 `context_usage` 与非破坏式 compaction 已进入 ChatService / Web composer；context assembly、budget guard、tool observation compaction 已从 `context_policy.py` facade 拆出 | `src/focus_agent/core/context_policy.py` `src/focus_agent/core/context_assembly.py` `src/focus_agent/context_usage.py` `src/focus_agent/agent_context_engineering.py` `scripts/memory_context_eval.py` `/app/agent/governance` `/app` | tokenizer 精算、artifact 生命周期治理、真实线上摘要漂移样本沉淀 |
 | Tool Runtime | 并行/缓存/降级、参数校验失败短路、取消/超时不走 fallback、side-effect 串行边界已落地；runtime facade 下沉到 cache、execution、invocation、messages、parallel helpers | `src/focus_agent/capabilities/tool_runtime.py` `src/focus_agent/capabilities/tool_execution.py` | 增加更多 validator 覆盖和真实高风险工具策略样本 |
-| Agent Team | 目标驱动 dynamic Mission DAG、standalone mission、任务契约、fallback contract defaults、bounded ready-task scheduler、Cockpit UI、final-answer synthesis、retry/cancel 与 merge bundle 已落地；Workbench view-model 已按 focus / phase / decision / derived state helper 收口 | [agent-team-workbench.md](agent-team-workbench.md) `src/focus_agent/services/agent_team*.py` `apps/web/src/features/agent-team/` `apps/web/src/pages/agent-team/team-workbench-page.tsx` | 提升真实子任务执行质量、更多浏览器回归、接入更强执行隔离 |
+| Agent Team | 目标驱动 dynamic Mission DAG、standalone mission、任务契约、fallback contract defaults、bounded ready-task scheduler、Cockpit UI、final-answer synthesis、retry/cancel、merge bundle 和 Zvec shadow plan reuse 已落地；Workbench view-model 已按 focus / phase / decision / derived state helper 收口 | [agent-team-workbench.md](agent-team-workbench.md) `src/focus_agent/services/agent_team*.py` `apps/web/src/features/agent-team/` `apps/web/src/pages/agent-team/team-workbench-page.tsx` | 提升真实子任务执行质量、更多浏览器回归、接入更强执行隔离 |
 | Eval / Regression | 已有 `tests/eval/` 基线，支持 baseline 对比、trajectory replay/promotion、memory/context trend、feedback regression 与 contract drift 检查 | `tests/eval/` `scripts/check_contracts.py` `scripts/memory_context_eval.py` `scripts/feedback_regression.py` | 扩 golden cases、补失败 trajectory 回放样本、接入长期 trend storage |
 | Observability | trajectory 写入、request/trace correlation、查询/导出 CLI、单条 replay/promotion、批量 promote-preview/replay-compare、`/readyz`、`/metrics`、overview route、三栏 trajectory workbench、`timeline` / `zero_step` / `missing_detail` 证据态、executable alert report、release-health 发布阻断信号，以及浏览器 smoke 发布口径已落地；release health 已按 alerts/context/governance/otel/postgres/runtime/trajectory 模块拆分 | `src/focus_agent/observability/trajectory.py` `src/focus_agent/observability/tracing.py` `src/focus_agent/observability/release_health.py` `apps/web/src/pages/observability/trajectory-page.tsx` | OpenTelemetry 部署联通、告警落盘、长时浏览器回归 |
 | Agent Governance | role routing、Memory Curator、Tool Router、Delegation Runtime、Model Router、Self Repair、Review Queue、Task Ledger、Delegated Artifact Synthesis、observe-first autonomy 契约与 eval gate 已补 | [agent-role-routing.md](agent-role-routing.md) `tests/eval/datasets/agent_delegation.jsonl` `tests/eval/datasets/agent_task_ledger.jsonl` `/app/agent/governance` | 继续提升真实子任务执行质量、成本画像、critic gate 质量和人工 review 队列体验 |
@@ -114,6 +116,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - trajectory Web review workbench 与前端 SDK/API contract
 - observability regression gate 口径：`make lint`、`make ci-test`、SDK/Web 检查、`python scripts/observability_ui_smoke.py --scenario all`、`pnpm --dir apps/web smoke:observability`、eval smoke/baseline 回归
 - Agent governance console、Context Engineering v2、Delegation Runtime、Task Ledger、Artifact Synthesis、Critic Gate 及对应 eval gate
+- Zvec Retrieval Index：默认 memory/artifact/Skill/trajectory 检索、`artifact_search`、`workspace_search`、backfill/doctor/stats CLI、readiness 和 shadow-first 扩展 collection
 - release evidence / release-health：production evidence pack、approval、artifact storage、retention、alert report、Postgres migration report、baseline eval report、storage verification
 - Memory / Context regression dashboard：candidate / reviewed / promoted / golden trend、promotion history、污染告警、compaction semantic quality / drift
 - Ownership Audit Dashboard：allow / deny 聚合、deny reason、resource/action/principal 维度统计、deny trend export
@@ -131,7 +134,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - Auth / Access Model：生产安全启动基线已强制检查 `AUTH_ENABLED`、JWT secret/key set、JWT issuer、token TTL、demo token 与 rate limit；JWT 已支持 `kid`、active key set 和 rotation overlap，配置 key set 时 current `kid` 必须匹配 active key，`tenant_id` / `scope` 仍不能绕过 ownership；[auth-access.md](auth-access.md) 已收口登录、注册、账号自助和 token/session 边界，Admin Console 已把持久化用户角色、最后 active admin 保护、reasoned admin actions 和 audit events 纳入默认治理面
 - 文档与 contract 对齐：README、SDK、Web UI 文案、部署说明、CI artifact/approval 示例、OpenAPI/generated SDK artifacts 和 frontend QA 口径
 - eval 数据集扩充与 nightly 回归报表覆盖面
-- branch / branch decision / merge / memory 之间的语义一致性
+- branch / branch decision / merge / memory / retrieval shadow signal 之间的语义一致性
 
 ### 后续仍需真实环境落地
 
@@ -146,7 +149,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 
 1. 把 GitHub Actions / Buildkite 示例接到企业实际部署平台、审批记录和长期 artifact storage。
 2. 把 nightly history / delta / feedback regression 接到长期 trend storage，补真实 trajectory replay、alert report 和长时浏览器回归。
-3. 扩 memory / eval / Agent Team / Admin UI smoke 的真实失败样本，确保已落地的 agent 和治理基线不会回退。
+3. 扩 memory / retrieval / eval / Agent Team / Admin UI smoke 的真实失败样本，确保已落地的 agent 和治理基线不会回退。
 4. 将 production smoke v2 接到真实 typed SDK stream token、真实 graph turn 和轻量压测阈值报告。
 5. 将 Auth token lifecycle 从 HS256 active key set 推进到真实外部登录、签发、刷新、JWKS 和 rotation 运维演练。
 
@@ -187,6 +190,7 @@ Agent 侧当前不再是从零设计，而是进入“已落地基础之上的�
 - [agent-team-workbench.md](agent-team-workbench.md)：描述 Agent Team Mission Runner、动态 DAG、Cockpit UI、任务契约和验收口径
 - [admin-console.md](admin-console.md)：描述设置中心、能力管理、管理员用户、角色、会话、密码、审计事件和权限边界
 - [branch-decisions.md](branch-decisions.md)：描述 branch decision event、发送前推荐、Branch Action 确认卡、配置、API/SDK 和验证口径
+- [retrieval-zvec.md](retrieval-zvec.md)：描述 Zvec collection、canonical hydrate、安全边界、CLI、readiness 和多副本约束
 - [docker-deployment.md](docker-deployment.md)：描述本机启动、本地 Docker、生产模板和迁移方式
 - 本文：保留统一的路线图视角，只维护“现状 + 下一步”
 

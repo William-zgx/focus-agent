@@ -101,13 +101,13 @@ uv run python scripts/ensure_sandbox_image.py \
   - PostgreSQL 数据：`focus_agent_pgdata`
 - 默认 `DATABASE_URI` 指向 `postgres` service
 
-注意：官方 `postgres:16-bookworm` 镜像通常不预装 `pgvector`。当前 Memory v2 在 Postgres-backed 运行下默认启用 pgvector embedding/hybrid；如果继续使用该默认 Compose 数据库，请选择下面之一：
+注意：Zvec 是默认嵌入式 retrieval index，数据位于应用 `/data` 下，可通过 backfill 重建；Postgres 仍保存 canonical memory 和业务数据。官方 `postgres:16-bookworm` 镜像通常不预装 `pgvector`，只有启用 pgvector fallback 时才需要处理 `vector` extension：
 
 - 换成已包含 `vector` extension 的 PostgreSQL 镜像或自建镜像。
 - 在外部 PostgreSQL 预装 `vector`，并通过 `FOCUS_AGENT_DATABASE_URI` 指向它。
-- 本地容器只验证非 embedding 路径时，在 `/data/local.env` 中临时设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false`、`AGENT_MEMORY_EMBEDDING_BACKEND=disabled`，并把 `AGENT_MEMORY_VECTOR_SEARCH_MODE=off`。
+- 本地容器只验证非 embedding / fallback 路径时，在 `/data/local.env` 中临时设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false`、`AGENT_MEMORY_EMBEDDING_BACKEND=disabled`，并把 `AGENT_MEMORY_VECTOR_SEARCH_MODE=off`。
 
-生产/预发不建议让应用账号创建 extension；应先由 DBA 或迁移账号执行 `CREATE EXTENSION IF NOT EXISTS vector`，再在应用环境中设置 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。
+生产/预发不建议让应用账号创建 extension；如果需要 pgvector fallback，应先由 DBA 或迁移账号执行 `CREATE EXTENSION IF NOT EXISTS vector`，再在应用环境中设置 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。
 
 启动：
 
@@ -167,7 +167,7 @@ docker compose logs -f focus-agent postgres
 - `compose.yaml` 要求 `FOCUS_AGENT_AUTH_JWT_SECRET` 必填。即使本地 Docker 默认保留 demo token，也建议使用至少 32 字符的临时 secret，例如 `local-focus-agent-jwt-secret-32chars`
 - provider 密钥和 Base URL 默认来自 `/data/local.env`，新增 OpenAI-compatible provider 通常只需要在 `/data/models.toml` 和 `/data/local.env` 增加对应配置；如果想临时覆盖内置常用 provider，可在宿主机导出 Compose 会透传的变量，例如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`MOONSHOT_API_KEY`、`MOONSHOT_BASE_URL`、`MIMO_API_KEY`、`MIMO_BASE_URL`、`OLLAMA_API_KEY`、`OLLAMA_BASE_URL`、`TAVILY_API_KEY`
 - 本地 embedding auto 模式优先 Ollama `embeddinggemma`。如果 Ollama 跑在宿主机上，容器内通常需要把 `/data/local.env` 里的 `OLLAMA_BASE_URL` 指到宿主机可达地址，例如 Docker Desktop 的 `http://host.docker.internal:11434/v1`；embedding provider 会规范化成 native Ollama base URL 并调用 `/api/tags`、`/api/embed`
-- Memory embedding、pgvector、runtime lease 和 durable jobs 读取的是应用内 `AGENT_MEMORY_*`、`RUNTIME_THREAD_LOCK_*`、`BACKGROUND_JOB_*` 变量。默认容器入口会从 `/data/local.env` 读取这些变量；如果要通过 Compose host env 控制它们，需要在 `compose.yaml` 的 `environment` 中显式增加映射
+- Zvec retrieval、Memory embedding、pgvector fallback、runtime lease 和 durable jobs 读取的是应用内 `AGENT_RETRIEVAL_*`、`AGENT_ZVEC_*`、`AGENT_MEMORY_*`、`RUNTIME_THREAD_LOCK_*`、`BACKGROUND_JOB_*` 变量。默认容器入口会从 `/data/local.env` 读取这些变量；如果要通过 Compose host env 控制它们，需要在 `compose.yaml` 的 `environment` 中显式增加映射
 - 如果要在 readiness、metrics 和 trajectory correlation 中标记版本或部署批次，可在 Compose environment 中显式传入 `APP_VERSION`、`APP_ENVIRONMENT` 或 `DEPLOYMENT_NAME`
 - 本地 Docker 路径下建议继续保留 demo token，方便 Web App 直接调试
 
@@ -198,9 +198,13 @@ export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 docker compose -f compose.prod.yaml up -d
 ```
 
-生产 memory embedding / pgvector / durable job 配置建议写入挂载卷里的 `/data/local.env`，或在 `compose.prod.yaml` 中显式映射为应用读取的变量：
+生产 Zvec retrieval / memory embedding / pgvector fallback / durable job 配置建议写入挂载卷里的 `/data/local.env`，或在 `compose.prod.yaml` 中显式映射为应用读取的变量：
 
 ```env
+AGENT_RETRIEVAL_BACKEND=zvec
+AGENT_RETRIEVAL_FALLBACK_BACKEND=postgres
+AGENT_ZVEC_ENABLED=true
+AGENT_ZVEC_DATA_DIR=/data/zvec
 AGENT_MEMORY_EMBEDDING_ENABLED=true
 AGENT_MEMORY_EMBEDDING_BACKEND=auto
 AGENT_MEMORY_EMBEDDING_MODEL=embeddinggemma
@@ -237,7 +241,7 @@ BACKGROUND_JOB_BACKEND=postgres
 - `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
-- 外部 PostgreSQL 必须允许应用在启动时执行 `alembic upgrade head`，或由发布流程提前执行同一迁移命令；如果启用默认 Memory Embedding，必须已安装 `vector` extension，并保持 `focus_memory_embeddings.embedding` 维度与当前 embedding provider/model 一致
+- 外部 PostgreSQL 必须允许应用在启动时执行 `alembic upgrade head`，或由发布流程提前执行同一迁移命令；如果启用 pgvector fallback，必须已安装 `vector` extension，并保持 `focus_memory_embeddings.embedding` 维度与当前 embedding provider/model 一致
 - provider secrets 不写入镜像
 - 应用容器只保留 `/data` 作为本地文件目录（artifact 正文、默认配置拷贝等）
 - 建议显式设置 `APP_VERSION`、`APP_ENVIRONMENT`、`DEPLOYMENT_NAME`，便于 `/readyz`、`/metrics` 和 trajectory 记录定位发布批次
@@ -259,6 +263,8 @@ BACKGROUND_JOB_BACKEND=postgres
 - Memory v2 业务表：`focus_memories`、`focus_memory_audit_events`、`focus_memory_tombstones`、`focus_memory_candidates`
 - Memory embedding shadow：`focus_memory_embeddings`，只保存可重建向量索引，不是 canonical memory truth
 - coordination / background job 表和 rate-limit buckets：`focus_runtime_locks`、`focus_background_jobs`、`focus_rate_limit_buckets`
+
+Zvec collections 不属于 PostgreSQL schema；它们位于 `AGENT_ZVEC_DATA_DIR`，是可删除、可 backfill 的本地检索索引。多副本部署应保证单 writer per data dir，或让每个副本用本地 data dir 从 Postgres/文件系统重建。
 
 应用 schema 当前由 Alembic `001_baseline` 入口桥接到仓库内的逐版本 app migrations，当前版本为 v17。v17 增加 `focus_branch_decision_events` 和 branch recommendation 幂等索引。容器 entrypoint 在 `DATABASE_URI` 存在时运行 `alembic upgrade head`；手动验证可运行：
 

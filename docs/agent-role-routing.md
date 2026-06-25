@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-06-06
+Updated: 2026-06-25
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -117,7 +117,7 @@ These rules are regression-sensitive:
 - `AGENT_DELEGATION_ENABLED=false` keeps legacy execution unchanged even if role routing records `role_route_plan`.
 - Routed roles use the current role set: `orchestrator`, `planner`, `executor`, `critic`, `memory_curator`, and `skill_scout`.
 - Workspace lookup must stay local-first and must not call web tools when the user says not to browse.
-- Symbol, definition, usage, or location lookup should start with `search_code` when that tool is available; `.claude/` and `.focus_agent/` runtime files are excluded from default workspace search.
+- Symbol, definition, usage, or exact location lookup should start with `search_code` when that tool is available; semantic workspace questions can use `workspace_search`, which is read-only, root-scoped, and still hydrates current file hashes before returning chunks.
 - Memory preview is prompt evidence only; uncommitted preview content must not leak into durable memory or final answers.
 - Role-specific model settings use `AGENT_ROLE_*_MODEL`.
 - If a role model is unset, `executor` falls back to the main selected model; planning, critique, memory, skill, and orchestration roles fall back to `helper_model`, then the main model.

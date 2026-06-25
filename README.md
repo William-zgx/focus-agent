@@ -36,7 +36,7 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
-- Access control, Admin Console, capability-centered settings, memory pipeline, governance feedback trends, and typed frontend SDK
+- Access control, Admin Console, capability-centered settings, Zvec-backed retrieval/RAG, memory pipeline, governance feedback trends, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
 - Built-in repo read/edit, git, web, artifact, memory, productivity, and Skill catalog tools with guarded workspace command execution
 - Thread-level sandbox execution for workspace commands and declared Skill entrypoints, with Docker-first isolation and explicit local fallback metadata
@@ -92,6 +92,8 @@ and Skill execution, prepare the sandbox image with `make sandbox-image`; local
 development can fall back to `local_subprocess` or `local_venv`, and those
 results are explicitly marked as fallback. See
 [docs/sandbox-execution.md](docs/sandbox-execution.md).
+
+Zvec is the default rebuildable retrieval index for memory search, artifact RAG, Skill matching, trajectory reuse, branch/team shadow signals, and workspace semantic search. PostgreSQL and the filesystem remain canonical stores. See [docs/retrieval-zvec.md](docs/retrieval-zvec.md).
 
 Memory embedding is enabled by default when PostgreSQL memory is available. Local auto mode prefers Ollama `embeddinggemma`; install it explicitly with `ollama pull embeddinggemma`, or configure an OpenAI-compatible embedding endpoint.
 

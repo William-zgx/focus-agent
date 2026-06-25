@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-06-20
+Updated: 2026-06-25
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -44,18 +44,20 @@ curl http://127.0.0.1:8000/metrics
 
 - `status` and `ready`
 - `app_version`, `environment`, and `deployment`
-- per-component `checks`, including trajectory recorder status when trajectory persistence is expected
+- per-component `checks`, including trajectory recorder status when trajectory persistence is expected and `retrieval_zvec` when the embedded retrieval index is enabled
 
 Typical interpretation:
 
 - `/healthz` is `200` but `/readyz` is `503`: the process is alive but one or more runtime checks are degraded.
 - `/readyz` is `200` and `trajectory_recorder.ready=false`: runtime is serving, but trajectory persistence is not available.
+- `/readyz` includes `retrieval_zvec.ready=false`: online retrieval should fall back to Postgres/legacy scorers, but canonical memory, artifact, and workspace data is not lost.
 - `/readyz` includes `background_jobs.ready=false`: local or production job queues have pending, retrying, or dead-lettered work. Treat release and smoke evidence as degraded until the queue drains or the pending jobs are explained.
 
 Alert guidance should use the existing `/metrics` scrape. Start with these signals before adding custom exporters:
 
 - `focus_agent_runtime_ready == 0`: page immediately; traffic readiness is degraded.
 - `focus_agent_runtime_component_ready{component="trajectory_recorder"} == 0`: trajectory persistence is unavailable.
+- `focus_agent_runtime_component_ready{component="retrieval_zvec"} == 0`: Zvec is unavailable or degraded; verify fallback rate, `AGENT_ZVEC_DATA_DIR`, and the last `focus-agent-retrieval-index doctor` output.
 - `focus_agent_trajectory_metrics_available == 0`: the runtime is up but trajectory aggregates cannot be read.
 - `focus_agent_trajectory_non_succeeded_count / focus_agent_trajectory_turn_count`: alert on a sustained failure-rate increase, not a single failed turn.
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
@@ -83,6 +85,7 @@ Interpretation:
 - DB pool: `active_connections` should return to zero when requests drain; sustained growth without matching traffic suggests a leaked connection scope.
 - Checkpoint: p95 writes should stay low and size samples should grow in coarse steps under debounce instead of after every write.
 - Memory async: pending `memory_embedding` jobs should drain; retrying/dead-letter growth points at provider outage or schema mismatch.
+- Retrieval: `retrieval_zvec` should stay ready after startup; a degraded check means search quality may fall back even though canonical stores remain intact.
 - Tool pool: queue depth should remain near zero when workers are not saturated.
 - Scheduler lock: 10 independent sessions should show p95 lock wait below 5 ms on a quiet local runner.
 

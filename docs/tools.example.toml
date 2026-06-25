@@ -26,6 +26,13 @@ enabled = true
 label = "Artifact Update"
 description = "Replace, append to, or prepend content in an existing text artifact."
 
+[artifact_search]
+enabled = true
+label = "Artifact Search"
+description = "Search saved text artifact chunks."
+default_limit = 5
+max_limit = 20
+
 [list_files]
 enabled = true
 label = "List Files"
@@ -47,6 +54,13 @@ label = "Search Code"
 description = "Search for matching text in workspace files and return matching lines."
 default_max_results = 30
 max_results_cap = 100
+
+[workspace_search]
+enabled = true
+label = "Workspace Search"
+description = "Search workspace code and docs using the semantic retrieval index."
+default_limit = 5
+max_limit = 20
 
 [codebase_stats]
 enabled = true

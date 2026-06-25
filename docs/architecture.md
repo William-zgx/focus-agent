@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-06-06
+更新时间：2026-06-25
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径；深入专题请跳转到对应 canonical 文档：
 
@@ -12,6 +12,7 @@
 - Streaming Contract：[streaming-contract.md](streaming-contract.md)
 - Context Window：[context-window.md](context-window.md)
 - Memory：[memory-system-v2.md](memory-system-v2.md)
+- Zvec Retrieval：[retrieval-zvec.md](retrieval-zvec.md)
 - Productivity：[productivity-system.md](productivity-system.md)
 - Tool / Skill：[tool-skill-design.md](tool-skill-design.md)
 - Android App：[android.md](android.md)
@@ -31,6 +32,7 @@ Focus Agent 是一个 Web-first Agent 应用平台骨架。它已经超过单一
 | Branch decision and recommendation | post-turn 决策记录与 pre-turn 分支推荐分离；推荐只生成待确认 Branch Action，不静默 fork | `BranchDecisionService`、governance repository、Branch Action UI |
 | Controlled merge-back | 分支结论和 Agent Team worktree 结果通过 proposal / adoption review 回到主线 | merge review、Agent Team adoption、imported findings、memory promotion |
 | Long-context governance | 对话、记忆、工具观察和 artifact 需要预算与引用 | context policy、Context Engineering |
+| Retrieval / RAG | 记忆、artifact、Skill、trajectory、branch/team context 和 workspace code/docs 需要统一候选检索 | `RetrievalIndex`、Zvec adapter、Postgres/filesystem canonical hydrate |
 | Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
 | Release confidence | 发布前把 readiness、trajectory、eval、feedback、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、nightly regression、release evidence |
@@ -63,11 +65,16 @@ flowchart LR
     Chat --> Graph["LangGraph Agent Graph"]
     Graph --> Tools["Tool Runtime"]
     Graph --> Memory["Memory Pipeline"]
+    Graph --> Retrieval["RetrievalIndex / Zvec"]
     Graph --> Trace["Trajectory Recorder"]
     Branch --> Repo["Branch Repository"]
     Decision --> GovRepo["Governance Repository"]
     Memory --> MemoryRepo["Postgres Memory Repository"]
     MemoryRepo --> MemoryTables["focus_memories / focus_memory_embeddings"]
+    Retrieval --> Zvec["Zvec data dir"]
+    Retrieval --> MemoryTables
+    Retrieval --> GovRepo
+    Retrieval --> Trace
     Trace --> PG["Postgres"]
     Repo --> PG
     Productivity --> ProductivityRepo["Productivity Repository"]
@@ -93,6 +100,7 @@ flowchart LR
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema、trajectory、artifact metadata |
 | `src/focus_agent/runtime/` | 运行时共享工具；当前包含进程级共享线程池和关闭钩子 |
 | `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe、embedding provider/service/policy |
+| `src/focus_agent/retrieval/` | `RetrievalIndex` protocol、Zvec adapter、memory/artifact/skill/trajectory/branch/team/failure/governance/workspace indexing helpers |
 | `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime facade、tool execution/cache/messages/parallel helpers、tool router；default tools 按 workspace、git、web、artifact、memory、conversation 模块拆分 |
 | `src/focus_agent/skills/` | skill registry、skill metadata、skill view rendering |
 | `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
@@ -141,12 +149,13 @@ flowchart LR
 - `memory_repository`：PostgreSQL canonical memory repository，读写 `focus_memories`、audit/tombstone/candidate 和可重建的 `focus_memory_embeddings`。
 - `memory_policy`、`memory_retriever`、`memory_writer`、`memory_extractor`。
 - `memory_embedding_service`、`memory_embedding_provider`、`memory_embedding_backend_error`。
+- `retrieval_index`、`retrieval_index_error`：默认 Zvec embedded retrieval index；Postgres/文件系统仍是 canonical store，Zvec 可删除后 backfill。
 - `skill_registry`、`tool_registry`。
 - `trajectory_recorder`。
 - `artifact_metadata_repository`。
 - `otel_runtime`。
 
-当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`，并按 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理 pgvector v10 schema；无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
+当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`。默认 retrieval backend 为 Zvec，data dir 来自 `AGENT_ZVEC_DATA_DIR`；pgvector v10 schema 由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理，作为兼容/fallback 路径。无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用，但本地 Zvec index 仍可用于可重建的 workspace/artifact/skill 等索引。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
 ### 4.1 Perf P1/P2 Runtime Path
 
@@ -469,7 +478,7 @@ main thread
 
 Memory 的 canonical 文档是 [memory-system-v2.md](memory-system-v2.md)。架构层只保留边界：
 
-- `MemoryRetriever`：根据 RequestContext、state、query 和 prompt mode 检索，Postgres 模式下先按 namespace/status 权限过滤，再结合 FTS/ILIKE 与可选 pgvector hybrid。
+- `MemoryRetriever`：根据 RequestContext、state、query 和 prompt mode 检索，默认先走共享 `RetrievalIndex` / Zvec，再回查 Postgres canonical memory 做 namespace/status/tombstone 校验；Zvec 不可用时降级到 FTS/ILIKE 与可选 pgvector fallback。
 - `MemoryExtractor`：从 turn 中提取候选记忆。
 - `MemoryWriter`：按 policy、dedupe、semantic key 和 conflict 规则写入；Postgres 模式下委托 `MemoryService` 和 `MemoryRepository`。
 - `MemoryEmbeddingService`：对长期语义 memory best-effort 写入 `focus_memory_embeddings`；短期上下文、规则、工作记忆、artifact/citation/tool observation 默认不进入向量索引。
@@ -489,6 +498,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - tool router：按 role、tool policy、risk、side effect 过滤工具。
 - skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具；管理员可全局关闭 Skill 系统或禁用单个 Skill，禁用项仍可见但不会参与搜索、触发或 prompt 注入。
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
+- retrieval tools：`memory_search`、`artifact_search` 和 `workspace_search` 默认使用共享 `RetrievalIndex`，Zvec 命中必须回查 canonical memory、artifact metadata/body 或当前 workspace 文件 hash 后才返回。
 - 线程级沙箱执行：`run_workspace_command` 和声明式 `run_skill_entrypoint` 会构造 `SandboxExecutionRequest`，由 `SandboxExecutionService` 路由到 Docker backend 或显式 local fallback。同一 thread / branch 使用稳定 `sandbox_id` 和 `.focus_agent/sandboxes/threads/<sandbox_id>/workspace`；单次命令仍用 `run_id` 记录审计和输出。
 - live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。
 
@@ -681,6 +691,7 @@ Observability 分三层：
 
 - 请求层：request id、结构化日志、耗时、错误信封。
 - 运行态层：`/readyz`、`/metrics`、runtime labels、OTel facade。
+- 检索层：`retrieval_zvec` readiness、`focus-agent-retrieval-index doctor/stats/backfill`、Zvec fallback rate 和 canonical hydrate failures。
 - Agent trajectory 层：turn、step、tool、model、fallback、cache、trace correlation、plan_meta。
 
 Trajectory API 支持 list、detail、stats、replay、promote、batch promote preview、batch replay compare。Web 侧拆成 overview 和 trajectory workbench。
@@ -821,6 +832,14 @@ uv run pytest \
 
 ```bash
 uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
+```
+
+影响 Zvec retrieval / RAG：
+
+```bash
+uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py
+uv run pytest tests/test_memory_retriever.py tests/test_default_tools.py tests/test_skill_registry.py
+focus-agent-retrieval-index doctor
 ```
 
 如果本机 `.venv` 的 `psycopg` 缺少 `libpq` 导致测试收集阶段 `ImportError`，可使用仓库当前测试约定的 stub 路径跑 focused observability 回归：

@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-06-06
+更新时间：2026-06-25
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -456,6 +456,12 @@ Retrieval tools gather information from external or local sources.
 - `notes_search`
 - `tasks_list`
 - `artifact_search`
+- `workspace_search`
+
+`memory_search`, `artifact_search`, and `workspace_search` use the shared
+`RetrievalIndex` by default. Zvec provides candidate retrieval only; each
+tool hydrates canonical memory rows, artifact metadata/body, or workspace file
+hashes before returning content to the model.
 
 ### Persistence Tools
 
@@ -497,7 +503,8 @@ The first general-agent batch is now part of the baseline:
 - Artifact iteration: `write_text_artifact`, `artifact_list`, `artifact_read`, `artifact_update`
 - Workspace code work: `list_files`, `read_file`, `search_code`, `codebase_stats`, `apply_patch`, `run_workspace_command`, `git_status`, `git_diff`, `git_log`
 - Web retrieval: `web_search`, `web_fetch`
-- Explicit memory control: `memory_save`, `memory_search`, `memory_forget`
+- Zvec-backed retrieval: `memory_search`, `artifact_search`, `workspace_search`
+- Explicit memory control: `memory_save`, `memory_forget`
 - Productivity workbench: `notes_create`, `notes_search`, `notes_update`, `tasks_create`, `tasks_list`, `tasks_update`, `productivity_capture`
 - Conversation recovery: `conversation_summary`
 - Skill discovery and installation: `skills_list`, `skill_view`, `skill_sources`, `skills_search`, `skills_refresh_index`, `skill_install`

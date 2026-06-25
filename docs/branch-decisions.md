@@ -1,6 +1,6 @@
 # Branch Decisions And Recommendations
 
-更新时间：2026-05-21
+更新时间：2026-06-25
 
 This document is the canonical guide for Focus Agent branch decision records,
 pre-turn branch recommendations, and user-confirmed Branch Actions. Branch
@@ -71,6 +71,10 @@ The pre-turn signal set distinguishes explicit branch wording from topic drift:
   "another question", or "unrelated topic".
 - Topic drift can route a root thread to `fork_child_branch`; when the current
   thread is already a child branch, it routes to `fork_sibling_branch`.
+- `zvec_branch_context` is a shadow-only retrieval signal from the
+  `focus_branch_context` collection. It can explain similar prior branch
+  decisions, but its weight is zero for user-visible actions until eval proves
+  it improves topic-shift precision.
 
 Post-turn decisions inspect the completed thread state and branch metadata.
 They are useful for trajectory review, governance dashboards, and future
@@ -132,6 +136,10 @@ Important implementation boundaries:
   boundary. Retrying the same decision can update the same event from
   `suggested` to `promoted`; a conflicting decision with the same key reuses the
   existing canonical id.
+- Branch decision events, branch metadata, and action outcomes are best-effort
+  indexed into Zvec after the canonical repository write. Stale Zvec hits are
+  dropped unless the current repository still confirms owner/root/thread,
+  branch status, tombstone, and hash/version compatibility.
 
 ## 4. Modes And Configuration
 

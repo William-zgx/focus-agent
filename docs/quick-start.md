@@ -72,7 +72,7 @@ Open:
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend` and `memory_pgvector` when PostgreSQL memory embedding is configured. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
+`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend`, `memory_pgvector` for compatibility/fallback, and `retrieval_zvec` for the default embedded retrieval index. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
 
 ## 3. Managed Local PostgreSQL
 
@@ -96,9 +96,20 @@ source .focus_agent/postgres/runtime.env
 psql "$DATABASE_URI"
 ```
 
-## 4. Memory Embedding And pgvector
+## 4. Memory Embedding And Zvec Retrieval
 
-PostgreSQL memory is the production canonical memory store. Memory embedding is enabled by default for Postgres-backed runs:
+PostgreSQL memory is the production canonical memory store. Zvec is the default rebuildable retrieval index for memory, artifact RAG, Skill matching, trajectory, branch context, Agent Team plan reuse, governance feedback, failure cases, and workspace semantic search.
+
+Default retrieval settings:
+
+```env
+AGENT_RETRIEVAL_BACKEND=zvec
+AGENT_RETRIEVAL_FALLBACK_BACKEND=postgres
+AGENT_ZVEC_ENABLED=true
+AGENT_ZVEC_DATA_DIR=.focus_agent/zvec
+```
+
+Memory embedding is enabled by default for Postgres-backed runs:
 
 - `AGENT_MEMORY_EMBEDDING_ENABLED=true`
 - `AGENT_MEMORY_EMBEDDING_BACKEND=auto`
@@ -128,17 +139,23 @@ AGENT_MEMORY_EMBEDDING_API_KEY_ENV=OPENAI_API_KEY
 Use the maintenance CLI for read-only diagnostics and controlled index rebuilds:
 
 ```bash
+focus-agent-retrieval-index doctor
+focus-agent-retrieval-index stats
+focus-agent-retrieval-index backfill --target all --limit 1000
 focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
 ```
 
-`rebuild` drops and recreates only `focus_memory_embeddings`; it does not delete `focus_memories`, audit events, tombstones, candidates, or checkpoints.
+`focus-agent-retrieval-index rebuild` is non-destructive guidance: stop writers, remove `AGENT_ZVEC_DATA_DIR`, then run backfill. `focus-agent-memory-embedding rebuild` drops and recreates only `focus_memory_embeddings`; it does not delete `focus_memories`, audit events, tombstones, candidates, or checkpoints.
 
-Production environments should usually preinstall the Postgres `vector` extension with a privileged migration role and run the app with:
+Production environments should usually preinstall the Postgres `vector` extension with a privileged migration role when pgvector fallback is required, then run the app with:
 
 ```env
 AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
 ```
+
+See [Zvec Retrieval Index](retrieval-zvec.md) for collection names, security
+checks, backfill targets, and multi-replica notes.
 
 ## 5. Local Checkpoint Signatures
 

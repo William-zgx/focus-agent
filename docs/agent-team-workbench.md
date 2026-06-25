@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-06-18
+更新时间：2026-06-25
 
 本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
 
@@ -75,6 +75,10 @@ Agent Team 的采纳闭环同时服务后续工作：
 - fake / placeholder 输出必须醒目标识，不能作为真实可采纳变更进入 apply。
 - context/memory evidence 和 skill selection event 只记录“为什么这么做”的治理线索，不改变既有任务执行语义。
 
+### 2.7 相似 Plan 先做 Shadow 复用
+
+Agent Team session goal、task DAG、task output 和 review outcome 会进入 Zvec 的 `focus_agent_team_plans` collection，作为可重建检索索引。规划阶段可以查询相似任务，把合法命中注入 `context_refs` 和 planning rationale evidence；默认不直接改写 DAG，只有 eval 证明稳定后才逐项切到 Zvec-first 规划辅助。
+
 ## 3. 总体架构
 
 ![Agent Team mission DAG](assets/diagrams/agent-team-mission-dag.svg)
@@ -90,6 +94,7 @@ Agent Team 的采纳闭环同时服务后续工作：
 | Task ledger | agent task ledger | 记录协作任务拆分 |
 | Trajectory | observability workbench | 审计每个 Agent 执行过程 |
 | Artifact | text artifact store | 保存 plan、patch summary、test report |
+| Zvec retrieval | `focus_agent_team_plans` 可重建索引 | shadow 查询相似 Mission、DAG、输出和 review 结果 |
 | Eval | `tests/eval/` | 验证多 Agent 协作质量 |
 
 ## 4. 数据模型
