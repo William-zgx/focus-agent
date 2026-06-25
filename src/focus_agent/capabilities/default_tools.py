@@ -17,6 +17,7 @@ def get_default_tools(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    retrieval_index=None,
     productivity_repository=None,
     artifact_store=None,
 ):
@@ -28,6 +29,7 @@ def get_default_tools(
         artifact_metadata_repository=artifact_metadata_repository,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
         productivity_repository=productivity_repository,
         artifact_store=artifact_store,
     )

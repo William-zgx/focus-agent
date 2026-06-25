@@ -4,6 +4,7 @@ import hashlib
 from typing import Any
 
 from ..core.repo_call import has_repo_method
+from ..retrieval import RetrievalDocument, RetrievalIndex
 from .embedding_factory import (
     _create_auto_memory_embedding_provider,
     _create_ollama_embedding_provider,
@@ -61,6 +62,7 @@ class MemoryEmbeddingService:
         embedding_repository: Any | None = None,
         provider: EmbeddingProvider | str | None = None,
         embedder: EmbeddingProvider | None = None,
+        retrieval_index: RetrievalIndex | None = None,
         batch_size: int = 32,
     ):
         self.repository = repository if repository is not None else embedding_repository
@@ -71,6 +73,7 @@ class MemoryEmbeddingService:
                 "MemoryEmbeddingService requires an embedding provider."
             )
         self.provider = provider_object
+        self.retrieval_index = retrieval_index
         self.batch_size = max(1, int(batch_size))
         self.backend = provider if isinstance(provider, str) else self.provider.provider_id
 
@@ -125,6 +128,9 @@ class MemoryEmbeddingService:
             }
 
         vector = self.embed_text(text)
+        retrieval_written = self._upsert_retrieval_index_best_effort(
+            record, text, vector, content_hash
+        )
         payload = MemoryEmbeddingPayload(
             memory_id=record.memory_id,
             namespace=record.namespace,
@@ -138,10 +144,11 @@ class MemoryEmbeddingService:
                 "source": "memory_embedding_service",
             },
         )
-        if not _upsert_memory_embedding(self.repository, payload):
+        embedding_written = _upsert_memory_embedding(self.repository, payload)
+        if not embedding_written:
             return {
                 "memory_id": record.memory_id,
-                "status": "skipped",
+                "status": "written" if retrieval_written else "skipped",
                 "content_hash": content_hash,
                 "reason": "embedding_repository_unavailable",
             }
@@ -185,11 +192,51 @@ class MemoryEmbeddingService:
         )
         return self.embed_records(records)
 
+    def _upsert_retrieval_index_best_effort(
+        self,
+        record: MemoryRecord,
+        text: str,
+        vector: list[float],
+        content_hash: str,
+    ) -> bool:
+        if self.retrieval_index is None:
+            return False
+        try:
+            self.retrieval_index.upsert(
+                RetrievalDocument(
+                    collection="focus_memory",
+                    doc_id=f"memory:{record.memory_id}",
+                    source_id=record.memory_id,
+                    text=text,
+                    vector=vector,
+                    fields={
+                        "source_type": "memory",
+                        "memory_id": record.memory_id,
+                        "namespace": tuple(record.namespace),
+                        "status": record.status.value,
+                        "kind": record.kind.value,
+                        "scope": record.scope.value,
+                        "visibility": record.visibility.value,
+                        "user_id": record.user_id,
+                        "root_thread_id": record.root_thread_id,
+                        "source_thread_id": record.source_thread_id,
+                        "source_branch_id": record.source_branch_id,
+                        "provider_id": self.provider.provider_id,
+                        "model_id": self.provider.model_id,
+                        "content_hash": content_hash,
+                    },
+                )
+            )
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
 
 def create_memory_embedding_service(
     settings: Any,
     *,
     repository: object | None = None,
+    retrieval_index: RetrievalIndex | None = None,
 ) -> MemoryEmbeddingService | None:
     provider = create_memory_embedding_provider(settings)
     if provider is None:
@@ -197,6 +244,7 @@ def create_memory_embedding_service(
     return MemoryEmbeddingService(
         repository=repository,
         provider=provider,
+        retrieval_index=retrieval_index,
         batch_size=int(getattr(settings, "agent_memory_embedding_batch_size", 32)),
     )
 

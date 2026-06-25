@@ -9,6 +9,7 @@ from ..memory.embedding import MemoryEmbeddingService
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.productivity_repository import ProductivityRepository
 from ..repositories.user_repository import UserRepository
+from ..retrieval import RetrievalIndex
 from ..services.agent_team import AgentTeamService
 from ..services.branches import BranchService
 from ..services.productivity import ProductivityService
@@ -42,6 +43,8 @@ class RuntimeMemoryComponents:
     memory_embedding_service: MemoryEmbeddingService | None
     memory_embedding_provider: object | None
     memory_embedding_backend_error: str | None = None
+    retrieval_index: RetrievalIndex | None = None
+    retrieval_index_error: str | None = None
 
 
 @dataclass(slots=True)

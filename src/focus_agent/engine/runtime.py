@@ -45,6 +45,7 @@ from ..repositories.user_repository import (
 from ..repositories.user_repository import (
     UserRepository,
 )
+from ..retrieval.factory import create_retrieval_index
 from ..services.agent_team import AgentTeamService
 from ..services.background_work import (
     BackgroundJobHandlerRegistry,
@@ -129,6 +130,8 @@ class AppRuntime:
     memory_embedding_service: MemoryEmbeddingService | None
     memory_embedding_provider: object | None
     memory_embedding_backend_error: str | None
+    retrieval_index: object | None
+    retrieval_index_error: str | None
     skill_registry: SkillRegistry
     tool_registry: ToolRegistry
     trajectory_recorder: object | None
@@ -264,6 +267,8 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_repository=persistence.memory_repository,
         productivity_repository=persistence.productivity_repository,
         governance_repository=governance_repository,
+        memory_embedding_provider=memory.memory_embedding_provider,
+        retrieval_index=memory.retrieval_index,
         coordination_backend=coordination_backend,
         background_work=background_work,
     )
@@ -295,6 +300,8 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_embedding_service=memory.memory_embedding_service,
         memory_embedding_provider=memory.memory_embedding_provider,
         memory_embedding_backend_error=memory.memory_embedding_backend_error,
+        retrieval_index=memory.retrieval_index,
+        retrieval_index_error=memory.retrieval_index_error,
         skill_registry=registries.skill_registry,
         tool_registry=registries.tool_registry,
         trajectory_recorder=persistence.trajectory_recorder,
@@ -411,10 +418,16 @@ def _create_memory_components(
     coordination_backend: CoordinationBackend | None = None,
 ) -> RuntimeMemoryComponents:
     memory_policy = MemoryPolicy()
+    setup = memory_embedding_setup or _resolve_memory_embedding_setup(settings)
+    retrieval_index, retrieval_index_error = create_retrieval_index(
+        settings,
+        dimensions=setup.dimensions,
+    )
     memory_embedding_service, memory_embedding_backend_error = _create_memory_embedding_service(
         settings,
         memory_repository=memory_repository,
-        memory_embedding_setup=memory_embedding_setup,
+        memory_embedding_setup=setup,
+        retrieval_index=retrieval_index,
     )
     memory_embedding_provider = (
         memory_embedding_service.provider if memory_embedding_service is not None else None
@@ -429,12 +442,14 @@ def _create_memory_components(
         retrieval_mode="hybrid" if vector_search_mode == "hybrid" else "fts",
         vector_shadow=vector_search_mode == "shadow",
         embedding_provider=memory_embedding_provider,
+        retrieval_index=retrieval_index,
     )
     memory_writer = MemoryWriter(
         store=store,
         repository=memory_repository,
         policy=memory_policy,
         embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
         coordination_backend=coordination_backend,
     )
     memory_extractor = MemoryExtractor(mode=settings.agent_memory_extractor_mode)
@@ -447,6 +462,8 @@ def _create_memory_components(
         memory_embedding_service=memory_embedding_service,
         memory_embedding_provider=memory_embedding_provider,
         memory_embedding_backend_error=memory_embedding_backend_error,
+        retrieval_index=retrieval_index,
+        retrieval_index_error=retrieval_index_error,
     )
 
 
@@ -455,6 +472,7 @@ def _create_memory_embedding_service(
     *,
     memory_repository: object | None,
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
+    retrieval_index: object | None = None,
 ) -> tuple[MemoryEmbeddingService | None, str | None]:
     setup = memory_embedding_setup or _resolve_memory_embedding_setup(settings)
     if setup.backend_error is not None:
@@ -467,6 +485,7 @@ def _create_memory_embedding_service(
     service = MemoryEmbeddingService(
         repository=memory_repository,
         provider=provider,
+        retrieval_index=retrieval_index,
         batch_size=getattr(settings, "agent_memory_embedding_batch_size", 32),
     )
     return service, None
@@ -478,7 +497,13 @@ def _create_runtime_registries(
     persistence: RuntimePersistence,
     memory: RuntimeMemoryComponents,
 ) -> RuntimeRegistries:
-    skill_registry = SkillRegistry.from_settings(settings)
+    skill_registry_kwargs = {"settings": settings}
+    skill_registry_signature = inspect.signature(SkillRegistry.from_settings)
+    if "retrieval_index" in skill_registry_signature.parameters:
+        skill_registry_kwargs["retrieval_index"] = memory.retrieval_index
+    if "embedding_provider" in skill_registry_signature.parameters:
+        skill_registry_kwargs["embedding_provider"] = memory.memory_embedding_provider
+    skill_registry = SkillRegistry.from_settings(**skill_registry_kwargs)
     tool_registry = _build_tool_registry_compat(
         settings=settings,
         skill_registry=skill_registry,
@@ -487,6 +512,7 @@ def _create_runtime_registries(
         artifact_metadata_repository=persistence.artifact_metadata_repository,
         memory_repository=persistence.memory_repository,
         memory_embedding_service=memory.memory_embedding_service,
+        retrieval_index=memory.retrieval_index,
         productivity_repository=persistence.productivity_repository,
     )
     return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
@@ -558,6 +584,8 @@ def _create_runtime_services(
     memory_repository: object | None,
     productivity_repository: ProductivityRepository,
     governance_repository: object,
+    memory_embedding_provider: object | None,
+    retrieval_index: object | None,
     coordination_backend: CoordinationBackend,
     background_work: BoundedBackgroundQueue,
 ) -> RuntimeServices:
@@ -575,6 +603,8 @@ def _create_runtime_services(
         settings=settings,
         coordination_backend=coordination_backend,
         background_work=background_work,
+        retrieval_index=retrieval_index,
+        memory_embedding_provider=memory_embedding_provider,
     )
     user_service = UserService(
         user_repository,
@@ -586,6 +616,8 @@ def _create_runtime_services(
         governance_repository=governance_repository,
         branch_service=branch_service,
         coordination_backend=coordination_backend,
+        retrieval_index=retrieval_index,
+        memory_embedding_provider=memory_embedding_provider,
     )
     productivity_service = ProductivityService(productivity_repository)
     return RuntimeServices(
@@ -725,6 +757,7 @@ def _build_tool_registry_compat(
     artifact_metadata_repository: object | None,
     memory_repository: object | None = None,
     memory_embedding_service: object | None = None,
+    retrieval_index: object | None = None,
     productivity_repository: object | None = None,
 ) -> ToolRegistry:
     kwargs = {
@@ -739,6 +772,8 @@ def _build_tool_registry_compat(
         kwargs["memory_repository"] = memory_repository
     if "memory_embedding_service" in inspect.signature(build_tool_registry).parameters:
         kwargs["memory_embedding_service"] = memory_embedding_service
+    if "retrieval_index" in inspect.signature(build_tool_registry).parameters:
+        kwargs["retrieval_index"] = retrieval_index
     if "productivity_repository" in inspect.signature(build_tool_registry).parameters:
         kwargs["productivity_repository"] = productivity_repository
     return build_tool_registry(**kwargs)

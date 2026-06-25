@@ -400,13 +400,20 @@ class BranchDecisionServiceRuntimeMixin:
             self.governance_repository,
             "get_branch_decision_event",
         ):
-            return self.governance_repository.get_branch_decision_event(decision_id) or event
+            event = self.governance_repository.get_branch_decision_event(decision_id) or event
+        index_event = getattr(self, "_index_branch_decision_best_effort", None)
+        if callable(index_event):
+            index_event(event)
         return event
 
     def _update_event(self, event: BranchDecisionEvent, **updates: Any) -> BranchDecisionEvent:
         updated = event.model_copy(update={**updates, "updated_at": _now_iso()})
         if has_repo_method(self.governance_repository, "update_branch_decision_event"):
-            return self.governance_repository.update_branch_decision_event(updated)
+            updated = self.governance_repository.update_branch_decision_event(updated)
+            index_event = getattr(self, "_index_branch_decision_best_effort", None)
+            if callable(index_event):
+                index_event(updated)
+            return updated
         self._save_event(updated)
         return updated
 

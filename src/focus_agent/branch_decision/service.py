@@ -19,6 +19,10 @@ from focus_agent.core.governance import (
     BranchDecisionSummary,
 )
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.retrieval.branch_context import (
+    BranchContextRetrievalService,
+    index_branch_decision_event,
+)
 from focus_agent.services.branch_actions import (
     branch_handoff_message_from_text,
     infer_suggested_branch_name,
@@ -57,12 +61,16 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
         governance_repository: Any,
         branch_service: Any | None = None,
         coordination_backend: Any | None = None,
+        retrieval_index: Any | None = None,
+        memory_embedding_provider: Any | None = None,
     ) -> None:
         self.settings = settings
         self.graph = graph
         self.governance_repository = governance_repository
         self.branch_service = branch_service
         self.coordination_backend = coordination_backend
+        self.retrieval_index = retrieval_index
+        self.memory_embedding_provider = memory_embedding_provider
 
     def config(self) -> BranchDecisionConfig:
         mode = _branch_decision_mode(getattr(self.settings, "agent_branch_decision_mode", "shadow"))
@@ -626,6 +634,14 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
                 signals=signals,
                 min_confidence=config.min_confidence,
             )
+        signals = [
+            *signals,
+            *self._zvec_branch_context_shadow_signals(
+                message=message,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+            ),
+        ]
         action = best.action
         target_parent: str | None = None
         suggested_branch_name: str | None = None
@@ -749,6 +765,56 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
                 request_id=request_id,
             )
         return event
+
+    def _zvec_branch_context_shadow_signals(
+        self,
+        *,
+        message: str,
+        user_id: str | None,
+        root_thread_id: str | None,
+    ) -> list[BranchDecisionSignal]:
+        if self.retrieval_index is None or self.memory_embedding_provider is None:
+            return []
+        try:
+            hits = BranchContextRetrievalService(
+                retrieval_index=self.retrieval_index,
+                embedding_provider=self.memory_embedding_provider,
+                repository=self.governance_repository,
+            ).search_similar_context(
+                query=message,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+                limit=3,
+            )
+        except Exception:  # noqa: BLE001
+            return []
+        if not hits:
+            return []
+        return [
+            BranchDecisionSignal(
+                name="zvec_branch_context",
+                value={
+                    "mode": "shadow",
+                    "hit_count": len(hits),
+                    "top_score": hits[0].score,
+                    "source_ids": [hit.source_id for hit in hits],
+                },
+                score=hits[0].score,
+                weight=0.0,
+                evidence_refs=[hit.source_id for hit in hits],
+                rationale="Zvec branch context shadow retrieval.",
+            )
+        ]
+
+    def _index_branch_decision_best_effort(self, event: BranchDecisionEvent) -> None:
+        try:
+            index_branch_decision_event(
+                retrieval_index=self.retrieval_index,
+                embedding_provider=self.memory_embedding_provider,
+                event=event,
+            )
+        except Exception:  # noqa: BLE001
+            return
 
 
 __all__ = ["BranchDecisionService"]

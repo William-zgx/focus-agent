@@ -327,6 +327,25 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             "AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE",
             default=defaults.agent_memory_auto_promote_on_merge,
         ),
+        "agent_retrieval_backend": str(
+            env.get("AGENT_RETRIEVAL_BACKEND") or defaults.agent_retrieval_backend
+        )
+        .strip()
+        .lower(),
+        "agent_retrieval_fallback_backend": str(
+            env.get("AGENT_RETRIEVAL_FALLBACK_BACKEND")
+            or defaults.agent_retrieval_fallback_backend
+        )
+        .strip()
+        .lower(),
+        "agent_zvec_enabled": _env_bool(
+            env,
+            "AGENT_ZVEC_ENABLED",
+            default=defaults.agent_zvec_enabled,
+        ),
+        "agent_zvec_data_dir": str(
+            env.get("AGENT_ZVEC_DATA_DIR") or defaults.agent_zvec_data_dir
+        ).strip(),
         "agent_tool_router_enabled": _env_bool(
             env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
         ),

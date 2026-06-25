@@ -36,6 +36,8 @@ from focus_agent.core.types import ContextBudget
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from focus_agent.memory import MemoryAuditEvent, MemoryRecord, MemorySearchHit, MemoryStatus
 from focus_agent.repositories.productivity_repository import InMemoryProductivityRepository
+from focus_agent.retrieval import InMemoryRetrievalIndex, RetrievalDocument
+from focus_agent.retrieval.workspace import index_workspace
 
 
 class _FakeWebHttpClient:
@@ -274,10 +276,20 @@ class _MemoryToolRepository:
 class _FakeMemoryEmbeddingService:
     def __init__(self) -> None:
         self.embedded_memory_ids: list[str] = []
+        self.provider = _FakeEmbeddingProvider()
 
     def ensure_embedding(self, record: MemoryRecord) -> dict[str, object]:
         self.embedded_memory_ids.append(record.memory_id)
         return {"memory_id": record.memory_id, "status": "written"}
+
+
+class _FakeEmbeddingProvider:
+    provider_id = "fake"
+    model_id = "fake"
+    dimensions = 3
+
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
 
 def _tool_map(
@@ -286,6 +298,7 @@ def _tool_map(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    retrieval_index=None,
     productivity_repository=None,
 ) -> dict[str, object]:
     kwargs = {"artifact_metadata_repository": artifact_metadata_repository}
@@ -293,6 +306,8 @@ def _tool_map(
         kwargs["memory_repository"] = memory_repository
     if memory_embedding_service is not None:
         kwargs["memory_embedding_service"] = memory_embedding_service
+    if retrieval_index is not None:
+        kwargs["retrieval_index"] = retrieval_index
     if productivity_repository is not None:
         kwargs["productivity_repository"] = productivity_repository
     return {tool.name: tool for tool in get_default_tools(settings, **kwargs)}
@@ -883,6 +898,101 @@ def test_artifact_tools_list_read_and_update_saved_artifacts(tmp_path):
         tools["artifact_read"].invoke({"artifact_id": "../outside.md"})
 
 
+def test_artifact_search_falls_back_to_filesystem(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact_dir = project / ".focus_agent" / "artifacts"
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            artifact_dir=str(artifact_dir),
+        )
+    )
+
+    tools["write_text_artifact"].invoke(
+        {"title": "Launch Plan", "body": "The release checklist mentions Zvec retrieval."}
+    )
+    payload = json.loads(tools["artifact_search"].invoke({"query": "Zvec retrieval"}))
+
+    assert payload["results"][0]["artifact_id"] == "launch-plan.md"
+    assert payload["results"][0]["backend"] == "filesystem"
+    assert "Zvec retrieval" in payload["results"][0]["snippet"]
+
+
+def test_artifact_search_filters_stale_index_chunks_after_update(tmp_path):
+    class _KeywordEmbeddingProvider:
+        provider_id = "fake"
+        model_id = "fake"
+        dimensions = 2
+
+        def embed(self, texts):
+            return [
+                [1.0, 0.0] if "obsolete-marker" in text.lower() else [0.0, 1.0]
+                for text in texts
+            ]
+
+    class _KeywordEmbeddingService:
+        provider = _KeywordEmbeddingProvider()
+
+    project = tmp_path / "project"
+    project.mkdir()
+    artifact_dir = project / ".focus_agent" / "artifacts"
+    retrieval_index = InMemoryRetrievalIndex()
+    tools = _tool_map(
+        Settings(
+            workspace_root=str(project),
+            artifact_dir=str(artifact_dir),
+        ),
+        memory_embedding_service=_KeywordEmbeddingService(),
+        retrieval_index=retrieval_index,
+    )
+
+    tools["write_text_artifact"].invoke(
+        {
+            "title": "Launch Plan",
+            "body": f"{'filler ' * 180}obsolete-marker",
+        }
+    )
+    tools["artifact_update"].invoke(
+        {
+            "artifact_id": "launch-plan.md",
+            "body": "Fresh summary only",
+            "mode": "replace",
+        }
+    )
+    payload = json.loads(tools["artifact_search"].invoke({"query": "obsolete-marker"}))
+
+    assert payload["results"] == []
+
+
+def test_workspace_search_uses_retrieval_index_and_filters_stale_files(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    source = project / "src" / "retrieval.py"
+    source.parent.mkdir()
+    source.write_text("def zvec_workspace_search():\n    return 'workspace code'\n", encoding="utf-8")
+    retrieval_index = InMemoryRetrievalIndex()
+    embedding_service = _FakeMemoryEmbeddingService()
+    index_workspace(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_service.provider,
+        workspace_root=project,
+    )
+    tools = _tool_map(
+        Settings(workspace_root=str(project)),
+        memory_embedding_service=embedding_service,
+        retrieval_index=retrieval_index,
+    )
+
+    payload = json.loads(tools["workspace_search"].invoke({"query": "workspace code"}))
+    source.write_text("def changed():\n    return 'new content'\n", encoding="utf-8")
+    stale_payload = json.loads(tools["workspace_search"].invoke({"query": "workspace code"}))
+
+    assert payload["results"][0]["path"] == "src/retrieval.py"
+    assert payload["results"][0]["backend"] == "zvec"
+    assert stale_payload["results"] == []
+
+
 def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listing(
     tmp_path, monkeypatch
 ):
@@ -1323,6 +1433,49 @@ def test_memory_tools_use_repository_when_provided():
         "memory_save_tool",
         "memory_forget_tool",
     ]
+
+
+def test_memory_search_tool_uses_retrieval_index_when_available():
+    repo = _MemoryToolRepository()
+    namespace = ("user", "researcher-1", "profile")
+    record = MemoryRecord(
+        memory_id="indexed-memory",
+        kind="user_preference",
+        scope="user",
+        visibility="shared",
+        namespace=namespace,
+        content="The user prefers Zvec indexed retrieval.",
+        summary="Zvec indexed retrieval",
+        user_id="researcher-1",
+    )
+    repo.upsert_record(record)
+    index = InMemoryRetrievalIndex()
+    index.upsert(
+        RetrievalDocument(
+            collection="focus_memory",
+            doc_id="memory:indexed-memory",
+            source_id="indexed-memory",
+            text="Zvec indexed retrieval",
+            fields={"namespace": namespace, "status": "active"},
+        )
+    )
+    tools = _tool_map(
+        Settings(),
+        memory_repository=repo,
+        memory_embedding_service=_FakeMemoryEmbeddingService(),
+        retrieval_index=index,
+    )
+
+    searched = json.loads(
+        tools["memory_search"].invoke(
+            {
+                "query": "Zvec indexed",
+                "user_id": "researcher-1",
+            }
+        )
+    )
+
+    assert [item["memory_id"] for item in searched["results"]] == ["indexed-memory"]
 
 
 def test_productivity_tools_use_current_user_context():

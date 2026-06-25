@@ -10,6 +10,7 @@ from uuid import uuid4
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..repositories.memory_repository import MemoryRepository
+from ..retrieval import RetrievalIndex
 from ..services.coordination import BackgroundJobSpec
 from .dedupe import (
     has_textual_overlap,
@@ -40,6 +41,7 @@ class MemoryService:
         repository: MemoryRepository,
         policy: MemoryPolicy | None = None,
         embedding_service: MemoryEmbeddingService | None = None,
+        retrieval_index: RetrievalIndex | None = None,
         coordination_backend: Any | None = None,
     ):
         self.repository = repository
@@ -49,6 +51,9 @@ class MemoryService:
             embedding_service
             if embedding_service is not None
             else MemoryEmbeddingService.from_repository(repository)
+        )
+        self.retrieval_index = retrieval_index or getattr(
+            self.embedding_service, "retrieval_index", None
         )
 
     def persist_records(
@@ -184,6 +189,15 @@ class MemoryService:
             actor=actor,
             reason=reason,
         )
+        if tombstone_id is not None and self.retrieval_index is not None:
+            try:
+                self.retrieval_index.delete(collection="focus_memory", doc_id=f"memory:{memory_id}")
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "failed to delete memory retrieval index for memory_id=%s",
+                    memory_id,
+                    exc_info=True,
+                )
         status = (
             MemoryWriteDecisionStatus.FORGOTTEN
             if tombstone_id is not None

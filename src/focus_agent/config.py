@@ -18,6 +18,7 @@ from .config_parts.catalogs import (
     ApplyPatchToolConfig,
     ArtifactListToolConfig,
     ArtifactReadToolConfig,
+    ArtifactSearchToolConfig,
     ArtifactUpdateToolConfig,
     CodebaseStatsToolConfig,
     ConfiguredModel,
@@ -46,6 +47,7 @@ from .config_parts.catalogs import (
     ToolCatalogSectionSpec,
     WebFetchToolConfig,
     WebSearchConfig,
+    WorkspaceSearchToolConfig,
     WriteTextArtifactToolConfig,
     load_model_catalog_document,
     load_model_catalog_toml,
@@ -89,6 +91,8 @@ def ensure_runtime_directories(settings: Settings) -> None:
     """Create directories required by runtime persistence and artifacts."""
     Path(settings.branch_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     Path(settings.artifact_dir).expanduser().mkdir(parents=True, exist_ok=True)
+    if bool(getattr(settings, "agent_zvec_enabled", True)):
+        Path(settings.agent_zvec_data_dir).expanduser().mkdir(parents=True, exist_ok=True)
 
 
 @dataclass(slots=True)
@@ -247,6 +251,10 @@ class Settings:
     agent_memory_approval_for_shared_writes: bool = False
     agent_memory_curator_enabled: bool = False
     agent_memory_auto_promote_on_merge: bool = True
+    agent_retrieval_backend: str = "zvec"
+    agent_retrieval_fallback_backend: str = "postgres"
+    agent_zvec_enabled: bool = True
+    agent_zvec_data_dir: str = ".focus_agent/zvec"
     agent_tool_router_enabled: bool = False
     agent_tool_router_enforce: bool = True
     agent_delegation_enabled: bool = False
@@ -335,10 +343,12 @@ __all__ = [
     "WriteTextArtifactToolConfig",
     "ArtifactListToolConfig",
     "ArtifactReadToolConfig",
+    "ArtifactSearchToolConfig",
     "ArtifactUpdateToolConfig",
     "ListFilesToolConfig",
     "ReadFileToolConfig",
     "SearchCodeToolConfig",
+    "WorkspaceSearchToolConfig",
     "CodebaseStatsToolConfig",
     "ApplyPatchToolConfig",
     "RunWorkspaceCommandToolConfig",

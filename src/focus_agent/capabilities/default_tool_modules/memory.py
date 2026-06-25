@@ -243,6 +243,7 @@ def build_memory_tools(
     store: Any,
     memory_repository: Any = None,
     memory_embedding_service: Any = None,
+    retrieval_index: Any = None,
     tool_catalog: Any,
     emit_tool_event: Callable[..., None],
     get_current_thread_id: Callable[[], str | None],
@@ -382,11 +383,29 @@ def build_memory_tools(
                 store=store,
                 repository=memory_repository,
                 default_limit=search_limit,
+                retrieval_mode="hybrid",
+                embedding_provider=getattr(memory_embedding_service, "provider", None),
+                retrieval_index=retrieval_index
+                or getattr(memory_embedding_service, "retrieval_index", None),
             )
             hits = []
+            query_vector = None
+            provider = getattr(memory_embedding_service, "provider", None)
+            if provider is not None:
+                try:
+                    query_vector = provider.embed([effective_query])[0]
+                except Exception:  # noqa: BLE001
+                    query_vector = None
             for candidate_namespace in namespaces:
+                zvec_hits, _ = retriever._search_retrieval_namespace(
+                    candidate_namespace,
+                    effective_query,
+                    limit=search_limit,
+                    query_vector=query_vector,
+                )
                 hits.extend(
-                    retriever._search_namespace(
+                    zvec_hits
+                    or retriever._search_namespace(
                         candidate_namespace,
                         effective_query,
                         limit=search_limit,

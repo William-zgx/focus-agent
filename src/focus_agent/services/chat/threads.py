@@ -741,6 +741,8 @@ class ChatThreadAccessMixin:
 def record_turn_trajectory_best_effort(
     *,
     recorder: Any,
+    retrieval_index: Any = None,
+    embedding_provider: Any = None,
     settings: Any,
     thread_id: str,
     user_id: str,
@@ -787,5 +789,15 @@ def record_turn_trajectory_best_effort(
             hash_user_id=settings.trajectory_hash_user_id,
         )
         recorder.record_turn(record)
+        try:
+            from ...retrieval.trajectory import index_trajectory_record
+
+            index_trajectory_record(
+                retrieval_index=retrieval_index,
+                embedding_provider=embedding_provider,
+                record=record,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("failed to index turn trajectory", exc_info=True)
     except Exception:  # noqa: BLE001
         logger.warning("failed to persist turn trajectory", exc_info=True)

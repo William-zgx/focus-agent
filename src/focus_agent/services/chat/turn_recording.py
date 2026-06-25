@@ -106,6 +106,8 @@ class ChatTurnRecordingMixin:
     ) -> None:
         record_turn_trajectory_best_effort(
             recorder=getattr(self.runtime, "trajectory_recorder", None),
+            retrieval_index=getattr(self.runtime, "retrieval_index", None),
+            embedding_provider=getattr(self.runtime, "memory_embedding_provider", None),
             settings=self.runtime.settings,
             thread_id=thread_id,
             user_id=user_id,

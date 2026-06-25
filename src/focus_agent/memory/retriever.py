@@ -7,6 +7,7 @@ import re
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
 from ..repositories.memory_repository import MemoryListQuery
+from ..retrieval import RetrievalIndex
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
@@ -34,6 +35,7 @@ class MemoryRetriever:
         vector_shadow: bool = True,
         rrf_k: int = 60,
         embedding_provider=None,
+        retrieval_index: RetrievalIndex | None = None,
     ):
         if retrieval_mode not in {"fts", "hybrid"}:
             raise ValueError("retrieval_mode must be 'fts' or 'hybrid'")
@@ -45,6 +47,7 @@ class MemoryRetriever:
         self.vector_shadow = vector_shadow
         self.rrf_k = max(1, int(rrf_k))
         self.embedding_provider = embedding_provider
+        self.retrieval_index = retrieval_index
 
     def retrieve_for_turn(
         self,
@@ -72,6 +75,50 @@ class MemoryRetriever:
             except Exception:
                 logger.warning("memory query embedding failed; falling back to FTS", exc_info=True)
                 query_vector_status = "failed"
+        retrieval_hits: list[MemorySearchHit] = []
+        retrieval_failed = False
+        if self.retrieval_index is not None and namespaces:
+            for namespace in namespaces:
+                namespace_retrieval_hits, namespace_retrieval_status = (
+                    self._search_retrieval_namespace(
+                        namespace,
+                        effective_query,
+                        limit=self.default_limit,
+                        query_vector=query_vector,
+                    )
+                )
+                retrieval_hits.extend(namespace_retrieval_hits)
+                if namespace_retrieval_status == "failed":
+                    retrieval_failed = True
+                    break
+        if retrieval_hits and not retrieval_failed:
+            deduped = self._dedupe_hits(
+                self._rerank_hits(retrieval_hits, query=effective_query, prompt_mode=prompt_mode)
+            )
+            bundle = RetrievedMemoryBundle(
+                query=effective_query,
+                hits=deduped[: self.default_limit],
+                namespaces=namespaces,
+                total_hits=len(deduped),
+            )
+            filtered = self.policy.filter_bundle_for_prompt(bundle, prompt_mode=prompt_mode)
+            selected_ids = [hit.record.memory_id for hit in filtered.hits]
+            retrieval_plan = MemoryRetrievalPlan(
+                query=effective_query,
+                namespaces=namespaces,
+                filters={"status": "active"},
+                selected_memory_ids=selected_ids,
+                budget_reason=f"top_k:{self.default_limit}",
+                source="zvec",
+                vector_shadow={},
+                vector_status="completed",
+                vector_candidate_count=len(retrieval_hits),
+                vector_fallback_reason=None,
+                embedding_provider=_embedding_provider_metadata(self.embedding_provider),
+            )
+            return filtered.model_copy(
+                update={"retrieval_plan": retrieval_plan.model_dump(mode="json")}
+            )
         for namespace in namespaces:
             namespace_hits = self._search_namespace(
                 namespace, effective_query, limit=self.default_limit
@@ -260,6 +307,44 @@ class MemoryRetriever:
             logger.warning("memory vector search failed; falling back to FTS", exc_info=True)
             return [], "failed"
         return _normalize_repository_hits(hits, namespace=namespace, query=query), "completed"
+
+    def _search_retrieval_namespace(
+        self,
+        namespace: tuple[str, ...],
+        query: str,
+        limit: int,
+        query_vector: list[float] | None = None,
+    ) -> tuple[list[MemorySearchHit], str]:
+        if self.retrieval_index is None or self.repository is None:
+            return [], "unsupported"
+        try:
+            hits = self.retrieval_index.search(
+                collection="focus_memory",
+                query=query,
+                vector=query_vector,
+                limit=limit,
+                filters={"namespace": namespace, "status": "active"},
+            )
+        except Exception:
+            logger.warning("memory zvec search failed; falling back to repository", exc_info=True)
+            return [], "failed"
+        normalized: list[MemorySearchHit] = []
+        for hit in hits:
+            record = self.repository.get_record(hit.source_id)
+            if record is None or tuple(record.namespace) != namespace:
+                continue
+            if getattr(record.status, "value", record.status) != "active":
+                continue
+            normalized.append(
+                MemorySearchHit(
+                    record=record,
+                    score=float(hit.score),
+                    matched_terms=_matched_terms(query, record),
+                    namespace=record.namespace,
+                    rationale="zvec",
+                )
+            )
+        return normalized, "completed"
 
     def _rerank_hits(
         self, hits: list[MemorySearchHit], *, query: str, prompt_mode: PromptMode

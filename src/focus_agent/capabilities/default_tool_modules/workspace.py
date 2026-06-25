@@ -350,6 +350,8 @@ def build_workspace_tools(
     tool_catalog: Any,
     emit_tool_event: Callable[..., None],
     trusted_skill_collection_roots: Iterable[str | Path] = (),
+    memory_embedding_service: Any | None = None,
+    retrieval_index: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     trusted_skill_collection_root_paths = _trusted_workspace_skill_collection_roots(
         workspace_root=workspace_root,
@@ -402,6 +404,9 @@ def build_workspace_tools(
             raise ValueError("end_line must be greater than or equal to start_line.")
 
     def _validate_search_code_args(args: dict[str, Any]) -> None:
+        _require_non_empty_text_arg(args, "query")
+
+    def _validate_workspace_search_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "query")
 
     def _validate_apply_patch_args(args: dict[str, Any]) -> None:
@@ -620,6 +625,50 @@ def build_workspace_tools(
             raise
 
     @tool
+    def workspace_search(query: str, limit: int | None = None) -> str:
+        """Search workspace code and docs using the semantic retrieval index."""
+        tool_name = "workspace_search"
+        emit_tool_event(tool_name=tool_name, stage="start", query=query, limit=limit)
+        try:
+            normalized_query = query.strip()
+            if not normalized_query:
+                raise ValueError("query must not be empty.")
+            requested_limit = (
+                tool_catalog.workspace_search.default_limit
+                if limit is None
+                else int(limit)
+            )
+            capped_limit = max(
+                1,
+                min(requested_limit, tool_catalog.workspace_search.max_limit),
+            )
+            provider = getattr(memory_embedding_service, "provider", None)
+            from ...retrieval.workspace import WorkspaceSemanticSearchService
+
+            results = WorkspaceSemanticSearchService(
+                retrieval_index=retrieval_index,
+                embedding_provider=provider,
+                workspace_root=workspace_root,
+            ).search_workspace(query=normalized_query, limit=capped_limit)
+            payload = {
+                "query": query,
+                "workspace_root": str(workspace_root),
+                "results": results,
+                "truncated": False,
+            }
+            result = json.dumps(payload, ensure_ascii=False)
+            emit_tool_event(
+                tool_name=tool_name,
+                stage="end",
+                result_count=len(results),
+                output=result[:800],
+            )
+            return result
+        except Exception as exc:  # noqa: BLE001
+            emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query)
+            raise
+
+    @tool
     def codebase_stats(path: str = ".", max_files: int | None = None) -> str:
         """Summarize file counts and line counts for the current workspace."""
         tool_name = "codebase_stats"
@@ -803,6 +852,7 @@ def build_workspace_tools(
             "list_files": list_files,
             "read_file": read_file,
             "search_code": search_code,
+            "workspace_search": workspace_search,
             "codebase_stats": codebase_stats,
             "apply_patch": apply_patch,
             "run_workspace_command": run_workspace_command,
@@ -827,6 +877,15 @@ def build_workspace_tools(
                 "cache_scope": "thread",
                 "validator": _validate_search_code_args,
                 "max_observation_chars": 7000,
+            },
+            "workspace_search": {
+                "parallel_safe": True,
+                "cacheable": True,
+                "cache_scope": "thread",
+                "validator": _validate_workspace_search_args,
+                "max_observation_chars": 8000,
+                "toolset": "workspace",
+                "intent_policies": ("workspace_lookup", "planning"),
             },
             "codebase_stats": {
                 "parallel_safe": True,

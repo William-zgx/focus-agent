@@ -51,6 +51,7 @@ def get_default_tools(
     artifact_metadata_repository=None,
     memory_repository=None,
     memory_embedding_service=None,
+    retrieval_index=None,
     productivity_repository=None,
     artifact_store=None,
 ):
@@ -94,6 +95,8 @@ def get_default_tools(
                 *settings.skill_directories,
                 settings.skill_install_directory,
             ),
+            memory_embedding_service=memory_embedding_service,
+            retrieval_index=retrieval_index,
         )
     )
     _merge_tool_group(
@@ -120,6 +123,8 @@ def get_default_tools(
             tool_catalog=tool_catalog,
             artifact_store=artifact_store,
             artifact_metadata_repository=artifact_metadata_repository,
+            memory_embedding_service=memory_embedding_service,
+            retrieval_index=retrieval_index,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,
         )
@@ -129,6 +134,7 @@ def get_default_tools(
             store=store,
             memory_repository=memory_repository,
             memory_embedding_service=memory_embedding_service,
+            retrieval_index=retrieval_index,
             tool_catalog=tool_catalog,
             emit_tool_event=_emit_tool_event,
             get_current_thread_id=_get_current_thread_id,

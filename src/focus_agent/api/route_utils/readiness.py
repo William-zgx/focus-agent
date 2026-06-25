@@ -166,6 +166,43 @@ def _memory_pgvector_check(runtime: Any) -> RuntimeComponentStatusResponse:
     )
 
 
+def _retrieval_zvec_check(runtime: Any) -> RuntimeComponentStatusResponse:
+    settings = getattr(runtime, "settings", None)
+    if not bool(getattr(settings, "agent_zvec_enabled", True)):
+        return RuntimeComponentStatusResponse(
+            name="retrieval_zvec",
+            ready=True,
+            detail="disabled",
+        )
+    backend = str(getattr(settings, "agent_retrieval_backend", "zvec") or "zvec").lower()
+    if backend not in {"zvec", "auto"}:
+        return RuntimeComponentStatusResponse(
+            name="retrieval_zvec",
+            ready=True,
+            detail=f"backend={backend}",
+        )
+    index = getattr(runtime, "retrieval_index", None)
+    if index is not None:
+        data_dir = getattr(index, "data_dir", None)
+        detail = f"zvec: ready backend={backend}"
+        if data_dir is not None:
+            detail += f" data_dir={data_dir}"
+        return RuntimeComponentStatusResponse(
+            name="retrieval_zvec",
+            ready=True,
+            detail=detail,
+        )
+    fallback = str(
+        getattr(settings, "agent_retrieval_fallback_backend", "postgres") or ""
+    ).strip()
+    error = getattr(runtime, "retrieval_index_error", None) or "zvec unavailable"
+    return RuntimeComponentStatusResponse(
+        name="retrieval_zvec",
+        ready=bool(fallback),
+        detail=f"{error}; fallback={fallback or 'none'}",
+    )
+
+
 def _component_status(
     runtime: Any,
     attr: str,
@@ -346,6 +383,7 @@ def _build_runtime_readiness(runtime: Any) -> RuntimeReadinessResponse:
 
     checks.append(_memory_embedding_backend_check(runtime))
     checks.append(_memory_pgvector_check(runtime))
+    checks.append(_retrieval_zvec_check(runtime))
     checks.append(_background_jobs_check(runtime))
 
     trajectory_expected = _trajectory_expected(settings)

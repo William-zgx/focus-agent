@@ -22,6 +22,7 @@ from focus_agent.config import (
 )
 from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.core.types import PromptMode
+from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.skills.models import SkillSourceDefinition
 from focus_agent.skills.registry import (
     SkillRegistry,
@@ -32,6 +33,19 @@ from focus_agent.skills.registry import (
     render_skills_list_json,
     render_skills_search_json,
 )
+
+
+class _FakeEmbeddingProvider:
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+
+class _FailingRetrievalIndex:
+    def upsert(self, document):  # noqa: ANN001
+        raise RuntimeError("index unavailable")
+
+    def search(self, **kwargs):  # noqa: ANN003
+        raise RuntimeError("index unavailable")
 
 MIGRATED_BUILTIN_SKILL_PREFIX_MESSAGES = {
     "python-debugpy": "debug-python: inspect failing pytest locals",
@@ -838,6 +852,49 @@ def test_skill_registry_semantic_selection_is_deterministic_fallback(tmp_path):
     assert selection.semantic_candidates[0].skill_id == "docs"
     assert selection.semantic_candidates[0].auto_activate is True
     assert selection.confidence == selection.semantic_candidates[0].score
+
+
+def test_skill_registry_semantic_candidates_use_retrieval_index(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="zvec-plan",
+        description="Plan retrieval migrations with Zvec",
+        aliases="zvec migration",
+        prompt_mode="explore",
+    )
+    registry = SkillRegistry(
+        [tmp_path],
+        semantic_match_threshold=0.1,
+        retrieval_index=InMemoryRetrievalIndex(),
+        embedding_provider=_FakeEmbeddingProvider(),
+    )
+
+    selection = registry.select_for_message("please plan a zvec migration")
+
+    assert selection.skill_ids == ("zvec-plan",)
+    assert selection.selection_source == "semantic"
+    assert selection.semantic_candidates[0].skill_id == "zvec-plan"
+
+
+def test_skill_registry_falls_back_when_retrieval_index_fails(tmp_path):
+    _write_skill(
+        tmp_path,
+        name="docs",
+        description="Documentation writing support",
+        aliases="readme docs",
+        prompt_mode="synthesize",
+    )
+    registry = SkillRegistry(
+        [tmp_path],
+        semantic_match_threshold=0.1,
+        retrieval_index=_FailingRetrievalIndex(),
+        embedding_provider=_FakeEmbeddingProvider(),
+    )
+
+    selection = registry.select_for_message("write README docs")
+
+    assert selection.skill_ids == ("docs",)
+    assert selection.selection_source == "semantic"
 
 
 def test_skill_registry_semantic_selection_uses_cjk_aliases(tmp_path):

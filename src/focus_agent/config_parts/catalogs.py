@@ -12,6 +12,7 @@ from .catalog_config_types import (
     ApplyPatchToolConfig,
     ArtifactListToolConfig,
     ArtifactReadToolConfig,
+    ArtifactSearchToolConfig,
     ArtifactUpdateToolConfig,
     CodebaseStatsToolConfig,
     ConfiguredModel,
@@ -38,6 +39,7 @@ from .catalog_config_types import (
     ToolProviderConfig,
     WebFetchToolConfig,
     WebSearchConfig,
+    WorkspaceSearchToolConfig,
     WriteTextArtifactToolConfig,
 )
 from .common import _coerce_bool, _normalize_optional_string, _split_csv
@@ -229,9 +231,13 @@ class ToolCatalogConfig:
     artifact_list: ArtifactListToolConfig = field(default_factory=ArtifactListToolConfig)
     artifact_read: ArtifactReadToolConfig = field(default_factory=ArtifactReadToolConfig)
     artifact_update: ArtifactUpdateToolConfig = field(default_factory=ArtifactUpdateToolConfig)
+    artifact_search: ArtifactSearchToolConfig = field(default_factory=ArtifactSearchToolConfig)
     list_files: ListFilesToolConfig = field(default_factory=ListFilesToolConfig)
     read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
     search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
+    workspace_search: WorkspaceSearchToolConfig = field(
+        default_factory=WorkspaceSearchToolConfig
+    )
     codebase_stats: CodebaseStatsToolConfig = field(default_factory=CodebaseStatsToolConfig)
     apply_patch: ApplyPatchToolConfig = field(default_factory=ApplyPatchToolConfig)
     run_workspace_command: RunWorkspaceCommandToolConfig = field(
@@ -370,6 +376,10 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
         int_fields=("max_chars",),
     ),
     "artifact_update": ToolCatalogSectionSpec(ArtifactUpdateToolConfig),
+    "artifact_search": ToolCatalogSectionSpec(
+        ArtifactSearchToolConfig,
+        int_fields=("default_limit", "max_limit"),
+    ),
     "list_files": ToolCatalogSectionSpec(
         ListFilesToolConfig,
         int_fields=("default_max_results", "max_results_cap"),
@@ -381,6 +391,10 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
     "search_code": ToolCatalogSectionSpec(
         SearchCodeToolConfig,
         int_fields=("default_max_results", "max_results_cap"),
+    ),
+    "workspace_search": ToolCatalogSectionSpec(
+        WorkspaceSearchToolConfig,
+        int_fields=("default_limit", "max_limit"),
     ),
     "codebase_stats": ToolCatalogSectionSpec(
         CodebaseStatsToolConfig,

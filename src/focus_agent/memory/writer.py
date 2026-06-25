@@ -6,6 +6,7 @@ from typing import Any
 from ..core.branching import ImportedConclusion
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem
+from ..retrieval import RetrievalIndex
 from ..storage.namespaces import (
     branch_local_memory_namespace,
     conversation_main_namespace,
@@ -39,12 +40,14 @@ class MemoryWriter:
         repository=None,
         policy: MemoryPolicy | None = None,
         embedding_service: MemoryEmbeddingService | None = None,
+        retrieval_index: RetrievalIndex | None = None,
         coordination_backend: Any | None = None,
     ):
         self.store = store
         self.repository = repository
         self.policy = policy or MemoryPolicy()
         self.embedding_service = embedding_service
+        self.retrieval_index = retrieval_index
         self.coordination_backend = coordination_backend
 
     def write_records(self, records: list[MemoryWriteRequest]) -> list[str]:
@@ -53,6 +56,7 @@ class MemoryWriter:
                 repository=self.repository,
                 policy=self.policy,
                 embedding_service=self.embedding_service,
+                retrieval_index=self.retrieval_index,
                 coordination_backend=self.coordination_backend,
             ).write_records(
                 records,
@@ -88,6 +92,7 @@ class MemoryWriter:
                 repository=self.repository,
                 policy=self.policy,
                 embedding_service=self.embedding_service,
+                retrieval_index=self.retrieval_index,
                 coordination_backend=self.coordination_backend,
             )
             outcome = service.persist_records(

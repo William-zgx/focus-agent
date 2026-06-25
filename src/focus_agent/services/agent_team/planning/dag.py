@@ -5,6 +5,7 @@ from typing import Any
 
 from focus_agent.core.agent_team import AgentTeamSession
 from focus_agent.delegation.delegation import build_agent_delegation_plan
+from focus_agent.retrieval.agent_team import AgentTeamPlanRetrievalService
 
 from ...agent_team_planning_dag import (
     __all__ as _planning_dag_all,
@@ -45,8 +46,18 @@ from .serializer import _dedupe_values, _merge_context_refs, _skill_plan_for_ses
 
 
 class AgentTeamPlanningService:
-    def __init__(self, *, settings: Any | None = None):
+    def __init__(
+        self,
+        *,
+        settings: Any | None = None,
+        retrieval_index: Any | None = None,
+        embedding_provider: Any | None = None,
+        repository: Any | None = None,
+    ):
         self.settings = settings
+        self.retrieval_index = retrieval_index
+        self.embedding_provider = embedding_provider
+        self.repository = repository
 
     def build_plan(
         self,
@@ -59,14 +70,14 @@ class AgentTeamPlanningService:
         if _should_prefer_adaptive_model_plan(session=session, options=options):
             try:
                 plan = self._adaptive_model_plan(session=session, options=options)
-                return self._with_skill_plan(plan, session=session, options=options)
+                return self._with_plan_context(plan, session=session, options=options)
             except Exception as exc:  # noqa: BLE001
                 adaptive_error = f"{type(exc).__name__}: {exc}"
 
         try:
             plan = self._build_delegation_plan(session=session, options=options)
             if plan is not None:
-                return self._with_skill_plan(plan, session=session, options=options)
+                return self._with_plan_context(plan, session=session, options=options)
         except Exception as exc:  # noqa: BLE001
             delegation_error = f"{type(exc).__name__}: {exc}"
 
@@ -76,7 +87,7 @@ class AgentTeamPlanningService:
                 options=options,
                 planning_note=delegation_error,
             )
-            return self._with_skill_plan(plan, session=session, options=options)
+            return self._with_plan_context(plan, session=session, options=options)
         except Exception as exc:  # noqa: BLE001
             planning_error = f"Adaptive planning failed: {type(exc).__name__}: {exc}"
             if adaptive_error:
@@ -90,7 +101,17 @@ class AgentTeamPlanningService:
                 options=options,
                 planning_error=planning_error,
             )
-            return self._with_skill_plan(plan, session=session, options=options)
+            return self._with_plan_context(plan, session=session, options=options)
+
+    def _with_plan_context(
+        self,
+        draft: AgentTeamPlanDraft,
+        *,
+        session: AgentTeamSession,
+        options: AgentTeamPlanOptions,
+    ) -> AgentTeamPlanDraft:
+        draft = self._with_skill_plan(draft, session=session, options=options)
+        return self._with_similar_plan_refs(draft, session=session, options=options)
 
     def _with_skill_plan(
         self,
@@ -148,6 +169,61 @@ class AgentTeamPlanningService:
                 "planning_rationale": rationale,
                 "skill_plan": skill_plan,
                 "tasks": enriched_tasks,
+                "plan_hash": "",
+            }
+        )
+        return updated.model_copy(update={"plan_hash": _plan_hash(session, options, updated)})
+
+    def _with_similar_plan_refs(
+        self,
+        draft: AgentTeamPlanDraft,
+        *,
+        session: AgentTeamSession,
+        options: AgentTeamPlanOptions,
+    ) -> AgentTeamPlanDraft:
+        if self.retrieval_index is None or self.embedding_provider is None:
+            return draft
+        try:
+            hits = AgentTeamPlanRetrievalService(
+                retrieval_index=self.retrieval_index,
+                embedding_provider=self.embedding_provider,
+                repository=self.repository,
+            ).search_similar_plans(
+                query=session.goal,
+                user_id=session.user_id,
+                root_thread_id=session.root_thread_id,
+                limit=3,
+            )
+        except Exception:  # noqa: BLE001
+            return draft
+        refs = [
+            {
+                "kind": "agent_team_plan_reuse",
+                "type": "similar_plan",
+                "id": hit.source_id,
+                "session_id": hit.source_id,
+                "score": hit.score,
+                "mode": "shadow",
+                "plan_hash": hit.fields.get("plan_hash"),
+            }
+            for hit in hits
+            if hit.source_id != session.session_id
+        ]
+        if not refs:
+            return draft
+        tasks = [
+            task.model_copy(
+                update={"context_refs": _merge_context_refs(task.context_refs, refs)}
+            )
+            for task in draft.tasks
+        ]
+        updated = draft.model_copy(
+            update={
+                "tasks": tasks,
+                "planning_rationale": (
+                    f"{draft.planning_rationale} Zvec similar plan reuse recorded "
+                    f"{len(refs)} shadow reference(s)."
+                ),
                 "plan_hash": "",
             }
         )

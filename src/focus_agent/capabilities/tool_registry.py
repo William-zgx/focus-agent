@@ -39,6 +39,7 @@ class ToolProviderFactoryContext:
     artifact_store: Any = None
     memory_repository: Any = None
     memory_embedding_service: Any = None
+    retrieval_index: Any = None
     productivity_repository: Any = None
 
 
@@ -253,6 +254,7 @@ def build_tool_registry(
     artifact_store=None,
     memory_repository=None,
     memory_embedding_service=None,
+    retrieval_index=None,
     productivity_repository=None,
     explicit_providers: Iterable[ToolProvider] | None = None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None = None,
@@ -266,6 +268,7 @@ def build_tool_registry(
         artifact_store=artifact_store,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
         productivity_repository=productivity_repository,
         explicit_providers=explicit_providers,
         explicit_provider_factories=explicit_provider_factories,
@@ -303,6 +306,7 @@ def _build_controlled_tool_provider_registry(
     artifact_store: Any,
     memory_repository: Any,
     memory_embedding_service: Any,
+    retrieval_index: Any,
     productivity_repository: Any,
     explicit_providers: Iterable[ToolProvider] | None,
     explicit_provider_factories: Mapping[str, ToolProviderFactory] | None,
@@ -316,6 +320,7 @@ def _build_controlled_tool_provider_registry(
         artifact_store=artifact_store,
         memory_repository=memory_repository,
         memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
         productivity_repository=productivity_repository,
     )
     registered: dict[str, tuple[int, ToolProvider]] = {}
@@ -622,6 +627,7 @@ def _call_default_tools(context: ToolProviderFactoryContext) -> list[Any]:
         "artifact_store": context.artifact_store,
         "memory_repository": context.memory_repository,
         "memory_embedding_service": context.memory_embedding_service,
+        "retrieval_index": context.retrieval_index,
         "productivity_repository": context.productivity_repository,
     }
     signature = inspect.signature(get_default_tools)

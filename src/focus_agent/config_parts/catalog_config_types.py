@@ -86,6 +86,15 @@ class ArtifactUpdateToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactSearchToolConfig:
+    enabled: bool = True
+    label: str = "Artifact Search"
+    description: str = "Search saved text artifact chunks."
+    default_limit: int = 5
+    max_limit: int = 20
+
+
+@dataclass(frozen=True, slots=True)
 class ListFilesToolConfig:
     enabled: bool = True
     label: str = "List Files"
@@ -111,6 +120,15 @@ class SearchCodeToolConfig:
     description: str = "Search for matching text in workspace files and return matching lines."
     default_max_results: int = 30
     max_results_cap: int = 100
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceSearchToolConfig:
+    enabled: bool = True
+    label: str = "Workspace Search"
+    description: str = "Search workspace code and docs using the semantic retrieval index."
+    default_limit: int = 5
+    max_limit: int = 20
 
 
 @dataclass(frozen=True, slots=True)

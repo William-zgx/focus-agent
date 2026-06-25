@@ -34,7 +34,12 @@ class AgentTeamPlanningMixin:
             focus=focus,
             max_tasks=max_tasks,
         )
-        draft = AgentTeamPlanningService(settings=self.settings).build_plan(
+        draft = AgentTeamPlanningService(
+            settings=self.settings,
+            retrieval_index=getattr(self, "retrieval_index", None),
+            embedding_provider=getattr(self, "memory_embedding_provider", None),
+            repository=getattr(self, "repository", None),
+        ).build_plan(
             session=session,
             options=options,
         )
@@ -130,6 +135,9 @@ class AgentTeamPlanningMixin:
             }
         )
         self.repository.save_session(updated)
+        index_plan = getattr(self, "_index_agent_team_plan_best_effort", None)
+        if callable(index_plan):
+            index_plan(updated.session_id)
         return updated
 
     def _cancel_unstarted_tasks(self, *, tasks: list[AgentTeamTask], user_id: str) -> None:

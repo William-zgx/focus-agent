@@ -23,6 +23,7 @@ from focus_agent.repositories.agent_team_repository import (
     AgentTeamRepository,
     InMemoryAgentTeamRepository,
 )
+from focus_agent.retrieval.agent_team import index_agent_team_plan
 from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
 from focus_agent.services.branches import BranchService
 from focus_agent.services.coordination import create_in_memory_coordination_backend
@@ -83,6 +84,27 @@ class AgentTeamHelperMixin:
         if len(summary) <= max_chars:
             return summary
         return f"{summary[: max_chars - 1].rstrip()}…"
+
+    def _index_agent_team_plan_best_effort(self, session_id: str) -> None:
+        if self.retrieval_index is None or self.memory_embedding_provider is None:
+            return
+        try:
+            session = self.repository.get_session(session_id)
+            tasks = self.repository.list_tasks(session_id=session_id)
+            outputs = [
+                output
+                for task in tasks
+                for output in self.repository.list_task_outputs(task_id=task.task_id)
+            ]
+            index_agent_team_plan(
+                retrieval_index=self.retrieval_index,
+                embedding_provider=self.memory_embedding_provider,
+                session=session,
+                tasks=tasks,
+                outputs=outputs,
+            )
+        except Exception:  # noqa: BLE001
+            return
 
     @staticmethod
     def _recommended_action(
@@ -352,6 +374,7 @@ class AgentTeamSessionTaskMixin:
         with self._lock:
             self.repository.create_task(task)
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
+        self._index_agent_team_plan_best_effort(session_id)
         return task
 
     def list_tasks(self, *, session_id: str, user_id: str | None = None) -> list[AgentTeamTask]:
@@ -488,6 +511,7 @@ class AgentTeamSessionTaskMixin:
             updated = task.model_copy(update=updates)
             self.repository.save_task(updated)
             self._refresh_session_status(updated.session_id)
+        self._index_agent_team_plan_best_effort(updated.session_id)
         return updated
 
     def record_task_output(
@@ -554,6 +578,7 @@ class AgentTeamSessionTaskMixin:
             )
             self.repository.save_task(updated)
             self._touch_session(updated.session_id)
+        self._index_agent_team_plan_best_effort(updated.session_id)
         return output
 
     def list_task_outputs(
@@ -620,6 +645,8 @@ class AgentTeamService(
         coordination_backend: object | None = None,
         background_work: object | None = None,
         workspace_service: AgentTeamWorkspaceService | None = None,
+        retrieval_index: object | None = None,
+        memory_embedding_provider: object | None = None,
     ):
         self.branch_service = branch_service
         self.repository = repository or InMemoryAgentTeamRepository()
@@ -629,6 +656,8 @@ class AgentTeamService(
         self.coordination_backend = coordination_backend or create_in_memory_coordination_backend()
         self.background_work = background_work
         self.workspace_service = workspace_service or AgentTeamWorkspaceService()
+        self.retrieval_index = retrieval_index
+        self.memory_embedding_provider = memory_embedding_provider
         self._lock = RLock()
         self._session_locks_guard = RLock()
         self._session_locks: dict[str, RLock] = {}

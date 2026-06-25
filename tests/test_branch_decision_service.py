@@ -8,8 +8,14 @@ from focus_agent.branch_decision import BranchDecisionService
 from focus_agent.config import Settings
 from focus_agent.config_parts.agent import load_agent_config
 from focus_agent.core.branching import BranchActionKind, BranchActionStatus
-from focus_agent.core.governance import BranchDecisionAction, BranchDecisionStatus
+from focus_agent.core.governance import (
+    BranchDecisionAction,
+    BranchDecisionEvent,
+    BranchDecisionStatus,
+)
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
+from focus_agent.retrieval import InMemoryRetrievalIndex
+from focus_agent.retrieval.branch_context import index_branch_decision_event
 from focus_agent.services.branch_actions import (
     build_branch_action_proposal,
     normalize_branch_actions,
@@ -118,6 +124,11 @@ class _FakeSemanticClassifier:
             result = self.result
         self.results.append(result)
         return result
+
+
+class _FakeEmbeddingProvider:
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
 
 def _attach_semantic_classifier(
@@ -231,6 +242,47 @@ def test_branch_recommendation_suggests_child_pending_action() -> None:
     assert actions[0].status == BranchActionStatus.PENDING
     assert actions[0].source_decision_id == event.decision_id
     assert actions[0].handoff_message == "深入研究方案 B"
+
+
+def test_branch_recommendation_records_zvec_shadow_signal_without_changing_action() -> None:
+    index = InMemoryRetrievalIndex()
+    provider = _FakeEmbeddingProvider()
+    service, graph, repository = _recommendation_service(mode="shadow")
+    service.retrieval_index = index
+    service.memory_embedding_provider = provider
+    previous = BranchDecisionEvent(
+        user_id="u-1",
+        root_thread_id="root-1",
+        source_thread_id="thread-old",
+        branch_id="branch-old",
+        action=BranchDecisionAction.FORK_CHILD_BRANCH,
+        status=BranchDecisionStatus.SHADOWED,
+        rationale="branch topic drift",
+        metadata={"handoff_message": "研究另一个分支方案"},
+    )
+    repository.save_branch_decision_event(previous)
+    assert previous is not None
+    index_branch_decision_event(
+        retrieval_index=index,
+        embedding_provider=provider,
+        event=previous,
+    )
+
+    service.recommend_for_message(
+        thread_id="thread-1",
+        root_thread_id="root-1",
+        user_id="u-1",
+        message="请新开一个子分支研究另一个分支方案。",
+        request_id="req-zvec-shadow",
+    )
+
+    event = repository.list_branch_decision_events(source_thread_id="thread-1")[0]
+    zvec_signal = next(signal for signal in event.signals if signal.name == "zvec_branch_context")
+    assert event.action == BranchDecisionAction.FORK_CHILD_BRANCH
+    assert event.status == BranchDecisionStatus.SHADOWED
+    assert "branch_actions" not in graph.values
+    assert zvec_signal.score > 0
+    assert zvec_signal.value["hit_count"] == 1
 
 
 def test_branch_recommendation_topic_drift_without_branch_words_forks_child() -> None:

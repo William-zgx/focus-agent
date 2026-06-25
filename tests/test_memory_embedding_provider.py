@@ -108,6 +108,10 @@ def test_memory_embedding_config_loads_agent_env_overrides() -> None:
             "AGENT_MEMORY_EMBEDDING_DIMENSIONS": "32",
             "AGENT_MEMORY_PGVECTOR_EXTENSION_MODE": "require-installed",
             "AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS": "4.5",
+            "AGENT_RETRIEVAL_BACKEND": "zvec",
+            "AGENT_RETRIEVAL_FALLBACK_BACKEND": "postgres",
+            "AGENT_ZVEC_ENABLED": "true",
+            "AGENT_ZVEC_DATA_DIR": "/tmp/focus-zvec",
         },
         Settings(),
     )
@@ -120,6 +124,10 @@ def test_memory_embedding_config_loads_agent_env_overrides() -> None:
     assert values["agent_memory_embedding_dimensions"] == 32
     assert values["agent_memory_pgvector_extension_mode"] == "required"
     assert values["agent_memory_embedding_timeout_seconds"] == 4.5
+    assert values["agent_retrieval_backend"] == "zvec"
+    assert values["agent_retrieval_fallback_backend"] == "postgres"
+    assert values["agent_zvec_enabled"] is True
+    assert values["agent_zvec_data_dir"] == "/tmp/focus-zvec"
 
 
 def test_memory_embedding_config_defaults_to_auto_ollama_route() -> None:
@@ -449,6 +457,31 @@ def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
     assert "auto_selected=ollama" in check.detail
     assert "model=embeddinggemma" in check.detail
     assert "dimensions=768" in check.detail
+
+
+def test_readiness_reports_zvec_fallback_without_failing_readyz() -> None:
+    runtime = SimpleNamespace(
+        settings=Settings(agent_retrieval_backend="zvec", agent_retrieval_fallback_backend="postgres"),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=None,
+        memory_embedding_service=None,
+        memory_embedding_backend_error=None,
+        retrieval_index=None,
+        retrieval_index_error="zvec_unavailable: RuntimeError",
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "retrieval_zvec")
+
+    assert readiness.ready is True
+    assert check.ready is True
+    assert "fallback=postgres" in check.detail
 
 
 def test_readiness_degrades_when_configured_pgvector_storage_is_missing() -> None:

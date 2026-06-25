@@ -14,6 +14,7 @@ from focus_agent.core.governance import (
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
+from focus_agent.retrieval.governance_feedback import index_governance_feedback
 from focus_agent.security.tokens import Principal
 
 from ..contracts import (
@@ -97,6 +98,7 @@ def _agent_context_explain_response(
         metadata=dict(payload.metadata),
     )
     repository.save_context_evidence(evidence)
+    _index_governance_feedback_best_effort(runtime, evidence)
     return AgentContextExplainResponse(item=_context_evidence_response(evidence))
 
 
@@ -167,6 +169,7 @@ def _persist_skill_selection_event(
         principal=principal,
     )
     repository.save_skill_selection_event(event)
+    _index_governance_feedback_best_effort(runtime, event)
     return response.model_copy(update={"selection_id": event.selection_id})
 
 
@@ -214,6 +217,7 @@ def _agent_skill_selection_feedback_response(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found."
         )
+    _index_governance_feedback_best_effort(runtime, updated)
     feedback_event = FeedbackEvent(
         user_id=principal.user_id,
         source_kind="skill_selection",
@@ -223,10 +227,22 @@ def _agent_skill_selection_feedback_response(
         metadata={"reason": payload.reason, "user_override": dict(payload.user_override)},
     )
     feedback_event_id = repository.save_feedback_event(feedback_event)
+    _index_governance_feedback_best_effort(runtime, feedback_event)
     return AgentSkillSelectionFeedbackResponse(
         item=_skill_selection_event_response(updated),
         feedback_event_id=feedback_event_id,
     )
+
+
+def _index_governance_feedback_best_effort(runtime: AppRuntime, item: object) -> None:
+    try:
+        index_governance_feedback(
+            retrieval_index=getattr(runtime, "retrieval_index", None),
+            embedding_provider=getattr(runtime, "memory_embedding_provider", None),
+            item=item,
+        )
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _now_iso() -> str:

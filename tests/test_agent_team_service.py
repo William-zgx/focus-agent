@@ -18,6 +18,7 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.core.branching import BranchRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
+from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.services.agent_team import AgentTeamService
 from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
 
@@ -38,6 +39,11 @@ class CleanupRecordingWorkspaceService:
     def cleanup_workspace(self, **kwargs: object) -> dict[str, object]:
         self.cleanup_calls.append(kwargs)
         return {"removed": [], "errors": [], "pruned": True}
+
+
+class _FakeEmbeddingProvider:
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
 
 def _git(cwd, *args: str) -> None:
@@ -258,6 +264,58 @@ def test_agent_team_service_plan_session_is_idempotent_and_writes_dag_fields() -
     assert planned[1].dependencies == [planned[0].task_id]
     assert planned[1].acceptance_criteria
     assert planned[1].context_refs == []
+
+
+def test_agent_team_planning_adds_shadow_similar_plan_refs_without_changing_dag() -> None:
+    retrieval_index = InMemoryRetrievalIndex()
+    service = AgentTeamService(
+        branch_service=None,
+        retrieval_index=retrieval_index,
+        memory_embedding_provider=_FakeEmbeddingProvider(),
+        settings=Settings(agent_team_skill_scout_enabled=False),
+    )
+    previous = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Plan Zvec retrieval migration",
+    )
+    task = service.create_task(
+        session_id=previous.session_id,
+        user_id="user-1",
+        role=AgentTeamTaskRole.BACKEND_EXECUTOR,
+        title="Implement retrieval",
+        goal="Implement Zvec retrieval index",
+        context_refs=[{"kind": "memory", "id": "memory-1"}],
+        create_branch=False,
+    )
+    service.record_task_output(
+        task_id=task.task_id,
+        user_id="user-1",
+        summary="Implemented retrieval with fallback.",
+    )
+    current = service.create_session(
+        root_thread_id="root-1",
+        user_id="user-1",
+        goal="Plan Zvec retrieval migration rollout",
+    )
+
+    _session, planned = service.plan_session(
+        session_id=current.session_id,
+        user_id="user-1",
+        create_branches=False,
+    )
+
+    reuse_refs = [
+        ref
+        for planned_task in planned
+        for ref in planned_task.context_refs
+        if ref.get("kind") == "agent_team_plan_reuse"
+    ]
+    assert len(planned) >= 2
+    assert planned[1].dependencies == [planned[0].task_id]
+    assert reuse_refs
+    assert reuse_refs[0]["session_id"] == previous.session_id
+    assert reuse_refs[0]["mode"] == "shadow"
 
 
 def test_agent_team_service_plan_session_injects_selected_skill_context(tmp_path) -> None:

@@ -281,6 +281,29 @@ _POLICY_FIELD_SPECS: tuple[ConfigFieldSpec, ...] = (
         "Promote memory candidates after accepted merges.",
     ),
     ConfigFieldSpec(
+        "agent_retrieval_backend",
+        "AGENT_RETRIEVAL_BACKEND",
+        "Retrieval backend",
+        "string",
+        "Primary retrieval backend for memory and RAG surfaces.",
+        ("zvec", "postgres", "auto"),
+    ),
+    ConfigFieldSpec(
+        "agent_retrieval_fallback_backend",
+        "AGENT_RETRIEVAL_FALLBACK_BACKEND",
+        "Retrieval fallback",
+        "string",
+        "Fallback retrieval backend when the primary backend is unavailable.",
+        ("postgres", "none"),
+    ),
+    ConfigFieldSpec(
+        "agent_zvec_enabled",
+        "AGENT_ZVEC_ENABLED",
+        "Zvec retrieval",
+        "boolean",
+        "Enable the embedded Zvec retrieval index.",
+    ),
+    ConfigFieldSpec(
         "agent_task_ledger_enabled",
         "AGENT_TASK_LEDGER_ENABLED",
         "Task ledger",
@@ -381,6 +404,13 @@ _SYSTEM_FIELD_SPECS: tuple[ConfigFieldSpec, ...] = (
         "Database URI",
         "string",
         "Database connection string. The value is never returned.",
+    ),
+    ConfigFieldSpec(
+        "agent_zvec_data_dir",
+        "AGENT_ZVEC_DATA_DIR",
+        "Zvec data dir",
+        "string",
+        "Local directory for embedded Zvec retrieval indexes.",
     ),
     ConfigFieldSpec(
         "auth_jwt_secret",

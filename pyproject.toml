@@ -31,6 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["langchain-openai>=1.0.0"]
 anthropic = ["langchain-anthropic>=1.0.0"]
+retrieval = ["zvec>=0.5.1"]
 dev = [
     "pytest>=8.2.0",
     "ruff>=0.8.0",
@@ -43,6 +44,7 @@ focus-agent-demo = "focus_agent.demo:main"
 focus-agent-api = "focus_agent.api.cli:main"
 focus-agent-migrate-local-state = "focus_agent.migrate_local_state:main"
 focus-agent-memory-embedding = "focus_agent.memory_embedding_cli:main"
+focus-agent-retrieval-index = "focus_agent.retrieval_index_cli:main"
 focus-agent-trajectory = "focus_agent.trajectory_cli:main"
 focus-agent-prompts = "focus_agent.prompts.cli:main"
 

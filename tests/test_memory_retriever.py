@@ -11,6 +11,7 @@ from focus_agent.memory import (
     MemoryVisibility,
 )
 from focus_agent.repositories.memory_repository import MemoryEmbeddingSearchHit
+from focus_agent.retrieval import InMemoryRetrievalIndex, RetrievalDocument
 
 
 class FakeStore:
@@ -481,6 +482,15 @@ class RepositorySearchFake:
         }
         self.calls = []
         self.list_calls = []
+        self.records_by_id = {}
+        for hits in self.hits_by_namespace.values():
+            for hit in hits:
+                record = getattr(hit, "record", None)
+                if record is not None:
+                    self.records_by_id[record.memory_id] = record
+        for records in self.records_by_namespace.values():
+            for record in records:
+                self.records_by_id[record.memory_id] = record
 
     def search(self, *, namespace, query, limit):
         self.calls.append((tuple(namespace), query, limit))
@@ -492,6 +502,9 @@ class RepositorySearchFake:
         return self.records_by_namespace.get(namespace, [])[
             query.offset : query.offset + query.limit
         ]
+
+    def get_record(self, memory_id):
+        return self.records_by_id.get(memory_id)
 
 
 class RepositoryVectorSearchFake(RepositorySearchFake):
@@ -614,6 +627,80 @@ def test_memory_retriever_uses_repository_hits_and_marks_postgres_source():
     assert repo.calls[0][0] == namespace
     assert bundle.hits[0].record.memory_id == "repo-mem-1"
     assert "owner" in bundle.hits[0].matched_terms
+
+
+def test_memory_retriever_prefers_zvec_index_and_hydrates_canonical_record():
+    namespace = ("conversation", "root-1", "main")
+    record = MemoryRecord(
+        memory_id="zvec-mem-1",
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.ROOT_THREAD,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="zvec stores the semantic memory index",
+        summary="zvec semantic memory",
+        root_thread_id="root-1",
+        user_id="user-1",
+    )
+    repo = RepositorySearchFake({namespace: []}, records_by_namespace={namespace: [record]})
+    index = InMemoryRetrievalIndex()
+    index.upsert(
+        RetrievalDocument(
+            collection="focus_memory",
+            doc_id="memory:zvec-mem-1",
+            source_id="zvec-mem-1",
+            text="semantic memory index",
+            fields={"namespace": namespace, "status": "active"},
+        )
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_index=index,
+    )
+
+    bundle = retriever.retrieve_for_turn(
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        state={},
+        query="semantic memory",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert bundle.retrieval_plan["source"] == "zvec"
+    assert [hit.record.memory_id for hit in bundle.hits] == ["zvec-mem-1"]
+    assert repo.calls == []
+
+
+def test_memory_retriever_falls_back_when_zvec_has_no_hits():
+    namespace = ("conversation", "root-1", "main")
+    repo = RepositorySearchFake(
+        {
+            namespace: [
+                _repository_hit(
+                    memory_id="fts-mem",
+                    namespace=namespace,
+                    content="fallback text search result",
+                    summary="fallback text search result",
+                    score=0.42,
+                )
+            ]
+        }
+    )
+    retriever = MemoryRetriever(
+        store=StoreShouldNotBeUsed(),
+        repository=repo,
+        retrieval_index=InMemoryRetrievalIndex(),
+    )
+
+    bundle = retriever.retrieve_for_turn(
+        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
+        state={},
+        query="fallback",
+        prompt_mode=PromptMode.EXECUTE,
+    )
+
+    assert bundle.retrieval_plan["source"] == "postgres"
+    assert [hit.record.memory_id for hit in bundle.hits] == ["fts-mem"]
 
 
 def test_memory_retriever_falls_back_to_recent_user_preferences_for_natural_questions():

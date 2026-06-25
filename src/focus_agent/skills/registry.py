@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Settings
+from ..retrieval import RetrievalDocument, RetrievalIndex
 from .models import (
     SkillDefinition,
     SkillEntrypoint,
@@ -80,6 +81,22 @@ def _entrypoint_to_dict(entrypoint: SkillEntrypoint) -> dict[str, Any]:
     }
 
 
+def _skill_retrieval_text(skill: SkillDefinition) -> str:
+    parts = [
+        skill.skill_id,
+        skill.description,
+        *skill.aliases,
+        *skill.localized_triggers,
+        *skill.domains,
+        *skill.intents,
+        *skill.when_to_use,
+        *skill.primary_tools,
+        *skill.recommended_tools,
+        *skill.capability_requirements,
+    ]
+    return "\n".join(str(part).strip() for part in parts if str(part).strip())
+
+
 class SkillRegistry:
     def __init__(
         self,
@@ -91,6 +108,8 @@ class SkillRegistry:
         semantic_match_threshold: float = 0.22,
         source_definitions: Iterable[SkillSourceDefinition] = (),
         install_dir: Path | None = None,
+        retrieval_index: RetrievalIndex | None = None,
+        embedding_provider: Any | None = None,
     ):
         configured_skill_dirs = tuple(
             path.expanduser().resolve() for path in skill_dirs if str(path).strip()
@@ -109,6 +128,8 @@ class SkillRegistry:
         self._semantic_match_threshold = float(semantic_match_threshold)
         self._source_definitions = self._normalize_sources(source_definitions)
         self._install_dir = resolved_install_dir
+        self._retrieval_index = retrieval_index
+        self._embedding_provider = embedding_provider
         self._skills = self._discover()
         self._reindex()
 
@@ -160,9 +181,16 @@ class SkillRegistry:
                 reverse=True,
             )
         )
+        self._index_skills_best_effort()
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> SkillRegistry:
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        retrieval_index: RetrievalIndex | None = None,
+        embedding_provider: Any | None = None,
+    ) -> SkillRegistry:
         configured = [Path(path) for path in settings.skill_directories]
         source_definitions = _source_definitions_from_settings(settings)
         return cls(
@@ -180,6 +208,8 @@ class SkillRegistry:
                 getattr(settings, "skill_install_directory", ".focus_agent/skills")
                 or ".focus_agent/skills"
             ),
+            retrieval_index=retrieval_index,
+            embedding_provider=embedding_provider,
         )
 
     @property
@@ -363,7 +393,11 @@ class SkillRegistry:
 
     def reload_from_settings(self, settings: Settings) -> dict[str, Any]:
         before = len(self._skills)
-        updated = type(self).from_settings(settings)
+        updated = type(self).from_settings(
+            settings,
+            retrieval_index=self._retrieval_index,
+            embedding_provider=self._embedding_provider,
+        )
         self._skill_dirs = updated._skill_dirs
         self._enabled = updated._enabled
         self._disabled_skill_ids = updated._disabled_skill_ids
@@ -371,6 +405,8 @@ class SkillRegistry:
         self._semantic_match_threshold = updated._semantic_match_threshold
         self._source_definitions = updated._source_definitions
         self._install_dir = updated._install_dir
+        self._retrieval_index = updated._retrieval_index
+        self._embedding_provider = updated._embedding_provider
         self._skills = updated._skills
         self._reindex()
         return {
@@ -542,6 +578,13 @@ class SkillRegistry:
     ) -> tuple[SkillSemanticCandidate, ...]:
         if not self._enabled:
             return ()
+        zvec_candidates = self._retrieval_semantic_candidates(
+            message,
+            threshold=self._semantic_match_threshold if threshold is None else float(threshold),
+            limit=limit,
+        )
+        if zvec_candidates:
+            return zvec_candidates
         query: dict[str, float] = {}
         _add_weighted_tokens(query, message, 1.0)
         if not query:
@@ -574,6 +617,73 @@ class SkillRegistry:
             )
         candidates.sort(key=lambda item: (-item.score, item.skill_id))
         return tuple(candidates[: max(0, limit)])
+
+    def _retrieval_semantic_candidates(
+        self,
+        message: str,
+        *,
+        threshold: float,
+        limit: int,
+    ) -> tuple[SkillSemanticCandidate, ...]:
+        if self._retrieval_index is None or self._embedding_provider is None:
+            return ()
+        try:
+            query_vector = self._embedding_provider.embed([message])[0]
+            hits = self._retrieval_index.search(
+                collection="focus_skills",
+                query=message,
+                vector=query_vector,
+                limit=limit,
+            )
+        except Exception:  # noqa: BLE001
+            return ()
+        candidates: list[SkillSemanticCandidate] = []
+        for hit in hits:
+            skill_id = _normalize_skill_id(hit.source_id)
+            if not self.is_skill_enabled(skill_id):
+                continue
+            score = round(float(hit.score), 4)
+            candidates.append(
+                SkillSemanticCandidate(
+                    skill_id=skill_id,
+                    score=score,
+                    matched_terms=(),
+                    auto_activate=score >= threshold,
+                    rationale=self._semantic_rationale(
+                        skill_id=skill_id,
+                        score=score,
+                        matched_terms=(),
+                        threshold=threshold,
+                    ),
+                )
+            )
+        return tuple(candidates[: max(0, limit)])
+
+    def _index_skills_best_effort(self) -> None:
+        if self._retrieval_index is None or self._embedding_provider is None:
+            return
+        for skill in self._active_skills():
+            text = _skill_retrieval_text(skill)
+            try:
+                vector = self._embedding_provider.embed([text])[0]
+                self._retrieval_index.upsert(
+                    RetrievalDocument(
+                        collection="focus_skills",
+                        doc_id=f"skill:{skill.skill_id}",
+                        source_id=skill.skill_id,
+                        text=text,
+                        vector=vector,
+                        fields={
+                            "source_type": "skill",
+                            "skill_id": skill.skill_id,
+                            "source_id": skill.source_id,
+                            "enabled": True,
+                            "trust_level": skill.trust_level,
+                        },
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                continue
 
     @staticmethod
     def _semantic_rationale(
