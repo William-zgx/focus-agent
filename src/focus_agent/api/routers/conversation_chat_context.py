@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from focus_agent.core.token_usage import normalize_token_usage
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.harness.agents.mention import list_available_agents
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import (
     ChatService,
@@ -33,6 +34,27 @@ from ..route_utils.conversations import _conversation_response, _list_or_bootstr
 from ..route_utils.token_usage import _token_usage_for_root_thread
 
 router = APIRouter()
+
+
+@router.get("/v1/agents")
+def list_agents(
+    runtime: AppRuntime = Depends(get_app_runtime),
+    principal: Principal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """Return the set of agents currently addressable via @mention.
+
+    The UI uses this to power @mention autocomplete. The endpoint is
+    intentionally lightweight and never fails — if the harness or registry
+    is unavailable it returns an empty list.
+    """
+    del principal  # authenticated users may list agents; authorization TBD.
+    try:
+        harness = getattr(runtime, "harness", None)
+        registry = getattr(harness, "agent_definition_registry", None) if harness is not None else None
+        agents = list_available_agents(registry)
+    except Exception:  # noqa: BLE001
+        agents = []
+    return {"agents": agents}
 
 
 @router.get("/v1/conversations", response_model=ConversationListResponse)

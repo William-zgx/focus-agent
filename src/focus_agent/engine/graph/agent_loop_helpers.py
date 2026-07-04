@@ -240,13 +240,24 @@ def build_active_skill_execution_plan(
     supporting_tools: list[str] = []
     runtime_cwds: dict[str, str] = {}
     reason_codes = ["skill_execution_plan", "active_trusted_execute_skill"]
-    for _, skill, reasons in matches:
+    _MAX_PRIMARY_TOOL_SKILLS = 2
+    for idx, (_, skill, reasons) in enumerate(matches):
         selected_skill_ids.append(skill.skill_id)
         skill_primary = _skill_primary_tools(skill)
         skill_supporting = _skill_supporting_tools(skill, primary_tools=skill_primary)
-        for tool_name in skill_primary:
-            if tool_name not in primary_tools:
-                primary_tools.append(tool_name)
+        # Cap: only the top-N matched skills (by score) contribute primary
+        # tools.  Additional matches still surface in selected_skill_ids and
+        # their tools become supporting, so the model sees them but is not
+        # forced to call every skill's primary tool before answering.
+        if idx < _MAX_PRIMARY_TOOL_SKILLS:
+            for tool_name in skill_primary:
+                if tool_name not in primary_tools:
+                    primary_tools.append(tool_name)
+        else:
+            for tool_name in skill_primary:
+                if tool_name not in supporting_tools:
+                    supporting_tools.append(tool_name)
+            reason_codes.append(f"skill_primary_demoted:{skill.skill_id}")
         for tool_name in skill_supporting:
             if tool_name not in supporting_tools:
                 supporting_tools.append(tool_name)

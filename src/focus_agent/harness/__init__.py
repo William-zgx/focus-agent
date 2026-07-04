@@ -70,11 +70,23 @@ from .schemas.config import HarnessConfig
 from .streaming import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
+    AgentEventPublisher,
     InMemoryStreamBridge,
     MemoryStreamBridge,
     StreamEvent,
+    StreamProxy,
+    StreamProxyConfig,
 )
 from .subagents import AgentTeamSubagentRunner
+from .agents.facade import FocusAgent, StreamResult
+from .agents.mention import (
+    Mention,
+    extract_primary_agent,
+    list_available_agents,
+    parse_mentions,
+    resolve_mentions,
+    strip_mentions,
+)
 
 if not hasattr(_schemas, "HarnessConfig"):
     _schemas.HarnessConfig = HarnessConfig
@@ -96,6 +108,7 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "AgentMiddleware",
+    "AgentEventPublisher",
     "AgentStateSlices",
     "AgentTeamSubagentRunner",
     "BaseAgentMiddleware",
@@ -109,6 +122,7 @@ __all__ = [
     "DanglingToolCallMiddleware",
     "DisconnectMode",
     "END_SENTINEL",
+    "FocusAgent",
     "FocusAgentHarness",
     "GovernanceStateSlice",
     "HEARTBEAT_SENTINEL",
@@ -147,12 +161,20 @@ __all__ = [
     "StateSlice",
     "StateSliceSpec",
     "StreamEvent",
+    "StreamProxy",
+    "StreamProxyConfig",
+    "StreamResult",
     "StreamingConfig",
     "SubagentConfig",
     "UnsupportedStrategyError",
     "build_state_slices",
     "create_focus_agent",
+    "extract_primary_agent",
+    "list_available_agents",
+    "parse_mentions",
+    "resolve_mentions",
     "state_slice_dict",
     "state_slice_model",
+    "strip_mentions",
     "trajectory_summary_from_snapshot",
 ]

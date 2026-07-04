@@ -6,10 +6,17 @@ from fastapi import HTTPException
 from langchain.messages import HumanMessage
 from langgraph.types import Command
 
+from focus_agent.harness.agents.mention import (
+    extract_primary_agent as _extract_primary_agent,
+)
+from focus_agent.harness.agents.mention import list_available_agents
 from focus_agent.services.branches.actions import branch_handoff_message_from_text
 from focus_agent.services.chat import ChatService
 
 from .replay_models import HarnessResumeRequest, HarnessRunRequest
+
+# Re-export for callers that need mention metadata.
+available_agents_for_registry = list_available_agents
 
 
 def _prepare_run_payload(
@@ -19,7 +26,23 @@ def _prepare_run_payload(
     payload: HarnessRunRequest,
     chat: ChatService,
 ) -> tuple[dict[str, Any], Any, Any, dict[str, Any]]:
-    message = _run_message_from_payload(payload)
+    raw_message = _run_message_from_payload(payload)
+
+    # @mention parsing: resolve @agent tokens against the agent definition
+    # registry. The *clean* message (with the primary @mention stripped) is
+    # sent to the LLM; the original is preserved in metadata so it can be
+    # displayed verbatim in the UI thread history.
+    runtime = getattr(chat, "runtime", None)
+    harness = getattr(runtime, "harness", None) if runtime is not None else None
+    agent_registry = getattr(harness, "agent_definition_registry", None) if harness is not None else None
+    primary_agent, message = _extract_primary_agent(raw_message, agent_registry)
+    metadata = dict(payload.metadata or {})
+    if primary_agent:
+        metadata.setdefault("target_agent", primary_agent)
+        metadata.setdefault("original_message", raw_message)
+    # Replace payload metadata on a copy so we don't mutate caller's model.
+    payload = payload.model_copy(update={"metadata": metadata}) if primary_agent else payload
+
     selection = chat._select_skills_for_message(
         message=message,
         explicit_skill_hints=tuple(payload.skill_hints),
@@ -62,6 +85,7 @@ def _prepare_run_payload(
             model_id=selected_model,
             thinking_mode=payload.thinking_mode,
         ),
+        "metadata": payload.metadata or {},
     }
     if payload.input:
         graph_payload.update(

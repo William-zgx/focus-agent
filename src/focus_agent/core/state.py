@@ -145,6 +145,13 @@ class AgentState(TypedDict, total=False):
     available_skills_block: str
     active_skills_block: str
 
+    # Written by the ContextPipeline augment node (runs between retrieve_memory
+    # and assemble_context). ``context_extra_blocks`` holds additional prompt
+    # blocks contributed by custom pipeline stages; ``context_pipeline_meta``
+    # is observability metadata (which stages ran, filtered tool counts, etc.).
+    context_extra_blocks: list[str]
+    context_pipeline_meta: dict[str, Any]
+
     # Written by the chat API for each turn so the runtime can switch providers/models per thread.
     selected_model: str
     selected_thinking_mode: str
@@ -257,6 +264,8 @@ def initial_agent_state() -> AgentState:
         "active_skill_ids": [],
         "available_skills_block": "",
         "active_skills_block": "",
+        "context_extra_blocks": [],
+        "context_pipeline_meta": {},
         "selected_model": "",
         "selected_thinking_mode": "",
         "role_route_plan": None,

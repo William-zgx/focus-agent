@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from .config import (
     Settings,
     load_model_catalog_toml,
 )
+
+logger = logging.getLogger("focus_agent.model_registry")
 
 _BUILTIN_MODEL_CATALOG_RESOURCE = "defaults/models.toml"
 
@@ -360,10 +363,49 @@ def create_chat_model(
         thinking_mode=thinking_mode,
         settings=settings,
     )
+
+    # P2 wiring: resolve the four-axis ModelRoute (protocol/endpoint/auth/
+    # framing) for native-protocol support. This is best-effort and wrapped
+    # in a try/except: a failure here must never break model creation, since
+    # we still use langchain's OpenAI-compatible client for all requests
+    # today. The route is logged at debug level and stored alongside the
+    # resolved client kwargs; a future native-protocol client can read it
+    # off of init_kwargs to bypass langchain entirely.
     init_kwargs: dict[str, object] = {
         **resolved.client_kwargs,
         **resolved.request_kwargs,
     }
+    try:
+        from .model_routing import resolve_route
+
+        provider_cfg = _merged_provider_configs(settings).get(resolved.provider)
+        if provider_cfg is not None:
+            env = (
+                settings.resolved_env
+                if settings is not None and getattr(settings, "resolved_env", None)
+                else os.environ
+            )
+            route = resolve_route(
+                resolved.model_id,
+                provider_cfg,
+                environ=env,
+            )
+            logger.debug(
+                "Resolved route for %s: protocol=%s endpoint=%s auth=%s framing=%s",
+                resolved.model_id,
+                route.protocol,
+                route.endpoint,
+                route.auth_type,
+                route.framing,
+            )
+            init_kwargs["_focus_model_route"] = {
+                "protocol": route.protocol,
+                "endpoint": route.endpoint,
+                "auth_type": route.auth_type,
+                "framing": route.framing,
+            }
+    except Exception as exc:  # noqa: BLE001 - never break model creation
+        logger.debug("Route resolution skipped for %s: %s", model_id, exc)
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
@@ -375,13 +417,18 @@ def create_chat_model(
 
         if resolved.provider == "moonshot":
             init_kwargs.setdefault("stream_usage", True)
+        # Pop the route metadata before passing to langchain constructors,
+        # which reject unknown kwargs. The route dict is captured by the
+        # closure above for future native-protocol client construction.
+        safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
         return ReasoningAwareChatOpenAI(
             model=resolved.model_name,
-            **init_kwargs,
+            **safe_init_kwargs,
         )
+    safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
     return init_chat_model(
         f"{resolved.backend_provider}:{resolved.model_name}",
-        **init_kwargs,
+        **safe_init_kwargs,
     )
 
 

@@ -5,6 +5,8 @@ from .base import (
     BaseAgentMiddleware,
     MiddlewareHandler,
     MiddlewareStack,
+    ToolCallInterception,
+    ToolResultInterception,
 )
 from .errors import CircuitBreakerOpenError, LoopDetectedError, MiddlewareError
 from .llm_error_handling import (
@@ -29,4 +31,6 @@ __all__ = [
     "MiddlewareError",
     "MiddlewareHandler",
     "MiddlewareStack",
+    "ToolCallInterception",
+    "ToolResultInterception",
 ]

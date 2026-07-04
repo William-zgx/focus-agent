@@ -143,6 +143,13 @@ class AppRuntime:
     coordination_backend: CoordinationBackend
     postgres_connection_provider: PostgresConnectionProvider | None
     _exit_stack: ExitStack
+    # Newly-integrated components
+    focus_agent: Any | None = None
+    agent_registry: Any | None = None
+    extension_registry: Any | None = None
+    permission_manager: Any | None = None
+    system_agent_runner: Any | None = None
+    context_pipeline: Any | None = None
 
     def close(self) -> None:
         self._exit_stack.close()
@@ -273,7 +280,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         background_work=background_work,
     )
 
-    return AppRuntime(
+    runtime = AppRuntime(
         settings=settings,
         harness=harness,
         graph=graph,
@@ -314,6 +321,48 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         postgres_connection_provider=persistence.postgres_connection_provider,
         _exit_stack=exit_stack,
     )
+    _attach_new_runtime_components(
+        runtime,
+        harness=harness,
+        memory=memory,
+        registries=registries,
+    )
+    return runtime
+
+
+def _attach_new_runtime_components(
+    runtime: AppRuntime,
+    *,
+    harness: object,
+    memory: RuntimeMemoryComponents,
+    registries: RuntimeRegistries,
+) -> None:
+    """Wire up the facade/registries/pipeline onto the runtime."""
+
+    # a) FocusAgent facade
+    try:
+        from ..harness.agents.facade import FocusAgent
+
+        runtime.focus_agent = FocusAgent(harness)
+    except Exception:  # noqa: BLE001
+        logger.debug("FocusAgent facade unavailable", exc_info=True)
+
+    # b-e) Expose harness-held registries/managers
+    runtime.agent_registry = getattr(harness, "agent_definition_registry", None)
+    runtime.extension_registry = getattr(harness, "extension_registry", None)
+    runtime.permission_manager = getattr(harness, "permission_manager", None)
+    runtime.system_agent_runner = getattr(harness, "system_agent_runner", None)
+
+    # f) Default context pipeline
+    try:
+        from ..engine.context_pipeline import create_default_pipeline
+
+        runtime.context_pipeline = create_default_pipeline(
+            memory_retriever=memory.memory_retriever,
+            skill_registry=registries.skill_registry,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("Context pipeline unavailable", exc_info=True)
 
 
 def _start_multi_agent_maintenance_worker(

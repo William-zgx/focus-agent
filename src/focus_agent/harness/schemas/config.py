@@ -126,6 +126,13 @@ class SubagentConfig(BaseModel):
 
     enabled: bool = False
     max_concurrent_subagents: int = Field(default=3, ge=1)
+    # When True, subagent tasks execute in isolated OS processes via the
+    # focus-agent CLI (ProcessSubagentRunner) instead of in-process via
+    # AgentTeamSubagentRunner. Defaults to False for backward compatibility.
+    use_process_isolation: bool = False
+    cli_entry_point: str = "focus-agent"
+    process_timeout_seconds: float = Field(default=300.0, ge=1.0)
+    graceful_shutdown_seconds: float = Field(default=5.0, ge=0.0)
 
 
 class HarnessConfig(BaseModel):
@@ -157,6 +164,13 @@ class HarnessConfig(BaseModel):
     streaming: StreamingConfig = Field(default_factory=StreamingConfig)
     subagents: SubagentConfig = Field(default_factory=SubagentConfig)
     middleware: tuple[object, ...] = ()
+    # Extension / governance / agent-definition toggles
+    enable_extensions: bool = True
+    extension_dirs: list[str] = Field(default_factory=list)
+    enable_permission_system: bool = True
+    doom_loop_threshold: int = Field(default=3, ge=1)
+    enable_system_agents: bool = True
+    agent_definition_dirs: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_settings(cls, settings: Any) -> HarnessConfig:

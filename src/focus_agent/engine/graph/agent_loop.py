@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -89,6 +91,8 @@ from .policy import (
     _turn_tool_exposure_from_intent_plan,
     build_tool_intent_plan,
 )
+
+_logger = logging.getLogger(__name__)
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
 _READ_ONLY_SKILL_TOOL_RE = re.compile(
@@ -222,6 +226,119 @@ def _with_focus_agent_turn_metadata(
     )
 
 
+def _fire_system_agent_trigger(runner: Any | None, trigger_name: str, ctx: dict[str, Any]) -> None:
+    """Best-effort fire-and-forget trigger for system agents from a sync node.
+
+    Never raises; silently skips if no runner is provided or no running loop
+    is available (e.g. sync test invocations).
+    """
+
+    if runner is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    try:
+        loop.create_task(runner.trigger(trigger_name, ctx))
+    except Exception:  # noqa: BLE001
+        _logger.debug(
+            "Failed to fire system agent trigger '%s'", trigger_name, exc_info=True
+        )
+
+
+def _drain_steer_messages(run_manager: Any | None, thread_id: str | None) -> list[str]:
+    """Drain any steering messages queued for ``thread_id``; safe if None."""
+
+    if run_manager is None or not thread_id:
+        return []
+    try:
+        drainer = getattr(run_manager, "drain_steer_queue_nowait", None)
+        if drainer is None:
+            return []
+        return list(drainer(thread_id) or [])
+    except Exception:  # noqa: BLE001
+        _logger.debug("Failed to drain steer queue", exc_info=True)
+        return []
+
+
+def _resolve_agent_definition(
+    registry: Any | None,
+    state: AgentState,
+) -> tuple[Any | None, str | None]:
+    """Look up the requested AgentDefinition from state, if any.
+
+    Returns (definition, agent_name) or (None, None) when nothing is selected.
+    """
+
+    if registry is None:
+        return None, None
+    agent_name = (
+        state.get("agent_name")
+        or state.get("selected_agent")
+        or (state.get("metadata") or {}).get("agent_name")
+        or (state.get("metadata") or {}).get("target_agent")
+        or ""
+    )
+    agent_name = str(agent_name or "").strip()
+    if not agent_name:
+        return None, None
+    try:
+        definition = registry.get(agent_name)
+    except Exception:  # noqa: BLE001
+        _logger.debug("AgentDefinition lookup failed for '%s'", agent_name, exc_info=True)
+        return None, agent_name
+    return definition, agent_name
+
+
+def _filter_tools_by_agent_def(
+    available_tools: list[Any],
+    agent_def: Any,
+) -> list[Any]:
+    """Apply an AgentDefinition's tool_policy, if present."""
+
+    if agent_def is None:
+        return available_tools
+    policy = getattr(agent_def, "tool_policy", None)
+    if policy is None:
+        return available_tools
+    filter_fn = getattr(policy, "filter", None)
+    if filter_fn is None:
+        return available_tools
+    try:
+        names = [str(getattr(t, "name", "") or "") for t in available_tools]
+        allowed = set(filter_fn(names))
+        return [t for t in available_tools if str(getattr(t, "name", "") or "") in allowed]
+    except Exception:  # noqa: BLE001
+        _logger.debug("AgentDefinition tool_policy filter failed", exc_info=True)
+        return available_tools
+
+
+def _estimate_context_fullness(prompt_messages: list[Any]) -> float:
+    """Roughly estimate how full the prompt is as a 0..1 ratio.
+
+    Uses total character length of rendered message content against a
+    conservative ~32k-char ceiling; this is intentionally approximate —
+    the context_overflow trigger is advisory.
+    """
+
+    total = 0
+    for m in prompt_messages:
+        c = getattr(m, "content", "")
+        if isinstance(c, str):
+            total += len(c)
+        elif isinstance(c, list):
+            for part in c:
+                if isinstance(part, dict):
+                    total += len(str(part.get("text", "")))
+                else:
+                    total += len(str(part))
+        else:
+            total += len(str(c))
+    # Rough ceiling (chars ≈ tokens * 4); ~32k chars ~= ~8k tokens.
+    return min(1.0, total / 32000.0)
+
+
 def make_agent_loop_node(
     *,
     settings: Settings,
@@ -230,6 +347,9 @@ def make_agent_loop_node(
     skill_registry: SkillRegistry | None = None,
     model_for: Callable[[str, str], Any],
     model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
+    run_manager: Any | None = None,
+    system_agent_runner: Any | None = None,
+    agent_definition_registry: Any | None = None,
 ) -> Any:
     all_tools = list(tools)
 
@@ -237,13 +357,43 @@ def make_agent_loop_node(
         state: AgentState,
         runtime: Runtime[RequestContext],
     ) -> dict[str, Any]:
-        del runtime
         state_messages = list(state.get("messages", []) or [])
         messages = _messages_for_model(state)
         fallback_messages = _latest_turn_messages(state_messages or messages)
         selected_model = str(state.get("selected_model") or settings.model)
         selected_thinking_mode = str(state.get("selected_thinking_mode") or "")
+
+        # Resolve AgentDefinition overrides (model / tools / system prompt).
+        agent_def, agent_name = _resolve_agent_definition(agent_definition_registry, state)
+        agent_system_prompt_extra = ""
+        if agent_def is not None:
+            try:
+                if getattr(agent_def, "model", None):
+                    selected_model = str(agent_def.model)
+                agent_system_prompt_extra = str(getattr(agent_def, "system_prompt", "") or "").strip()
+            except Exception:  # noqa: BLE001
+                _logger.debug(
+                    "Failed to apply AgentDefinition '%s'", agent_name, exc_info=True
+                )
+                agent_system_prompt_extra = ""
+
         assembled = state.get("assembled_context", "")
+        if agent_system_prompt_extra and agent_system_prompt_extra not in assembled:
+            assembled = f"{agent_system_prompt_extra}\n\n{assembled}".strip()
+
+        # Drain the steer queue for this thread and collect any mid-turn guidance.
+        thread_id = None
+        try:
+            ctx = getattr(runtime, "context", None)
+            thread_id = getattr(ctx, "root_thread_id", None)
+        except Exception:  # noqa: BLE001
+            thread_id = None
+        steer_messages = _drain_steer_messages(run_manager, thread_id)
+        steer_block = ""
+        if steer_messages:
+            joined = "\n\n".join(m.strip() for m in steer_messages if str(m).strip())
+            if joined:
+                steer_block = f"[User guidance]\n{joined}"
         latest_user = _latest_human_message_text(state_messages)
         if not latest_user:
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
@@ -328,6 +478,9 @@ def make_agent_loop_node(
                 available_tools = [
                     tool for tool in available_tools if str(getattr(tool, "name", "")) in allowed
                 ]
+        # Apply AgentDefinition tool policy filter (allow/deny fnmatch) last.
+        if agent_def is not None:
+            available_tools = _filter_tools_by_agent_def(available_tools, agent_def)
         known_names = _known_tool_names(available_tools)
         execution_contract = build_execution_contract(
             policy=tool_policy,
@@ -349,18 +502,64 @@ def make_agent_loop_node(
         skill_policy_note = skill_execution_policy_note(tool_intent_plan.skill_execution_plan)
         if skill_policy_note:
             policy_note = f"{policy_note}\n\n{skill_policy_note}".strip()
+        # Efficiency guidance for multi-part questions: minimize tool calls by
+        # reusing one tool result to answer multiple sub-questions.
+        _multipart_note = (
+            "For multi-part questions (e.g. asking about status, history, and "
+            "branches at once), minimize tool calls:\n"
+            "- If one tool result can answer multiple sub-questions, use it once.\n"
+            "- Prefer the most specific tool (e.g. git_status covers both status and branches).\n"
+            "- If you have already called a tool whose output can answer a sub-question, "
+            "do not call another tool for that sub-question.\n"
+            "- If the user asks a simple question that one tool call can answer, "
+            "just call that tool directly -- do not follow the full multi-step workflow."
+        )
+        if _multipart_note not in (policy_note or ""):
+            policy_note = f"{policy_note}\n\n{_multipart_note}".strip() if policy_note else _multipart_note
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
             plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
             if plan_block and plan_block not in assembled:
                 assembled = f"{assembled}\n\n{plan_block}".strip()
         prompt_messages = [SystemMessage(content=assembled), *messages]
+        # Inject drained steer messages as an additional system-style block so
+        # they are visible to the LLM but don't replace any user message.
+        if steer_block:
+            try:
+                # Insert steer block right after the first system message so it
+                # sits near the top of context and is easy to attend to.
+                prompt_messages = [
+                    prompt_messages[0],
+                    SystemMessage(content=steer_block),
+                    *prompt_messages[1:],
+                ]
+            except Exception:  # noqa: BLE001
+                _logger.debug("Failed to inject steer block", exc_info=True)
         if policy_note:
             prompt_messages = [
                 prompt_messages[0],
                 SystemMessage(content=policy_note),
                 *prompt_messages[1:],
             ]
+        # Detect context overflow BEFORE budget guard trims — if the prompt is
+        # already past ~85% of budget, fire the context_overflow system agent
+        # so compact_context / summarize can kick in.
+        try:
+            fullness = _estimate_context_fullness(prompt_messages)
+            if fullness >= 0.85:
+                _fire_system_agent_trigger(
+                    system_agent_runner,
+                    "context_overflow",
+                    {
+                        "state": dict(state),
+                        "context": getattr(runtime, "context", None),
+                        "thread_id": thread_id,
+                        "fullness": fullness,
+                        "message_count": len(prompt_messages),
+                    },
+                )
+        except Exception:  # noqa: BLE001
+            _logger.debug("context_overflow trigger failed", exc_info=True)
         prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
         prompt_messages = _ensure_reasoning_content_for_tool_call_history(
             prompt_messages,

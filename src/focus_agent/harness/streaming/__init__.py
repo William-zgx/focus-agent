@@ -8,6 +8,8 @@ from .bridge import (
     StreamEvent,
 )
 from .protocol import CANONICAL_EVENTS, canonical_event_payload, sse_frame
+from .publisher import AgentEventPublisher
+from .proxy import StreamProxy, StreamProxyConfig, is_dropped
 
 __all__ = [
     "CANONICAL_EVENTS",
@@ -16,6 +18,10 @@ __all__ = [
     "InMemoryStreamBridge",
     "MemoryStreamBridge",
     "StreamEvent",
+    "AgentEventPublisher",
+    "StreamProxy",
+    "StreamProxyConfig",
     "canonical_event_payload",
+    "is_dropped",
     "sse_frame",
 ]

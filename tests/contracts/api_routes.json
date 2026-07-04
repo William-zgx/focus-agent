@@ -2711,6 +2711,19 @@
       }
     },
     {
+      "method": "GET",
+      "operation_id": "list_agents_v1_agents_get",
+      "parameters": [],
+      "path": "/v1/agents",
+      "request": null,
+      "responses": {
+        "200": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      }
+    },
+    {
       "method": "POST",
       "operation_id": "change_password_v1_auth_change_password_post",
       "parameters": [],

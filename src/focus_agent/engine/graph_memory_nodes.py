@@ -118,6 +118,13 @@ def make_assemble_context_node(
         if not task_brief and latest_user:
             task_brief = latest_user[:300]
         assembled_context = context_slice.render_prompt()
+        # Splice in any extra blocks produced by the ContextPipeline augment
+        # node (e.g. from custom stages added via create_default_pipeline).
+        pipeline_extra = list(state.get("context_extra_blocks") or [])
+        if pipeline_extra:
+            extra_text = "\n\n".join(block.strip() for block in pipeline_extra if block)
+            if extra_text:
+                assembled_context = f"{assembled_context}\n\n{extra_text}".strip()
         updates: dict[str, Any] = {
             "recent_messages": context_slice.recent_messages,
             "assembled_context": assembled_context,
@@ -126,6 +133,8 @@ def make_assemble_context_node(
             "active_skill_ids": list(active_skill_ids),
             "active_skills_block": active_skills_block,
             "available_skills_block": available_skills_block,
+            # Reset per-turn pipeline extras so they don't accumulate across turns.
+            "context_extra_blocks": [],
         }
         if settings.agent_context_engineering_v2_enabled:
             decision = build_context_engineering_decision(

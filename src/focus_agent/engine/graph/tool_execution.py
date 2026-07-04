@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+import uuid
 from collections.abc import Mapping
 from typing import Any
 
@@ -8,8 +11,10 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ...capabilities.default_tool_modules.memory import authorize_memory_tool_args
+from ...capabilities.tool_messages import build_tool_message
 from ...capabilities.tool_runtime import (
     ToolExecutionInput,
+    ToolExecutionResult,
     ToolResultCacheStore,
     build_cache_scope_key,
     build_tool_approval_interrupt_payload,
@@ -28,6 +33,201 @@ from ..graph_turn_helpers import (
     _tool_call_signature,
 )
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Harness services container
+# ---------------------------------------------------------------------------
+
+
+class HarnessToolServices:
+    """Lightweight container for optional harness-side services used by the
+    tool-execution graph node. All fields are optional; when ``None`` the
+    corresponding hook layer is skipped entirely."""
+
+    __slots__ = (
+        "permission_manager",
+        "extension_registry",
+        "middleware_stack",
+        "run_id",
+        "active_agent_name",
+    )
+
+    def __init__(
+        self,
+        *,
+        permission_manager: Any | None = None,
+        extension_registry: Any | None = None,
+        middleware_stack: Any | None = None,
+        run_id: str | None = None,
+        active_agent_name: str | None = None,
+    ) -> None:
+        self.permission_manager = permission_manager
+        self.extension_registry = extension_registry
+        self.middleware_stack = middleware_stack
+        self.run_id = run_id
+        self.active_agent_name = active_agent_name
+
+
+# ---------------------------------------------------------------------------
+# Helper builders for interception/permission result messages
+# ---------------------------------------------------------------------------
+
+
+def _blocked_tool_error(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+    *,
+    source: str,
+) -> ToolMessage:
+    """Build a ToolMessage for a tool call that did not run because an
+    extension, middleware, or the permission system blocked it."""
+
+    args_dict = dict(tool_args or {})
+    error_text = reason or f"blocked by {source}"
+    return build_tool_error_message(
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        args=args_dict,
+        error=error_text,
+        runtime_info={source: True, "blocked_reason": reason},
+    )
+
+
+def _denied_tool_result(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+) -> ToolMessage:
+    return _blocked_tool_error(
+        tool_call_id,
+        tool_name,
+        tool_args,
+        reason or "permission denied",
+        source="permission_denied",
+    )
+
+
+def _ask_permission_result(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+) -> ToolMessage:
+    """Build a ToolMessage for the ASK case so downstream UI/approval logic
+    can surface a prompt to the user."""
+
+    return _blocked_tool_error(
+        tool_call_id,
+        tool_name,
+        tool_args,
+        reason or "permission required",
+        source="permission_ask",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Result patching helpers
+# ---------------------------------------------------------------------------
+
+
+def _patch_tool_message_content(message: ToolMessage, new_content: Any) -> ToolMessage:
+    """Return a copy of *message* with its content replaced by *new_content*."""
+
+    if isinstance(new_content, str):
+        content_str = new_content
+    else:
+        try:
+            content_str = json.dumps(new_content, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            content_str = str(new_content)
+    artifact = getattr(message, "artifact", None)
+    runtime_info: dict[str, Any] = {}
+    prompt_observation = None
+    tool_name = ""
+    if isinstance(artifact, dict):
+        tool_name = str(artifact.get("tool_name", "") or "")
+        rt = artifact.get("runtime")
+        if isinstance(rt, dict):
+            runtime_info = dict(rt)
+        po = artifact.get("prompt_observation")
+        if isinstance(po, str):
+            prompt_observation = po
+    runtime_info["content_patched"] = True
+    return build_tool_message(
+        content=content_str,
+        tool_call_id=str(getattr(message, "tool_call_id", "") or ""),
+        tool_name=tool_name,
+        prompt_observation=prompt_observation,
+        status=str(getattr(message, "status", "success") or "success"),
+        runtime_info=runtime_info,
+    )
+
+
+def _patch_tool_message_error(message: ToolMessage, error_text: str) -> ToolMessage:
+    """Return a copy of *message* rewritten as an error ToolMessage."""
+
+    artifact = getattr(message, "artifact", None)
+    tool_name = ""
+    if isinstance(artifact, dict):
+        tool_name = str(artifact.get("tool_name", "") or "")
+    runtime_info: dict[str, Any] = {"error_patched": True}
+    if isinstance(artifact, dict):
+        rt = artifact.get("runtime")
+        if isinstance(rt, dict):
+            runtime_info = {**rt, **runtime_info}
+    args: dict[str, Any] = {}
+    try:
+        parsed = json.loads(str(message.content or ""))
+        if isinstance(parsed, dict) and isinstance(parsed.get("args"), dict):
+            args = parsed["args"]
+    except (TypeError, ValueError, json.JSONDecodeError):
+        args = {}
+    return build_tool_error_message(
+        tool_call_id=str(getattr(message, "tool_call_id", "") or ""),
+        tool_name=tool_name,
+        args=args,
+        error=error_text,
+        runtime_info=runtime_info,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Command extraction for bash-like tools
+# ---------------------------------------------------------------------------
+
+
+_BASH_LIKE_TOOL_NAMES = frozenset(
+    {
+        "run_workspace_command",
+        "bash",
+        "shell",
+        "execute_command",
+        "run_command",
+    }
+)
+
+
+def _extract_command(tool_name: str, tool_args: Mapping[str, Any]) -> str | None:
+    """Best-effort extraction of a shell command string from tool args for
+    use in permission matching (e.g. ``bash:rm -rf *``)."""
+
+    if not tool_args:
+        return None
+    if tool_name in _BASH_LIKE_TOOL_NAMES:
+        for key in ("command", "cmd", "script", "shell", "input"):
+            value = tool_args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        parts = [str(v) for v in tool_args.values() if isinstance(v, str)]
+        if parts:
+            return " ".join(parts).strip()
+    return None
+
 
 def make_tool_executor_node(
     *,
@@ -38,11 +238,13 @@ def make_tool_executor_node(
     multi_agent_async_approval_enabled: bool = False,
     multi_agent_approval_timeout_seconds: float = 60.0,
     approval_queue: Any | None = None,
+    harness_services: HarnessToolServices | None = None,
 ) -> Any:
     def tool_executor(
         state: AgentState,
         runtime: Runtime[RequestContext],
     ) -> dict[str, Any]:
+        services = harness_services
         last_message = state["messages"][-1]
         context_budget = _context_budget_from_state(state)
         branch_meta = state.get("branch_meta") or {}
@@ -57,6 +259,11 @@ def make_tool_executor_node(
             1 for message in state.get("messages", []) if isinstance(message, HumanMessage)
         )
         turn_id = str(turn_index or 1)
+        active_agent_name = (
+            (services.active_agent_name if services is not None else None) or "focus_agent"
+        )
+        run_id = services.run_id if services is not None else None
+        thread_id = state.get("thread_id") if isinstance(state.get("thread_id"), str) else root_thread_id
         turn_scope_key = build_cache_scope_key(
             scope="turn",
             root_thread_id=root_thread_id,
@@ -82,6 +289,21 @@ def make_tool_executor_node(
         tool_call_counts: dict[str, int] = _tool_call_counts_since_latest_human(
             state.get("messages", [])[:-1]
         )
+        # Build extension context once for this batch (safe to reuse across calls)
+        ext_ctx = None
+        if services is not None and services.extension_registry is not None:
+            try:
+                from ...harness.extensions import ExtensionContext
+
+                ext_ctx = ExtensionContext(
+                    thread_id=thread_id or "",
+                    run_id=run_id,
+                    agent_name=active_agent_name,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to build ExtensionContext", exc_info=True)
+                ext_ctx = None
+
         for index, tool_call in enumerate(getattr(last_message, "tool_calls", []) or []):
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
@@ -176,6 +398,128 @@ def make_tool_executor_node(
                         runtime_info={"parameter_validation_error": True},
                     )
                     continue
+
+            # =========================================================
+            # Layer 1: Extension on_tool_call hook
+            # =========================================================
+            blocked = False
+            if (
+                services is not None
+                and services.extension_registry is not None
+                and ext_ctx is not None
+            ):
+                try:
+                    from ...harness.extensions import ToolInterceptionResult
+
+                    hook_results = services.extension_registry.fire_hook(
+                        "on_tool_call",
+                        ext_ctx,
+                        tool_name=tool_name,
+                        args=tool_args,
+                    )
+                    for result in hook_results:
+                        if isinstance(result, ToolInterceptionResult):
+                            if result.block:
+                                messages_by_index[index] = _blocked_tool_error(
+                                    tool_call_id,
+                                    tool_name,
+                                    tool_args,
+                                    result.reason,
+                                    source="blocked_by_extension",
+                                )
+                                blocked = True
+                                break
+                            if result.patched_args is not None:
+                                tool_args = dict(result.patched_args)
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "Extension on_tool_call hook failed for tool=%s",
+                        tool_name,
+                        exc_info=True,
+                    )
+            if blocked:
+                continue
+
+            # =========================================================
+            # Layer 2: Middleware intercept_tool_call
+            # =========================================================
+            if services is not None and services.middleware_stack is not None:
+                try:
+                    mw_ctx = {
+                        "thread_id": thread_id,
+                        "run_id": run_id,
+                        "agent_name": active_agent_name,
+                        "state": state,
+                    }
+                    interception = services.middleware_stack.intercept_tool_call(
+                        tool_name,
+                        tool_args,
+                        ctx=mw_ctx,
+                    )
+                    if interception is not None and interception.block:
+                        messages_by_index[index] = _blocked_tool_error(
+                            tool_call_id,
+                            tool_name,
+                            tool_args,
+                            interception.reason,
+                            source="blocked_by_middleware",
+                        )
+                        continue
+                    if interception is not None and interception.patched_args is not None:
+                        tool_args = dict(interception.patched_args)
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "Middleware intercept_tool_call failed for tool=%s",
+                        tool_name,
+                        exc_info=True,
+                    )
+
+            # =========================================================
+            # Layer 3: Permission check
+            # =========================================================
+            permission_allowed = False
+            if services is not None and services.permission_manager is not None:
+                try:
+                    from ...harness.governance.permissions import (
+                        PermissionAction,
+                        PermissionRequest,
+                    )
+
+                    req = PermissionRequest(
+                        id=str(uuid.uuid4()),
+                        tool_name=tool_name,
+                        command=_extract_command(tool_name, tool_args),
+                        agent_name=active_agent_name or "*",
+                        session_id=thread_id,
+                        metadata={"args": dict(tool_args)},
+                    )
+                    action, reason = services.permission_manager.check_permission(req)
+                    if action == PermissionAction.DENY:
+                        messages_by_index[index] = _denied_tool_result(
+                            tool_call_id, tool_name, tool_args, reason
+                        )
+                        continue
+                    if action == PermissionAction.ALLOW:
+                        # Permission manager explicitly allowed this tool.
+                        # This also implies tool approval is not needed —
+                        # the permission system has already vetted it.
+                        permission_allowed = True
+                    if action == PermissionAction.ASK:
+                        # If the tool already requires approval, let the existing
+                        # approval interrupt handle it; otherwise surface an error.
+                        if not getattr(runtime_meta, "requires_approval", False):
+                            messages_by_index[index] = _ask_permission_result(
+                                tool_call_id, tool_name, tool_args, reason
+                            )
+                            continue
+                        # fall through: the normal requires_approval interrupt below will run
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "Permission check failed for tool=%s",
+                        tool_name,
+                        exc_info=True,
+                    )
+
             execution_input = ToolExecutionInput(
                 index=index,
                 tool_call_id=tool_call_id,
@@ -184,7 +528,7 @@ def make_tool_executor_node(
                 tool=tool,
                 runtime=runtime_meta,
             )
-            if runtime_meta.requires_approval:
+            if runtime_meta.requires_approval and not permission_allowed:
                 approval_payload = build_tool_approval_interrupt_payload(execution_input)
                 if multi_agent_async_approval_enabled:
                     if has_repo_method(approval_queue, "submit_pending"):
@@ -282,6 +626,16 @@ def make_tool_executor_node(
             invalidation_scope_keys=invalidation_scope_keys,
             max_parallel_workers=max(1, int(max_parallel_workers or 1)),
         )
+        # Apply post-execution interception (middleware + extension on_tool_result)
+        # to the initial batch before indexing into messages_by_index.
+        initial_results = _apply_result_hooks(
+            initial_results,
+            services=services,
+            ext_ctx=ext_ctx,
+            thread_id=thread_id,
+            run_id=run_id,
+            active_agent_name=active_agent_name,
+        )
         for result in initial_results:
             messages_by_index[result.index] = result.message
 
@@ -319,6 +673,14 @@ def make_tool_executor_node(
                 invalidation_scope_keys=invalidation_scope_keys,
                 max_parallel_workers=max(1, int(max_parallel_workers or 1)),
             )
+            retry_results = _apply_result_hooks(
+                retry_results,
+                services=services,
+                ext_ctx=ext_ctx,
+                thread_id=thread_id,
+                run_id=run_id,
+                active_agent_name=active_agent_name,
+            )
             for result in retry_results:
                 messages_by_index[result.index] = result.message
             retry_messages = [result.message for result in retry_results]
@@ -344,6 +706,102 @@ def make_tool_executor_node(
         return updates
 
     return tool_executor
+
+
+def _apply_result_hooks(
+    results: list[Any],
+    *,
+    services: HarnessToolServices | None,
+    ext_ctx: Any,
+    thread_id: str,
+    run_id: str | None,
+    active_agent_name: str,
+) -> list[Any]:
+    """Apply post-execution middleware + extension ``on_tool_result`` hooks
+    to each ToolExecutionResult in *results*. Returns a new list (patches
+    are applied immutably so caches aren't polluted)."""
+
+    if not results:
+        return results
+    if services is None:
+        return results
+    have_mw = services.middleware_stack is not None
+    have_ext = services.extension_registry is not None and ext_ctx is not None
+    if not have_mw and not have_ext:
+        return results
+
+    mw_ctx = {
+        "thread_id": thread_id,
+        "run_id": run_id,
+        "agent_name": active_agent_name,
+    }
+
+    patched_results: list[Any] = []
+    for result in results:
+        message = result.message
+        tool_name = ""
+        artifact = getattr(message, "artifact", None)
+        if isinstance(artifact, dict):
+            tool_name = str(artifact.get("tool_name", "") or "")
+        try:
+            if have_mw:
+                mw_decision = services.middleware_stack.intercept_tool_result(
+                    tool_name,
+                    message,
+                    ctx=mw_ctx,
+                )
+                if mw_decision is not None:
+                    if mw_decision.patched_content is not None:
+                        message = _patch_tool_message_content(
+                            message, mw_decision.patched_content
+                        )
+                    if mw_decision.patched_error is not None:
+                        message = _patch_tool_message_error(
+                            message, mw_decision.patched_error
+                        )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Middleware intercept_tool_result failed for tool=%s",
+                tool_name,
+                exc_info=True,
+            )
+
+        try:
+            if have_ext:
+                from ...harness.extensions import ToolResultInterception as ExtResultInterception
+
+                ext_hooks = services.extension_registry.fire_hook(
+                    "on_tool_result",
+                    ext_ctx,
+                    tool_name=tool_name,
+                    result=message,
+                )
+                for rh in ext_hooks:
+                    if isinstance(rh, ExtResultInterception):
+                        if rh.patched_content is not None:
+                            message = _patch_tool_message_content(
+                                message, rh.patched_content
+                            )
+                        if rh.patched_error is not None:
+                            message = _patch_tool_message_error(
+                                message, rh.patched_error
+                            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Extension on_tool_result hook failed for tool=%s",
+                tool_name,
+                exc_info=True,
+            )
+
+        # Build a new ToolExecutionResult sharing other fields but with patched message
+        patched_results.append(
+            ToolExecutionResult(
+                index=result.index,
+                message=message,
+                cache_hit=getattr(result, "cache_hit", False),
+            )
+        )
+    return patched_results
 
 
 def _retryable_failed_inputs(
@@ -414,4 +872,7 @@ def _forbidden_by_route_plan(
     return tool_name in denied_tools or tool_name not in allowed_tools
 
 
-__all__ = ["make_tool_executor_node"]
+__all__ = [
+    "HarnessToolServices",
+    "make_tool_executor_node",
+]

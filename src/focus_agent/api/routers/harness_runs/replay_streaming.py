@@ -509,6 +509,17 @@ async def _produce_run_stream(
                 source=final_visible_source,
                 **_task_outcome_event_payload(final_task_outcome),
             )
+        else:
+            # Always emit message.completed so clients never hang waiting for
+            # a completion signal.  When the model produced no visible
+            # assistant text (e.g. only tool calls, or was interrupted by
+            # tool approval), send an empty content string.
+            await publish(
+                "message.completed",
+                content="",
+                source="empty_final",
+                **_task_outcome_event_payload(final_task_outcome),
+            )
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
         await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
