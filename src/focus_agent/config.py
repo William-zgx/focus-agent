@@ -177,7 +177,7 @@ class Settings:
     local_store_path: str | None = None
     branch_max_depth: int = 5
     skills_enabled: bool = True
-    skill_directories: tuple[str, ...] = (".focus_agent/skills",)
+    skill_directories: tuple[str, ...] = (".focus_agent/skills", ".agents/skills")
     skill_disabled_ids: tuple[str, ...] = ()
     skill_install_directory: str = ".focus_agent/skills"
     skill_sources_enabled: tuple[str, ...] = ("installed",)
