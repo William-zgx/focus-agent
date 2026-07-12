@@ -29,6 +29,7 @@ import {
 	ShellUiProvider,
 	useTransientShellStatus,
 } from "@/app/shell/shell-ui-context";
+import { appEnv } from "@/shared/config/env";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { SessionExitIcon } from "@/shared/ui/toolbar-icons";
 import { tooltipProps } from "@/shared/ui/tooltip";
@@ -296,7 +297,7 @@ export function AppShell({ children }: PropsWithChildren) {
 					<div className="fa-sidebar-scroll">
 						{isChatShell ? (
 							<BranchTreePanel />
-						) : (
+						) : appEnv.useLocalRuntime && isAdminShell ? null : (
 							<AppShellWorkspaceSidebar
 								activeAgentWorkbenchModule={activeAgentWorkbenchModule}
 								agentTeamRootThreadId={agentTeamRootThreadId}
@@ -313,7 +314,7 @@ export function AppShell({ children }: PropsWithChildren) {
 							isChineseUi={isChineseUi}
 							isProductivityRoute={isProductivityRoute}
 						/>
-						{principal ? (
+						{principal && !appEnv.useLocalRuntime ? (
 							<fieldset
 								aria-label={currentAccountTooltip}
 								className="fa-sidebar-account"

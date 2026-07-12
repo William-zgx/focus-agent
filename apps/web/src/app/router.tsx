@@ -9,10 +9,16 @@ import {
 	useSearch,
 	useRouterState,
 } from "@tanstack/react-router";
+import {
+	Capacitor,
+	type PluginListenerHandle,
+	registerPlugin,
+} from "@capacitor/core";
 import { Suspense, type ReactNode, lazy, useEffect, useMemo } from "react";
 
 import { ShellUiProvider, useShellUi } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
+import { androidAppUrlToInternalRoute } from "@/android-local-runtime/helpers";
 import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
@@ -32,12 +38,54 @@ import { appEnv } from "@/shared/config/env";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 import { EmptyState, Surface, Toast } from "@/shared/ui/primitives";
 
+interface CapacitorAppPlugin {
+	addListener(
+		eventName: "appUrlOpen",
+		listener: (event: { url: string }) => void,
+	): Promise<PluginListenerHandle>;
+	getLaunchUrl(): Promise<{ url?: string }>;
+}
+
+const capacitorApp = registerPlugin<CapacitorAppPlugin>("App");
+
 function RouteStateCard({ children }: { children: ReactNode }) {
 	return (
 		<Surface className="fa-route-state-card" tone="panel">
 			{children}
 		</Surface>
 	);
+}
+
+export function localRuntimeLegacyRouteTarget(
+	useLocalRuntime: boolean,
+	pathname: string,
+): "/" | "/admin/config" | null {
+	if (!useLocalRuntime) return null;
+	if (
+		pathname === "/auth" ||
+		pathname.startsWith("/auth/") ||
+		pathname === "/account" ||
+		pathname.startsWith("/account/")
+	) {
+		return "/";
+	}
+	if (
+		pathname === "/admin/users" ||
+		pathname.startsWith("/admin/users/") ||
+		pathname === "/admin/audit-events"
+	) {
+		return "/admin/config";
+	}
+	return null;
+}
+
+export function shouldRedirectToSignIn(
+	useLocalRuntime: boolean,
+	isAuthRoute: boolean,
+	ready: boolean,
+	hasPrincipal: boolean,
+): boolean {
+	return !useLocalRuntime && !isAuthRoute && ready && !hasPrincipal;
 }
 
 function RootLayout() {
@@ -50,27 +98,54 @@ function RootLayout() {
 		select: (state) => state.location.searchStr,
 	});
 	const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+	const localRuntimeRedirectTarget = localRuntimeLegacyRouteTarget(
+		appEnv.useLocalRuntime,
+		pathname,
+	);
 	const returnTo = isAuthRoute
 		? "/"
 		: normalizeAuthReturnTo(`${pathname}${search}`);
 	const isChineseBrowser = navigator?.language.toLowerCase().startsWith("zh");
 
 	useEffect(() => {
-		if (isAuthRoute || !ready || principal) return;
+		if (localRuntimeRedirectTarget) {
+			void navigate({
+				to: localRuntimeRedirectTarget,
+				replace: true,
+			});
+			return;
+		}
+		if (
+			!shouldRedirectToSignIn(
+				appEnv.useLocalRuntime,
+				isAuthRoute,
+				ready,
+				Boolean(principal),
+			)
+		) {
+			return;
+		}
 		void navigate({
 			to: "/auth/login",
 			search: { return_to: returnTo },
 			replace: true,
 		});
-	}, [isAuthRoute, navigate, principal, ready, returnTo]);
+	}, [
+		isAuthRoute,
+		localRuntimeRedirectTarget,
+		navigate,
+		principal,
+		ready,
+		returnTo,
+	]);
 
-	if (!isAuthRoute && !ready) {
+	if (localRuntimeRedirectTarget || (!isAuthRoute && !ready)) {
 		return (
 			<div className="fa-route-state">
 				<RouteStateCard>
 					{isChineseBrowser
-						? "正在准备 Focus Agent 会话..."
-						: "Preparing Focus Agent session..."}
+						? "正在打开设备本机工作区..."
+						: "Opening the device-local workspace..."}
 				</RouteStateCard>
 			</div>
 		);
@@ -80,9 +155,13 @@ function RootLayout() {
 		return (
 			<div className="fa-route-state">
 				<RouteStateCard>
-					{isChineseBrowser
-						? "正在跳转到登录页..."
-						: "Redirecting to sign in..."}
+					{appEnv.useLocalRuntime
+						? isChineseBrowser
+							? "无法建立设备本机会话。"
+							: "Unable to establish the device-local session."
+						: isChineseBrowser
+							? "正在跳转到登录页..."
+							: "Redirecting to sign in..."}
 				</RouteStateCard>
 			</div>
 		);
@@ -175,28 +254,53 @@ function AuthGate({ children }: { children: ReactNode }) {
 		select: (state) => state.location.searchStr,
 	});
 	const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
+	const localRuntimeRedirectTarget = localRuntimeLegacyRouteTarget(
+		appEnv.useLocalRuntime,
+		pathname,
+	);
 	const returnTo = isAuthRoute
 		? "/"
 		: normalizeAuthReturnTo(`${pathname}${search}`);
 
 	useEffect(() => {
-		if (!ready && !isAuthRoute) {
+		if (localRuntimeRedirectTarget) {
+			void navigate({
+				to: localRuntimeRedirectTarget,
+				replace: true,
+			});
 			return;
 		}
-
-		if (ready && !principal && !isAuthRoute) {
+		if (
+			shouldRedirectToSignIn(
+				appEnv.useLocalRuntime,
+				isAuthRoute,
+				ready,
+				Boolean(principal),
+			)
+		) {
 			void navigate({
 				to: "/auth/login",
 				search: { return_to: returnTo },
 				replace: true,
 			});
 		}
-	}, [isAuthRoute, navigate, principal, ready, returnTo]);
+	}, [
+		isAuthRoute,
+		localRuntimeRedirectTarget,
+		navigate,
+		principal,
+		ready,
+		returnTo,
+	]);
 
-	if (!isAuthRoute && (!ready || !principal)) {
+	if (localRuntimeRedirectTarget || (!isAuthRoute && (!ready || !principal))) {
 		return (
 			<div className="fa-route-state">
-				<RouteStateCard>Redirecting to sign in...</RouteStateCard>
+				<RouteStateCard>
+					{appEnv.useLocalRuntime
+						? "Unable to establish the device-local session."
+						: "Redirecting to sign in..."}
+				</RouteStateCard>
 			</div>
 		);
 	}
@@ -233,6 +337,13 @@ function AuthIndexRedirect() {
 	);
 
 	useEffect(() => {
+		if (appEnv.useLocalRuntime) {
+			void navigate({
+				to: "/",
+				replace: true,
+			});
+			return;
+		}
 		void navigate({
 			to: "/auth/login",
 			search: { return_to: returnTo },
@@ -483,6 +594,38 @@ export function AppRouter() {
 		}),
 		[],
 	);
+
+	useEffect(() => {
+		if (!appEnv.isAndroidTarget || !Capacitor.isNativePlatform()) return;
+		let listenerHandle: PluginListenerHandle | undefined;
+		let cancelled = false;
+		const openInternalRoute = ({ url }: { url?: string }) => {
+			const route = androidAppUrlToInternalRoute(url);
+			if (route) {
+				router.history.push(route);
+			}
+		};
+
+		void capacitorApp
+			.addListener("appUrlOpen", openInternalRoute)
+			.then((handle) => {
+				if (cancelled) {
+					void handle.remove();
+					return;
+				}
+				listenerHandle = handle;
+				void capacitorApp
+					.getLaunchUrl()
+					.then(openInternalRoute)
+					.catch(console.error);
+			})
+			.catch(console.error);
+
+		return () => {
+			cancelled = true;
+			void listenerHandle?.remove();
+		};
+	}, []);
 
 	if (!isAuthPath && !ready) {
 		return (

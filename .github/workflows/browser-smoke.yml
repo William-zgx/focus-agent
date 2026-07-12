@@ -1,0 +1,374 @@
+name: Browser Smoke
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-smoke:
+    name: Real Chrome browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_DB: focus_agent
+          POSTGRES_USER: focus_agent
+          POSTGRES_PASSWORD: focus_agent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U focus_agent -d focus_agent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      API_HOST: 127.0.0.1
+      API_PORT: "8000"
+      AUTH_DEMO_TOKENS_ENABLED: "true"
+      AUTH_ENABLED: "true"
+      AUTH_JWT_SECRET: browser-smoke-local-jwt-secret-not-for-production
+      DATABASE_URI: postgresql://focus_agent:focus_agent@127.0.0.1:5432/focus_agent
+      HELPER_MODEL: openai:browser-smoke
+      LANGSMITH_TRACING: "false"
+      MODEL: openai:browser-smoke
+      OPENAI_API_KEY: browser-smoke-local-fixture
+      OPENAI_BASE_URL: http://127.0.0.1:18080/v1
+      WEB_APP_DEV_SERVER_URL: ""
+      AGENT_MEMORY_EMBEDDING_BACKEND: disabled
+      AGENT_MEMORY_EMBEDDING_ENABLED: "false"
+      AGENT_MEMORY_VECTOR_SEARCH_MODE: "off"
+      AGENT_ZVEC_ENABLED: "false"
+      FOCUS_AGENT_CHECKPOINT_BACKEND: sqlite
+      NO_PROXY: 127.0.0.1,localhost
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
+      - name: Install application dependencies
+        run: |
+          make install-openai
+          make web-install
+
+      - name: Install Google Chrome with Playwright
+        run: |
+          set -euo pipefail
+          pnpm dlx playwright@1.55.0 install --with-deps chrome
+          chrome_path=""
+          for candidate in \
+            "$(command -v google-chrome || true)" \
+            "$(command -v google-chrome-stable || true)" \
+            /opt/google/chrome/chrome \
+            /opt/google/chrome/google-chrome; do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              chrome_path="$candidate"
+              break
+            fi
+          done
+          if [ -z "$chrome_path" ]; then
+            echo "Playwright installed Chrome, but no supported executable was found." >&2
+            exit 1
+          fi
+          test -x "$chrome_path"
+          "$chrome_path" --version
+          printf 'CHROME_PATH=%s\n' "$chrome_path" >> "$GITHUB_ENV"
+
+      - name: Build production web application
+        run: make web-build
+
+      - name: Start deterministic local model fixture
+        run: |
+          set -euo pipefail
+          mkdir -p reports/browser-smoke
+          setsid .venv/bin/python -u - <<'PY' \
+            > reports/browser-smoke/model-fixture.log 2>&1 &
+          import json
+          import time
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+          class Handler(BaseHTTPRequestHandler):
+              protocol_version = "HTTP/1.1"
+
+              def log_message(self, format, *args):
+                  print(format % args, flush=True)
+
+              def _write_json(self, payload, *, status=200):
+                  body = json.dumps(payload).encode("utf-8")
+                  self.send_response(status)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def do_GET(self):
+                  if self.path == "/healthz":
+                      self._write_json({"status": "ok"})
+                      return
+                  self._write_json({"error": "not found"}, status=404)
+
+              def do_POST(self):
+                  if self.path != "/v1/chat/completions":
+                      self._write_json({"error": "not found"}, status=404)
+                      return
+                  length = int(self.headers.get("Content-Length", "0"))
+                  request = json.loads(self.rfile.read(length) or b"{}")
+                  created = int(time.time())
+                  if request.get("stream"):
+                      chunks = (
+                          {
+                              "id": "browser-smoke",
+                              "object": "chat.completion.chunk",
+                              "created": created,
+                              "model": "browser-smoke",
+                              "choices": [
+                                  {
+                                      "index": 0,
+                                      "delta": {"role": "assistant", "content": "OK"},
+                                      "finish_reason": None,
+                                  }
+                              ],
+                          },
+                          {
+                              "id": "browser-smoke",
+                              "object": "chat.completion.chunk",
+                              "created": created,
+                              "model": "browser-smoke",
+                              "choices": [
+                                  {"index": 0, "delta": {}, "finish_reason": "stop"}
+                              ],
+                          },
+                      )
+                      self.send_response(200)
+                      self.send_header("Content-Type", "text/event-stream")
+                      self.send_header("Cache-Control", "no-cache")
+                      self.send_header("Connection", "close")
+                      self.end_headers()
+                      for chunk in chunks:
+                          self.wfile.write(
+                              f"data: {json.dumps(chunk)}\n\n".encode("utf-8")
+                          )
+                      self.wfile.write(b"data: [DONE]\n\n")
+                      self.wfile.flush()
+                      self.close_connection = True
+                      return
+                  self._write_json(
+                      {
+                          "id": "browser-smoke",
+                          "object": "chat.completion",
+                          "created": created,
+                          "model": "browser-smoke",
+                          "choices": [
+                              {
+                                  "index": 0,
+                                  "message": {"role": "assistant", "content": "OK"},
+                                  "finish_reason": "stop",
+                              }
+                          ],
+                          "usage": {
+                              "prompt_tokens": 1,
+                              "completion_tokens": 1,
+                              "total_tokens": 2,
+                          },
+                      }
+                  )
+
+
+          ThreadingHTTPServer(("127.0.0.1", 18080), Handler).serve_forever()
+          PY
+          fixture_pid="$!"
+          echo "$fixture_pid" > reports/browser-smoke/model-fixture.pid
+          fixture_pgid=""
+          for attempt in $(seq 1 50); do
+            if ! kill -0 "$fixture_pid" 2>/dev/null; then
+              cat reports/browser-smoke/model-fixture.log
+              exit 1
+            fi
+            fixture_pgid="$(ps -o pgid= -p "$fixture_pid" 2>/dev/null | tr -d ' ' || true)"
+            [ "$fixture_pgid" = "$fixture_pid" ] && break
+            sleep 0.1
+          done
+          if [ "$fixture_pgid" != "$fixture_pid" ]; then
+            echo "Model fixture did not enter its own process group." >&2
+            exit 1
+          fi
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/healthz \
+              > reports/browser-smoke/model-health.json; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat reports/browser-smoke/model-fixture.pid)" 2>/dev/null; then
+              cat reports/browser-smoke/model-fixture.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat reports/browser-smoke/model-fixture.log
+          exit 1
+
+      - name: Start built application and wait for health
+        run: |
+          set -euo pipefail
+          setsid ./scripts/run-api.sh \
+            > reports/browser-smoke/api.log 2>&1 &
+          api_pid="$!"
+          echo "$api_pid" > reports/browser-smoke/api.pid
+          api_pgid=""
+          for attempt in $(seq 1 50); do
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              tail -n 200 reports/browser-smoke/api.log
+              exit 1
+            fi
+            api_pgid="$(ps -o pgid= -p "$api_pid" 2>/dev/null | tr -d ' ' || true)"
+            [ "$api_pgid" = "$api_pid" ] && break
+            sleep 0.1
+          done
+          if [ "$api_pgid" != "$api_pid" ]; then
+            echo "API did not enter its own process group." >&2
+            exit 1
+          fi
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8000/healthz \
+              > reports/browser-smoke/api-health.json; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat reports/browser-smoke/api.pid)" 2>/dev/null; then
+              tail -n 200 reports/browser-smoke/api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          tail -n 200 reports/browser-smoke/api.log
+          exit 1
+
+      - name: Run real Chrome interaction smoke gates
+        run: |
+          set +e
+          timeout 12m uv run python scripts/ui_smoke_test.py \
+            --app-url http://127.0.0.1:8000/app/ \
+            --health-url http://127.0.0.1:8000/healthz \
+            --chrome-path "$CHROME_PATH" \
+            --response-timeout-seconds 120 \
+            > reports/browser-smoke/ui-smoke.json \
+            2> reports/browser-smoke/ui-smoke.stderr.log
+          ui_status=$?
+
+          timeout 8m uv run python scripts/observability_ui_smoke.py \
+            --app-base-url http://127.0.0.1:8000/app \
+            --health-url http://127.0.0.1:8000/healthz \
+            --database-uri "$DATABASE_URI" \
+            --chrome-path "$CHROME_PATH" \
+            --scenario all \
+            --no-start-api \
+            > reports/browser-smoke/observability-smoke.json \
+            2> reports/browser-smoke/observability-smoke.stderr.log
+          observability_status=$?
+          set -e
+
+          printf '{"ui_smoke": %s, "observability_smoke": %s}\n' \
+            "$ui_status" "$observability_status" \
+            > reports/browser-smoke/status.json
+          if [ "$ui_status" -ne 0 ] || [ "$observability_status" -ne 0 ]; then
+            cat reports/browser-smoke/status.json
+            exit 1
+          fi
+
+      - name: Capture failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p reports/browser-smoke
+          curl --silent --show-error http://127.0.0.1:8000/healthz \
+            > reports/browser-smoke/failure-health.json 2>&1 || true
+          ps -ef > reports/browser-smoke/processes.txt
+          ss -ltnp > reports/browser-smoke/listeners.txt 2>&1 || true
+          timeout 30s "$CHROME_PATH" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --window-size=1440,1000 \
+            --screenshot=reports/browser-smoke/failure-page.png \
+            http://127.0.0.1:8000/app/ \
+            > reports/browser-smoke/failure-chrome.log 2>&1 || true
+          timeout 30s "$CHROME_PATH" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --dump-dom \
+            http://127.0.0.1:8000/app/ \
+            > reports/browser-smoke/failure-page.html 2>&1 || true
+
+      - name: Stop background services
+        if: always()
+        run: |
+          set +e
+          cleanup_failed=0
+          for pid_file in \
+            reports/browser-smoke/api.pid \
+            reports/browser-smoke/model-fixture.pid; do
+            if [ ! -f "$pid_file" ]; then
+              continue
+            fi
+            pid="$(cat "$pid_file")"
+            if ! [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Invalid PID file: $pid_file" >&2
+              cleanup_failed=1
+              continue
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+            for attempt in $(seq 1 20); do
+              kill -0 -- "-$pid" 2>/dev/null || break
+              sleep 0.5
+            done
+            kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+            for attempt in $(seq 1 10); do
+              kill -0 -- "-$pid" 2>/dev/null || break
+              sleep 0.5
+            done
+            if kill -0 -- "-$pid" 2>/dev/null; then
+              echo "Process group $pid survived cleanup." >&2
+              cleanup_failed=1
+            fi
+          done
+          exit "$cleanup_failed"
+
+      - name: Upload browser smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/browser-smoke/
+          retention-days: 14
+          if-no-files-found: error

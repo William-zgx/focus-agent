@@ -1020,8 +1020,6 @@
       "FocusAgentConversationListResponse",
       "FocusAgentConversationSummary",
       "FocusAgentCreateConversationRequest",
-      "FocusAgentCreateUserRequest",
-      "FocusAgentLoginRequest",
       "FocusAgentSessionListResponse",
       "FocusAgentUpdateConversationRequest",
       "FocusAgentUserListResponse"
@@ -1083,11 +1081,9 @@
     ],
     "apps/web/src/android-local-runtime/state.ts": [
       "FocusAgentAdminConfig",
-      "FocusAgentAuthResponse",
       "FocusAgentBranchRecord",
       "FocusAgentModelOption",
       "FocusAgentPrincipalResponse",
-      "FocusAgentSession",
       "FocusAgentUser",
       "ThreadStateResponse"
     ],
@@ -1096,7 +1092,8 @@
       "FocusAgentEvent",
       "FocusAgentHarnessRunCancelRequest",
       "FocusAgentHarnessRunRequest",
-      "FocusAgentHarnessRunResponse"
+      "FocusAgentHarnessRunResponse",
+      "FocusAgentThreadHarnessRunsCancelResponse"
     ],
     "apps/web/src/android-local-runtime/thread-branch-routes.ts": [
       "FocusAgentApplyMergeDecisionRequest",
@@ -1391,8 +1388,6 @@
       "FocusAgentAdminSkillConfigEntry"
     ],
     "apps/web/src/pages/admin/admin-config-page.tsx": [
-      "FocusAgentAdminConfig",
-      "FocusAgentAdminConfigValue",
       "FocusAgentAdminSkillConfigEntry",
       "FocusAgentUpdateAdminModelConfigEntry",
       "FocusAgentUpdateAdminModelConfigRequest",
@@ -1400,6 +1395,13 @@
       "FocusAgentUpdateAdminToolConfigEntry",
       "FocusAgentUpdateAdminToolConfigRequest",
       "FocusAgentUpdateAdminToolProviderConfig"
+    ],
+    "apps/web/src/pages/admin/admin-config-page-query.ts": [
+      "FocusAgentAdminConfig"
+    ],
+    "apps/web/src/pages/admin/admin-config-page-utils.ts": [
+      "FocusAgentAdminConfig",
+      "FocusAgentAdminConfigValue"
     ],
     "apps/web/src/pages/admin/admin-config-tool-policy-panels.tsx": [
       "FocusAgentAdminConfigValue"

@@ -5,10 +5,21 @@ AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
 AGENT_TEAM_STYLES = (
     ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
 )
+COCKPIT_SOURCE_FILES = (
+    "agent-team-cockpit.tsx",
+    "agent-team-cockpit-mission.tsx",
+    "agent-team-cockpit-panels.tsx",
+    "agent-team-cockpit-types.ts",
+    "agent-team-inspector-dialog.tsx",
+)
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _read_cockpit_sources() -> str:
+    return "\n".join(_read(AGENT_TEAM_ROOT / name) for name in COCKPIT_SOURCE_FILES)
 
 
 def _read_agent_team_styles() -> str:
@@ -130,12 +141,33 @@ def test_view_model_derives_cockpit_state():
 
 
 def test_cockpit_component_contains_required_surfaces():
-    cockpit_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
+    cockpit_entry_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
+    cockpit_sources_text = _read_cockpit_sources()
+    cockpit_mission_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit-mission.tsx")
+    cockpit_types_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit-types.ts")
     cockpit_helper_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit-helpers.ts")
     workbench_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
-    cockpit_contract_text = cockpit_text + "\n" + cockpit_helper_text
+    cockpit_contract_text = cockpit_sources_text + "\n" + cockpit_helper_text
     combined_text = cockpit_contract_text + "\n" + workbench_text
 
+    _assert_contains_all(
+        cockpit_entry_text,
+        [
+            'from "./agent-team-cockpit-mission"',
+            'from "./agent-team-cockpit-panels"',
+            'from "./agent-team-cockpit-types"',
+            "export type { AgentTeamCockpitProps }",
+            "export function AgentTeamCockpit",
+        ],
+    )
+    _assert_contains_all(
+        cockpit_types_text,
+        [
+            "export interface AgentTeamCockpitActions",
+            "export interface AgentTeamCockpitInspector",
+            "export interface AgentTeamCockpitProps",
+        ],
+    )
     _assert_contains_all(
         cockpit_contract_text,
         [
@@ -154,7 +186,7 @@ def test_cockpit_component_contains_required_surfaces():
         ],
     )
     _assert_contains_all(
-        cockpit_text,
+        cockpit_contract_text,
         [
             "fa-agent-team-simple-hero",
             "fa-agent-team-simple-steps",
@@ -178,12 +210,38 @@ def test_cockpit_component_contains_required_surfaces():
     assert (
         "const primaryDisabled = Boolean(viewModel.primaryAction.disabledReason) || "
         "Boolean(viewModel.primaryAction.busy);"
-    ) in _compact(cockpit_text)
+    ) in _compact(cockpit_mission_text)
     assert (
         "const primaryClick = blockedTask ? () => actions.onSelectTask(blockedTask.task_id) "
         ": actions.onPrimaryAction;"
-    ) in _compact(cockpit_text)
-    assert "onClick={primaryClick}" in cockpit_text
+    ) in _compact(cockpit_mission_text)
+    assert "onClick={primaryClick}" in cockpit_mission_text
+
+
+def test_inspector_dialog_has_complete_keyboard_focus_lifecycle():
+    workbench_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
+    cockpit_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
+    inspector_text = _read(AGENT_TEAM_ROOT / "agent-team-inspector-dialog.tsx")
+
+    _assert_contains_all(
+        inspector_text,
+        [
+            'aria-modal="true"',
+            'role="dialog"',
+            "closeButtonRef.current ?? dialog",
+            'event.key !== "Tab"',
+            "event.shiftKey",
+            'event.key === "Escape"',
+            "resolveInspectorTabTarget",
+            "document.activeElement",
+            "previouslyFocused.focus()",
+            'document.addEventListener("keydown", handleKeyDown, true)',
+        ],
+    )
+    assert 'const inspectorId = "agent-team-cockpit-inspector"' in workbench_text
+    assert 'aria-controls="agent-team-cockpit-inspector"' in cockpit_text
+    assert "id={inspectorId}" in workbench_text
+    assert "<AgentTeamInspectorDialog" in workbench_text
 
 
 def test_cockpit_css_keeps_lightweight_hierarchy_without_binding_visual_treatment():

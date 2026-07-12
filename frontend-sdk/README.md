@@ -32,9 +32,12 @@ This SDK packages those concerns into a small, typed client layer.
 - Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
+- Bounded stream reconnect/resume with `Last-Event-ID`
+- Event-ID deduplication across reconnect transport boundaries
 - Reducer helpers for accumulating stream state
 - Type guards for common event routing paths
 - `FocusAgentRequestError` for structured HTTP failure handling
+- `FocusAgentIncompleteStreamError` when EOF never reaches a terminal event
 
 ## Package Layout
 
@@ -180,7 +183,9 @@ Authentication can be provided either by:
 
 You can also override `fetch` with `fetchImpl` when integrating in custom runtimes or tests.
 
-`streamTurn()` and `streamResume()` also accept an optional `AbortSignal` wrapper so UI code can cancel in-flight streams cleanly.
+`streamTurn()` and `streamResume()` also accept optional `signal` and
+`lastEventId` stream options so UI code can cancel in-flight work or resume
+after the last event it processed.
 
 ## Event Model
 
@@ -242,6 +247,49 @@ task.update
 ```
 
 `message.delta` and `message.completed` are the only assistant-answer text events. Tool planning, tool calls, task progress, and internal graph state should be rendered from `tool.*`, `task.update`, `reasoning.delta`, and `state.update` rather than mixed into visible text. `tool.call.delta` uses `args_delta` for streamed arguments and omits optional `id` / `name` fields when they are unknown.
+
+### Reconnect And Incomplete Streams
+
+For a logical stream, the client keeps the most recent keyed SSE event ID and
+sends it as `Last-Event-ID` on reconnect/resume requests. It also keeps one
+`seenEventIds` set across every underlying connection. If journal or memory
+replay returns an event already yielded before disconnect, that keyed event is
+dropped; events without an ID continue to be delivered.
+
+When a run ID is known, an unexpected EOF is retried through the run stream
+resume endpoint with bounded exponential backoff (at most five reconnect
+attempts). `server_shutdown` also enters the reconnect path. If iteration still
+reaches EOF without a terminal event, the generator throws
+`FocusAgentIncompleteStreamError`; it exposes an optional `runId` when one was
+observed. Consumers must not persist partial visible text as a successful final
+answer in that case.
+
+```ts
+import {
+  FocusAgentClient,
+  FocusAgentIncompleteStreamError,
+} from "@focus-agent/web-sdk";
+
+try {
+  const stream = await client.streamHarnessRunEvents("run-1");
+  for await (const event of stream) {
+    // Reduce or render the event.
+  }
+} catch (error) {
+  if (error instanceof FocusAgentIncompleteStreamError) {
+    console.error("stream did not reach a terminal event", error.runId);
+  } else {
+    throw error;
+  }
+}
+```
+
+The SDK treats protocol terminal events such as `run.completed` as sufficient
+to finish client iteration. That is separate from the server bridge lifecycle:
+`run.completed` alone does not mark the in-memory bridge ended; server producers
+must still complete their `run.closed`/`publish_end()` close path. See the
+[streaming contract](../docs/streaming-contract.md) for the server-side grace
+window and journal replay rules.
 
 ## Reducers And Guards
 
@@ -353,5 +401,6 @@ make sdk-openapi-types-check
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
 - Branch, conversation, merge proposal, imported-conclusion, Agent Team, productivity, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
+- A stream that exhausts EOF/reconnect handling without a terminal event throws `FocusAgentIncompleteStreamError`; an explicit abort remains caller cancellation.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.
 - `make sdk-openapi-types-check` tracks `docs/api/openapi.json` and `src/types/__generated__.ts`; intentional backend schema drift should include the regenerated OpenAPI and generated-type diff in review.

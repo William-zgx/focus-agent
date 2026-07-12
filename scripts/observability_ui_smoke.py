@@ -38,6 +38,7 @@ from focus_agent.observability.trajectory import (
     utc_now,
 )
 from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
+from focus_agent.repositories.postgres_user_repository import PostgresUserRepository
 
 DEFAULT_APP_BASE_URL = "http://127.0.0.1:8000/app"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
@@ -146,6 +147,17 @@ def _resolve_database_uri(explicit: str | None) -> str:
         "DATABASE_URI is required for the observability UI smoke. "
         "Start the API via `make api` or pass --database-uri."
     )
+
+
+def _grant_local_smoke_admin(database_uri: str, *, user_id: str = "ui-smoke") -> None:
+    parsed = urllib_parse.urlparse(database_uri)
+    if (parsed.hostname or "").strip().lower() not in {"127.0.0.1", "localhost"}:
+        raise RuntimeError("Observability UI smoke may only grant admin in a local database.")
+    repository = PostgresUserRepository(database_uri)
+    repository.setup()
+    user = repository.get_user(user_id)
+    roles = list(dict.fromkeys([*user.roles, "admin"]))
+    repository.save_user(user.model_copy(update={"roles": roles}))
 
 
 def _scenario_names(scenario: str) -> tuple[str, ...]:
@@ -347,6 +359,8 @@ def run_observability_ui_smoke_test(
         database_uri = _resolve_database_uri(database_uri)
         seed = seed_observability_records(database_uri, scenario=scenario)
         demo_access_token = create_demo_access_token(health_url)
+        if demo_access_token is not None:
+            _grant_local_smoke_admin(database_uri)
         request_query = urllib_parse.urlencode({"request": seed["request_id"]})
         overview_url = f"{app_base_url.rstrip('/')}/observability/overview?{request_query}"
         turn_ids = dict(seed.get("turn_ids") or {})

@@ -22,6 +22,32 @@ function findClosingToken(value: string, token: string, startIndex: number) {
 	return -1;
 }
 
+export function isSafeMarkdownHref(href: string): boolean {
+	const value = href.trim();
+	const hasUnsafeCharacter = [...value].some((character) => {
+		const codePoint = character.codePointAt(0) ?? 0;
+		return codePoint === 92 || codePoint <= 31 || codePoint === 127;
+	});
+	if (!value || hasUnsafeCharacter || value.startsWith("//")) {
+		return false;
+	}
+	if (
+		value.startsWith("/") ||
+		value.startsWith("./") ||
+		value.startsWith("../") ||
+		value.startsWith("#") ||
+		value.startsWith("?")
+	) {
+		return true;
+	}
+	const schemeSeparator = value.indexOf(":");
+	if (schemeSeparator === -1) {
+		return true;
+	}
+	const scheme = value.slice(0, schemeSeparator).toLowerCase();
+	return scheme === "http" || scheme === "https" || scheme === "mailto";
+}
+
 export function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
 	const nodes: ReactNode[] = [];
 	let buffer = "";
@@ -57,16 +83,28 @@ export function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
 				buffer = "";
 				const label = text.slice(index + 1, labelEnd);
 				const href = text.slice(urlStart + 1, urlEnd);
-				nodes.push(
-					<a
-						key={`${keyPrefix}-link-${nodeIndex}`}
-						href={href}
-						rel="noreferrer"
-						target="_blank"
-					>
-						{inlineNodes(label, `${keyPrefix}-link-label-${nodeIndex}`)}
-					</a>,
+				const labelNodes = inlineNodes(
+					label,
+					`${keyPrefix}-link-label-${nodeIndex}`,
 				);
+				if (isSafeMarkdownHref(href)) {
+					nodes.push(
+						<a
+							key={`${keyPrefix}-link-${nodeIndex}`}
+							href={href.trim()}
+							rel="noreferrer"
+							target="_blank"
+						>
+							{labelNodes}
+						</a>,
+					);
+				} else {
+					nodes.push(
+						<Fragment key={`${keyPrefix}-link-text-${nodeIndex}`}>
+							{labelNodes}
+						</Fragment>,
+					);
+				}
 				nodeIndex += 1;
 				index = urlEnd + 1;
 				continue;

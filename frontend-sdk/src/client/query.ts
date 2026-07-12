@@ -19,9 +19,7 @@ export function appendQueryValue(params: URLSearchParams, key: string, value: un
     return;
   }
   if (typeof value === "boolean") {
-    if (value) {
-      params.append(key, "true");
-    }
+    params.append(key, String(value));
     return;
   }
   params.append(key, String(value));

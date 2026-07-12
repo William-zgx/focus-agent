@@ -1,17 +1,19 @@
-import { useEffect, useId, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import { useThreadBranchDecisions } from "@/features/branch-decisions/use-branch-decisions";
-import { tooltipProps } from "@/shared/ui/tooltip";
 import { Badge, EmptyState, Surface } from "@/shared/ui/primitives";
+import { tooltipProps } from "@/shared/ui/tooltip";
 
 import { AgentTeamCockpit } from "./agent-team-cockpit";
+import { AgentTeamInspectorDialog } from "./agent-team-inspector-dialog";
 import { AgentTeamAdoptionWorkbench } from "./agent-team-workbench-adoption";
 import { CreateSessionPanel } from "./agent-team-workbench-create";
 import { AdvancedDetailsPanel } from "./agent-team-workbench-merge-handoff";
-import { useAgentTeamWorkbenchViewModel } from "./agent-team-workbench-view-model";
 import { errorMessage } from "./agent-team-workbench-utils";
+import { useAgentTeamWorkbenchViewModel } from "./agent-team-workbench-view-model";
+import type { AgentTeamToolApproval } from "./types";
 import {
 	useAgentTeamMergeDecision,
 	useAgentTeamMergeProposal,
@@ -22,7 +24,6 @@ import {
 	usePlanAgentTeamSession,
 	useRunAgentTeamSession,
 } from "./use-agent-team";
-import type { AgentTeamToolApproval } from "./types";
 
 type MissionRefineRequest = Partial<{
 	focus: string;
@@ -34,7 +35,7 @@ export function AgentTeamWorkbench({
 }: {
 	sessionId: string | null;
 }) {
-	const inspectorId = useId();
+	const inspectorId = "agent-team-cockpit-inspector";
 	const { isChineseUi } = useShellUi();
 	const sessionQuery = useAgentTeamSession(sessionId);
 	const autonomyEvidence = useThreadBranchDecisions(
@@ -430,59 +431,34 @@ export function AgentTeamWorkbench({
 
 			<AgentTeamAdoptionWorkbench isChineseUi={isChineseUi} session={view} />
 
-			{advancedDetailsOpen ? (
-				// biome-ignore lint/a11y/noStaticElementInteractions: The overlay closes on backdrop click while the dialog stops propagation.
-				// biome-ignore lint/a11y/useKeyWithClickEvents: The dialog itself owns keyboard dismissal via its controls.
-				<div
-					className="fa-agent-team-inspector-overlay is-open"
-					onClick={() => setAdvancedDetailsOpen(false)}
-				>
-					<aside
-						aria-label={
-							isChineseUi ? "Agent Team Inspector" : "Agent Team Inspector"
-						}
-						className="fa-agent-team-inspector-drawer"
-						id={inspectorId}
-						onClick={(event) => event.stopPropagation()}
-						onKeyDown={(event) => event.stopPropagation()}
-						role="dialog"
-					>
-						<div className="fa-agent-team-inspector-header">
-							<div>
-								<span>Inspector</span>
-								<strong>{displayTitle || session.session_id}</strong>
-							</div>
-							<button
-								className="fa-agent-team-cockpit-button is-secondary"
-								onClick={toggleAdvancedDetails}
-								type="button"
-							>
-								{isChineseUi ? "关闭" : "Close"}
-							</button>
-						</div>
-						<AdvancedDetailsPanel
-							artifacts={advancedMeta.artifacts}
-							bundle={activeBundle}
-							changedFiles={advancedMeta.changedFiles}
-							dag={advancedMeta.dag}
-							evidenceItems={advancedMeta.rawEvidence.evidenceItems}
-							openQuestions={advancedMeta.openQuestions}
-							planningMetadata={{
-								source: planningMetadata.source,
-								planner_model_id: planningMetadata.model,
-								generated_at: planningMetadata.generatedAt,
-								task_count: planningMetadata.taskCount,
-								rationale: advancedMeta.planning.rationale,
-								plan_hash: advancedMeta.planning.planHash,
-								error: advancedMeta.planning.error,
-							}}
-							outputs={view.outputs ?? []}
-							riskItems={riskItems}
-							tasks={tasks}
-						/>
-					</aside>
-				</div>
-			) : null}
+			<AgentTeamInspectorDialog
+				closeLabel={isChineseUi ? "关闭" : "Close"}
+				id={inspectorId}
+				isOpen={advancedDetailsOpen}
+				onClose={() => setAdvancedDetailsOpen(false)}
+				title={displayTitle || session.session_id}
+			>
+				<AdvancedDetailsPanel
+					artifacts={advancedMeta.artifacts}
+					bundle={activeBundle}
+					changedFiles={advancedMeta.changedFiles}
+					dag={advancedMeta.dag}
+					evidenceItems={advancedMeta.rawEvidence.evidenceItems}
+					openQuestions={advancedMeta.openQuestions}
+					planningMetadata={{
+						source: planningMetadata.source,
+						planner_model_id: planningMetadata.model,
+						generated_at: planningMetadata.generatedAt,
+						task_count: planningMetadata.taskCount,
+						rationale: advancedMeta.planning.rationale,
+						plan_hash: advancedMeta.planning.planHash,
+						error: advancedMeta.planning.error,
+					}}
+					outputs={view.outputs ?? []}
+					riskItems={riskItems}
+					tasks={tasks}
+				/>
+			</AgentTeamInspectorDialog>
 		</div>
 	);
 }

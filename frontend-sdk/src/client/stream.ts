@@ -1,16 +1,16 @@
 import type { FocusAgentEvent } from "../types.js";
 
 export async function* canonicalizeStreamEvents(
-  stream: AsyncIterable<FocusAgentEvent>,
+	stream: AsyncIterable<FocusAgentEvent>,
+	seenEventIds: Set<string> = new Set<string>(),
 ): AsyncGenerator<FocusAgentEvent, void, unknown> {
-  const seenEventIds = new Set<string>();
-  for await (const event of stream) {
-    if (event.id) {
-      if (seenEventIds.has(event.id)) {
-        continue;
-      }
-      seenEventIds.add(event.id);
-    }
-    yield event;
-  }
+	for await (const event of stream) {
+		if (event.id) {
+			if (seenEventIds.has(event.id)) {
+				continue;
+			}
+			seenEventIds.add(event.id);
+		}
+		yield event;
+	}
 }

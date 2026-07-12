@@ -80,10 +80,15 @@ async function streamHarnessRunEvents(
   runId: string,
   options: FocusAgentStreamOptions = {},
 ): Promise<AsyncGenerator<FocusAgentEvent, void, unknown>> {
+  const initialResumePath = `/v2/runs/${encodeURIComponent(runId)}/stream`;
   return this.stream(
-    `/v2/runs/${encodeURIComponent(runId)}/stream`,
+    initialResumePath,
     {},
     options,
+    {
+      initialRunId: runId,
+      initialResumePath,
+    },
   );
 }
 

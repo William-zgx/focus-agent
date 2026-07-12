@@ -20,10 +20,21 @@ from focus_agent.api.main import create_app
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "apps" / "web"
 SDK_ROOT = ROOT / "frontend-sdk"
+AGENT_TEAM_ROOT = WEB_ROOT / "src" / "features" / "agent-team"
+COCKPIT_SOURCE_FILES = (
+    "agent-team-cockpit.tsx",
+    "agent-team-cockpit-mission.tsx",
+    "agent-team-cockpit-panels.tsx",
+    "agent-team-cockpit-types.ts",
+)
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _read_cockpit_sources() -> str:
+    return "\n".join(_read(AGENT_TEAM_ROOT / name) for name in COCKPIT_SOURCE_FILES)
 
 
 def _sdk_client_text() -> str:
@@ -259,15 +270,19 @@ def test_agent_team_role_and_status_unions_match_sdk_and_web_contracts():
 
 
 def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
-    workbench_text = "\n".join(
-        _read(path)
-        for path in [
-            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench.tsx",
-            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-cockpit.tsx",
-            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-utils.ts",
-            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-merge-handoff.tsx",
-            WEB_ROOT / "src" / "features" / "agent-team" / "agent-team-workbench-task-lanes.tsx",
-        ]
+    cockpit_entry_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
+    workbench_text = (
+        "\n".join(
+            _read(path)
+            for path in [
+                AGENT_TEAM_ROOT / "agent-team-workbench.tsx",
+                AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts",
+                AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx",
+                AGENT_TEAM_ROOT / "agent-team-workbench-task-lanes.tsx",
+            ]
+        )
+        + "\n"
+        + _read_cockpit_sources()
     )
     styles_root = WEB_ROOT / "src" / "shared" / "styles"
     stylesheet_text = "\n".join(
@@ -275,6 +290,10 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
         + [_read(path) for path in sorted((styles_root / "modules").glob("*.css"))]
     )
 
+    assert "export function AgentTeamCockpit" in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-mission"' in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-panels"' in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-types"' in cockpit_entry_text
     assert "latest_merge_bundle" in workbench_text
     assert "data.session.latest_merge_bundle" in workbench_text
     assert "recommended_next_action" in workbench_text

@@ -1,7 +1,5 @@
 import type {
-	FocusAgentAdminConfig,
 	FocusAgentAdminSkillConfigEntry,
-	FocusAgentAdminConfigValue,
 	FocusAgentUpdateAdminModelConfigEntry,
 	FocusAgentUpdateAdminModelConfigRequest,
 	FocusAgentUpdateAdminModelProviderConfig,
@@ -14,7 +12,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
-	useAdminConfig,
 	useUpdateAdminModelConfig,
 	useUpdateAdminPolicyConfig,
 	useUpdateAdminSkillConfig,
@@ -59,62 +56,18 @@ import {
 	PolicyConfigPanel,
 	ToolConfigPanel,
 } from "./admin-config-tool-policy-panels";
-
-function isAgentBehaviorPolicyItem(item: FocusAgentAdminConfigValue) {
-	return ["agent_", "branch_", "context_", "multi_agent_", "trajectory_"].some(
-		(prefix) => item.key.startsWith(prefix),
-	);
-}
-
-function isSecurityPolicyItem(item: FocusAgentAdminConfigValue) {
-	return (
-		item.key.startsWith("rate_limit_") ||
-		item.key.startsWith("auth_") ||
-		item.key.includes("approval")
-	);
-}
-
-function isSecuritySystemItem(item: FocusAgentAdminConfigValue) {
-	return (
-		item.sensitive ||
-		item.key.startsWith("auth_") ||
-		item.key.startsWith("database_") ||
-		item.key.startsWith("rate_limit_") ||
-		item.key.includes("jwt")
-	);
-}
-
-function configSources(
-	config: FocusAgentAdminConfig | undefined,
-	isChineseUi: boolean,
-) {
-	return [
-		{
-			label: isChineseUi ? "模型" : "Models",
-			source: config?.models.source,
-		},
-		{
-			label: isChineseUi ? "工具" : "Tools",
-			source: config?.tools.source,
-		},
-		{
-			label: "Skills",
-			source: config?.skills.source,
-		},
-		{
-			label: isChineseUi ? "策略" : "Policies",
-			source: config?.policies.source,
-		},
-		{
-			label: isChineseUi ? "系统" : "System",
-			source: config?.system.source,
-		},
-	];
-}
+import {
+	configSources,
+	hasConfigRestartRequirement,
+	isAgentBehaviorPolicyItem,
+	isSecurityPolicyItem,
+	isSecuritySystemItem,
+} from "./admin-config-page-utils";
+import { useSelectedAdminConfigQuery } from "./admin-config-page-query";
 
 export function AdminConfigPage() {
 	const { isChineseUi } = useShellUi();
-	const configQuery = useAdminConfig();
+	const configQuery = useSelectedAdminConfigQuery();
 	const modelMutation = useUpdateAdminModelConfig();
 	const toolMutation = useUpdateAdminToolConfig();
 	const policyMutation = useUpdateAdminPolicyConfig();
@@ -247,12 +200,7 @@ export function AdminConfigPage() {
 		],
 		[agentPolicyItems.length, isChineseUi, summary],
 	);
-	const requiresRestart = Boolean(
-		config?.models.requires_restart ||
-			config?.tools.requires_restart ||
-			config?.skills.requires_restart ||
-			config?.policies.requires_restart,
-	);
+	const requiresRestart = hasConfigRestartRequirement(config);
 
 	useEffect(() => {
 		if (!config) return;
@@ -578,11 +526,24 @@ export function AdminConfigPage() {
 	return (
 		<AdminConsoleLayout
 			active="config"
-			title={isChineseUi ? "设置中心" : "Settings Center"}
+			allowDeviceLocalConfiguration={appEnv.useLocalRuntime}
+			title={
+				appEnv.useLocalRuntime
+					? isChineseUi
+						? "设备本地配置"
+						: "Device-local configuration"
+					: isChineseUi
+						? "设置中心"
+						: "Settings Center"
+			}
 			summary={
-				isChineseUi
-					? "按连接、能力、Agent 行为和运行安全管理系统配置。"
-					: "Manage system settings by connections, capabilities, agent behavior, and runtime safety."
+				appEnv.useLocalRuntime
+					? isChineseUi
+						? "仅配置此设备上的模型、工具、Skill 和运行策略；不管理账号、角色或审计。"
+						: "Configure models, tools, skills, and runtime policies on this device only; accounts, roles, and audit are unavailable."
+					: isChineseUi
+						? "按连接、能力、Agent 行为和运行安全管理系统配置。"
+						: "Manage system settings by connections, capabilities, agent behavior, and runtime safety."
 			}
 			toolbar={
 				<button

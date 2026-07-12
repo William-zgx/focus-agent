@@ -18,7 +18,7 @@ export class FocusAgentSSEDecodeError extends Error {
 }
 
 export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; remainder: string } {
-  const chunks = buffer.split(/\r?\n\r?\n/);
+  const chunks = buffer.split(/\r\n\r\n|\r\n\r|\r\n\n|\r\r\n|\n\r\n|\r\r|\n\r|\n\n/);
   const remainder = chunks.pop() ?? "";
   const frames: ParsedSSEFrame[] = [];
 
@@ -26,7 +26,7 @@ export function parseSSEFrames(buffer: string): { frames: ParsedSSEFrame[]; rema
     if (!rawChunk.trim()) {
       continue;
     }
-    const lines = rawChunk.split(/\r?\n/);
+    const lines = rawChunk.split(/\r\n|\r|\n/);
     let event = "message";
     let id: string | undefined;
     const dataLines: string[] = [];

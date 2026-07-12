@@ -201,6 +201,9 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 
 	async function refreshPrincipal(): Promise<boolean> {
 		const authAttemptId = ++authAttemptRef.current;
+		if (appEnv.useLocalRuntime) {
+			persistToken(null);
+		}
 		try {
 			const nextPrincipal = await client.getPrincipal();
 			if (authAttemptRef.current !== authAttemptId) return false;
@@ -244,6 +247,17 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 		}
 
 		async function bootstrap() {
+			if (appEnv.useLocalRuntime) {
+				persistToken(null);
+				const nextPrincipal = await client.getPrincipal();
+				if (!shouldApplyBootstrapResult()) return;
+				setPrincipal(nextPrincipal);
+				setAuthError(null);
+				setAuthHint(null);
+				setReady(true);
+				return;
+			}
+
 			const savedToken = readStoredToken();
 			if (savedToken?.trim()) {
 				client.setToken(savedToken.trim());
@@ -313,6 +327,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	]);
 
 	async function authenticateWithToken(token: string): Promise<boolean> {
+		if (appEnv.useLocalRuntime) return false;
 		if (!apiBaseUrlReady) {
 			setAuthError("Set the Focus Agent server URL before signing in.");
 			return false;
@@ -332,8 +347,8 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 		try {
 			return await acceptAuthenticatedResponse(authAttemptId);
 		} catch (error: unknown) {
-			persistToken(null);
 			if (authAttemptRef.current === authAttemptId) {
+				persistToken(null);
 				setPrincipal(null);
 				setAuthError(
 					authErrorMessage(error, "Failed to authenticate with bearer token."),
@@ -348,6 +363,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	async function authenticateWithPassword(
 		request: FocusAgentLoginRequest,
 	): Promise<boolean> {
+		if (appEnv.useLocalRuntime) return false;
 		if (!apiBaseUrlReady) {
 			setAuthError("Set the Focus Agent server URL before signing in.");
 			return false;
@@ -357,8 +373,8 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 			const response = await client.login(request);
 			return await acceptAuthenticatedResponse(authAttemptId, response);
 		} catch (error: unknown) {
-			persistToken(null);
 			if (authAttemptRef.current === authAttemptId) {
+				persistToken(null);
 				setPrincipal(null);
 				setAuthError(authErrorMessage(error, "Failed to sign in."));
 				setAuthHint("manual_token");
@@ -371,6 +387,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	async function registerWithPassword(
 		request: FocusAgentRegisterRequest,
 	): Promise<boolean> {
+		if (appEnv.useLocalRuntime) return false;
 		if (!apiBaseUrlReady) {
 			setAuthError("Set the Focus Agent server URL before signing in.");
 			return false;
@@ -380,8 +397,8 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 			const response = await client.register(request);
 			return await acceptAuthenticatedResponse(authAttemptId, response);
 		} catch (error: unknown) {
-			persistToken(null);
 			if (authAttemptRef.current === authAttemptId) {
+				persistToken(null);
 				setPrincipal(null);
 				setAuthError(authErrorMessage(error, "Failed to register."));
 				setAuthHint("manual_token");
@@ -392,6 +409,7 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 	}
 
 	async function authenticateWithDemoUser(): Promise<boolean> {
+		if (appEnv.useLocalRuntime) return false;
 		if (!apiBaseUrlReady) {
 			setAuthError("Set the Focus Agent server URL before signing in.");
 			return false;
@@ -408,8 +426,8 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 			}
 			return authenticateWithToken(token.access_token);
 		} catch (error: unknown) {
-			persistToken(null);
 			if (authAttemptRef.current === authAttemptId) {
+				persistToken(null);
 				setPrincipal(null);
 				setAuthError(
 					error instanceof FocusAgentRequestError && error.status === 404
@@ -429,6 +447,10 @@ export function FocusAgentProvider({ children }: PropsWithChildren) {
 
 	async function logout() {
 		authAttemptRef.current += 1;
+		if (appEnv.useLocalRuntime) {
+			persistToken(null);
+			return;
+		}
 		try {
 			await client.logout();
 		} catch (error: unknown) {

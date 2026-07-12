@@ -14,6 +14,8 @@ def test_observability_ui_smoke_script_targets_overview_and_trajectory():
     assert "/observability/overview" in script_text
     assert "/observability/trajectory" in script_text
     assert "seed_observability_record" in script_text
+    assert "_grant_local_smoke_admin" in script_text
+    assert "may only grant admin in a local database" in script_text
     assert "./scripts/run-api.sh" in script_text
     assert "--no-start-api" in script_text
     assert "--scenario" in script_text

@@ -5,10 +5,20 @@ AGENT_TEAM_ROOT = ROOT / "apps" / "web" / "src" / "features" / "agent-team"
 AGENT_TEAM_STYLES = (
     ROOT / "apps" / "web" / "src" / "shared" / "styles" / "modules" / "agent-team.css"
 )
+COCKPIT_SOURCE_FILES = (
+    "agent-team-cockpit.tsx",
+    "agent-team-cockpit-mission.tsx",
+    "agent-team-cockpit-panels.tsx",
+    "agent-team-cockpit-types.ts",
+)
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _read_cockpit_sources() -> str:
+    return "\n".join(_read(AGENT_TEAM_ROOT / name) for name in COCKPIT_SOURCE_FILES)
 
 
 def _read_agent_team_styles() -> str:
@@ -64,15 +74,23 @@ def test_create_page_no_longer_shows_fixed_role_template():
 
 
 def test_workbench_exposes_dynamic_planning_controls_and_metadata():
-    workbench_text = "\n".join(
-        [
-            _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
-            _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx"),
-            _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
-        ]
+    workbench_text = (
+        "\n".join(
+            [
+                _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
+                _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
+            ]
+        )
+        + "\n"
+        + _read_cockpit_sources()
     )
+    cockpit_entry_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
     styles_text = _read_agent_team_styles()
 
+    assert "export function AgentTeamCockpit" in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-mission"' in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-panels"' in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-types"' in cockpit_entry_text
     for text in ["生成方案", "重新拆解", "运行 Mission", "生成最终结果"]:
         assert text in workbench_text or text in _read(
             AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts"
@@ -150,16 +168,22 @@ def test_task_surface_prefers_dynamic_plan_fields_over_roles():
 
 
 def test_default_result_panel_summarizes_raw_execution_text():
-    workbench_text = "\n".join(
-        [
-            _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
-            _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx"),
-            _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
-        ]
+    workbench_text = (
+        "\n".join(
+            [
+                _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx"),
+                _read(AGENT_TEAM_ROOT / "agent-team-workbench-view-model.ts"),
+            ]
+        )
+        + "\n"
+        + _read_cockpit_sources()
     )
+    cockpit_entry_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
     result_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx")
     styles_text = _read_agent_team_styles()
 
+    assert "export function AgentTeamCockpit" in cockpit_entry_text
+    assert 'from "./agent-team-cockpit-panels"' in cockpit_entry_text
     assert "finalResultState" in workbench_text
     assert "Final Preview" in workbench_text
     assert "executionModeForWorkbench" in workbench_text

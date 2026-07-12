@@ -35,8 +35,22 @@ import type {
 	FocusAgentStreamOptions,
 	FocusAgentStreamReconnectOptions,
 } from "./client/endpoint.js";
+import { FocusAgentRequestError } from "./errors.js";
 import { isTerminalEvent } from "./guards.js";
 import type { FocusAgentEvent } from "./types.js";
+
+const MAX_STREAM_RECONNECT_ATTEMPTS = 5;
+
+function isRetryableStreamError(error: unknown): boolean {
+	if (!(error instanceof FocusAgentRequestError)) {
+		return error instanceof TypeError;
+	}
+	return (
+		error.retryable ||
+		error.status === 429 ||
+		(error.status >= 500 && error.status < 600)
+	);
+}
 
 export interface FocusAgentClientOptions {
 	baseUrl: string;
@@ -47,6 +61,20 @@ export interface FocusAgentClientOptions {
 
 export { FocusAgentRequestError } from "./errors.js";
 export type { FocusAgentStreamOptions } from "./client/endpoint.js";
+
+export class FocusAgentIncompleteStreamError extends Error {
+	readonly runId?: string;
+
+	constructor(runId: string | null) {
+		super(
+			runId
+				? `FocusAgent stream ended before a terminal event for run "${runId}".`
+				: "FocusAgent stream ended before a terminal event.",
+		);
+		this.name = "FocusAgentIncompleteStreamError";
+		this.runId = runId ?? undefined;
+	}
+}
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -124,7 +152,9 @@ export class FocusAgentClient {
 	): AsyncGenerator<FocusAgentEvent, void, unknown> {
 		let lastEventId = options.lastEventId ?? null;
 		let attempt = 0;
-		let resumePath: string | null = null;
+		let resumePath: string | null = reconnect.initialResumePath ?? null;
+		let runId: string | null = reconnect.initialRunId ?? null;
+		const seenEventIds = new Set<string>();
 		while (!options.signal?.aborted) {
 			const headers = new Headers(baseHeaders);
 			if (lastEventId) {
@@ -147,37 +177,55 @@ export class FocusAgentClient {
 				if (!response.body) {
 					throw new Error("FocusAgent stream response did not include a body.");
 				}
+				let receivedTerminalEvent = false;
 				for await (const event of canonicalizeStreamEvents(
 					iterValidatedSSEEvents(response.body),
+					seenEventIds,
 				)) {
 					if (event.id) {
 						lastEventId = event.id;
 					}
-					const runId = streamEventRunId(event);
-					if (runId && reconnect.resumePathForRunId) {
-						resumePath = reconnect.resumePathForRunId(runId);
+					const eventRunId = streamEventRunId(event);
+					if (eventRunId) {
+						runId = eventRunId;
 					}
-					attempt = 0;
+					if (eventRunId && reconnect.resumePathForRunId) {
+						resumePath = reconnect.resumePathForRunId(eventRunId);
+					}
+					receivedTerminalEvent = isTerminalEvent(event);
 					yield event;
 					if (event.event === "server_shutdown") {
 						shouldReconnect = true;
 						break;
 					}
-					if (isTerminalEvent(event)) {
+					if (receivedTerminalEvent) {
 						return;
 					}
 				}
 				if (options.signal?.aborted) return;
 				if (shouldReconnect) {
+					if (attempt >= MAX_STREAM_RECONNECT_ATTEMPTS) {
+						throw new Error("FocusAgent stream reconnect budget exhausted.");
+					}
 					attempt += 1;
 					const delay = Math.min(1000 * 2 ** Math.min(attempt - 1, 4), 15000);
 					await sleep(delay, options.signal);
 					continue;
 				}
-				return;
+				if (resumePath && attempt < MAX_STREAM_RECONNECT_ATTEMPTS) {
+					attempt += 1;
+					const delay = Math.min(1000 * 2 ** Math.min(attempt - 1, 4), 15000);
+					await sleep(delay, options.signal);
+					continue;
+				}
+				throw new FocusAgentIncompleteStreamError(runId);
 			} catch (error) {
 				if (options.signal?.aborted) return;
-				if (!resumePath) {
+				if (
+					!resumePath ||
+					!isRetryableStreamError(error) ||
+					attempt >= MAX_STREAM_RECONNECT_ATTEMPTS
+				) {
 					throw error;
 				}
 				attempt += 1;

@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { PropsWithChildren, ReactNode } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
+import { appEnv } from "@/shared/config/env";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
 type AdminRouteKey = "users" | "audit" | "config";
@@ -15,13 +16,17 @@ type AdminConsoleLayoutProps = {
 	summary: string;
 	title: string;
 	toolbar?: ReactNode;
+	allowDeviceLocalConfiguration?: boolean;
 };
 
-export function AdminAccessGate({ children }: PropsWithChildren) {
+export function AdminAccessGate({
+	allowDeviceLocalConfiguration = false,
+	children,
+}: PropsWithChildren<{ allowDeviceLocalConfiguration?: boolean }>) {
 	const { isAdmin, logout } = useFocusAgent();
 	const { isChineseUi } = useShellUi();
 
-	if (!isAdmin) {
+	if (!isAdmin && !(allowDeviceLocalConfiguration && appEnv.useLocalRuntime)) {
 		return (
 			<div className="fa-admin-layout">
 				<section className="fa-admin-panel fa-admin-denied">
@@ -62,13 +67,17 @@ export function AdminConsoleLayout({
 	summary,
 	title,
 	toolbar,
+	allowDeviceLocalConfiguration = false,
 }: AdminConsoleLayoutProps) {
 	return (
-		<AdminAccessGate>
+		<AdminAccessGate
+			allowDeviceLocalConfiguration={allowDeviceLocalConfiguration}
+		>
 			<div className="fa-admin-layout">
 				<div className={`fa-admin-console ${drawer ? "has-drawer" : ""}`}>
 					<section className="fa-admin-console-main">
 						<AdminPageHeading
+							deviceLocalConfiguration={allowDeviceLocalConfiguration}
 							title={title}
 							summary={summary}
 							side={side}
@@ -88,11 +97,13 @@ export function AdminConsoleLayout({
 }
 
 export function AdminPageHeading({
+	deviceLocalConfiguration = false,
 	title,
 	summary,
 	side,
 	toolbar,
 }: {
+	deviceLocalConfiguration?: boolean;
 	title: string;
 	summary: string;
 	side?: ReactNode;
@@ -105,9 +116,13 @@ export function AdminPageHeading({
 			<div className="fa-trajectory-workbench-header-copy">
 				<div className="fa-trajectory-workbench-heading fa-admin-workspace-heading">
 					<p className="fa-admin-eyebrow">
-						{isChineseUi
-							? "系统管理 / 治理"
-							: "System Administration / Governance"}
+						{deviceLocalConfiguration && appEnv.useLocalRuntime
+							? isChineseUi
+								? "设备本地配置"
+								: "Device-local configuration"
+							: isChineseUi
+								? "系统管理 / 治理"
+								: "System Administration / Governance"}
 					</p>
 					<h1>{title}</h1>
 					<p>{summary}</p>

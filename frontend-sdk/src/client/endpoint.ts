@@ -6,6 +6,8 @@ export interface FocusAgentStreamOptions {
 }
 
 export interface FocusAgentStreamReconnectOptions {
+  initialRunId?: string;
+  initialResumePath?: string;
   resumePathForRunId?: (runId: string) => string;
 }
 

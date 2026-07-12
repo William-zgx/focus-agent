@@ -24,8 +24,20 @@ export function AppShellGlobalNavigation({
 }: AppShellGlobalNavigationProps) {
 	const chatNavLabel = isChineseUi ? "对话" : "Chat";
 	const productivityNavLabel = isChineseUi ? "生产力" : "Productivity";
-	const adminNavLabel = isChineseUi ? "系统管理" : "Administration";
-	const adminNavShortLabel = isChineseUi ? "系统" : "Admin";
+	const adminNavLabel = appEnv.useLocalRuntime
+		? isChineseUi
+			? "设备本机设置"
+			: "Device-local settings"
+		: isChineseUi
+			? "系统管理"
+			: "Administration";
+	const adminNavShortLabel = appEnv.useLocalRuntime
+		? isChineseUi
+			? "设备本机设置"
+			: "Device settings"
+		: isChineseUi
+			? "系统"
+			: "Admin";
 
 	return (
 		<nav

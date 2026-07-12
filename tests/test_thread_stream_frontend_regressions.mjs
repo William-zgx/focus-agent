@@ -94,6 +94,7 @@ function loadFunctions(relativePath, functionNames) {
   const context = {
     exports: {},
     module: { exports: {} },
+    URLSearchParams,
   };
   vm.runInNewContext(`${transpiled}\nmodule.exports = { ${functionNames.join(", ")} };`, context);
   return context.module.exports;
@@ -115,6 +116,26 @@ function loadModule(relativePath) {
   };
 	vm.runInNewContext(transpiled, context);
 	return context.module.exports;
+}
+
+async function loadBuiltSdk() {
+  return import(
+    `${pathToFileURL(path.join(repoRoot, "frontend-sdk/dist/index.js")).href}?${Date.now()}`,
+  );
+}
+
+function sseResponse(frames) {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(frames));
+        controller.close();
+      },
+    }),
+    {
+      headers: { "Content-Type": "text/event-stream" },
+    },
+  );
 }
 
 function loadThreadBusyRetryModule() {
@@ -1396,7 +1417,13 @@ test("SDK stream stops waiting after terminal v2 run events", () => {
 	assert.equal(clientSource.includes('import { isTerminalEvent } from "./guards.js";'), true);
 	assert.equal(
 		compactClientSource.includes(
-			'if (event.event === "server_shutdown") { shouldReconnect = true; break; } if (isTerminalEvent(event)) { return; }',
+			"let receivedTerminalEvent = false;",
+		),
+		true,
+	);
+	assert.equal(
+		compactClientSource.includes(
+			"receivedTerminalEvent = isTerminalEvent(event); yield event; if (event.event === \"server_shutdown\") { shouldReconnect = true; break; } if (receivedTerminalEvent) { return; }",
 		),
 		true,
 	);
@@ -1411,10 +1438,206 @@ test("SDK stream does not replay initial run creation POST before a run id exist
 
 	assert.equal(
 		compactClientSource.includes(
-			"if (!resumePath) { throw error; } attempt += 1;",
+			"!resumePath || !isRetryableStreamError(error) || attempt >= MAX_STREAM_RECONNECT_ATTEMPTS",
 		),
 		true,
 	);
+	assert.equal(
+		compactClientSource.includes("const MAX_STREAM_RECONNECT_ATTEMPTS = 5;"),
+		true,
+	);
+	assert.equal(
+		compactClientSource.includes(
+			"error.status === 429 || (error.status >= 500 && error.status < 600)",
+		),
+		true,
+	);
+	assert.equal(compactClientSource.includes("attempt = 0; yield event;"), false);
+});
+
+test("SDK resumes a metadata and delta stream that ends at EOF without a terminal event", async () => {
+  const { FocusAgentClient } = await loadBuiltSdk();
+  const requests = [];
+  const responses = [
+    sseResponse(
+      [
+        "id: event-1",
+        "event: run.metadata",
+        'data: {"run_id":"run-eof","thread_id":"thread-1"}',
+        "",
+        "id: event-2",
+        "event: message.delta",
+        'data: {"delta":"partial answer","channel":"message","metadata":{"run_id":"run-eof"}}',
+        "",
+        "",
+      ].join("\n"),
+    ),
+    sseResponse(
+      [
+        "id: event-3",
+        "event: run.completed",
+        'data: {"run_id":"run-eof","thread_id":"thread-1","status":"completed"}',
+        "",
+        "",
+      ].join("\n"),
+    ),
+  ];
+  const client = new FocusAgentClient({
+    baseUrl: "https://focus-agent.test",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init });
+      const response = responses.shift();
+      assert.ok(response, "unexpected stream request");
+      return response;
+    },
+  });
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, _delay, ...args) => {
+    queueMicrotask(() => callback(...args));
+    return 0;
+  };
+
+  try {
+    const stream = await client.streamHarnessRun(
+      "thread-1",
+      { message: "hello" },
+    );
+    const events = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+
+    assert.deepEqual(
+      events.map((event) => event.event),
+      ["run.metadata", "message.delta", "run.completed"],
+    );
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[0].url,
+      "https://focus-agent.test/v2/threads/thread-1/runs/stream",
+    );
+    assert.equal(
+      requests[1].url,
+      "https://focus-agent.test/v2/runs/run-eof/stream",
+    );
+    assert.equal(new Headers(requests[1].init.headers).get("Last-Event-ID"), "event-2");
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test("SDK deduplicates replayed event ids across reconnects without dropping unkeyed events", async () => {
+  const { FocusAgentClient } = await loadBuiltSdk();
+  const responses = [
+    sseResponse(
+      [
+        "id: event-1",
+        "event: run.metadata",
+        'data: {"run_id":"run-replay","thread_id":"thread-1"}',
+        "",
+        "id: event-2",
+        "event: message.delta",
+        'data: {"delta":"keyed","channel":"message","metadata":{"run_id":"run-replay"}}',
+        "",
+        "event: message.delta",
+        'data: {"delta":"unkeyed","channel":"message","metadata":{"run_id":"run-replay"}}',
+        "",
+        "",
+      ].join("\n"),
+    ),
+    sseResponse(
+      [
+        "id: event-2",
+        "event: message.delta",
+        'data: {"delta":"keyed","channel":"message","metadata":{"run_id":"run-replay"}}',
+        "",
+        "event: message.delta",
+        'data: {"delta":"unkeyed","channel":"message","metadata":{"run_id":"run-replay"}}',
+        "",
+        "id: event-3",
+        "event: run.completed",
+        'data: {"run_id":"run-replay","thread_id":"thread-1","status":"completed"}',
+        "",
+        "",
+      ].join("\n"),
+    ),
+  ];
+  const client = new FocusAgentClient({
+    baseUrl: "https://focus-agent.test",
+    fetchImpl: async () => {
+      const response = responses.shift();
+      assert.ok(response, "unexpected stream request");
+      return response;
+    },
+  });
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, _delay, ...args) => {
+    queueMicrotask(() => callback(...args));
+    return 0;
+  };
+
+  try {
+    const stream = await client.streamHarnessRun("thread-1", {
+      message: "hello",
+    });
+    const events = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+
+    assert.deepEqual(
+      events.map((event) => [event.id ?? "", event.event, event.data.delta ?? ""]),
+      [
+        ["event-1", "run.metadata", ""],
+        ["event-2", "message.delta", "keyed"],
+        ["", "message.delta", "unkeyed"],
+        ["", "message.delta", "unkeyed"],
+        ["event-3", "run.completed", ""],
+      ],
+    );
+    assert.equal(responses.length, 0);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test("SDK reports an incomplete stream when EOF has no terminal event or run id", async () => {
+  const { FocusAgentClient, FocusAgentIncompleteStreamError } = await loadBuiltSdk();
+  const requests = [];
+  const client = new FocusAgentClient({
+    baseUrl: "https://focus-agent.test",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init });
+      return sseResponse(
+        [
+          "event: message.delta",
+          'data: {"delta":"partial answer","channel":"message"}',
+          "",
+          "",
+        ].join("\n"),
+      );
+    },
+  });
+  const stream = await client.streamHarnessRun("thread-1", { message: "hello" });
+  const events = [];
+
+  await assert.rejects(
+    async () => {
+      for await (const event of stream) {
+        events.push(event);
+      }
+    },
+    (error) => {
+      assert.equal(error instanceof FocusAgentIncompleteStreamError, true);
+      assert.equal(
+        error.message,
+        "FocusAgent stream ended before a terminal event.",
+      );
+      return true;
+    },
+  );
+  assert.deepEqual(events.map((event) => event.event), ["message.delta"]);
+  assert.equal(requests.length, 1);
 });
 
 test("stream reducer consumes v2 harness run events without visible_text dependencies", () => {
@@ -1787,6 +2010,71 @@ test("SSE parser ignores trailing blank frames after stream completion", () => {
   assert.equal(parsed.frames[0].event, "message.completed");
   assert.equal(parsed.frames[0].data, '{"content":"done"}');
   assert.equal(parseSSEFrames("\n\n").frames.length, 0);
+});
+
+test("SSE parser accepts CR-only frame separators", () => {
+  const { parseSSEFrames } = loadModule("frontend-sdk/src/parser.ts");
+
+  const parsed = parseSSEFrames(
+    'event: message.delta\rid: 1\rdata: {"delta":"ok"}\r\r',
+  );
+
+  assert.equal(parsed.frames.length, 1);
+  assert.equal(parsed.frames[0].event, "message.delta");
+  assert.equal(parsed.frames[0].id, "1");
+  assert.equal(parsed.remainder, "");
+});
+
+test("trajectory query serializes explicit false boolean filters", () => {
+  const { buildTrajectoryQueryString } = loadFunctions(
+    "frontend-sdk/src/client/query.ts",
+    ["appendQueryValue", "buildTrajectoryQueryString"],
+  );
+
+  const query = buildTrajectoryQueryString({
+    fallback_used: false,
+    cache_hit: false,
+    has_error: false,
+    newest_first: false,
+  });
+
+  assert.equal(
+    query,
+    "?fallback_used=false&cache_hit=false&has_error=false&newest_first=false",
+  );
+});
+
+test("markdown links reject active schemes and allow safe relative paths", () => {
+  const { isSafeMarkdownHref } = loadFunctions(
+    "apps/web/src/entities/messages/message-markdown-inline.tsx",
+    ["isSafeMarkdownHref"],
+  );
+
+  assert.equal(isSafeMarkdownHref("https://example.com"), true);
+  assert.equal(isSafeMarkdownHref("mailto:user@example.com"), true);
+  assert.equal(isSafeMarkdownHref("docs/help"), true);
+  assert.equal(isSafeMarkdownHref("../docs/help"), true);
+  assert.equal(isSafeMarkdownHref("data:text/html,<script>alert(1)</script>"), false);
+  assert.equal(isSafeMarkdownHref("javascript:alert(1)"), false);
+  assert.equal(isSafeMarkdownHref("//evil.example"), false);
+  assert.equal(isSafeMarkdownHref("\\\\evil.example"), false);
+});
+
+test("stale authentication failures cannot clear a newer token", () => {
+  const providerSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/sdk/focus-agent-provider.tsx"),
+    "utf8",
+  );
+
+  const guardedRollback =
+    /catch \(error: unknown\) \{\s*if \(authAttemptRef\.current === authAttemptId\) \{\s*persistToken\(null\);/gu;
+  assert.equal([...providerSource.matchAll(guardedRollback)].length, 4);
+  assert.equal(
+    providerSource.includes(
+      "catch (error: unknown) {\n\t\t\tpersistToken(null);\n\t\t\tif (authAttemptRef.current === authAttemptId)",
+    ),
+    false,
+  );
 });
 
 test("SSE decode errors include raw frame context", () => {
@@ -2900,4 +3188,181 @@ test("chat header keeps conversation tools left and compacts branch actions by a
     conversationToolbarSource.includes('textIndent: "100%"'),
     true,
   );
+});
+
+test("merge review dialog traps and restores keyboard focus", () => {
+  const modalSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/app/shell/merge-review-modal-host.tsx"),
+    "utf8",
+  );
+  const compactModalSource = compactSource(modalSource);
+
+  assert.equal(modalSource.includes("const dialogRef = useRef<HTMLElement>(null);"), true);
+  assert.equal(
+    compactModalSource.includes(
+      "(dialog?.querySelector<HTMLElement>(focusableSelector) ?? dialog)?.focus();",
+    ),
+    true,
+  );
+  assert.equal(
+    compactModalSource.includes(
+      'if (event.key !== "Tab" || !dialog) return;',
+    ),
+    true,
+  );
+  assert.equal(compactModalSource.includes("previouslyFocused?.focus();"), true);
+  assert.equal(modalSource.includes("tabIndex={-1}"), true);
+});
+
+test("admin config page keeps policy classification in a focused helper", () => {
+  const pageSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/admin/admin-config-page.tsx"),
+    "utf8",
+  );
+  const helperSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/admin/admin-config-page-utils.ts"),
+    "utf8",
+  );
+
+  assert.equal(pageSource.includes('from "./admin-config-page-utils";'), true);
+  assert.equal(helperSource.includes("isAgentBehaviorPolicyItem"), true);
+  assert.equal(helperSource.includes("isSecurityPolicyItem"), true);
+  assert.equal(helperSource.includes("isSecuritySystemItem"), true);
+  assert.equal(pageSource.split("\n").length < 760, true);
+});
+
+test("Android local runtime clears bearer auth and keeps only device-local principal lookup", () => {
+  const providerSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/shared/sdk/focus-agent-provider.tsx"),
+    "utf8",
+  );
+  const bootstrapStart = providerSource.indexOf("\t\tasync function bootstrap() {");
+  const storedTokenStart = providerSource.indexOf(
+    "\n\t\t\tconst savedToken = readStoredToken();",
+    bootstrapStart,
+  );
+  const localBootstrap = providerSource.slice(bootstrapStart, storedTokenStart);
+
+  assert.ok(bootstrapStart >= 0);
+  assert.ok(storedTokenStart > bootstrapStart);
+  assert.equal(localBootstrap.includes("if (appEnv.useLocalRuntime)"), true);
+  assert.equal(localBootstrap.includes("persistToken(null);"), true);
+  assert.equal(localBootstrap.includes("await client.getPrincipal();"), true);
+  assert.equal(localBootstrap.includes("readStoredToken()"), false);
+  assert.equal(localBootstrap.includes("client.refresh()"), false);
+  assert.match(
+    providerSource,
+    /async function authenticateWithToken\(token: string\): Promise<boolean> \{\s*if \(appEnv\.useLocalRuntime\) return false;/u,
+  );
+  assert.match(
+    providerSource,
+    /async function authenticateWithPassword\(\s*request: FocusAgentLoginRequest,\s*\): Promise<boolean> \{\s*if \(appEnv\.useLocalRuntime\) return false;/u,
+  );
+  assert.match(
+    providerSource,
+    /async function registerWithPassword\(\s*request: FocusAgentRegisterRequest,\s*\): Promise<boolean> \{\s*if \(appEnv\.useLocalRuntime\) return false;/u,
+  );
+  assert.match(
+    providerSource,
+    /async function authenticateWithDemoUser\(\): Promise<boolean> \{\s*if \(appEnv\.useLocalRuntime\) return false;/u,
+  );
+  assert.match(
+    providerSource,
+    /async function logout\(\) \{\s*authAttemptRef\.current \+= 1;\s*if \(appEnv\.useLocalRuntime\) \{\s*persistToken\(null\);\s*return;/u,
+  );
+});
+
+test("Android local runtime redirects pseudo-account routes while retaining device-local settings", () => {
+  const { localRuntimeLegacyRouteTarget, shouldRedirectToSignIn } = loadFunctions(
+    "apps/web/src/app/router.tsx",
+    ["localRuntimeLegacyRouteTarget", "shouldRedirectToSignIn"],
+  );
+  const navigationSource = readFileSync(
+    path.join(
+      repoRoot,
+      "apps/web/src/app/shell/app-shell-global-navigation.tsx",
+    ),
+    "utf8",
+  );
+  const shellSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/app/shell/app-shell.tsx"),
+    "utf8",
+  );
+
+  assert.equal(localRuntimeLegacyRouteTarget(false, "/auth/login"), null);
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/auth"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/auth/login"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/auth/register"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/account/profile"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/account/security"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/account/sessions"), "/");
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/admin/users"), "/admin/config");
+  assert.equal(
+    localRuntimeLegacyRouteTarget(true, "/admin/users/user-1"),
+    "/admin/config",
+  );
+  assert.equal(
+    localRuntimeLegacyRouteTarget(true, "/admin/audit-events"),
+    "/admin/config",
+  );
+  assert.equal(localRuntimeLegacyRouteTarget(true, "/admin/config"), null);
+  assert.equal(shouldRedirectToSignIn(true, false, true, false), false);
+  assert.equal(shouldRedirectToSignIn(false, false, true, false), true);
+  assert.equal(shouldRedirectToSignIn(false, false, false, false), false);
+  assert.equal(shouldRedirectToSignIn(false, true, true, false), false);
+  assert.equal(shouldRedirectToSignIn(false, false, true, true), false);
+  assert.equal(navigationSource.includes('"设备本机设置"'), true);
+  assert.equal(navigationSource.includes('to="/admin/config"'), true);
+  assert.equal(
+    compactSource(shellSource).includes(
+      "{principal && !appEnv.useLocalRuntime ? (",
+    ),
+    true,
+  );
+  assert.equal(
+    compactSource(shellSource).includes(
+      ") : appEnv.useLocalRuntime && isAdminShell ? null : ( <AppShellWorkspaceSidebar",
+    ),
+    true,
+  );
+});
+
+test("Agent Team Inspector traps forward and reverse tab navigation", () => {
+  const { resolveInspectorTabTarget } = loadFunctions(
+    "apps/web/src/features/agent-team/agent-team-inspector-dialog.tsx",
+    ["resolveInspectorTabTarget"],
+  );
+  const first = { id: "first" };
+  const middle = { id: "middle" };
+  const last = { id: "last" };
+  const dialog = {
+    contains(element) {
+      return element === first || element === middle || element === last;
+    },
+  };
+  const focusable = [first, middle, last];
+
+  assert.equal(
+    resolveInspectorTabTarget(dialog, focusable, last, false),
+    first,
+  );
+  assert.equal(
+    resolveInspectorTabTarget(dialog, focusable, first, true),
+    last,
+  );
+  assert.equal(
+    resolveInspectorTabTarget(dialog, focusable, middle, false),
+    null,
+  );
+  assert.equal(
+    resolveInspectorTabTarget(dialog, focusable, { id: "outside" }, false),
+    first,
+  );
+  assert.equal(
+    resolveInspectorTabTarget(dialog, focusable, { id: "outside" }, true),
+    last,
+  );
+  assert.equal(resolveInspectorTabTarget(dialog, focusable, dialog, false), first);
+  assert.equal(resolveInspectorTabTarget(dialog, focusable, dialog, true), last);
+  assert.equal(resolveInspectorTabTarget(dialog, [], first, false), dialog);
 });
