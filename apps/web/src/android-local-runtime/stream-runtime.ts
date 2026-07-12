@@ -4,6 +4,7 @@ import type {
 	FocusAgentHarnessRunCancelRequest,
 	FocusAgentHarnessRunRequest,
 	FocusAgentHarnessRunResponse,
+	FocusAgentThreadHarnessRunsCancelResponse,
 } from "@focus-agent/web-sdk";
 import { DEFAULT_MODEL_ID, SSE_HEADERS } from "./constants";
 import {
@@ -16,7 +17,6 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
-import { syncLocalThreadActiveSkills } from "./local-tool-execution";
 import {
 	deniesExecutedWebAccess,
 	localReply,
@@ -25,6 +25,7 @@ import {
 	localReplyWithWebSearch,
 	splitText,
 } from "./local-text";
+import { syncLocalThreadActiveSkills } from "./local-tool-execution";
 import {
 	abortIfRequested,
 	missingProviderKeyReply,
@@ -58,6 +59,24 @@ export function handleV2(
 	if (
 		resource === "threads" &&
 		runsOrAction === "runs" &&
+		streamOrResume === "cancel" &&
+		method === "POST"
+	) {
+		const body = parseJsonBody(init) as FocusAgentHarnessRunCancelRequest;
+		const action = body.action === "rollback" ? "rollback" : "interrupt";
+		const cancelledRunIds = ctx.runCancellations.cancelThread(
+			threadOrRunId,
+			action,
+		);
+		return jsonResponse({
+			thread_id: threadOrRunId,
+			cancelled_run_ids: cancelledRunIds,
+			cancelled_count: cancelledRunIds.length,
+		} satisfies FocusAgentThreadHarnessRunsCancelResponse);
+	}
+	if (
+		resource === "threads" &&
+		runsOrAction === "runs" &&
 		streamOrResume === "stream" &&
 		method === "POST"
 	) {
@@ -78,14 +97,32 @@ export function handleV2(
 		);
 	}
 	if (resource === "runs" && runsOrAction === "stream" && method === "POST") {
-		return sseResponse([], init?.signal ?? undefined);
+		return sseResponse(
+			[
+				{
+					id: `${threadOrRunId}:closed`,
+					event: "run.closed",
+					data: {
+						run_id: threadOrRunId,
+						status: "closed",
+						source_node: "android-local-runtime",
+						message: "No historical local events are available for this run.",
+					},
+				},
+			],
+			init?.signal ?? undefined,
+		);
 	}
 	if (resource === "runs" && runsOrAction === "cancel" && method === "POST") {
 		const body = parseJsonBody(init) as FocusAgentHarnessRunCancelRequest;
+		const action = body.action === "rollback" ? "rollback" : "interrupt";
+		if (!ctx.runCancellations.cancel(threadOrRunId, action)) {
+			return errorResponse(404, `Active run not found: ${threadOrRunId}`);
+		}
 		return jsonResponse({
 			run: {
 				run_id: threadOrRunId,
-				status: body.action ?? "interrupt",
+				status: action,
 				updated_at: nowIso(),
 			},
 			thread_state: null,
@@ -103,6 +140,7 @@ export function streamRun(
 	const thread = ctx.state.threads[threadId];
 	if (!thread) return errorResponse(404, "Thread not found.");
 	const runId = ctx.nextId("run", "local-run");
+	const runSignal = ctx.runCancellations.register(runId, threadId, signal);
 	const timestamp = nowIso();
 	const message = stringValue(request.message);
 	const selectedModel =
@@ -131,6 +169,23 @@ export function streamRun(
 	ctx.persist();
 
 	const baseData = { run_id: runId, thread_id: thread.thread_id };
+	const runMessageIds = new Set<string>();
+	const appendRunMessage = (
+		runMessage: (typeof thread.messages)[number],
+	): void => {
+		thread.messages.push(runMessage);
+		if (typeof runMessage.id === "string") {
+			runMessageIds.add(runMessage.id);
+		}
+	};
+	const discardRunMessages = () => {
+		thread.messages = thread.messages.filter(
+			(threadMessage) =>
+				typeof threadMessage.id !== "string" ||
+				!runMessageIds.has(threadMessage.id),
+		);
+		thread.context_usage = contextUsage(thread.messages);
+	};
 	const encoder = new TextEncoder();
 	const body = new ReadableStream<Uint8Array>({
 		start: async (controller) => {
@@ -138,8 +193,8 @@ export function streamRun(
 				controller.enqueue(encoder.encode(sseFrame(event)));
 			};
 			try {
-				if (signal?.aborted) {
-					throw signal.reason ?? new DOMException("Aborted", "AbortError");
+				if (runSignal.aborted) {
+					throw runSignal.reason ?? new DOMException("Aborted", "AbortError");
 				}
 				send({
 					id: `${runId}:1`,
@@ -202,7 +257,7 @@ export function streamRun(
 							args: {},
 						},
 					});
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "ai",
 						content: "",
@@ -219,7 +274,7 @@ export function streamRun(
 							},
 						],
 					});
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "tool",
 						content: currentUtcTimeResult,
@@ -276,7 +331,7 @@ export function streamRun(
 							args: { url: webFetchTargetUrl },
 						},
 					});
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "ai",
 						content: "",
@@ -294,8 +349,11 @@ export function streamRun(
 						],
 					});
 					try {
-						webFetchResult = await runLocalWebFetch(webFetchTargetUrl, signal);
-						thread.messages.push({
+						webFetchResult = await runLocalWebFetch(
+							webFetchTargetUrl,
+							runSignal,
+						);
+						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
 							content: JSON.stringify(webFetchResult),
@@ -319,10 +377,10 @@ export function streamRun(
 							},
 						});
 					} catch (error) {
-						abortIfRequested(signal);
+						abortIfRequested(runSignal);
 						const messageText =
 							error instanceof Error ? error.message : String(error);
-						thread.messages.push({
+						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
 							content: JSON.stringify({
@@ -387,7 +445,7 @@ export function streamRun(
 							args: { query: webSearchQueryText },
 						},
 					});
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "ai",
 						content: "",
@@ -409,9 +467,9 @@ export function streamRun(
 					try {
 						webSearchResult = await runLocalWebSearch(
 							webSearchQueryText,
-							signal,
+							runSignal,
 						);
-						thread.messages.push({
+						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
 							content: JSON.stringify(webSearchResult),
@@ -435,10 +493,10 @@ export function streamRun(
 							},
 						});
 					} catch (error) {
-						abortIfRequested(signal);
+						abortIfRequested(runSignal);
 						const messageText =
 							error instanceof Error ? error.message : String(error);
-						thread.messages.push({
+						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
 							content: JSON.stringify({
@@ -500,7 +558,7 @@ export function streamRun(
 							args: plannedTool.args,
 						},
 					});
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "ai",
 						content: "",
@@ -523,7 +581,7 @@ export function streamRun(
 						plannedTool.args,
 					);
 					localToolExecutions.push(execution);
-					thread.messages.push({
+					appendRunMessage({
 						id: ctx.nextId("message", "local-message"),
 						type: "tool",
 						content: JSON.stringify(execution.output),
@@ -572,10 +630,10 @@ export function streamRun(
 							),
 							model,
 							provider,
-							signal,
+							signal: runSignal,
 						});
 					} catch (error) {
-						abortIfRequested(signal);
+						abortIfRequested(runSignal);
 						reply = webFetchResult
 							? localReplyWithWebFetch(message, webFetchResult)
 							: webSearchResult
@@ -585,7 +643,7 @@ export function streamRun(
 									: providerErrorMessage(error, isChinese);
 					}
 				}
-				abortIfRequested(signal);
+				abortIfRequested(runSignal);
 				if (!reply.trim()) {
 					reply = localReply(message);
 				}
@@ -597,7 +655,7 @@ export function streamRun(
 					source = "local-runtime";
 				}
 
-				thread.messages.push({
+				appendRunMessage({
 					id: ctx.nextId("message", "local-message"),
 					type: "ai",
 					content: reply,
@@ -648,9 +706,11 @@ export function streamRun(
 				});
 				controller.close();
 			} catch (error) {
-				if (signal?.aborted) {
+				if (runSignal.aborted) {
+					discardRunMessages();
+					ctx.persist();
 					controller.error(
-						signal.reason ?? new DOMException("Aborted", "AbortError"),
+						runSignal.reason ?? new DOMException("Aborted", "AbortError"),
 					);
 					return;
 				}
@@ -664,6 +724,8 @@ export function streamRun(
 					},
 				});
 				controller.close();
+			} finally {
+				ctx.runCancellations.release(runId);
 			}
 		},
 	});

@@ -1,9 +1,4 @@
-import {
-	Capacitor,
-	CapacitorHttp,
-	type HttpHeaders,
-	registerPlugin,
-} from "@capacitor/core";
+import { Capacitor, type HttpHeaders, registerPlugin } from "@capacitor/core";
 
 import { SECRET_STORAGE_FALLBACK_KEY, SECRET_STORAGE_KEY } from "./constants";
 import { chatCompletionsUrl, isRecord } from "./helpers";
@@ -13,9 +8,83 @@ import type {
 	LocalModelProvider,
 } from "./types";
 
+interface FocusAgentCancellableHttpPlugin {
+	cancel(options: { request_id: string }): Promise<void>;
+	postJson(options: {
+		body: string;
+		connect_timeout: number;
+		headers: HttpHeaders;
+		read_timeout: number;
+		request_id: string;
+		url: string;
+	}): Promise<{ body: string; status: number }>;
+}
+
+const focusAgentCancellableHttp =
+	registerPlugin<FocusAgentCancellableHttpPlugin>("FocusAgentCancellableHttp");
 const focusAgentSecureStorage = registerPlugin<FocusAgentSecureStoragePlugin>(
 	"FocusAgentSecureStorage",
 );
+
+function nativeCancellableHttpAvailable(): boolean {
+	return (
+		Capacitor.isNativePlatform() &&
+		Capacitor.isPluginAvailable("FocusAgentCancellableHttp")
+	);
+}
+
+function nativeRequestId(): string {
+	return `provider-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+async function postWithNativeCancellation({
+	body,
+	headers,
+	signal,
+	url,
+}: {
+	body: string;
+	headers: HttpHeaders;
+	signal?: AbortSignal;
+	url: string;
+}): Promise<{ body: string; status: number }> {
+	const requestId = nativeRequestId();
+	let cancelRequested = false;
+	const cancel = () => {
+		if (cancelRequested) return;
+		cancelRequested = true;
+		void focusAgentCancellableHttp
+			.cancel({ request_id: requestId })
+			.catch(() => undefined);
+	};
+	let rejectAbort: ((reason: unknown) => void) | undefined;
+	const abortPromise = new Promise<never>((_resolve, reject) => {
+		rejectAbort = reject;
+	});
+	const abort = () => {
+		cancel();
+		rejectAbort?.(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+	};
+	signal?.addEventListener("abort", abort, { once: true });
+	try {
+		abortIfRequested(signal);
+		const response = await Promise.race([
+			focusAgentCancellableHttp.postJson({
+				body,
+				connect_timeout: 30000,
+				headers,
+				read_timeout: 120000,
+				request_id: requestId,
+				url,
+			}),
+			abortPromise,
+		]);
+		abortIfRequested(signal);
+		return response;
+	} finally {
+		signal?.removeEventListener("abort", abort);
+	}
+}
 
 export function providerErrorMessage(
 	error: unknown,
@@ -139,6 +208,7 @@ export async function writeSecureModelSecrets(
 			"Failed to persist Android local runtime model secrets",
 			error,
 		);
+		throw error;
 	}
 }
 
@@ -164,23 +234,23 @@ export async function postOpenAiCompatibleChatCompletion({
 		messages,
 		stream: false,
 	};
-	if (
-		Capacitor.isNativePlatform() &&
-		Capacitor.isPluginAvailable("CapacitorHttp")
-	) {
-		const response = await CapacitorHttp.post({
-			url,
+	if (nativeCancellableHttpAvailable()) {
+		const response = await postWithNativeCancellation({
+			body: JSON.stringify(data),
 			headers,
-			data,
-			responseType: "json",
-			connectTimeout: 30000,
-			readTimeout: 120000,
+			signal,
+			url,
 		});
-		abortIfRequested(signal);
 		if (response.status < 200 || response.status >= 300) {
 			throw new Error(`HTTP ${response.status}`);
 		}
-		const content = extractAssistantContent(response.data);
+		let responseBody: unknown;
+		try {
+			responseBody = JSON.parse(response.body) as unknown;
+		} catch {
+			throw new Error("Provider returned an invalid JSON response.");
+		}
+		const content = extractAssistantContent(responseBody);
 		if (!content) throw new Error("Provider returned an empty response.");
 		return content;
 	}

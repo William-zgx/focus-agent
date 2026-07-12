@@ -19,6 +19,7 @@ frontend-sdk/node_modules/
 frontend-sdk/dist/
 frontend-sdk/dist-validation/
 apps/web/dist/
+apps/web/dist-android/
 src/*.egg-info/
 src/**/__pycache__/
 src/focus_agent.egg-info/

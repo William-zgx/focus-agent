@@ -30,7 +30,8 @@ export interface LocalRuntimeSequence {
 }
 
 export interface LocalRuntimeState {
-	version: 1;
+	accessMode?: "device-local-single-user";
+	version: 1 | 2;
 	adminConfig: FocusAgentAdminConfig;
 	artifacts?: LocalArtifact[];
 	auditEvents: FocusAgentAuditEvent[];

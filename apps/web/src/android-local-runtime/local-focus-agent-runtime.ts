@@ -19,12 +19,7 @@ import type {
 	ThreadResolution,
 	ThreadStateResponse,
 } from "@focus-agent/web-sdk";
-import {
-	handleAdmin,
-	handleAdminConfig,
-	handleAdminUsers,
-	touchAdminConfig,
-} from "./admin-runtime";
+import { handleAdminConfig, touchAdminConfig } from "./admin-runtime";
 import {
 	handleAgent,
 	handleLocalAgentContext,
@@ -66,8 +61,15 @@ import {
 	updateBranchDecisionSummary,
 	updateLocalBranchDecision,
 } from "./branch-logic";
-import { LOCAL_TENANT_ID, LOCAL_USER_ID, STORAGE_KEY } from "./constants";
+import {
+	ANDROID_LOCAL_ADMIN_UNSUPPORTED_MESSAGE,
+	ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE,
+	LOCAL_TENANT_ID,
+	LOCAL_USER_ID,
+	STORAGE_KEY,
+} from "./constants";
 import { errorResponse, id, nowIso, routeSegments } from "./helpers";
+import { LocalRunCancellationRegistry } from "./local-run-cancellation";
 import {
 	executeLocalAppTool,
 	localArtifactsForThread,
@@ -146,8 +148,19 @@ export function createLocalFocusAgentFetch(): typeof fetch {
 
 export class LocalFocusAgentRuntime {
 	modelSecrets: Record<string, { apiKey?: string }> = {};
+	readonly runCancellations = new LocalRunCancellationRegistry();
 	secretsReady: Promise<void> | null = null;
 	state = this.loadState();
+
+	constructor(
+		private readonly modelSecretStorage: {
+			read(): Promise<Record<string, { apiKey?: string }>>;
+			write(secrets: Record<string, { apiKey?: string }>): Promise<void>;
+		} = {
+			read: readSecureModelSecrets,
+			write: writeSecureModelSecrets,
+		},
+	) {}
 
 	async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 		if (init?.signal?.aborted) {
@@ -164,6 +177,17 @@ export class LocalFocusAgentRuntime {
 			init?.method ?? (input instanceof Request ? input.method : "GET")
 		).toUpperCase();
 		const segments = routeSegments(url.pathname);
+		const headers = new Headers(
+			input instanceof Request ? input.headers : undefined,
+		);
+		if (init?.headers) {
+			for (const [name, value] of new Headers(init.headers)) {
+				headers.set(name, value);
+			}
+		}
+		if (headers.get("Authorization")?.trim()) {
+			return errorResponse(401, ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE);
+		}
 		await this.ensureSecrets();
 
 		if (segments[0] === "v1") {
@@ -180,10 +204,16 @@ export class LocalFocusAgentRuntime {
 			const raw = window.localStorage.getItem(STORAGE_KEY);
 			if (!raw) return initialState();
 			const parsed = JSON.parse(raw) as LocalRuntimeState;
-			if (parsed?.version !== 1 || !parsed.threads || !parsed.conversations) {
+			if (
+				(parsed?.version !== 1 && parsed?.version !== 2) ||
+				!parsed.threads ||
+				!parsed.conversations
+			) {
 				return initialState();
 			}
-			return normalizeStoredState(parsed);
+			const state = normalizeStoredState(parsed);
+			window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+			return state;
 		} catch {
 			return initialState();
 		}
@@ -191,32 +221,53 @@ export class LocalFocusAgentRuntime {
 
 	persist(): void {
 		try {
-			const { modelSecrets: _legacyModelSecrets, ...persistedState } =
-				this.state;
-			window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
+			this.writeStateToLocalStorage();
 		} catch (error) {
 			console.warn("Failed to persist Android local runtime state", error);
 		}
 	}
 
+	private writeStateToLocalStorage(): void {
+		const { modelSecrets: legacyModelSecrets, ...stateWithoutSecrets } =
+			this.state;
+		const persistedState = legacyModelSecrets
+			? { ...stateWithoutSecrets, modelSecrets: legacyModelSecrets }
+			: stateWithoutSecrets;
+		window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
+	}
+
 	async ensureSecrets(): Promise<void> {
-		this.secretsReady ??= this.loadSecrets();
-		return this.secretsReady;
+		const activeAttempt = this.secretsReady ?? this.loadSecrets();
+		this.secretsReady = activeAttempt;
+		try {
+			await activeAttempt;
+		} catch (error) {
+			if (this.secretsReady === activeAttempt) {
+				this.secretsReady = null;
+			}
+			throw error;
+		}
 	}
 
 	async loadSecrets(): Promise<void> {
-		const storedSecrets = await readSecureModelSecrets();
+		const storedSecrets = await this.modelSecretStorage.read();
 		const legacySecrets = this.state.modelSecrets ?? {};
 		this.modelSecrets = { ...legacySecrets, ...storedSecrets };
 		if (this.state.modelSecrets) {
-			delete this.state.modelSecrets;
-			this.persist();
+			const legacyModelSecrets = this.state.modelSecrets;
 			await this.persistSecrets();
+			delete this.state.modelSecrets;
+			try {
+				this.writeStateToLocalStorage();
+			} catch (error) {
+				this.state.modelSecrets = legacyModelSecrets;
+				throw error;
+			}
 		}
 	}
 
 	async persistSecrets(): Promise<void> {
-		await writeSecureModelSecrets(this.modelSecrets);
+		await this.modelSecretStorage.write(this.modelSecrets);
 	}
 
 	nextId(prefix: keyof LocalRuntimeSequence, label: string): string {
@@ -574,29 +625,24 @@ export class LocalFocusAgentRuntime {
 	async handleAdmin(
 		method: string,
 		segments: string[],
-		searchParams: URLSearchParams,
+		_searchParams: URLSearchParams,
 		init?: RequestInit,
 	): Promise<Response> {
-		return handleAdmin(this, method, segments, searchParams, init);
+		if (segments[0] === "config") {
+			return this.handleAdminConfig(method, segments[1], init);
+		}
+		return errorResponse(403, ANDROID_LOCAL_ADMIN_UNSUPPORTED_MESSAGE);
 	}
 
 	handleAdminUsers(
-		method: string,
-		userId: string | undefined,
-		subresource: string | undefined,
-		action: string | undefined,
-		searchParams: URLSearchParams,
-		init?: RequestInit,
+		_method: string,
+		_userId: string | undefined,
+		_subresource: string | undefined,
+		_action: string | undefined,
+		_searchParams: URLSearchParams,
+		_init?: RequestInit,
 	): Response {
-		return handleAdminUsers(
-			this,
-			method,
-			userId,
-			subresource,
-			action,
-			searchParams,
-			init,
-		);
+		return errorResponse(403, ANDROID_LOCAL_ADMIN_UNSUPPORTED_MESSAGE);
 	}
 
 	async handleAdminConfig(

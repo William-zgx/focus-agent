@@ -159,6 +159,11 @@ const androidLocalRuntimeModules = [
 		specifier: "./local-text",
 	},
 	{
+		outputName: "local-run-cancellation.mjs",
+		sourcePath: "src/android-local-runtime/local-run-cancellation.ts",
+		specifier: "./local-run-cancellation",
+	},
+	{
 		outputName: "model-provider.mjs",
 		sourcePath: "src/android-local-runtime/model-provider.ts",
 		specifier: "./model-provider",
@@ -389,13 +394,19 @@ function assertConfigSourceContract(source, label) {
 
 function assertAdminConfigContract(config) {
 	const configRecord = assertRecord(config, "admin config");
+	assert.equal(
+		JSON.stringify(configRecord).includes("api_key_default"),
+		false,
+		"admin config responses must not expose local provider secrets",
+	);
 	const models = assertRecord(configRecord.models, "admin config models");
 	assertConfigSourceContract(models.source, "admin config models source");
 	assertNonEmptyString(models.default_model, "admin config default model");
 	assertNullableString(models.helper_model, "admin config helper model");
 	assertArray(models.model_choices, "admin config model choices").forEach(
-		(choice, index) =>
-			assertNonEmptyString(choice, `admin config model choice ${index}`),
+		(choice, index) => {
+			assertNonEmptyString(choice, `admin config model choice ${index}`);
+		},
 	);
 	assertBoolean(
 		models.requires_restart,
@@ -419,12 +430,12 @@ function assertAdminConfigContract(config) {
 			assertArray(
 				providerRecord.aliases,
 				`model provider ${index}.aliases`,
-			).forEach((alias, aliasIndex) =>
+			).forEach((alias, aliasIndex) => {
 				assertNonEmptyString(
 					alias,
 					`model provider ${index}.aliases[${aliasIndex}]`,
-				),
-			);
+				);
+			});
 			assertNullableString(
 				providerRecord.logo_slug,
 				`model provider ${index}.logo_slug`,
@@ -619,6 +630,17 @@ function assertAdminConfigContract(config) {
 	assertNullableString(configRecord.message, "admin config message");
 }
 
+function assertConfigDoesNotExposeSecrets(config, ...secrets) {
+	const serializedConfig = JSON.stringify(config);
+	for (const secret of secrets) {
+		assert.equal(
+			serializedConfig.includes(secret),
+			false,
+			"admin config responses must not expose configured API keys",
+		);
+	}
+}
+
 function assertModelsResponseContract(modelList, adminConfig) {
 	const modelListRecord = assertRecord(modelList, "model list");
 	assertNonEmptyString(
@@ -704,7 +726,9 @@ function assertLocalRuntimeExposeContract(runtime) {
 		runtime.localRoleDecision("Plan an Android local task.").model_id,
 		adminConfig.models.default_model,
 	);
-	const androidWebSelection = runtime.localSelectedSkills("Need Android web search");
+	const androidWebSelection = runtime.localSelectedSkills(
+		"Need Android web search",
+	);
 	assert.deepEqual(
 		androidWebSelection.map((skill) => skill.skill_id),
 		["local-web-tools"],
@@ -712,7 +736,9 @@ function assertLocalRuntimeExposeContract(runtime) {
 	);
 	assert.equal(androidWebSelection[0]?.prompt_mode, "execute");
 	assert.deepEqual(
-		runtime.localSelectedSkills("请 联网 搜索一下").map((skill) => skill.skill_id),
+		runtime
+			.localSelectedSkills("请 联网 搜索一下")
+			.map((skill) => skill.skill_id),
 		["local-web-tools"],
 		"local skill selection should match aliases without over-selecting",
 	);
@@ -947,6 +973,51 @@ try {
 			importOutputs: androidLocalRuntimeImportOutputs,
 		});
 	}
+	const {
+		androidAppUrlToInternalRoute,
+		chatCompletionsUrl,
+		normalizedProviderUrl,
+	} = await import(pathToFileURL(resolve(smokeBuildDir, "helpers.mjs")).href);
+	assert.equal(androidAppUrlToInternalRoute("focusagent://app/"), "/");
+	assert.equal(
+		androidAppUrlToInternalRoute(
+			"focusagent://app/c/conversation-1/t/thread_2/review?ignored=true",
+		),
+		"/c/conversation-1/t/thread_2/review",
+	);
+	assert.equal(
+		androidAppUrlToInternalRoute("focusagent://app/admin/config"),
+		"/admin/config",
+	);
+	for (const unsafeUrl of [
+		"https://example.com/admin/config",
+		"focusagent://evil/admin/config",
+		"focusagent://app//evil.example",
+		"focusagent://app/%2F%2Fevil.example",
+		"focusagent://app/productivity/tasks",
+		"focusagent://app/unknown",
+	]) {
+		assert.equal(androidAppUrlToInternalRoute(unsafeUrl), null);
+	}
+	assert.equal(
+		normalizedProviderUrl("https://api.openai.example.com/v1/?token=secret"),
+		"https://api.openai.example.com/v1",
+	);
+	assert.equal(normalizedProviderUrl("http://api.openai.example.com/v1"), "");
+	assert.equal(normalizedProviderUrl("http://10.0.2.2:11434/v1"), "");
+	assert.equal(
+		normalizedProviderUrl("http://10.0.2.2:11434/v1", true),
+		"http://10.0.2.2:11434/v1",
+	);
+	assert.equal(
+		normalizedProviderUrl("http://10.0.3.2:11434/v1", true),
+		"http://10.0.3.2:11434/v1",
+	);
+	assert.equal(normalizedProviderUrl("http://127.0.0.1:11434/v1", true), "");
+	assert.equal(
+		chatCompletionsUrl("http://api.openai.example.com/v1"),
+		"https://api.deepseek.com/chat/completions",
+	);
 	const { LocalFocusAgentRuntime, createLocalFocusAgentFetch } =
 		await loadTsModule(
 			resolve(
@@ -1026,73 +1097,78 @@ try {
 		),
 		"Web SDK model listing should work against Android local runtime",
 	);
-	assert.equal(
-		(await sdkClient.getPrincipal()).user.user_id,
-		"android-local-admin",
+	const principal = await sdkClient.getPrincipal();
+	assert.equal(principal.user.user_id, "android-local-user");
+	assert.equal(principal.user.auth_provider, "device-local");
+	assert.deepEqual(principal.user.roles, []);
+	assert.deepEqual(principal.roles, []);
+	assert.equal(principal.auth_enabled, false);
+	assert.equal(principal.is_admin, false);
+	assert.deepEqual(principal.scopes, [
+		"chat",
+		"branches",
+		"device-local-config",
+	]);
+	assert.deepEqual(principal.permissions, [
+		"chat:write",
+		"branches:write",
+		"device-local:configure",
+	]);
+	assert.equal(Object.hasOwn(principal, "session"), false);
+	assert.equal(Object.hasOwn(principal.user, "session_id"), false);
+	assert.deepEqual(directRuntime.state.sessions, []);
+
+	await expectStatus(
+		await focusFetch("http://focus-agent.local/v1/models", {
+			headers: { Authorization: "Bearer incorrect-local-token" },
+		}),
+		401,
 	);
-	assert.equal((await sdkClient.createDemoToken({})).token_type, "bearer");
-	assert.equal(
-		(await sdkClient.refresh({})).principal.user.user_id,
-		"android-local-admin",
-	);
-	await sdkClient.changePassword({});
-	const sdkSessions = await sdkClient.listMySessions();
-	assert.ok(sdkSessions.count >= 1);
-	await sdkClient.logout();
-	assert.equal(
-		(
-			await sdkClient.register({
-				username: "android-sdk-register",
-				display_name: "Android SDK Register",
-			})
-		).principal.user.username,
-		"android-sdk-register",
-	);
-	assert.equal(
-		(
-			await sdkClient.login({
-				username: "android-sdk-login",
-				password: "local",
-			})
-		).principal.user.username,
-		"android-sdk-login",
-	);
-	assert.equal(
-		(await sdkClient.listUsers({ query: "local", limit: 10 })).count >= 1,
-		true,
-		"Web SDK user listing should work against Android local runtime",
-	);
-	const sdkUser = await sdkClient.createUser({
-		username: "android-sdk-user",
-		display_name: "Android SDK User",
-		roles: ["viewer"],
-	});
-	assert.equal(
-		(await sdkClient.getUser(sdkUser.user_id)).username,
-		"android-sdk-user",
-	);
-	assert.equal(
-		(
-			await sdkClient.updateUser(sdkUser.user_id, {
-				display_name: "Android SDK User Updated",
-			})
-		).display_name,
-		"Android SDK User Updated",
-	);
-	assert.equal(
-		(await sdkClient.updateUserStatus(sdkUser.user_id, { status: "suspended" }))
-			.status,
-		"suspended",
-	);
-	assert.deepEqual(
-		(await sdkClient.updateUserRoles(sdkUser.user_id, { roles: ["member"] }))
-			.roles,
-		["member"],
-	);
-	assert.ok(await sdkClient.resetUserPassword(sdkUser.user_id, {}));
-	assert.ok((await sdkClient.listAuditEvents({ limit: 5 })).items);
+	for (const [path, init] of [
+		["change-password", jsonBody({})],
+		["demo-token", jsonBody({})],
+		["login", jsonBody({ username: "android-local", password: "local" })],
+		["logout", jsonBody({})],
+		["refresh", jsonBody({})],
+		[
+			"register",
+			jsonBody({
+				username: "android-local",
+				display_name: "Android Local",
+			}),
+		],
+		["sessions", undefined],
+		["sessions/unused-session/revoke", jsonBody({})],
+	]) {
+		await expectStatus(
+			await focusFetch(`http://focus-agent.local/v1/auth/${path}`, init),
+			403,
+		);
+	}
+	for (const [path, init] of [
+		["users", undefined],
+		[
+			"users",
+			jsonBody({
+				username: "android-local-user",
+				display_name: "Android Local User",
+			}),
+		],
+		["users/android-local-user/sessions", undefined],
+		["audit-events", undefined],
+	]) {
+		await expectStatus(
+			await focusFetch(`http://focus-agent.local/v1/admin/${path}`, init),
+			403,
+		);
+	}
 	const sdkAdminConfig = await sdkClient.getAdminConfig();
 	assertAdminConfigContract(sdkAdminConfig);
+	assertConfigDoesNotExposeSecrets(
+		sdkAdminConfig,
+		"deepseek-key",
+		"moonshot-key",
+	);
 	assert.ok(
 		await sdkClient.updateAdminModelConfig({
 			default_model: adminConfig.models.default_model,
@@ -1119,13 +1195,6 @@ try {
 			values: { android_sdk_runtime_smoke: true },
 		}),
 	);
-	const sdkAdminSessions = await sdkClient.listUserSessions(
-		"android-local-admin",
-		{
-			include_revoked: true,
-		},
-	);
-	assert.ok(sdkAdminSessions.count >= 1);
 	assert.ok((await sdkClient.listAgentCapabilities()).items.length > 0);
 	assert.ok((await sdkClient.listAgentToolsets()).items.length > 0);
 	assert.equal((await sdkClient.getAgentRolePolicy()).enabled, true);
@@ -1412,19 +1481,25 @@ try {
 		resume: { run_id: "android-sdk-resume" },
 	});
 	assert.equal((await sdkClient.collectStream(sdkResumeStream)).isClosed, true);
-	assert.deepEqual(
-		await Array.fromAsync(
-			await sdkClient.streamHarnessRunEvents("android-sdk-resume"),
-		),
-		[],
+	const sdkHistoricalEvents = await Array.fromAsync(
+		await sdkClient.streamHarnessRunEvents("android-sdk-resume"),
 	);
-	assert.equal(
-		(
-			await sdkClient.cancelHarnessRun("android-sdk-resume", {
+	assert.deepEqual(
+		sdkHistoricalEvents.map((event) => event.event),
+		["run.closed"],
+	);
+	assert.equal(sdkHistoricalEvents[0].data.run_id, "android-sdk-resume");
+	assert.equal(sdkHistoricalEvents[0].data.status, "closed");
+	assert.match(
+		sdkHistoricalEvents[0].data.message,
+		/no historical local events/i,
+	);
+	await assert.rejects(
+		() =>
+			sdkClient.cancelHarnessRun("android-sdk-resume", {
 				action: "interrupt",
-			})
-		).run.status,
-		"interrupt",
+			}),
+		(error) => error?.status === 404,
 	);
 	const sdkTrajectories = await sdkClient.listTrajectoryTurns({ limit: 5 });
 	assert.ok(sdkTrajectories.count > 0);
@@ -1455,154 +1530,6 @@ try {
 			})
 		).summary,
 	);
-
-	const principal = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/auth/me"),
-	);
-	assert.equal(principal.user.user_id, "android-local-admin");
-	const registered = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/auth/register",
-			jsonBody({
-				username: "android-register",
-				display_name: "Android Register",
-			}),
-		),
-	);
-	assert.equal(registered.principal.user.username, "android-register");
-	const loggedIn = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/auth/login",
-			jsonBody({ username: "android-login", password: "local" }),
-		),
-	);
-	assert.equal(loggedIn.principal.user.username, "android-login");
-	const demoToken = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/auth/demo-token",
-			jsonBody({}),
-		),
-	);
-	assert.equal(demoToken.token_type, "bearer");
-	await expectJson(
-		await focusFetch("http://focus-agent.local/v1/auth/refresh", jsonBody({})),
-	);
-	await expectStatus(
-		await focusFetch(
-			"http://focus-agent.local/v1/auth/change-password",
-			jsonBody({}),
-		),
-		204,
-	);
-	const authSessions = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/auth/sessions"),
-	);
-	assert.ok(authSessions.count >= 1);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/auth/sessions/${authSessions.items[0].session_id}/revoke`,
-					jsonBody({}),
-				),
-			)
-		).revoked_at,
-		"Android local auth should support session revocation",
-	);
-	await expectStatus(
-		await focusFetch("http://focus-agent.local/v1/auth/logout", jsonBody({})),
-		204,
-	);
-
-	const adminUsers = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/admin/users"),
-	);
-	assert.ok(adminUsers.count >= 1);
-	const createdUser = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/admin/users",
-			jsonBody({
-				display_name: "Android Smoke User",
-				email: "android-smoke@example.com",
-				roles: ["viewer"],
-				username: "android-smoke",
-			}),
-		),
-	);
-	assert.equal(createdUser.username, "android-smoke");
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/admin/users/${createdUser.user_id}`,
-				),
-			)
-		).user_id,
-		createdUser.user_id,
-	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/admin/users/${createdUser.user_id}`,
-					{
-						...jsonBody({ display_name: "Android Smoke Updated" }),
-						method: "PATCH",
-					},
-				),
-			)
-		).display_name,
-		"Android Smoke Updated",
-	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/admin/users/${createdUser.user_id}/status`,
-					jsonBody({ status: "suspended" }),
-				),
-			)
-		).status,
-		"suspended",
-	);
-	assert.deepEqual(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/admin/users/${createdUser.user_id}/roles`,
-					{ ...jsonBody({ roles: ["member"] }), method: "PUT" },
-				),
-			)
-		).roles,
-		["member"],
-	);
-	await expectJson(
-		await focusFetch(
-			`http://focus-agent.local/v1/admin/users/${createdUser.user_id}/password`,
-			jsonBody({}),
-		),
-	);
-	const adminUserSessions = await expectJson(
-		await focusFetch(
-			`http://focus-agent.local/v1/admin/users/${principal.user.user_id}/sessions?include_revoked=true`,
-		),
-	);
-	assert.ok(adminUserSessions.count >= 1);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					`http://focus-agent.local/v1/admin/users/${principal.user.user_id}/sessions/revoke`,
-					jsonBody({ session_id: adminUserSessions.items[0].session_id }),
-				),
-			)
-		).revoked_at,
-		"Android local admin should support revoking user sessions",
-	);
-	const auditEvents = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/admin/audit-events"),
-	);
-	assert.ok(auditEvents.count >= 1);
 
 	const deepseekProvider = {
 		id: "deepseek",
@@ -1650,6 +1577,11 @@ try {
 		}),
 	);
 	assertAdminConfigContract(multiProviderConfig);
+	assertConfigDoesNotExposeSecrets(
+		multiProviderConfig,
+		deepseekProvider.api_key_default,
+		moonshotProvider.api_key_default,
+	);
 	assertModelsResponseContract(
 		await expectJson(await focusFetch("http://focus-agent.local/v1/models")),
 		multiProviderConfig,
@@ -1700,6 +1632,11 @@ try {
 		}),
 	);
 	assertAdminConfigContract(readdedProviderConfig);
+	assertConfigDoesNotExposeSecrets(
+		readdedProviderConfig,
+		deepseekProvider.api_key_default,
+		moonshotProvider.api_key_default,
+	);
 	assert.equal(
 		readdedProviderConfig.models.providers.find(
 			(provider) => provider.id === "moonshot",
@@ -2482,25 +2419,25 @@ try {
 		resumeEvents.some((event) => event.event === "run.completed"),
 		"streamResume should complete against the Android local runtime",
 	);
-	assert.deepEqual(
-		await collectSse(
-			await focusFetch(
-				"http://focus-agent.local/v2/runs/android-resume/stream",
-				jsonBody({}),
-			),
+	const historicalEvents = await collectSse(
+		await focusFetch(
+			"http://focus-agent.local/v2/runs/android-resume/stream",
+			jsonBody({}),
 		),
-		[],
 	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v2/runs/android-resume/cancel",
-					jsonBody({ action: "interrupt" }),
-				),
-			)
-		).run.status,
-		"interrupt",
+	assert.deepEqual(
+		historicalEvents.map((event) => event.event),
+		["run.closed"],
+	);
+	assert.equal(historicalEvents[0].data.run_id, "android-resume");
+	assert.equal(historicalEvents[0].data.status, "closed");
+	assert.match(historicalEvents[0].data.message, /no historical local events/i);
+	await expectStatus(
+		await focusFetch(
+			"http://focus-agent.local/v2/runs/android-resume/cancel",
+			jsonBody({ action: "interrupt" }),
+		),
+		404,
 	);
 
 	const localWriteEvents = await collectSse(
@@ -2991,12 +2928,6 @@ try {
 				),
 			)
 		).summary,
-	);
-	assert.ok(await sdkClient.revokeSession(authSessions.items[0].session_id));
-	assert.ok(
-		await sdkClient.revokeUserSession(principal.user.user_id, {
-			session_id: adminUserSessions.items[0].session_id,
-		}),
 	);
 	const sdkForgetList = await sdkClient.listMemoryRecords({ limit: 5 });
 	assert.equal(

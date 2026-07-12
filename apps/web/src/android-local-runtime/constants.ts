@@ -3,8 +3,13 @@ export const SECRET_STORAGE_KEY =
 	"focus-agent-android-local-runtime-model-secrets";
 export const SECRET_STORAGE_FALLBACK_KEY =
 	"focus-agent-android-local-runtime-model-secrets-fallback";
-export const LOCAL_USER_ID = "android-local-admin";
+export const LOCAL_USER_ID = "android-local-user";
 export const LOCAL_TENANT_ID = "android-local";
+export const LOCAL_RUNTIME_ACCESS_MODE = "device-local-single-user";
+export const ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE =
+	"Android local runtime is a device-local single-user mode and does not support account, password, token, or session authentication.";
+export const ANDROID_LOCAL_ADMIN_UNSUPPORTED_MESSAGE =
+	"Administrative and user-governance endpoints are unavailable in Android local single-user mode.";
 export const DEFAULT_PROVIDER_ID = "deepseek";
 export const DEFAULT_PROVIDER_BASE_URL = "https://api.deepseek.com";
 export const DEFAULT_MODEL_ID = "deepseek-v4-pro";

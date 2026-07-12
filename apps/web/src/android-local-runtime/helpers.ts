@@ -50,11 +50,81 @@ export function searchParamNumber(
 	return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-export function normalizedUrl(value: string | null | undefined): string {
+const ANDROID_INTERNAL_STATIC_ROUTES = new Set([
+	"/",
+	"/account/profile",
+	"/account/security",
+	"/account/sessions",
+	"/admin/audit-events",
+	"/admin/config",
+	"/admin/users",
+	"/agent/governance",
+	"/agent/memory",
+	"/agent/roles",
+	"/auth/login",
+	"/auth/register",
+	"/observability/overview",
+	"/observability/trajectory",
+]);
+const ANDROID_INTERNAL_DYNAMIC_ROUTES = [
+	/^\/admin\/users\/[A-Za-z0-9_-]+$/,
+	/^\/c\/[A-Za-z0-9_-]+\/t\/[A-Za-z0-9_-]+(?:\/review)?$/,
+];
+const DEBUG_EMULATOR_LOOPBACK_HOSTS = new Set(["10.0.2.2", "10.0.3.2"]);
+
+export function androidAppUrlToInternalRoute(
+	value: string | null | undefined,
+): string | null {
+	const trimmedValue = value?.trim();
+	if (!trimmedValue || /%(?:2f|5c)/i.test(trimmedValue)) return null;
+	try {
+		const url = new URL(trimmedValue);
+		if (
+			url.protocol !== "focusagent:" ||
+			url.hostname !== "app" ||
+			url.username ||
+			url.password ||
+			url.port
+		) {
+			return null;
+		}
+		const pathname = url.pathname.replace(/\/+$/, "") || "/";
+		if (
+			ANDROID_INTERNAL_STATIC_ROUTES.has(pathname) ||
+			ANDROID_INTERNAL_DYNAMIC_ROUTES.some((pattern) => pattern.test(pathname))
+		) {
+			return pathname;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+export function isDebugEmulatorLoopbackUrl(url: URL): boolean {
+	return (
+		url.protocol === "http:" &&
+		!url.username &&
+		!url.password &&
+		DEBUG_EMULATOR_LOOPBACK_HOSTS.has(url.hostname)
+	);
+}
+
+export function normalizedProviderUrl(
+	value: string | null | undefined,
+	allowDebugEmulatorHttp = false,
+): string {
 	const trimmedValue = value?.trim();
 	if (!trimmedValue) return "";
 	try {
 		const url = new URL(trimmedValue);
+		if (
+			url.protocol !== "https:" &&
+			!(allowDebugEmulatorHttp && isDebugEmulatorLoopbackUrl(url))
+		) {
+			return "";
+		}
+		if (url.username || url.password) return "";
 		url.pathname = url.pathname.replace(/\/+$/, "");
 		url.search = "";
 		url.hash = "";
@@ -62,6 +132,13 @@ export function normalizedUrl(value: string | null | undefined): string {
 	} catch {
 		return "";
 	}
+}
+
+export function normalizedUrl(value: string | null | undefined): string {
+	return normalizedProviderUrl(
+		value,
+		import.meta.env.VITE_FOCUS_AGENT_ALLOW_DEBUG_EMULATOR_HTTP === "true",
+	);
 }
 
 export function chatCompletionsUrl(baseUrl: string): string {

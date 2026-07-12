@@ -1,14 +1,47 @@
 apply plugin: 'com.android.application'
 
+def injectedValue = { String name ->
+    def gradleValue = providers.gradleProperty(name).orNull
+    def environmentValue = providers.environmentVariable(name).orNull
+    def value = gradleValue ?: environmentValue
+    return value == null ? null : value.trim()
+}
+
+def injectedVersionCode = {
+    def rawValue = injectedValue("FOCUS_AGENT_ANDROID_VERSION_CODE")
+    if (!rawValue) {
+        return 1
+    }
+    try {
+        def value = Integer.parseInt(rawValue)
+        if (value < 1) {
+            throw new NumberFormatException()
+        }
+        return value
+    } catch (NumberFormatException ignored) {
+        throw new GradleException("FOCUS_AGENT_ANDROID_VERSION_CODE must be a positive integer.")
+    }
+}()
+
+def releaseSigning = [
+    storeFile: injectedValue("FOCUS_AGENT_ANDROID_KEYSTORE_PATH"),
+    storePassword: injectedValue("FOCUS_AGENT_ANDROID_KEYSTORE_PASSWORD"),
+    keyAlias: injectedValue("FOCUS_AGENT_ANDROID_KEY_ALIAS"),
+    keyPassword: injectedValue("FOCUS_AGENT_ANDROID_KEY_PASSWORD"),
+]
+
 android {
     namespace = "ai.focusagent.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "ai.focusagent.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode injectedVersionCode
+        versionName injectedValue("FOCUS_AGENT_ANDROID_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,12 +49,46 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseSigning.storeFile) {
+                storeFile rootProject.file(releaseSigning.storeFile)
+            }
+            storePassword releaseSigning.storePassword
+            keyAlias releaseSigning.keyAlias
+            keyPassword releaseSigning.keyPassword
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+tasks.register("verifyReleaseSigning") {
+    doLast {
+        def missing = releaseSigning.findAll { _, value -> !value }.keySet()
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                "Release signing is incomplete. Set all FOCUS_AGENT_ANDROID_KEYSTORE_PATH, " +
+                "FOCUS_AGENT_ANDROID_KEYSTORE_PASSWORD, FOCUS_AGENT_ANDROID_KEY_ALIAS, and " +
+                "FOCUS_AGENT_ANDROID_KEY_PASSWORD values via environment variables or Gradle properties."
+            )
+        }
+        def keystore = rootProject.file(releaseSigning.storeFile)
+        if (!keystore.isFile()) {
+            throw new GradleException(
+                "Release signing keystore does not exist: ${keystore}"
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(tasks.named("verifyReleaseSigning"))
 }
 
 repositories {

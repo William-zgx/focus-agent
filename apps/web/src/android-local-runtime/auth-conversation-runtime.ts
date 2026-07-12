@@ -3,15 +3,12 @@ import type {
 	FocusAgentConversationListResponse,
 	FocusAgentConversationSummary,
 	FocusAgentCreateConversationRequest,
-	FocusAgentCreateUserRequest,
-	FocusAgentLoginRequest,
 	FocusAgentSessionListResponse,
 	FocusAgentUpdateConversationRequest,
 	FocusAgentUserListResponse,
 } from "@focus-agent/web-sdk";
-import { LOCAL_USER_ID } from "./constants";
+import { ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE } from "./constants";
 import {
-	emptyResponse,
 	errorResponse,
 	jsonResponse,
 	nowIso,
@@ -20,71 +17,30 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
-import { authResponse, newThreadState, principal } from "./state";
+import { newThreadState, principal } from "./state";
 
 export function handleAuth(
 	ctx: LocalFocusAgentRuntime,
 	method: string,
 	segments: string[],
-	init?: RequestInit,
+	_init?: RequestInit,
 ): Response {
-	const [resource, idOrAction, action] = segments;
+	const [resource] = segments;
 	if (resource === "me" && method === "GET") {
 		return jsonResponse(principal(ctx.currentUser()));
 	}
-	if (resource === "refresh" && method === "POST") {
-		return jsonResponse(authResponse(ctx.currentUser()));
-	}
-	if (resource === "demo-token" && method === "POST") {
-		return jsonResponse({
-			access_token: "android-local-token",
-			token_type: "bearer",
-			expires_in_seconds: 86400,
-			issuer: "focus-agent-android-local-runtime",
-		});
-	}
-	if (resource === "login" && method === "POST") {
-		const body = parseJsonBody(init) as FocusAgentLoginRequest;
-		const username = stringValue(body.username).trim();
-		if (username) {
-			ctx.currentUser().username = username;
-			ctx.currentUser().display_name = username;
-			ctx.persist();
-		}
-		return jsonResponse(authResponse(ctx.currentUser()));
-	}
-	if (resource === "register" && method === "POST") {
-		const body = parseJsonBody(init) as Partial<FocusAgentCreateUserRequest>;
-		const user = ctx.currentUser();
-		user.username = nullableString(body.username) ?? user.username;
-		user.display_name = nullableString(body.display_name) ?? user.display_name;
-		user.tenant_id = nullableString(body.tenant_id) ?? user.tenant_id;
-		user.updated_at = nowIso();
-		ctx.persist();
-		return jsonResponse(authResponse(user));
-	}
-	if (resource === "logout" && method === "POST") {
-		return emptyResponse({ status: 204 });
-	}
-	if (resource === "change-password" && method === "POST") {
-		ctx.currentUser().password_updated_at = nowIso();
-		ctx.addAuditEvent("auth.change_password", "user", LOCAL_USER_ID);
-		ctx.persist();
-		return emptyResponse({ status: 204 });
-	}
-	if (resource === "sessions" && method === "GET") {
-		return jsonResponse(ctx.sessionList(ctx.currentUser().user_id));
-	}
-	if (resource === "sessions" && action === "revoke" && method === "POST") {
-		const session = ctx.state.sessions.find(
-			(item) => item.session_id === idOrAction,
-		);
-		if (!session) return errorResponse(404, "Session not found.");
-		session.revoked_at = nowIso();
-		session.current = false;
-		ctx.addAuditEvent("auth.session_revoke", "session", session.session_id);
-		ctx.persist();
-		return jsonResponse(session);
+	if (
+		[
+			"change-password",
+			"demo-token",
+			"login",
+			"logout",
+			"refresh",
+			"register",
+			"sessions",
+		].includes(resource)
+	) {
+		return errorResponse(403, ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE);
 	}
 	return errorResponse(404, "Unsupported local auth route.");
 }

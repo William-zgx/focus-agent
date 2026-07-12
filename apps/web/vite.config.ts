@@ -7,6 +7,7 @@ const apiHost = process.env.API_HOST || "127.0.0.1";
 const apiPort = process.env.API_PORT || "8000";
 const apiTarget = `http://${apiHost}:${apiPort}`;
 const appBase = process.env.VITE_FOCUS_AGENT_APP_BASE || "/app/";
+const buildOutDir = process.env.VITE_FOCUS_AGENT_BUILD_OUT_DIR || "dist";
 
 export default defineConfig({
 	base: appBase,
@@ -21,6 +22,7 @@ export default defineConfig({
 		},
 	},
 	build: {
+		outDir: buildOutDir,
 		target: "es2022",
 		sourcemap: false,
 		chunkSizeWarningLimit: 800,

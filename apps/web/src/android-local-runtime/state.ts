@@ -1,10 +1,8 @@
 import type {
 	FocusAgentAdminConfig,
-	FocusAgentAuthResponse,
 	FocusAgentBranchRecord,
 	FocusAgentModelOption,
 	FocusAgentPrincipalResponse,
-	FocusAgentSession,
 	FocusAgentUser,
 	ThreadStateResponse,
 } from "@focus-agent/web-sdk";
@@ -13,6 +11,7 @@ import {
 	DEFAULT_MODEL_ID,
 	DEFAULT_PROVIDER_BASE_URL,
 	DEFAULT_PROVIDER_ID,
+	LOCAL_RUNTIME_ACCESS_MODE,
 	LOCAL_TENANT_ID,
 	LOCAL_USER_ID,
 } from "./constants";
@@ -27,18 +26,22 @@ export function localUser(
 	return {
 		user_id: LOCAL_USER_ID,
 		username: "android-local",
-		display_name: "Android Local Admin",
+		display_name: "Android Local",
 		email: "local@focus-agent.invalid",
 		tenant_id: LOCAL_TENANT_ID,
 		status: "active",
-		roles: ["admin"],
-		auth_provider: "local-runtime",
+		roles: [],
+		auth_provider: "device-local",
 		created_at: timestamp,
 		updated_at: timestamp,
 		last_seen_at: timestamp,
-		last_login_at: timestamp,
-		password_updated_at: timestamp,
-		metadata: { runtime: "android-local" },
+		last_login_at: null,
+		password_updated_at: null,
+		metadata: {
+			runtime: "android-local",
+			access_mode: LOCAL_RUNTIME_ACCESS_MODE,
+			device_local_configuration: true,
+		},
 		...overrides,
 	};
 }
@@ -94,25 +97,12 @@ export function principal(user: FocusAgentUser): FocusAgentPrincipalResponse {
 	return {
 		user_id: user.user_id,
 		tenant_id: user.tenant_id,
-		scopes: ["chat", "branches", "admin"],
+		scopes: ["chat", "branches", "device-local-config"],
 		auth_enabled: false,
 		user,
 		roles: user.roles,
-		permissions: ["chat:write", "branches:write", "admin:write"],
-		is_admin: user.roles.includes("admin"),
-	};
-}
-
-export function authResponse(user: FocusAgentUser): FocusAgentAuthResponse {
-	return {
-		access_token: "android-local-token",
-		token_type: "bearer",
-		refresh_token: "android-local-refresh",
-		expires_in_seconds: 86400,
-		issuer: "focus-agent-android-local-runtime",
-		principal: principal(user),
-		user,
-		session: null,
+		permissions: ["chat:write", "branches:write", "device-local:configure"],
+		is_admin: false,
 	};
 }
 
@@ -527,27 +517,13 @@ export function initialState(): LocalRuntimeState {
 		created_at: timestamp,
 		updated_at: timestamp,
 		last_seen_at: timestamp,
-		last_login_at: timestamp,
-		password_updated_at: timestamp,
 	});
 	const rootThreadId = "local-thread-0001";
 	const rootThread = newThreadState(rootThreadId, rootThreadId);
 	const workspaceFiles = defaultWorkspaceFiles();
-	const session: FocusAgentSession = {
-		session_id: "local-session-0001",
-		user_id: user.user_id,
-		created_at: timestamp,
-		updated_at: timestamp,
-		expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-		revoked_at: null,
-		last_seen_at: timestamp,
-		user_agent: "Focus Agent Android local runtime",
-		ip_address: null,
-		metadata: { runtime: "android-local" },
-		current: true,
-	};
 	return {
-		version: 1,
+		accessMode: LOCAL_RUNTIME_ACCESS_MODE,
+		version: 2,
 		adminConfig: defaultAdminConfig(),
 		artifacts: [],
 		auditEvents: [],
@@ -575,12 +551,12 @@ export function initialState(): LocalRuntimeState {
 			message: 1,
 			note: 1,
 			run: 1,
-			session: 2,
+			session: 1,
 			task: 1,
 			taskEvent: 1,
 			thread: 2,
 		},
-		sessions: [session],
+		sessions: [],
 		taskEvents: [],
 		tasks: [],
 		threads: { [rootThreadId]: rootThread },
@@ -593,6 +569,10 @@ export function initialState(): LocalRuntimeState {
 export function normalizeStoredState(
 	value: LocalRuntimeState,
 ): LocalRuntimeState {
+	value.accessMode = LOCAL_RUNTIME_ACCESS_MODE;
+	value.version = 2;
+	value.users = [localUser()];
+	value.sessions = [];
 	value.artifacts = Array.isArray(value.artifacts) ? value.artifacts : [];
 	value.branchDecisions = isRecord(value.branchDecisions)
 		? Object.fromEntries(

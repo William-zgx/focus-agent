@@ -1,6 +1,9 @@
 import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import yaml
 
 
 def _android_local_runtime_text(web_root: Path) -> str:
@@ -26,6 +29,16 @@ def test_android_app_scaffold_builds_capacitor_shell():
         / "focusagent"
         / "app"
         / "MainActivity.java",
+        android_root
+        / "app"
+        / "src"
+        / "main"
+        / "java"
+        / "ai"
+        / "focusagent"
+        / "app"
+        / "FocusAgentCancellableHttpPlugin.java",
+        web_root / "scripts" / "android-local-runtime-cancellation-smoke.mjs",
         android_root / "app" / "src" / "debug" / "AndroidManifest.xml",
         android_root
         / "app"
@@ -45,12 +58,20 @@ def test_android_app_scaffold_builds_capacitor_shell():
     assert scripts["android:web:build"].startswith("VITE_FOCUS_AGENT_TARGET=android ")
     assert "VITE_FOCUS_AGENT_APP_BASE=/" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ROUTER_BASE=/" in scripts["android:web:build"]
+    assert "VITE_FOCUS_AGENT_BUILD_OUT_DIR=dist-android" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=true" not in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in scripts["android:web:build"]
-    assert scripts["android:apk:debug"] == (
-        "pnpm android:sync && cd android && ./gradlew assembleDebug"
+    assert scripts["android:web:build:debug"].startswith(
+        "VITE_FOCUS_AGENT_ALLOW_DEBUG_EMULATOR_HTTP=true "
     )
+    assert scripts["android:sync:debug"] == (
+        "pnpm android:web:build:debug && pnpm exec cap sync android"
+    )
+    assert scripts["android:apk:debug"] == (
+        "pnpm android:sync:debug && cd android && ./gradlew assembleDebug"
+    )
+    assert scripts["android:open"] == "pnpm android:sync && pnpm exec cap open android"
     assert (
         scripts["android:runtime:smoke"]
         == "pnpm --filter @focus-agent/web-app smoke:android-local-runtime"
@@ -62,19 +83,47 @@ def test_android_app_scaffold_builds_capacitor_shell():
     capacitor_config = (root / "capacitor.config.ts").read_text()
     assert 'appId: "ai.focusagent.app"' in capacitor_config
     assert 'appName: "Focus Agent"' in capacitor_config
-    assert 'webDir: "apps/web/dist"' in capacitor_config
+    assert 'webDir: "apps/web/dist-android"' in capacitor_config
     assert "CapacitorHttp" in capacitor_config
     assert "enabled: true" in capacitor_config
     assert 'androidScheme: "http"' in capacitor_config
 
+    vite_config = (web_root / "vite.config.ts").read_text()
+    assert 'process.env.VITE_FOCUS_AGENT_BUILD_OUT_DIR || "dist"' in vite_config
+    assert "outDir: buildOutDir" in vite_config
+
+    gitignore = (root / ".gitignore").read_text()
+    assert "apps/web/dist-android/" in gitignore
+
     android_build = (android_root / "app" / "build.gradle").read_text()
     assert 'namespace = "ai.focusagent.app"' in android_build
     assert 'applicationId "ai.focusagent.app"' in android_build
+    assert "FOCUS_AGENT_ANDROID_VERSION_CODE" in android_build
+    assert "FOCUS_AGENT_ANDROID_VERSION_NAME" in android_build
+    assert "FOCUS_AGENT_ANDROID_KEYSTORE_PATH" in android_build
+    assert "FOCUS_AGENT_ANDROID_KEYSTORE_PASSWORD" in android_build
+    assert "FOCUS_AGENT_ANDROID_KEY_ALIAS" in android_build
+    assert "FOCUS_AGENT_ANDROID_KEY_PASSWORD" in android_build
+    assert "verifyReleaseSigning" in android_build
+    assert "preReleaseBuild" in android_build
+    assert "signingConfig signingConfigs.release" in android_build
+    assert "Release signing is incomplete" in android_build
+
+    root_android_build = (android_root / "build.gradle").read_text()
+    assert "project(':capacitor-cordova-android-plugins')" in root_android_build
+    assert "configurations.configureEach" in root_android_build
+    assert "module: 'kotlin-stdlib-jdk7'" in root_android_build
+    assert "module: 'kotlin-stdlib-jdk8'" in root_android_build
+    assert "force" not in root_android_build
 
     android_manifest = (android_root / "app" / "src" / "main" / "AndroidManifest.xml").read_text()
     assert "android.permission.INTERNET" in android_manifest
     assert 'android:allowBackup="false"' in android_manifest
     assert 'android:fullBackupContent="false"' in android_manifest
+    assert 'android:usesCleartextTraffic="false"' in android_manifest
+    assert 'android:scheme="focusagent"' in android_manifest
+    assert 'android:host="app"' in android_manifest
+    assert "android.intent.category.BROWSABLE" in android_manifest
 
     main_activity = (
         android_root
@@ -86,6 +135,17 @@ def test_android_app_scaffold_builds_capacitor_shell():
         / "focusagent"
         / "app"
         / "MainActivity.java"
+    ).read_text()
+    cancellable_http_plugin = (
+        android_root
+        / "app"
+        / "src"
+        / "main"
+        / "java"
+        / "ai"
+        / "focusagent"
+        / "app"
+        / "FocusAgentCancellableHttpPlugin.java"
     ).read_text()
     secure_storage_plugin = (
         android_root
@@ -99,13 +159,104 @@ def test_android_app_scaffold_builds_capacitor_shell():
         / "FocusAgentSecureStoragePlugin.java"
     ).read_text()
     assert "FocusAgentSecureStoragePlugin.class" in main_activity
+    assert "FocusAgentAppPlugin.class" in main_activity
+    assert "FocusAgentCancellableHttpPlugin.class" in main_activity
     assert '@CapacitorPlugin(name = "FocusAgentSecureStorage")' in secure_storage_plugin
     assert "AndroidKeyStore" in secure_storage_plugin
     assert "AES/GCM/NoPadding" in secure_storage_plugin
+    app_plugin = (
+        android_root
+        / "app"
+        / "src"
+        / "main"
+        / "java"
+        / "ai"
+        / "focusagent"
+        / "app"
+        / "FocusAgentAppPlugin.java"
+    ).read_text()
+    assert '@CapacitorPlugin(name = "App")' in app_plugin
+    assert 'EVENT_URL_OPEN = "appUrlOpen"' in app_plugin
+    assert "getLaunchUrl" in app_plugin
+    assert "notifyListeners(EVENT_URL_OPEN, event, true)" in app_plugin
+    assert '@CapacitorPlugin(name = "FocusAgentCancellableHttp")' in cancellable_http_plugin
+    assert "void postJson(PluginCall call)" in cancellable_http_plugin
+    assert "void cancel(PluginCall call)" in cancellable_http_plugin
+    assert "newCachedThreadPool" not in cancellable_http_plugin
+    assert "new ThreadPoolExecutor(" in cancellable_http_plugin
+    assert "new ArrayBlockingQueue<>(MAX_QUEUED_REQUESTS)" in cancellable_http_plugin
+    assert "new Semaphore(maxActiveRequests)" in cancellable_http_plugin
+    assert "MAX_CONCURRENT_REQUESTS = 4" in cancellable_http_plugin
+    assert "MAX_ACTIVE_REQUESTS = 8" in cancellable_http_plugin
+    assert "activeRequestSlots.tryAcquire()" in cancellable_http_plugin
+    assert "catch (RejectedExecutionException error)" in cancellable_http_plugin
+    assert "state.rejectUnavailable(error)" in cancellable_http_plugin
+    assert "finishRequest(requestId, state)" in cancellable_http_plugin
+    assert "state.releaseSlot(activeRequestSlots)" in cancellable_http_plugin
+    assert "synchronized (lifecycleLock)" in cancellable_http_plugin
+    assert "destroyed = true" in cancellable_http_plugin
+    assert "executor.shutdownNow()" in cancellable_http_plugin
+    assert "requests.remove(requestId)" in cancellable_http_plugin
+    assert "HttpURLConnection" in cancellable_http_plugin
+    assert "activeConnection.disconnect()" in cancellable_http_plugin
+    assert "activeFuture.cancel(true)" in cancellable_http_plugin
+    assert "synchronized void resolve(JSObject result)" in cancellable_http_plugin
+    assert "synchronized void rejectFailure(Exception error)" in cancellable_http_plugin
+    assert 'call.reject("Provider HTTP request cancelled.")' in cancellable_http_plugin
+    assert "ByteArrayOutputStream" in cancellable_http_plugin
+    assert "byte[] buffer = new byte[8192]" in cancellable_http_plugin
+    assert "read > MAX_RESPONSE_BYTES - totalBytes" in cancellable_http_plugin
+    assert "new String(response.toByteArray(), StandardCharsets.UTF_8)" in (cancellable_http_plugin)
+    assert "connection.setInstanceFollowRedirects(false)" in cancellable_http_plugin
+    assert 'return "10.0.2.2".equals(host) || "10.0.3.2".equals(host);' in cancellable_http_plugin
 
     debug_manifest = (android_root / "app" / "src" / "debug" / "AndroidManifest.xml").read_text()
     assert "android:usesCleartextTraffic" in debug_manifest
     assert "debug_network_security_config" in debug_manifest
+    debug_network_config = (
+        android_root / "app" / "src" / "debug" / "res" / "xml" / "debug_network_security_config.xml"
+    ).read_text()
+    assert 'cleartextTrafficPermitted="false"' in debug_network_config
+    assert 'cleartextTrafficPermitted="true"' in debug_network_config
+    debug_network_root = ET.fromstring(debug_network_config)
+    domains = debug_network_root.findall("./domain-config/domain")
+    assert [(domain.text, domain.attrib) for domain in domains] == [
+        ("10.0.2.2", {"includeSubdomains": "false"}),
+        ("10.0.3.2", {"includeSubdomains": "false"}),
+    ]
+
+
+def test_ci_requires_android_debug_sync_build_lint_and_unit_tests():
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.safe_load((root / ".github" / "workflows" / "ci.yml").read_text())
+    android_job = workflow["jobs"]["android"]
+    steps = android_job["steps"]
+
+    assert android_job["runs-on"] == "ubuntu-latest"
+    assert "needs" not in android_job
+    assert "if" not in android_job
+    node_step = next(
+        step for step in steps if step.get("uses", "").startswith("actions/setup-node@")
+    )
+    assert node_step["with"]["node-version"] == "22"
+    assert any(step.get("uses", "").startswith("actions/setup-java@") for step in steps)
+    assert any(step.get("uses", "").startswith("android-actions/setup-android@") for step in steps)
+    assert any(
+        step.get("run") == 'sdkmanager "platforms;android-36" "build-tools;36.0.0"'
+        for step in steps
+    )
+    assert any(step.get("run") == "pnpm install --frozen-lockfile" for step in steps)
+    assert any(step.get("run") == "pnpm android:sync:debug" for step in steps)
+
+    gradle_step = next(step for step in steps if "lintDebug" in step.get("run", ""))
+    assert gradle_step["working-directory"] == "android"
+    gradle_tasks = set(gradle_step["run"].split())
+    assert {"assembleDebug", "lintDebug", "testDebugUnitTest"} <= gradle_tasks
+
+    job_text = json.dumps(android_job)
+    assert "secrets." not in job_text
+    assert "connectedAndroidTest" not in job_text
+    assert "connectedDebugAndroidTest" not in job_text
 
 
 def test_android_target_uses_local_runtime_and_excludes_agent_team():
@@ -149,11 +300,19 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
         web_root / "src" / "android-local-runtime" / "constants.ts"
     ).read_text()
     assert "createLocalFocusAgentFetch" in local_runtime_text
-    assert "CapacitorHttp.post" in local_runtime_text
+    assert "FocusAgentCancellableHttp" in local_runtime_text
+    assert "postWithNativeCancellation" in local_runtime_text
+    assert "focusAgentCancellableHttp" in local_runtime_text
+    assert ".cancel({ request_id: requestId })" in local_runtime_text
+    assert "Promise.race" in local_runtime_text
+    assert "CapacitorHttp.post" not in local_runtime_text
     assert "FocusAgentSecureStorage" in local_runtime_text
     assert "SECRET_STORAGE_KEY" in local_runtime_text
     assert "abortIfRequested(signal)" in local_runtime_text
     assert "postOpenAiCompatibleChatCompletion" in local_runtime_text
+    assert "androidAppUrlToInternalRoute" in local_runtime_text
+    assert "normalizedProviderUrl" in local_runtime_text
+    assert "isDebugEmulatorLoopbackUrl" in local_runtime_text
     assert "modelSecrets" in local_runtime_text
     assert "this.state.modelSecrets" in local_runtime_text
     assert "delete this.state.modelSecrets" in local_runtime_text
@@ -162,6 +321,11 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "modelProvider(selectedModel" in local_runtime_text
     assert "delete ctx.modelSecrets[providerId]" in local_runtime_text
     assert "api_key_default" in local_runtime_text
+    assert 'LOCAL_RUNTIME_ACCESS_MODE = "device-local-single-user"' in local_runtime_constants_text
+    assert "ANDROID_LOCAL_AUTH_UNSUPPORTED_MESSAGE" in local_runtime_text
+    assert "ANDROID_LOCAL_ADMIN_UNSUPPORTED_MESSAGE" in local_runtime_text
+    assert "handleAdminConfig(this, method, resource, init)" in local_runtime_text
+    assert 'segments[0] === "config"' in local_runtime_text
     assert 'DEFAULT_PROVIDER_ID = "deepseek"' in local_runtime_constants_text
     assert 'DEFAULT_PROVIDER_BASE_URL = "https://api.deepseek.com"' in local_runtime_constants_text
     assert 'DEFAULT_MODEL_ID = "deepseek-v4-pro"' in local_runtime_constants_text
@@ -180,6 +344,8 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
 
     admin_config_text = (web_root / "src" / "pages" / "admin" / "admin-config-page.tsx").read_text()
     assert "appEnv.useLocalRuntime" in admin_config_text
+    assert "Device-local configuration" in admin_config_text
+    assert "allowDeviceLocalConfiguration" in admin_config_text
     assert "api_key_default" in admin_config_text
     assert "showLocalSecrets={appEnv.useLocalRuntime}" in admin_config_text
 
@@ -210,6 +376,14 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "!apiBaseUrlReady" in register_text
 
     router_text = (web_root / "src" / "app" / "router.tsx").read_text()
+    assert 'registerPlugin<CapacitorAppPlugin>("App")' in router_text
+    assert '"appUrlOpen"' in router_text
+    assert "getLaunchUrl" in router_text
+    assert "androidAppUrlToInternalRoute" in router_text
+    assert "const route = androidAppUrlToInternalRoute(url);" in router_text
+    assert router_text.index('addListener("appUrlOpen", openInternalRoute)') < router_text.index(
+        ".getLaunchUrl()"
+    )
     assert "appEnv.features.agentTeam" in router_text
     assert "appEnv.features.agentGovernance" in router_text
     assert "appEnv.features.agentMemory" in router_text
@@ -221,6 +395,13 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "...observabilityRoutes" in router_text
     assert "...productivityRoutes" in router_text
     assert "basepath: appEnv.routerBasePath" in router_text
+
+    cancellation_smoke_text = (
+        web_root / "scripts" / "android-local-runtime-cancellation-smoke.mjs"
+    ).read_text()
+    assert 'method: "cancel"' in cancellation_smoke_text
+    assert "controller.abort" in cancellation_smoke_text
+    assert "postOpenAiCompatibleChatCompletion" in cancellation_smoke_text
 
     shell_config_text = (web_root / "src" / "app" / "shell" / "app-shell-config.ts").read_text()
     assert "if (!appEnv.features.productivity) return false" in shell_config_text
@@ -237,6 +418,7 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     package_json = json.loads((root / "package.json").read_text())
     android_build_script = package_json["scripts"]["android:web:build"]
     assert "VITE_FOCUS_AGENT_TARGET=android" in android_build_script
+    assert "VITE_FOCUS_AGENT_BUILD_OUT_DIR=dist-android" in android_build_script
     assert "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false" in android_build_script
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in android_build_script
 
