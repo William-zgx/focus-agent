@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-06-25
+更新时间：2026-07-12
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -332,6 +332,26 @@ in `.focus_agent/tools.toml`. Blocked fetches emit structured policy metadata
 such as category, host, and matching rule so trajectory and UI surfaces can
 explain the denial.
 
+The normal HTTPX-backed transport also closes the DNS-rebinding gap between
+policy validation and the connection:
+
+1. Resolve the initial hostname and require every DNS answer to be a public
+   IPv4 or IPv6 address. A mixed public/private answer rejects the entire fetch.
+2. Connect to one of those validated addresses directly rather than resolving
+   the hostname again at connect time.
+3. Preserve the original URL authority in the HTTP `Host` header and preserve
+   the original hostname as TLS SNI, so IP pinning does not weaken normal
+   virtual-host or certificate checks.
+4. Disable implicit redirect following. Each explicit redirect is limited to
+   HTTP(S), rechecked against the domain policy, resolved again, and pinned to
+   that hop's validated public addresses.
+
+This is a `web_fetch` transport guarantee, not a blanket claim about every
+network-capable tool or sandbox program. Tests may inject a small non-HTTPX
+client for compatibility; production construction uses the pinned HTTPX path.
+`web_search` provider calls and Skill entrypoints have their own provider or
+sandbox network boundaries.
+
 ### Live Web Research Contract
 
 Fresh external questions are handled as an execution contract, not only as a
@@ -424,7 +444,9 @@ The isolation boundary is shared across backend and frontend:
 
 - `src/focus_agent/core/tool_protocol.py` identifies textual tool-call artifacts and split prefixes.
 - `src/focus_agent/transport/stream_events.py` extracts structured visible, reasoning, and tool-call payloads from provider chunks.
-- `src/focus_agent/api/routers/harness_runs.py` gates `message.delta` by internal stream phase and keeps missing phase metadata quarantined.
+- `src/focus_agent/api/routers/harness_runs/replay_streaming.py` gates
+  `message.delta` by internal stream phase and keeps missing phase metadata
+  quarantined.
 - `frontend-sdk/src/toolProtocol.ts` and `frontend-sdk/src/reducers.ts` provide the SDK defensive layer for replayed streams and older servers.
 
 For the full public event contract and validation commands, see [streaming-contract.md](streaming-contract.md).
@@ -553,6 +575,10 @@ flowchart LR
 ```
 
 - Read tools should be explicit about scope and truncation.
+- URL-fetching tools must validate scheme/domain policy, reject every
+  non-public DNS answer, bind the connection to validated addresses, preserve
+  Host/SNI, and repeat validation for redirects; hostname-only checks are not
+  sufficient SSRF protection.
 - Write tools should return stable ids or paths for follow-up turns.
 - Code-modifying and workspace-command tools should require approval, stay inside the workspace root, avoid shell execution, and use allowlists for local commands.
 - Destructive tools should either be explicit privacy controls, such as `memory_forget`, or use reversible and soft-delete behavior first.
@@ -568,6 +594,8 @@ Before adding a tool, answer:
 - Can a skill combine existing tools to achieve the same result?
 - What persistent store does it read or write?
 - What permission boundary limits the operation?
+- If the tool accesses a URL, what prevents redirects, DNS rebinding, and mixed
+  public/private DNS answers from reaching a private network?
 - What structured output will the model and UI consume?
 - How is truncation handled?
 - How is the tool disabled or configured?

@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-06-18
+更新时间：2026-07-12
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -66,6 +66,56 @@ publish `message.completed` with `source="branch_recommendation"` and then
 chunks and does not invoke the normal graph turn. Clients should render the
 returned pending Branch Action from the same reducer/state path used for
 ordinary thread payloads.
+
+### 1.1 Outcome, End, And Cleanup
+
+Protocol terminal events and server bridge lifetime are related but distinct:
+
+- `run.completed` and `run.failed` describe the turn outcome. Publishing either
+  event by itself does **not** mark `InMemoryStreamBridge` ended and does not
+  schedule bridge cleanup.
+- `run.closed` is a public lifecycle event. Publishing it marks the in-memory
+  stream ended and schedules cleanup.
+- `publish_end(run_id)` is an internal producer signal, not an SSE event. It
+  also marks the stream ended and schedules cleanup.
+- The normal `AgentEventPublisher.on_turn_completed(..., close=True)` path emits
+  the outcome and then closes the publisher, which emits one `run.closed` and
+  calls `publish_end()` once.
+
+Each ended run has at most one cleanup timer. The configured
+`streaming.cleanup_delay_seconds` (60 seconds by default) is a grace window:
+the bounded in-memory event buffer remains available to late or reconnecting
+subscribers during the window. After it expires, the run stream, its event-ID
+counter, and its cleanup task are removed from the memory bridge.
+
+`JournaledStreamBridge` persists published events separately. After in-memory
+cleanup, it can still replay retained journal events from a matching
+`Last-Event-ID` and terminate replay from the persisted `run.closed`/terminal
+run state. Memory cleanup must therefore not be described as deletion of the
+run journal.
+
+`AgentEventPublisher.close()` is concurrency-safe: concurrent callers await one
+shielded close task, so caller cancellation does not cancel the shared close
+and only one `run.closed` plus one `publish_end()` is produced. Bridge
+`shutdown()` cancels and awaits every delayed cleanup task, clears in-memory
+run/counter state, and wakes subscribers; a clean shutdown must leave no pending
+cleanup timers.
+
+### 1.2 SDK Reconnect Contract
+
+The Web SDK keeps the latest keyed SSE event ID and sends it as
+`Last-Event-ID` when reconnecting or resuming. One event-ID set is retained for
+the full logical stream, across all transport connections, so replayed keyed
+events are delivered to the consumer only once. Events without an ID are not
+deduplicated.
+
+If transport EOF arrives before a terminal event, the SDK resumes a known run
+within its bounded reconnect budget. If no terminal event is observed after
+reconnects are exhausted, or the stream cannot be resumed, iteration throws
+`FocusAgentIncompleteStreamError` rather than silently treating partial output
+as success. Its optional `runId` identifies the run when the stream exposed one.
+An explicit caller `AbortSignal` remains cancellation, not an incomplete-stream
+failure.
 
 ## 2. Visible Text Boundary
 
@@ -137,7 +187,13 @@ When a tool fails and later recovers, reducers should preserve `toolOutcomeHisto
 When stream behavior, tool protocol filtering, frontend SDK reducers, or processing cards change, run:
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
+.venv/bin/pytest \
+  tests/test_streaming.py \
+  tests/test_stream_bridge_cleanup.py \
+  tests/test_harness_observability.py \
+  tests/test_harness_api.py \
+  tests/test_graph_builder.py \
+  tests/test_execution_contract.py -q
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check

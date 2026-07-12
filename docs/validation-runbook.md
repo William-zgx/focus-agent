@@ -1,6 +1,6 @@
 # Validation Runbook
 
-Updated: 2026-06-20
+Updated: 2026-07-12
 
 This runbook is the local evidence plan for broad Focus Agent changes. Use it
 when changes touch Agent runtime state, sandbox execution, Skill contracts,
@@ -44,6 +44,13 @@ chmod +x /tmp/focus-agent-chromium-headless
 export CHROME_PATH=/tmp/focus-agent-chromium-headless
 ```
 
+The GitHub Actions `Browser Smoke` workflow is a separate real-Chrome gate. It
+installs Google Chrome, builds the production Web app, starts PostgreSQL and a
+deterministic model fixture, runs chat/streaming/branch/review plus all
+observability scenarios, and uploads `reports/browser-smoke/`. A successful
+local command is useful evidence, but must not be reported as a successful
+workflow run.
+
 If browser smoke must prove Docker-backed sandbox execution, build the sandbox
 image first:
 
@@ -80,6 +87,20 @@ recheck `/readyz` before treating the environment as ready.
 validation should set `API_RELOAD=0` because codegen, smoke reports, or script
 edits can otherwise trigger a dev reload and leave `/readyz` temporarily
 degraded with `shutdown_drain`.
+
+When running the API binary directly without `DATABASE_URI`, local app state and
+LangGraph checkpoint/store data default to SQLite under `.focus_agent/`.
+Stopping and restarting the process should preserve that state. This local
+durability does not substitute for the managed PostgreSQL path used by the
+standard `make api` / `make dev` startup commands, and it is not evidence of
+shared production persistence.
+
+If legacy pickle checkpoint/store files exist, startup and local-state migration
+must fail closed on a missing HMAC key, missing or invalid signature, file-owner
+mismatch, corrupt payload, unknown SQLite schema, ambiguous SQLite/pickle
+sources, or active SQLite `-wal` / `-shm` files. Stop the runtime and resolve the
+source explicitly; do not make verification pass by disabling signature
+checking.
 
 ## 3. Source And Contract Gates
 
@@ -149,6 +170,30 @@ pnpm --dir apps/web smoke:agent-team-adoption
 node tests/test_thread_stream_frontend_regressions.mjs
 ```
 
+These commands do not all provide the same evidence:
+
+- `scripts/ui_smoke_test.py` and `scripts/observability_ui_smoke.py` drive the
+  Chrome binary supplied by `CHROME_PATH`.
+- `.github/workflows/browser-smoke.yml` is the canonical CI real-Chrome
+  interaction gate and retains diagnostics as a workflow artifact.
+- `pnpm --dir apps/web smoke:*` and the Node regression tests are source/local
+  runtime checks; they do not prove that a real browser rendered and completed
+  the interaction.
+
+For Android changes, run the local runtime smoke and the same build/lint/unit
+tasks used by the `android` CI job:
+
+```bash
+pnpm android:runtime:smoke
+pnpm android:sync:debug
+(cd android && ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest)
+```
+
+The CI job does not run `connectedAndroidTest`. When device behavior is in
+scope, add a real emulator or attached-device instrumentation run and record
+the API level, device image, test count, and result separately from the CI
+debug build/lint/unit result.
+
 When Agent Team changed, also exercise the backend API flow:
 
 - create a session,
@@ -182,13 +227,72 @@ signals rather than local fallback reports. Missing `/readyz`, trajectory stats,
 replay comparisons, eval reports, production smoke, Postgres ops, OTel smoke, or
 governance reports must block production release review.
 
+Before collecting production evidence, export one complete identity:
+
+```bash
+export RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+export RELEASE_DEPLOYMENT_ID='<deployment-id>'
+export RELEASE_DEPLOYMENT_VERSION='<deployment-version>'
+export RELEASE_ENVIRONMENT='production'
+```
+
+All four variables are required together for non-dry-run report writers.
+`RELEASE_COMMIT_SHA` must resolve and equal the checked-out `HEAD`. Every JSON
+input in a production pack must carry a timezone-aware evidence timestamp and a
+matching top-level `release_binding` with `commit_sha`, `deployment_id`,
+`deployment_version`, and `environment`. Production smoke, Postgres ops, OTel,
+governance, standard eval, and memory/context writers attach that identity from
+the environment. Downloaded JSON must pass
+`scripts/release_evidence_capture.py`.
+
+The capture helper validates existing bindings before replacing their location
+with one canonical top-level binding. Existing timestamps are preserved, so a
+download cannot make stale evidence fresh. Only `/readyz` and trajectory-stats
+live snapshots may use `--captured-now` when no timestamp exists. Replay,
+alert, migration, baseline eval, and static stream-event reports must supply an
+upstream timestamp. Static stream evidence is checked again inside
+`production_smoke.py`; the smoke report records its byte size and SHA-256.
+
+The schema-v2 pack defaults to a 21,600-second (6-hour) maximum evidence age and
+collection window. `/readyz` must additionally report:
+
+```text
+deployment == RELEASE_DEPLOYMENT_ID
+app_version == RELEASE_DEPLOYMENT_VERSION
+environment == RELEASE_ENVIRONMENT
+```
+
+Run the production pack only after those fields, all input bindings, and all
+timestamps have been checked:
+
+```bash
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+```
+
+Verify `reports/release-gate/<release-id>/manifest.json` has
+`meta.schema_version=2`, `summary.status=passed`,
+`release_binding.status=passed`, and `evidence_validation.passed=true`.
+`make release-gate` and dry-run packs prove command wiring only; dry-run or
+self-check fallback reports are not production evidence.
+
 ## 6. Completion Rules
 
 Do not report a broad validation pass when any of these are true:
 
 - `/readyz` is degraded,
 - browser smoke only loaded the page but did not complete chat/branch/review,
+- a source-level smoke is being described as a real-Chrome workflow pass,
+- the Android debug build/lint/unit job is being described as emulator
+  instrumentation evidence,
 - local sandbox fallback is being described as secure Docker isolation,
+- a production evidence input lacks a timezone-aware timestamp or complete,
+  matching release binding,
+- a static report was given `--captured-now` or an existing timestamp was
+  replaced to make evidence appear fresh,
+- a static stream-event report is missing/mismatched/stale, even if the outer
+  production-smoke report has the current release binding,
+- `/readyz` identifies a different deployment, app version, or environment,
+- a required evidence input is older than the configured freshness window,
 - generated SDK or OpenAPI files drift,
 - source-level smoke passes but the corresponding real browser flow was never
   attempted for a user-facing change,

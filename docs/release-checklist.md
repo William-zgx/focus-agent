@@ -64,7 +64,7 @@ flowchart LR
 
 ## Quality Checks
 
-Required release gate:
+Required local/CI command gate:
 
 ```bash
 make release-gate
@@ -88,14 +88,21 @@ For a fast API/SDK compatibility check before the full gate, run:
 make contract-check
 ```
 
-The orchestrated command plan mirrors `scripts/release_gate.py`. Full local runs assume the API and Vite app are reachable at the default smoke URLs (`http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/`); use `RELEASE_GATE_ARGS="--dry-run"` or scoped `--only` checks when those services are not available. `make contract-check` remains a fast preflight outside the full gate.
+The orchestrated subset below follows `scripts/release_gate.py`; the generated
+SDK type drift check and retrieval/embedding doctors are additional manual
+preflights listed after it. Full local runs assume the API and Vite app are
+reachable at the default smoke URLs
+(`http://127.0.0.1:8000/healthz` and
+`http://127.0.0.1:5173/app/`); use
+`RELEASE_GATE_ARGS="--dry-run"` or scoped `--only` checks when those services
+are not available. `make contract-check` remains a fast preflight outside the
+full gate.
 
 ```bash
 make lint
 make ci-test
 make sdk-check
 make sdk-build
-make sdk-openapi-types-check
 make web-check
 make web-build
 uv run python scripts/observability_ui_smoke.py --scenario all
@@ -106,10 +113,16 @@ uv run python -m tests.eval --suite observability --concurrency 1 --report-json 
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1 --report-json reports/release-gate/eval-golden-multi-agent.json
 uv run python -m tests.eval --suite harness_stability --concurrency 1 --report-json reports/release-gate/eval-harness-stability.json
 uv run python scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
-focus-agent-retrieval-index doctor
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 uv run python scripts/agent_governance_report.py --report-json reports/agent-governance/latest.json
 uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --governance-report-json reports/agent-governance/latest.json --report-json reports/release-gate/release-health.json
+```
+
+Additional manual preflights:
+
+```bash
+make sdk-openapi-types-check
+focus-agent-retrieval-index doctor
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
@@ -123,12 +136,50 @@ uv run python scripts/release_health_check.py --mode local --ready-url http://12
 - `scripts/feedback_regression.py` summarizes online feedback and adoption/governance signals into `reports/nightly/feedback-regression.json`. It is non-blocking when no production feedback artifact exists, but nightly reports must include its `feedback_pipeline` when events are provided.
 - `focus-agent-retrieval-index doctor` is the Zvec release preflight. Include its output as release evidence when Zvec is enabled; it should show backend, data dir, collection/readiness status, and fallback backend without exposing vectors.
 - `focus-agent-memory-embedding doctor` is the memory embedding/pgvector fallback preflight. Include its JSON output as release evidence when PostgreSQL memory embedding or pgvector fallback is enabled; it should show provider readiness, table dimension compatibility, extension status, and vector index state without exposing API keys or vector values.
-- `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. Current release-blocking eval reports include smoke, observability, golden multi-agent, harness stability, and memory/context. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real `--readyz-json` or `--ready-url`, `--trajectory-stats-json` or `--trajectory-stats-url`, `--replay-comparisons-json`, `--eval-report-json`, `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json` inputs. Missing required inputs fail closed with exit code 1; dry-run smoke / ops / OTel reports are rejected in production unless the caller explicitly uses the deterministic evidence-pack escape hatch `--allow-dry-run-reports`.
-- `make release-evidence` builds the production evidence pack. Use it for production release review after collecting real deployment signals; the manifest is written to `reports/release-gate/<release-id>/manifest.json` and includes artifact hashes, artifact summary, failure summary, retention metadata, approval metadata, storage verification metadata, release-health summary, and missing-required-artifact checks. Production packs require an explicit `--release-id`, approved deployment-platform `--approval-status approved` with `--approval-id`, plus readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, and governance report artifacts. Add `--storage-dir` when the release job should copy the evidence pack to a retained artifact location; the manifest records whether the stored manifest and summary matched local hashes.
+- `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. Current release-blocking eval reports include smoke, observability, golden multi-agent, harness stability, and memory/context. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real production inputs. Missing required inputs fail closed with exit code 1. `--allow-dry-run-reports` is only a deliberate diagnostic escape hatch for direct health-check runs; it is not part of the canonical production evidence workflow.
+- Without `--dry-run`, `make release-evidence` builds a production manifest whose `meta.schema_version` is `2`. Run it only after collecting the production deployment signals. The pack is written to `reports/release-gate/<release-id>/` and includes artifact hashes, artifact/failure summaries, release health, approval metadata, retention metadata, release identity validation, freshness validation, and storage verification.
 - CI provider binding lives in `docs/ci/github-actions-release-gate.md` and `.github/workflows/release-gate.yml`. Keep provider-specific approval metadata, artifact upload, retention, and generic CI command skeletons in that CI document; this checklist only records the release-blocking evidence that must be present before tagging.
 
+### Production Evidence Contract
+
+Production evidence is fail-closed and is separate from `--dry-run` planning:
+
+- Bind the pack to the complete `RELEASE_COMMIT_SHA`, `RELEASE_DEPLOYMENT_ID`, `RELEASE_DEPLOYMENT_VERSION`, and `RELEASE_ENVIRONMENT` tuple. The commit must be a hexadecimal SHA that resolves in the checkout and resolves to the current `HEAD`; deployment id and version must be non-empty; the environment must canonicalize to `production`.
+- Every JSON supplied through a production `--*-json` evidence input must carry a timezone-aware evidence timestamp and a complete `release_binding` with the same four values. Required evidence timestamps must also fit within one collection window. The default maximum age and collection-window span is `21600` seconds; use `--max-evidence-age-seconds` only to make an intentional, reviewed override.
+- `/readyz` must additionally expose `deployment`, `app_version`, and `environment`, matching the bound deployment id, deployment version, and production environment. These checks supplement, rather than replace, its timestamp and complete `release_binding`.
+- Trusted capture must process every production JSON input that was not emitted
+  by an attesting writer through `scripts/release_evidence_capture.py`. Existing
+  top-level or `meta.release_binding` values must already match the environment;
+  conflicts and partial bindings fail closed rather than being overwritten.
+  Existing evidence timestamps must be timezone-aware and are preserved, so
+  capture cannot make stale evidence look fresh. Only live `/readyz` and
+  trajectory-stats snapshots may use the explicit `--captured-now` fallback
+  when their response has no timestamp. Replay comparison, alert, Postgres
+  migration, baseline eval, and static stream-event reports must supply their
+  own timestamp.
+- Six locally generated report classes attest from the four `RELEASE_*`
+  variables: `production_smoke.py`, `postgres_ops.py`, `otel_smoke.py`,
+  `agent_governance_report.py`, eval reports written through
+  `tests.eval.reporting`, and `memory_context_eval.py`. These writers add a
+  timezone-aware `generated_at` and complete `release_binding`; if only part of
+  the tuple is set, a non-dry-run writer refuses to write the report. With all
+  four variables absent, ordinary local and generic CI reports remain valid but
+  are not production evidence.
+- Production still requires an explicit path-safe release id, approved deployment-platform `approval_id` and `approval_url`, all required artifacts, and verified retained storage. `--storage-dir` copies the pack to `<storage-dir>/<release-id>`; the manifest records hash verification and the requested retention window.
+- Dry-run evidence uses deterministic sample identity and does not require, consume, or pretend to attest the production four-tuple.
+
+The checked-in GitHub production workflow now downloads raw JSON into a
+temporary directory, validates and atomically writes the attested copy, and
+removes the temporary source. `/readyz` also cross-checks `deployment`,
+`app_version`, and `environment`. The provider-neutral command catalog uses the
+same `curl -> release_evidence_capture.py` order and keeps raw files outside the
+release artifact directory. A capture, timestamp, or identity mismatch stops
+the workflow before production smoke or evidence assembly.
+
+After the production reports have been generated under the bound environment, build the pack with explicit identity arguments:
+
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id <approval-id> --approval-status approved --approval-url <approval-url> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 Nightly and production smoke entrypoints:
@@ -156,11 +207,24 @@ Schema v17 migration evidence:
 Production examples with live evidence:
 
 ```bash
+export RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+export RELEASE_DEPLOYMENT_ID="<deployed-id>"
+export RELEASE_DEPLOYMENT_VERSION="<deployed-version>"
+export RELEASE_ENVIRONMENT="production"
+
 make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --web-base-url https://focus-agent.example.com --auth-token <token> --stream-events-json reports/release-gate/stream-events.json --rate-limit-min-limit 1 --report-json reports/release-gate/production-smoke.json"
 make postgres-ops POSTGRES_OPS_ARGS="--database-uri postgresql://user:pass@host:5432/focus_agent --backup-command 'pg_dump --format=custom --file=/tmp/focus-agent.dump postgresql://user:pass@host:5432/focus_agent' --restore-command 'pg_restore --dbname=postgresql://user:pass@restore-host:5432/focus_agent_verify /tmp/focus-agent.dump' --restore-verification-query 'SELECT 1' --retention-cleanup-query 'SELECT 1' --report-json reports/release-gate/postgres-ops.json"
 make otel-smoke OTEL_SMOKE_ARGS="--endpoint http://otel-collector:4318 --collector-health-url http://otel-collector:13133/healthz --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' --report-json reports/release-gate/otel-smoke.json"
 make agent-governance-report AGENT_GOVERNANCE_REPORT_ARGS="--report-json reports/agent-governance/latest.json --max-review-queue-backlog 10 --max-avg-cost-usd 0.05"
 ```
+
+Set the tuple before generating any production report, including eval reports.
+Attesting writers bind their own output. Downloaded raw evidence must pass through
+the trusted capture helper, which preserves and validates the producer timestamp,
+rejects conflicting or partial declared bindings, and attaches the deployment
+environment's matching `release_binding`; it must never replace an existing
+timestamp or declared identity. The checked-out `HEAD` must be the exact commit
+represented by the deployment.
 
 `production_smoke.py` is release evidence, not a replacement for `ui_smoke_test.py`. In live mode, provide `--stream-events-json` from a captured successful SSE turn; `--stream-events-url` is only for a GET-compatible event endpoint and should not point directly at the POST-only chat streaming route. For local development, prefer `make ci` plus `uv run python scripts/ui_smoke_test.py` for functional coverage, and use `production-smoke --dry-run` unless the deployment supplies production-like auth, rate-limit, web URL, and stream-event evidence.
 

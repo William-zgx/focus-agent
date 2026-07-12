@@ -29,11 +29,15 @@ make sdk-check
 make sdk-build
 make sdk-openapi-types-check
 make architecture-report
+make architecture-gate
 make compat-report
+make compat-gate
 make format
 make format-check
 make ci-test
 make ci
+pnpm android:runtime:smoke
+pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
@@ -41,7 +45,7 @@ make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
 ## Common Flows
@@ -62,7 +66,53 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 - `make web-dev`: start the React frontend dev server
 - `make web-build`: build the bundle that FastAPI serves at `/app`
 
+### Local persistence modes
+
+The Make-managed startup commands (`make api`, `make dev`, `make serve`,
+`make serve-dev`, and `make serve-prod`) start a repo-local PostgreSQL when
+`DATABASE_URI` is unset. A raw `.venv/bin/focus-agent-api` process does not
+start that helper. With no `DATABASE_URI`, the raw process uses the local
+fallback instead:
+
+- app state for branches, users, and productivity is persisted in the SQLite
+  database selected by `BRANCH_DB_PATH` (default:
+  `.focus_agent/branches.sqlite3`);
+- LangGraph checkpoints and the local store default to
+  `.focus_agent/langgraph-checkpoints.sqlite3` and
+  `.focus_agent/langgraph-store.sqlite3`;
+- the harness journal remains SQLite-backed.
+
+`FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite` is the safe default. Legacy pickle
+checkpoint/store files are compatibility inputs, not the default storage
+format. Explicit pickle use requires signature verification and
+`FOCUS_AGENT_CHECKPOINT_HMAC_KEY`; a missing or invalid signature, missing key,
+unreadable file, or owner mismatch fails closed before state is loaded. Stop
+the local runtime before migrating local state to Postgres.
+
 ## Validation
+
+### Repository debt gates
+
+`make ci` includes both blocking debt gates:
+
+```bash
+make architecture-gate
+make compat-gate
+```
+
+The architecture gate scans non-generated source with a canonical 800-line
+limit. `docs/architecture-debt-baseline.json` contains zero grandfathered
+large files, so every scanned file above 800 lines is a regression; a file that
+was split below the limit must not be reintroduced.
+
+The compatibility gate uses schema v2 and exact, line-number-independent item
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 170 items.
+The gate rejects a new item ID even when the category and total counts stay
+unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
+to make CI pass: remove the new compatibility path, or document and review an
+intentional compatibility addition and its exit criteria. Use
+`make architecture-report` and `make compat-report` for non-blocking diagnosis;
+the corresponding `*-gate` targets are the merge checks.
 
 Recommended validation ladder:
 
@@ -72,7 +122,13 @@ Recommended validation ladder:
 make ci
 ```
 
-`make ci` runs Python lint, CI-style pytest, API/SDK contract snapshots, frontend SDK check/build/transport validation, Web lint/format-check/check/build, and the Node stream frontend regression suite. GitHub CI additionally runs the generated OpenAPI / SDK type drift guard, so API route/model changes must include `make sdk-openapi-types-check` even if `make ci` passes locally. For Python formatting-only review, run:
+`make ci` runs strict Python lint, CI-style pytest, API/SDK contract snapshots,
+the blocking architecture and compatibility gates, frontend SDK
+check/build/transport validation, full Web lint/format-check/check/build, and
+the Node stream frontend regression suite. GitHub CI additionally runs the
+generated OpenAPI / SDK type drift guard, so API route/model changes must
+include `make sdk-openapi-types-check` even if `make ci` passes locally. For
+Python formatting-only review, run:
 
 ```bash
 make format-check
@@ -143,6 +199,36 @@ It combines full frontend checks, style governance (`no !important`, no hard-cod
 make frontend-visual-qa FRONTEND_QA_BASE_URL=http://127.0.0.1:5173
 ```
 
+The `android` job in `.github/workflows/ci.yml` is a separate blocking job. It
+installs Android API/build-tools 36, runs `pnpm android:sync:debug`, then runs
+the debug build, lint, and JVM unit-test gates:
+
+```bash
+pnpm android:sync:debug
+(cd android && ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest)
+```
+
+CI intentionally does not pretend to provide an emulator. For local native and
+emulator validation, first run the JavaScript local-runtime smoke, then use a
+real connected API 36 emulator or device:
+
+```bash
+pnpm android:runtime:smoke
+pnpm android:apk:debug
+adb devices
+(cd android && ./gradlew connectedDebugAndroidTest)
+pnpm android:run
+adb shell am start -W \
+  -a android.intent.action.VIEW \
+  -d 'focusagent://app/admin/config' \
+  ai.focusagent.app
+```
+
+The connected tests exercise the native cancellable HTTP and deep-link
+plugins. Complete a manual interaction pass in the installed app as well:
+configure a device-local provider, send and cancel a streaming request, then
+open the deep link once from a cold start and once while the app is running.
+
 5. If stream visibility, tool protocol filtering, frontend stream reducers, processing cards, or the live-web execution contract changed:
 
 ```bash
@@ -181,6 +267,14 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 The browser smoke waits for the assistant response to stabilize after streaming and should be used for complex tool-use prompts, not only the default short OK response. This catches transport validation regressions such as malformed `tool.call.delta` payloads.
 
 `scripts/ui_smoke_test.py` does not start the API or Vite dev server. Before running it with defaults, make sure `http://127.0.0.1:8000/healthz` and `http://127.0.0.1:5173/app/` are already reachable. If you point it at the backend-served static app, run `make web-build` first.
+
+`.github/workflows/browser-smoke.yml` is the CI real-Chrome counterpart. It
+installs Google Chrome through Playwright, builds the production Web app,
+starts Postgres plus a deterministic model fixture, serves the built app, and
+runs both `scripts/ui_smoke_test.py` and every observability scenario. It runs
+on pull requests, pushes to the default branches, and manual dispatch. Failure
+diagnostics and smoke JSON are uploaded as workflow artifacts. Source-level or
+DOM-mock checks do not replace this workflow.
 
 When testing the Vite app, keep the `/app/` trailing slash. The dev server may return different results for `/app` versus `/app/`, while the backend-served static app normalizes through FastAPI. The smoke uses a temporary Chrome profile; if a manual Chrome profile shows a blank login page or stale auth state while the smoke passes, clear site data or use a clean profile before filing a UI regression.
 
@@ -243,10 +337,12 @@ SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is s
 
 ```bash
 make test-chat-service
-uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+uv run pytest tests/test_runtime_backend_selection.py tests/test_local_runtime_app_state_persistence.py tests/test_local_persistence_fail_closed.py tests/test_migrate_local_state_sqlite_sources.py tests/test_config_local_doc.py
 ```
 
 ChatService is intentionally split across branch action facade, streaming lifecycle, thread access, compaction, trajectory recording, and turn-error helpers. Keep behavior changes covered by service tests and browser smoke rather than relying only on import-level checks.
+These runtime tests also lock down the raw no-`DATABASE_URI` SQLite app-state,
+checkpoint, and store defaults, plus fail-closed legacy pickle handling.
 
 12. If Memory v2, Zvec retrieval, embedding, pgvector fallback, migration, or memory retrieval changed:
 
@@ -254,7 +350,7 @@ ChatService is intentionally split across branch action facade, streaming lifecy
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
 uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py tests/test_default_tools.py
 focus-agent-retrieval-index doctor
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
 The retrieval doctor is read-only and checks the embedded Zvec index path, readiness, configured backend, and fallback backend without exposing vector payloads. The memory embedding doctor expects a Postgres `DATABASE_URI`, checks provider selection, pgvector extension/table/dimensions/index state, and prints the Ollama install hint when `embeddinggemma` is missing. For fresh local shells, source `.focus_agent/postgres/runtime.env` first if the API was started through the managed Postgres helper.
@@ -298,12 +394,22 @@ threads, and confirm branch tree routes work when opened from a child thread id.
 15. If Auth / Access Model, token lifecycle, or ownership semantics changed:
 
 ```bash
-uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py tests/test_csrf_middleware.py
 uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
 ```
 
 This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated
 tokens, production demo-token blocking, registration/password rules, refresh-session logout, admin role safeguards, and the rule that `tenant_id` and `scope` are claim metadata rather than thread ownership keys.
+
+Any environment other than `dev`, `development`, `local`, `test`, `testing`,
+or `ci` fails startup unless `AUTH_COOKIE_SECURE=true`; its
+`AUTH_COOKIE_SAMESITE` must be `lax` or `strict`. Cookie-authenticated
+`POST`, `PUT`, `PATCH`, and `DELETE` requests are CSRF-protected and must be
+same-origin. Non-browser clients without Fetch Metadata or origin headers can
+use a matching client-generated `focus_agent_csrf` cookie and
+`X-CSRF-Token` header. A valid `Authorization: Bearer ...` mutation is exempt,
+but an invalid bearer token cannot bypass checks when auth cookies are also
+present.
 
 If the Admin Console settings center, Skill management, Web pages, admin SDK types, route protection, or audit event UI changed, also run:
 

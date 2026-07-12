@@ -50,11 +50,15 @@ make sdk-check
 make sdk-build
 make sdk-openapi-types-check
 make architecture-report
+make architecture-gate
 make compat-report
+make compat-gate
 make format
 make format-check
 make ci-test
 make ci
+pnpm android:runtime:smoke
+pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
@@ -62,7 +66,7 @@ make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
 ## 常见开发流
@@ -83,7 +87,49 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 - `make web-dev`：启动 React 前端开发服务器
 - `make web-build`：构建由 FastAPI 在 `/app` 下托管的静态产物
 
+### 本地持久化模式
+
+当 `DATABASE_URI` 未设置时，受 Make 管理的启动命令（`make api`、
+`make dev`、`make serve`、`make serve-dev` 和 `make serve-prod`）会启动
+repo 内本地 PostgreSQL。直接裸跑 `.venv/bin/focus-agent-api` 不会启动这个
+helper；没有 `DATABASE_URI` 时，裸进程会使用本地 fallback：
+
+- 分支、用户和生产力数据等 app-state 持久化到 `BRANCH_DB_PATH` 指定的
+  SQLite 数据库（默认 `.focus_agent/branches.sqlite3`）；
+- LangGraph checkpoint 与本地 store 默认写入
+  `.focus_agent/langgraph-checkpoints.sqlite3` 和
+  `.focus_agent/langgraph-store.sqlite3`；
+- harness journal 仍使用 SQLite。
+
+`FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite` 是安全默认值。旧 pickle
+checkpoint/store 只是兼容输入，不是默认存储格式。显式使用 pickle 时必须
+开启签名校验并配置 `FOCUS_AGENT_CHECKPOINT_HMAC_KEY`；签名缺失或无效、
+密钥缺失、文件不可读或 owner 不匹配时，启动会在加载状态前 fail closed。
+把本地状态迁移到 Postgres 前必须先停止本地 runtime。
+
 ## 验证建议
+
+### 仓库债务门禁
+
+`make ci` 包含两个阻断式债务门禁：
+
+```bash
+make architecture-gate
+make compat-gate
+```
+
+architecture gate 对非生成源码使用规范化的 800 行上限。
+`docs/architecture-debt-baseline.json` 没有任何 grandfathered 大文件，
+所以扫描范围内所有超过 800 行的文件都是回归；已经拆分到阈值以下的文件也
+不能重新长回来。
+
+compatibility gate 使用 schema v2 和
+`docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
+170 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
+新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
+`make architecture-report` 和 `make compat-report` 用于非阻断诊断，
+对应的 `*-gate` 才是合并门禁。
 
 推荐按下面的层级来跑：
 
@@ -93,7 +139,12 @@ focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
 make ci
 ```
 
-`make ci` 会运行 Python lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。GitHub CI 还会额外跑 generated OpenAPI / SDK types drift guard，所以 API route 或 response model 改动即使本地 `make ci` 通过，也必须包含 `make sdk-openapi-types-check`。只检查 Python 格式时可跑：
+`make ci` 会运行 strict Python lint、CI 风格 pytest、API/SDK contract
+snapshot、阻断式 architecture/compatibility gates、frontend SDK
+check/build/transport validation、全量 Web lint/format-check/check/build，以及
+Node stream frontend regression。GitHub CI 还会额外跑 generated OpenAPI /
+SDK types drift guard，所以 API route 或 response model 改动即使本地 `make ci`
+通过，也必须包含 `make sdk-openapi-types-check`。只检查 Python 格式时可跑：
 
 ```bash
 make format-check
@@ -148,6 +199,34 @@ make frontend-qa
 make frontend-visual-qa FRONTEND_QA_BASE_URL=http://127.0.0.1:5173
 ```
 
+`.github/workflows/ci.yml` 中的 `android` 是独立阻断 job。它会安装
+Android API/build-tools 36，运行 `pnpm android:sync:debug`，然后执行 debug
+构建、lint 和 JVM 单测门禁：
+
+```bash
+pnpm android:sync:debug
+(cd android && ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest)
+```
+
+CI 不会假装自己提供了模拟器。做本地 native 与模拟器验证时，先运行
+JavaScript local-runtime smoke，再使用真实连接的 API 36 模拟器或设备：
+
+```bash
+pnpm android:runtime:smoke
+pnpm android:apk:debug
+adb devices
+(cd android && ./gradlew connectedDebugAndroidTest)
+pnpm android:run
+adb shell am start -W \
+  -a android.intent.action.VIEW \
+  -d 'focusagent://app/admin/config' \
+  ai.focusagent.app
+```
+
+connected tests 会覆盖 native 可取消 HTTP 与 deep-link 插件。安装后还要做
+一次人工真实交互：配置设备本地 provider、发送并取消一条流式请求，然后分别
+在冷启动和应用运行中各打开一次 deep link。
+
 5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer、处理过程卡或 live-web execution contract：
 
 ```bash
@@ -186,6 +265,13 @@ uv run python scripts/ui_smoke_test.py --app-url http://127.0.0.1:8001/app/ --he
 浏览器 smoke 会等待流式回复结束且文本稳定后再读取结果。涉及复杂工具调用时不要只用默认 OK 消息，应增加真实问题，以捕捉 `tool.call.delta` payload 等 transport 校验回归。
 
 `scripts/ui_smoke_test.py` 不会启动 API 或 Vite dev server。按默认参数运行前，请先确认 `http://127.0.0.1:8000/healthz` 和 `http://127.0.0.1:5173/app/` 已可访问。如果指向后端托管的静态 app，请先跑 `make web-build`。
+
+`.github/workflows/browser-smoke.yml` 是 CI 中对应的真实 Chrome 门禁。它通过
+Playwright 安装 Google Chrome，构建 production Web App，启动 Postgres 和
+确定性模型 fixture，托管构建产物，并运行 `scripts/ui_smoke_test.py` 以及
+observability 的全部场景。它会在 pull request、默认分支 push 和手动触发时
+运行；失败诊断与 smoke JSON 会上传为 workflow artifact。源码级或 DOM mock
+检查不能替代这个 workflow。
 
 在只通过 SSH 连接、没有图形显示环境的机器上，先给 Playwright/Chrome 调用配置一个 headless wrapper：
 
@@ -242,10 +328,12 @@ SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postg
 
 ```bash
 make test-chat-service
-uv run pytest tests/test_runtime_backend_selection.py tests/test_config_local_doc.py
+uv run pytest tests/test_runtime_backend_selection.py tests/test_local_runtime_app_state_persistence.py tests/test_local_persistence_fail_closed.py tests/test_migrate_local_state_sqlite_sources.py tests/test_config_local_doc.py
 ```
 
 ChatService 已按 branch action facade、streaming lifecycle、thread access、compaction、trajectory recording 和 turn-error helper 拆分。行为变更应由 service tests 和 browser smoke 覆盖，不要只依赖 import 级检查。
+这组 runtime 测试也会锁定裸跑且无 `DATABASE_URI` 时的 SQLite app-state、
+checkpoint/store 默认值，以及 legacy pickle 的 fail-closed 行为。
 
 12. 如果改动影响 Memory v2、Zvec retrieval、embedding、pgvector fallback、迁移或 memory retrieval：
 
@@ -253,7 +341,7 @@ ChatService 已按 branch action facade、streaming lifecycle、thread access、
 uv run pytest tests/test_memory_embedding_policy.py tests/test_memory_embedding_cli.py tests/test_memory_embedding_provider.py tests/test_postgres_memory_repository.py tests/test_memory_retriever.py tests/test_migrate_local_state.py
 uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py tests/test_default_tools.py
 focus-agent-retrieval-index doctor
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
 `focus-agent-retrieval-index doctor` 是只读诊断命令，会检查嵌入式 Zvec index 路径、readiness、当前 backend 和 fallback backend，且不输出 vector payload。`focus-agent-memory-embedding doctor` 需要 Postgres `DATABASE_URI`，会检查 provider 选择、pgvector extension/table/dimensions/index 状态；本地 auto 模式缺少 `embeddinggemma` 时会输出 `ollama pull embeddinggemma` 提示。如果 API 是通过托管本地 Postgres 启动的，新 shell 里先 `source .focus_agent/postgres/runtime.env`。
@@ -290,11 +378,20 @@ make web-check
 15. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：
 
 ```bash
-uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py tests/test_csrf_middleware.py
 uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
 ```
 
 这组 focused suite 覆盖 HS256 issuer/audience/TTL、过期或轮换 token、生产环境禁用 demo token、注册/密码规则、refresh session 退出、admin 角色保护，以及 `tenant_id` 和 `scope` 只是 claim metadata 而不是 thread ownership key 的边界。
+
+除 `dev`、`development`、`local`、`test`、`testing`、`ci` 外的环境都会在
+`AUTH_COOKIE_SECURE` 不是 `true` 时拒绝启动，且
+`AUTH_COOKIE_SAMESITE` 只能是 `lax` 或 `strict`。使用 Cookie 鉴权的
+`POST`、`PUT`、`PATCH`、`DELETE` 请求受 CSRF 保护，必须同源。没有 Fetch
+Metadata 或 origin header 的非浏览器客户端，可以发送相同的、由客户端生成的
+`focus_agent_csrf` Cookie 和 `X-CSRF-Token` header。携带有效
+`Authorization: Bearer ...` 的 mutation 不受 Cookie CSRF 检查，但同时存在
+auth Cookie 时，无效 Bearer token 不能绕过检查。
 
 如果改动触及 Admin Console 设置中心、Skill 管理、Web 页面、admin SDK 类型、管理员路由保护或审计事件 UI，也要跑：
 

@@ -68,6 +68,10 @@ Important boundaries:
 - Tool Router can observe decisions before it enforces tool filtering.
 - Model Router can recommend a model before it changes the effective model.
 - Critic Gate can record verdicts before it blocks synthesis.
+- Governance list and trajectory-backed summary endpoints are owner-scoped by
+  default. A normal principal sees only records whose trajectory belongs to
+  that principal; omitting an explicit user filter does not grant a global
+  view.
 
 This observe-first design lets the project collect trajectory evidence before giving the governance layer stronger execution authority.
 
@@ -376,6 +380,14 @@ Governance records are copied into trajectory `plan_meta` so they can be inspect
 - eval trajectory judges
 - replay and promote workflows
 
+The API applies a scoped trajectory repository before building governance list
+or trend responses. Global governance reads require an active persisted user
+that is either an admin or has `governance:read:global` or
+`governance:trajectories:read:global`. Token claims alone do not bypass the
+active-user check, and auth-disabled mode does not implicitly grant a global
+view. This keeps role/tool/model/delegation/context/task-ledger/critic evidence
+within the same owner boundary as the source trajectory.
+
 This means a failed turn should be diagnosable by looking at the route, tool decisions, model route, context decisions, task ledger, artifacts, and critic verdict, rather than only reading the final answer.
 
 ## 14. Eval Gate
@@ -413,6 +425,13 @@ If the Web console or SDK contract changed, pair the gate with:
 ```bash
 make sdk-check
 make web-check
+```
+
+If governance trajectory access or role permissions changed, also run:
+
+```bash
+uv run pytest tests/test_agent_governance_trajectory_access.py \
+  tests/test_disabled_access_token_revocation.py -q
 ```
 
 If the browser chat, branch, review, or observability surfaces changed, add:

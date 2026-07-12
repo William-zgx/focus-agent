@@ -1,6 +1,6 @@
 # Admin Console 操作与实现手册
 
-更新时间：2026-06-18
+更新时间：2026-07-12
 
 Admin Console 是 Focus Agent 当前的管理员访问治理入口，用于管理运行时设置、能力开关、持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。普通登录、注册、账号自助页面和 token/session 语义见 [auth-access.md](auth-access.md)。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
 
@@ -42,7 +42,7 @@ Frontend SDK 对应 `frontend-sdk/src/client/admin.ts` 和 `frontend-sdk/src/typ
 
 ## 2. 权限边界
 
-Admin Console 不把 bearer token 里的 scope 当作管理员身份来源。管理员权限来自持久化用户记录中的角色和权限；被禁用用户不能通过 `/v1/auth/me` 继续进入应用。
+Admin Console 不把 bearer token 里的 scope 当作管理员身份来源。管理员权限来自持久化用户记录中的角色和权限。每个 protected principal 请求都会重新查询持久化用户并确认状态为 active，不只是在 `/v1/auth/me` 或页面入口检查；因此管理员禁用账号后，该用户尚未过期的 access token 从下一次受保护请求起就失效。持久化授权状态不可用时请求 fail closed。
 
 本地开发有两条 bootstrap 便利路径：
 
@@ -55,6 +55,10 @@ Admin Console 不把 bearer token 里的 scope 当作管理员身份来源。管
 
 - 变更状态、角色、会话和密码需要 reason，用于审计。
 - 系统阻止禁用最后一个 active admin，或把最后一个 active admin 的 admin 角色移除。
+
+把用户状态改为 disabled 或其他非 active 状态时，User Service 还会撤销该用户所有未撤销 refresh sessions。该动作不需要等待 session TTL：旧 refresh token 不能再签发 access token；旧 access token 则由每请求 active-user 校验立即拦截。
+
+Admin 页面使用 auth cookie 发起 `POST`、`PUT`、`PATCH`、`DELETE` 时与普通账号页遵循同一 CSRF 边界：浏览器来源/Fetch Metadata 必须同源；非开发环境中缺少这些元数据的客户端必须用 `focus_agent_csrf` cookie 与 `X-CSRF-Token` header 做 double-submit。有效 Bearer 请求不依赖 cookie 因而豁免，但无效 Bearer 不能让同时携带的 auth cookie 绕过 CSRF。完整合同见 [auth-access.md](auth-access.md)。
 
 ## 3. 用户管理流程
 
@@ -106,6 +110,8 @@ Skill catalog 即使在全局关闭时仍可展示；关闭全局 Skill 或禁�
 
 审计事件用于解释管理员操作和拒绝原因，不等同于完整 SIEM。安全运营或合规导出仍应结合应用日志、Postgres 备份策略和部署侧审计能力。
 
+Agent governance 的 trajectory 列表/报告不是 Admin Console 用户目录的一部分，但共享持久化身份边界。默认读取只返回当前 `Principal.user_id` 拥有的 trajectory；全局读取只授予 active admin，或 active principal 上明确的 `governance:read:global` / `governance:trajectories:read:global`。这些权限是治理读取专用能力，不等同于通用 admin 身份，也不会放宽 conversation/thread ownership。
+
 ## 6. 实现导航
 
 ```text
@@ -136,6 +142,7 @@ Admin Web shell 使用 `AdminAccessGate` 做页面级保护。普通聊天 shell
 
 ```bash
 uv run pytest tests/test_admin_users_api.py tests/test_auth.py tests/test_auth_accounts_api.py tests/test_user_service.py tests/test_auth_ownership.py
+uv run pytest tests/test_csrf_middleware.py tests/test_agent_governance_trajectory_access.py
 make contract-check
 ```
 
@@ -167,6 +174,8 @@ make frontend-android-runtime-smoke
 ## 8. 常见风险
 
 - 不要用 token scope 替代持久化 admin 角色。
+- 不要假设已签发 access token 会在账号禁用后继续有效；protected principal 请求会实时检查持久化 active 状态。
+- 不要只清理浏览器 token 来代替禁用用户；状态变更会在服务端撤销 refresh sessions。
 - 不要在生产环境打开 demo token。
 - 不要把 admin-created user 当作已经能用密码登录的账号；需要先 reset password。
 - 不要绕过 reason 字段执行角色、状态、会话或密码变更。

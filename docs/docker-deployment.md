@@ -181,6 +181,7 @@ docker compose logs -f focus-agent postgres
   - `FOCUS_AGENT_IMAGE`
   - `FOCUS_AGENT_DATABASE_URI`
   - `FOCUS_AGENT_AUTH_JWT_SECRET`
+  - `FOCUS_AGENT_CORS_ALLOWED_ORIGINS`
 
 示例：
 
@@ -193,6 +194,7 @@ export FOCUS_AGENT_AUTH_JWT_ISSUER=https://issuer.example.com
 export FOCUS_AGENT_AUTH_JWT_AUDIENCE=focus-agent-web
 export FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS=900
 export FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false
+export FOCUS_AGENT_CORS_ALLOWED_ORIGINS=https://focus-agent.example.com
 export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 
 docker compose -f compose.prod.yaml up -d
@@ -238,6 +240,8 @@ BACKGROUND_JOB_BACKEND=postgres
 - 建议设置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`，将 token 限定给 Focus Agent Web/API 使用
 - 建议显式设置 `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS`，并配合外部登录层刷新策略
 - `FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED=false`
+- 认证 Cookie 固定启用 `Secure`，部署入口必须提供 HTTPS
+- `FOCUS_AGENT_CORS_ALLOWED_ORIGINS` 必须显式列出可信 Web origin
 - `FOCUS_AGENT_RATE_LIMIT_ENABLED=true`
 - `API_RELOAD=0`
 - `DATABASE_URI` 必须指向外部 PostgreSQL
@@ -245,6 +249,11 @@ BACKGROUND_JOB_BACKEND=postgres
 - provider secrets 不写入镜像
 - 应用容器只保留 `/data` 作为本地文件目录（artifact 正文、默认配置拷贝等）
 - 建议显式设置 `APP_VERSION`、`APP_ENVIRONMENT`、`DEPLOYMENT_NAME`，便于 `/readyz`、`/metrics` 和 trajectory 记录定位发布批次
+
+生产模板将 sandbox backend 固定为 Docker 并禁用 local fallback。模板不会挂载
+Docker socket，也不会启动 Docker-in-Docker；部署平台未提供受控 Docker daemon 时，
+工具/Skill 沙箱操作会 fail closed，而不会在应用容器中降级为本地进程执行。需要启用
+sandbox 时，应由部署平台提供隔离的 Docker 执行面并预置受信任的 sandbox image。
 
 ## 数据与迁移
 
@@ -291,6 +300,12 @@ flowchart LR
 
 如果要把现有 repo-local `.focus_agent` 数据迁入 PostgreSQL：
 
+先停止本地 API，确保 canonical SQLite checkpoint/store 已 checkpoint 且目录中
+没有活动 `-wal` / `-shm` sidecar。迁移器同时支持 canonical SQLite 和 legacy
+pickle；如果同一类源同时存在两种格式，必须先显式设置
+`FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite` 或 `pickle`。backend 与文件格式不一致、
+SQLite schema 未知、legacy pickle owner/HMAC 校验失败都会 fail closed。
+
 ```bash
 focus-agent-migrate-local-state \
   --source-dir ./.focus_agent \
@@ -299,6 +314,11 @@ focus-agent-migrate-local-state \
   --artifact-scan \
   --report-path /tmp/focus-agent-migration.json
 ```
+
+App-state 的 thread access、conversation 和 branch 导入会在 Postgres 端以一个
+事务提交；目标中已存在且 owner 不同的记录会阻断整批写入，不会被迁移数据
+重新归属。Memory 导入同样遵守 tombstone/forgotten/deleted guard，不能复活已
+遗忘的 canonical memory。
 
 ## 运维建议
 

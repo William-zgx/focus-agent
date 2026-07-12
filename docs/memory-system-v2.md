@@ -85,7 +85,7 @@ flowchart TD
 | `src/focus_agent/memory/curator.py` | branch finding promotion 前的冲突检查和候选治理。 |
 | `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前保持 FTS/rerank/dedupe。 |
 | `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/candidates/forget surface。 |
-| `src/focus_agent/migrate_local_state.py` | legacy LangGraph Store memory backfill 到 `focus_memories`，可选补齐 memory embeddings。 |
+| `src/focus_agent/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
 | `src/focus_agent/memory_embedding_cli.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
 
 ## 3. 数据模型
@@ -441,8 +441,8 @@ flowchart TD
 focus-agent-retrieval-index doctor
 focus-agent-retrieval-index stats
 focus-agent-retrieval-index backfill --target memory --limit 1000
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
-focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" rebuild --confirm-delete-index --backfill
 ```
 
 `focus-agent-retrieval-index doctor/stats` 是 Zvec 只读检查；`backfill --target memory` 从 canonical memory 重建 `focus_memory` collection。`focus-agent-memory-embedding doctor` 是 pgvector 兼容路径只读检查；`rebuild` 只删除并重建 `focus_memory_embeddings` 和它的索引，不删除 `focus_memories` canonical 数据。
@@ -708,6 +708,17 @@ Forget 是 tombstone + payload erasure：
 - `focus_memory_tombstones` 写 tombstone。
 - audit event 记录 actor/reason/tombstone id，并回填 existing record 的 user/thread/branch metadata。
 
+Tombstone 也是后续写入和异步任务的持久化防复活边界：
+
+- `PostgresMemoryRepository.upsert_record()` 与迁移专用
+  `upsert_record_if_not_tombstoned()` 都会在同一条 SQL 写路径中检查
+  `focus_memory_tombstones`、现有 `forgotten` 状态和 `deleted_at`；受保护的
+  `memory_id` 不会被普通 upsert 或离线回填重新激活。
+- embedding worker 在调用 provider 前会跳过 forgotten/deleted record；provider
+  返回后更新 `embedding_status` 时仍使用带状态条件的更新。若等待期间 memory
+  已被 forget，状态更新返回 false，worker 会删除可能刚写入的 stale embedding，
+  不会通过旧 record snapshot 把正文或状态写回。
+
 默认 list/search 不返回 forgotten memory；显式 `status=forgotten` 列表可以看到 tombstone 状态，但 API/SDK/Web 不展示旧正文，`payload_redacted=true`。
 
 ## 11. Branch、Promotion 与 Candidate
@@ -837,13 +848,16 @@ Web surface：
 
 ```mermaid
 flowchart TD
-    Local["local LangGraph Store pickle"] --> Scan["scan LocalStoreItemRecord"]
+    Local["canonical SQLite or signed legacy pickle store"] --> Detect["format and schema validation"]
+    Detect --> Scan["scan LocalStoreItemRecord"]
     Scan --> Parse["legacy payload parser"]
     Parse --> Valid{"recognized MemoryKind and content?"}
     Valid -- "no" --> Skip["skipped reason"]
     Valid -- "yes" --> Record["MemoryRecord"]
     Record --> Fingerprint["fingerprint / semantic_key"]
-    Fingerprint --> Repo["PostgresMemoryRepository.upsert_record"]
+    Fingerprint --> Tombstone{"memory id protected?"}
+    Tombstone -- "yes" --> Skip
+    Tombstone -- "no" --> Repo["PostgresMemoryRepository.upsert_record"]
     Repo --> Backfill{"--backfill-memory-embeddings?"}
     Backfill -- "no" --> Report["migration report"]
     Backfill -- "yes" --> EmbSvc["MemoryEmbeddingService"]
@@ -853,20 +867,27 @@ flowchart TD
 
 迁移特性：
 
+- checkpoint/store source 可以是 canonical SQLite 或 legacy pickle；同类源同时
+  存在时必须显式设置 `FOCUS_AGENT_CHECKPOINT_BACKEND`。配置与文件头不匹配、
+  SQLite schema 未知或存在活动 WAL sidecar 时 fail closed。
 - deterministic legacy id：没有 explicit `memory_id` 时用 namespace + key 生成稳定 id。
-- 幂等：重复迁移走 `upsert_record`。
+- 幂等：重复迁移走受 tombstone 保护的 upsert。
 - dry-run 只解析和计数，不写 Postgres。
 - schema v9 会幂等清理历史 forgotten rows，把遗留 `content/summary/data_json` 正文替换为空正文和 `[forgotten]` 摘要。
 - `--backfill-memory-embeddings` 会扫描 `status=active` 的 canonical memory，并按当前 env 中的 embedding provider/model/dimensions best-effort 补齐 shadow，报告 `scanned/written/skipped/failed`。
 - embedding backfill 会在执行前用当前 provider dimensions 调用 repository setup，确保 fresh database 也能创建 v10 pgvector schema。生产环境仍应先由 DBA/迁移账号预装 `vector` extension，并把应用设为 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required`。当前 backfill 不会把 local fallback 当 embedding 事实源。
-- tombstone 防回填仍需在更完整 dual read/backfill 阶段继续补强。
+- 已存在 tombstone 或 forgotten/deleted canonical row 的 `memory_id` 会计入
+  `tombstoned_memory_count` 并跳过，不允许 legacy payload 复活已遗忘 memory。
 
 ## 14.1 Legacy fallback 与迁移背景
 
 Memory v1 的运行时事实源主要依赖 LangGraph Store payload。当前生产事实源已经迁移到 PostgreSQL 独立业务表，但 legacy path 仍作为开发、测试和离线迁移的兼容边界存在：
 
 - 无 `DATABASE_URI` 的裸跑本地模式下，`runtime.memory_repository=None`，retriever / writer / tools 回退到 store-backed legacy memory path。
-- `focus-agent-migrate-local-state` 负责从 legacy LangGraph Store namespace 扫描 memory payload，并幂等写入 `focus_memories`；可选 `--backfill-memory-embeddings` 补齐 pgvector shadow。
+- `focus-agent-migrate-local-state` 可以从 canonical SQLite store 或 legacy
+  LangGraph Store namespace 扫描 memory payload，并以 tombstone-aware upsert
+  幂等写入 `focus_memories`；可选 `--backfill-memory-embeddings` 补齐 pgvector
+  shadow。
 - legacy payload 不再作为生产 HTTP / SDK / Web surface 的事实源；list/detail/audit/candidates/forget 的生产语义以 Postgres repository 为准。
 - local fallback 的 `memory_forget` 仍是 store delete，不维护 tombstone 或 pgvector shadow；生产 Postgres 路径使用 tombstone/soft forget，并同步清理对应 embedding rows。
 - 旧文档中的 v1 抽取、namespace、prompt injection 和 branch promotion 背景只作为理解迁移的语境保留；新增设计应优先修改本文件和 `src/focus_agent/memory/*` 的当前实现。
@@ -958,6 +979,9 @@ embedding 相关观测不会记录向量值：
 - Memory tools 在 graph path 绑定 `RequestContext`，拒绝跨 user/root/namespace 参数。
 - Forget 默认擦除 `focus_memories` 拆列和 `data_json` 中的正文；API/SDK/Web 用 `payload_redacted` 展示 tombstone 状态。
 - Postgres forget 同步删除 `focus_memory_embeddings` rows，避免 forgotten memory 通过语义 shadow 被召回。
+- Postgres canonical upsert、local-state migration 和异步 embedding status update
+  都保留 tombstone/forgotten/deleted guard；等待中的 embedding job 不会复活已
+  forget memory。
 - pgvector smoke 验证发现并修复了 `MemoryEmbeddingSearchHit` 进入 retriever 后未 normalize 的问题；现在 vector hits 会统一转换成 `MemorySearchHit`。
 - runtime 注入 embedding provider 和 retrieval index 后，turn-level retrieval 与显式 `memory_search` tool 都可以走 Zvec-first，并在索引不可用时回退 FTS。
 - `focus-agent-migrate-local-state` 报告中的 database URI 改为脱敏输出，legacy store 非 dict payload 也不会因 `dict(value)` 崩溃。

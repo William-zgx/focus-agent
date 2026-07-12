@@ -273,10 +273,15 @@ class OwnershipAuditDashboard:
 
 ```text
 src/focus_agent/core/agent_team.py
-src/focus_agent/services/agent_team.py
-src/focus_agent/services/agent_team_planning.py
+src/focus_agent/services/agent_team/
+src/focus_agent/services/agent_team/planning/
+src/focus_agent/services/agent_team_planning.py  # retained 1.x import surface
 src/focus_agent/services/agent_team_run.py
+src/focus_agent/services/agent_team_run_orchestration.py
+src/focus_agent/services/agent_team_run_lease.py
 src/focus_agent/services/agent_team_merge.py
+src/focus_agent/api/routers/agent_team.py
+src/focus_agent/api/routers/agent_team_tool_approvals.py
 ```
 
 `AgentTeamService` 职责：
@@ -291,12 +296,26 @@ src/focus_agent/services/agent_team_merge.py
 - 应用 team merge decision
 - 汇总 ownership audit report，用于 Dashboard 展示 deny reason 和 deny trend
 
+`agent_team_run.py` 保持 `AgentTeamRunMixin` facade 和兼容导入；
+`agent_team_run_orchestration.py` 承载 plan/run/retry/cancel、DAG wave、enqueue
+失败回滚和 session 状态推进，`agent_team_run_lease.py` 独立维护 task claim 与
+resource lock heartbeat。API 主 router 仍保留原有 endpoint 和导出名，但 tool
+approval list/decision/approve/reject 的实现拆到
+`agent_team_tool_approvals.py` 后再 include；这是内部解耦，不是公共路由变更。
+
 `AgentTeamPlanningService` 默认走模型结构化规划；模型不可用、校验失败或 repair 失败时使用保守 fallback。规划不再从固定三段式模板出发，而是先根据 goal/options 生成 Mission Profile，再推导 deliverables，最后编译成带依赖、输入/输出契约、证据要求、风险等级和重拆策略的 Mission DAG。session 会记录 `planning_source`、`planning_rationale`、`planner_model_id`、`plan_generated_at`、`plan_hash` 与 `planning_error`。Legacy `/dispatch` 仍保留，但 Web 主流程使用 `/plan`。
 
 Fallback planner 仍要保留契约完整性：当旧字段如 `input_items`、`output_items`、`evidence`、`capabilities`、`risk` 或 `replan_when` 被填充时，规划服务会把它们归一化到 `input_contract`、`output_contract`、`evidence_required`、`capability_requirements`、`risk_level` 和 `replan_policy`，避免降级路径丢失执行和汇总所需的任务契约。
 
 
-`AgentTeamRunService` 会运行依赖已满足的 ready tasks。委派执行时，每个 subagent 都会收到 session 目标、task contract 和上游依赖任务 outputs，避免下游任务只拿到元指令而缺少真实用户目标或前置产出。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或 `Fake delegated...` summary 时，`final_answer_status` 必须是 `placeholder`，`recommended_next_action` 必须是 `request_changes`。如果已完成任务声明了 `evidence_required` 但 output / artifact / verification summary 中缺少对应证据，merge bundle 会补充风险并要求变更。
+`AgentTeamRunMixin` 与 `agent_team_run_orchestration.py` 会运行依赖已满足的
+ready tasks。委派执行时，每个 subagent 都会收到 session 目标、task contract
+和上游依赖任务 outputs，避免下游任务只拿到元指令而缺少真实用户目标或前置
+产出。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或
+`Fake delegated...` summary 时，`final_answer_status` 必须是 `placeholder`，
+`recommended_next_action` 必须是 `request_changes`。如果已完成任务声明了
+`evidence_required` 但 output / artifact / verification summary 中缺少对应
+证据，merge bundle 会补充风险并要求变更。
 
 调度状态机要求：
 
@@ -495,7 +514,10 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
 make ci
 ```
 
-`make ci` 当前覆盖 Ruff lint、CI 风格 pytest、API/SDK contract snapshot、frontend SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。
+`make ci` 当前覆盖 strict Ruff lint、CI 风格 pytest、API/SDK contract
+snapshot、阻断式 architecture/compatibility gates、frontend SDK
+check/build/transport validation、全量 Web lint/format-check/check/build，以及 Node
+stream frontend regression。
 
 Agent Team focused regression：
 
@@ -543,7 +565,7 @@ Dashboard 侧只需要读取 `summary.status`、`summary.quality_attention` 和 
 
 ## 11. 多 Agent 开发分工
 
-- Backend Agent：`src/focus_agent/core/agent_team.py`、`src/focus_agent/services/agent_team.py`、API contract、后端测试。
+- Backend Agent：`src/focus_agent/core/agent_team.py`、`src/focus_agent/services/agent_team/`、API contract、后端测试。
 - SDK Agent：`frontend-sdk/src/types.ts`、`frontend-sdk/src/types/agent-team.ts`、`frontend-sdk/src/client.ts`、`frontend-sdk/src/client/agent-team.ts`、`guards.ts`、exports、SDK tests。
 - Web Agent：`apps/web/src/features/agent-team/`、route、shell navigation。
 - Test Agent：pytest、eval dataset、Web/SDK scaffold tests。

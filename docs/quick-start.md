@@ -22,6 +22,16 @@ pnpm install --registry=https://registry.npmjs.org
 
 Keep provider credentials in `.focus_agent/local.env` or another untracked local config file. The root `.env.example` is a reference for Docker Compose or manual shell exports; the local API startup path reads `.focus_agent/local.env` and process environment variables.
 
+Configuration precedence is explicit:
+
+| Source | Behavior |
+| --- | --- |
+| Process environment | Wins over values loaded from `.focus_agent/local.env` |
+| `MODEL` / `HELPER_MODEL` | Override the model catalog defaults |
+| `FOCUS_AGENT_MODEL_CATALOG_DOC` / `FOCUS_AGENT_TOOL_CATALOG_DOC` | Replace the default model/tool catalog document paths |
+| Secret provider | Fills secret values that were not already supplied explicitly |
+| Missing local env file | Allowed; startup continues with process env and catalog defaults |
+
 To add an OpenAI-compatible chat model for one deployment, add provider/model metadata to `.focus_agent/models.toml` and put only secret endpoint values in `.focus_agent/local.env`. Add entries to `src/focus_agent/defaults/models.toml` only when a model should become built-in for every fresh setup.
 
 Skill settings are also local-first. Bundled skills are always available as the baseline catalog; optional project or user skills can live under `.focus_agent/skills` or another directory listed in `FOCUS_AGENT_SKILLS_DIRS`. Use `/app/admin/config` -> Capabilities to enable or disable the Skill system or individual skills. The Admin page persists local Skill settings such as `FOCUS_AGENT_SKILLS_ENABLED`, `SKILL_DISABLED_IDS`, and semantic-match controls to `.focus_agent/local.env`.
@@ -87,7 +97,10 @@ That managed path:
 
 If you explicitly export `DATABASE_URI` before startup, that value is preserved and the local-Postgres bootstrap is skipped.
 
-If you prefer to launch `.venv/bin/focus-agent-api` directly, export `DATABASE_URI` yourself first. The raw binary does not start the managed local PostgreSQL helper for you.
+If you prefer to launch `.venv/bin/focus-agent-api` directly, export
+`DATABASE_URI` yourself when you want Postgres primary persistence. The raw binary does not start the managed local PostgreSQL helper for you. Without
+`DATABASE_URI`, it uses the single-process SQLite/local fallback documented in
+[Local Persistence](#5-local-persistence).
 
 The startup scripts also persist runtime settings to `.focus_agent/postgres/runtime.env` so ad-hoc commands can inspect the same database:
 
@@ -142,8 +155,8 @@ Use the maintenance CLI for read-only diagnostics and controlled index rebuilds:
 focus-agent-retrieval-index doctor
 focus-agent-retrieval-index stats
 focus-agent-retrieval-index backfill --target all --limit 1000
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
-focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" rebuild --confirm-delete-index --backfill
 ```
 
 `focus-agent-retrieval-index rebuild` is non-destructive guidance: stop writers, remove `AGENT_ZVEC_DATA_DIR`, then run backfill. `focus-agent-memory-embedding rebuild` drops and recreates only `focus_memory_embeddings`; it does not delete `focus_memories`, audit events, tombstones, candidates, or checkpoints.
@@ -157,13 +170,45 @@ AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
 See [Zvec Retrieval Index](retrieval-zvec.md) for collection names, security
 checks, backfill targets, and multi-replica notes.
 
-## 5. Local Checkpoint Signatures
+## 5. Local Persistence
 
-When the local pickle-backed fallback is used, checkpoint and store files are
-loaded only if they are owned by the current user. Signature verification is on
-by default: set `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` to a stable local secret so
-new pickle files get a matching `<file>.sig` HMAC signature and can be restored
-on the next startup.
+When the API binary runs without `DATABASE_URI`, local app-state is durable by
+default: branch, conversation, thread-access, user, and productivity
+repositories share `BRANCH_DB_PATH` (default
+`.focus_agent/branches.sqlite3`). Agent Team remains an in-memory local
+fallback, and local mode still has no Postgres trajectory recorder or artifact
+metadata repository.
+
+The local fallback also uses SQLite for both LangGraph checkpoints and the
+local store by default. The default files are
+`.focus_agent/langgraph-checkpoints.sqlite3` and
+`.focus_agent/langgraph-store.sqlite3`; they work across restarts without an
+HMAC key:
+
+```env
+FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite
+```
+
+Pickle remains available only as an explicit compatibility choice. Pickle
+checkpoint and store files are loaded only if they are owned by the current
+user. Signature verification is on by default, so startup fails before creating
+either file unless `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` is set to a stable local
+secret:
+
+```env
+FOCUS_AGENT_CHECKPOINT_BACKEND=pickle
+FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=true
+FOCUS_AGENT_CHECKPOINT_HMAC_KEY=<stable-secret>
+```
+
+New pickle files receive a matching `<file>.sig` HMAC signature and can be
+restored on the next startup.
+
+If `FOCUS_AGENT_CHECKPOINT_BACKEND` is unset and legacy pickle files already
+exist, the runtime does not silently ignore them. It continues with the legacy
+files only when the files and signatures are owned by the current user and
+their HMACs verify. An owner mismatch, missing key/signature, invalid signature,
+or corrupt payload fails startup instead of silently replacing state.
 
 For a short rollback or migration window with existing unsigned local pickle
 files, set:
@@ -175,6 +220,24 @@ FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=false
 Remove that flag after the service rewrites the checkpoint files with
 `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` configured.
 
+Before moving local state to Postgres, stop the local runtime and run the
+migration CLI. It accepts canonical SQLite or legacy pickle checkpoint/store
+sources:
+
+```bash
+focus-agent-migrate-local-state \
+  --source-dir .focus_agent \
+  --database-uri "$DATABASE_URI" \
+  --checkpoint-mode latest-stable \
+  --report-path reports/release-gate/postgres-migration.json
+```
+
+If SQLite and pickle variants both exist for the same source, set
+`FOCUS_AGENT_CHECKPOINT_BACKEND` explicitly. Unknown SQLite schemas, a backend
+that disagrees with the file format, and active SQLite `-wal` / `-shm` sidecars
+fail closed. The Postgres app-state import is transactional and rejects owner
+conflicts rather than reassigning an existing thread, conversation, or branch.
+
 Local performance rollout flags are documented in `.env.example`. The defaults
 enable DB pooling, checkpoint debounce, async memory embedding dispatch, and the
 isolated tool pool. For rollback, set the specific flag off and restart:
@@ -185,6 +248,7 @@ FOCUS_AGENT_CHECKPOINT_INCREMENTAL=false
 FOCUS_AGENT_MEMORY_EMBED_ASYNC=false
 FOCUS_AGENT_TOOL_POOL_ISOLATED=false
 FOCUS_AGENT_CHECKPOINT_BACKEND=pickle
+FOCUS_AGENT_CHECKPOINT_HMAC_KEY=<stable-secret>
 ```
 
 ## 6. Runtime Coordination
@@ -277,7 +341,16 @@ Build a debug APK:
 pnpm android:apk:debug
 ```
 
-The Android target uses the in-app Focus Agent local runtime, so it does not require a Focus Agent HTTP backend URL. Chat, branch, account, and admin data are stored in the app WebView's local storage. Model requests go directly to the OpenAI-compatible provider configured in Admin -> Settings Center, using the API key saved inside the app. Skill and tool availability are also managed from the Android-local Admin settings surface. Use `pnpm android:open` for Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
+The Android target uses the in-app Focus Agent local runtime, so it does not
+require a Focus Agent HTTP backend URL. It is a device-local single-user
+runtime: chat, branch, local governance/memory/observability compatibility
+data, and non-secret device configuration are stored in WebView local storage,
+but account, password, token, session, user administration, and audit
+governance are unavailable. Model requests go directly to the configured
+OpenAI-compatible provider; the API key is held by native secure storage and is
+not written to WebView local storage. Skill and tool availability are managed
+from the Android-local configuration surface. Use `pnpm android:open` for
+Android Studio, or `pnpm android:run` to sync and run on a device/emulator.
 
 Run the Android local runtime smoke when SDK endpoints, local transport, stream parsing, model-provider config, or Android-only routes change:
 

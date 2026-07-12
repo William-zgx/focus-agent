@@ -18,9 +18,10 @@
 - API：`src/focus_agent/api/routers/productivity.py`
 - Service：`src/focus_agent/services/productivity.py`
 - Repository 接口：`src/focus_agent/repositories/productivity_repository.py`
-- 数据库实现：`InMemoryProductivityRepository`（`productivity_repository.py` 内）、
-  `PostgresProductivityRepository`（默认持久化运行时）、
-  `SQLiteProductivityRepository`（本地离线适配/测试用）
+- 数据库实现：`PostgresProductivityRepository`（配置 `DATABASE_URI` 时的
+  primary runtime）、`SQLiteProductivityRepository`（无 `DATABASE_URI` 的
+  单机持久化 runtime）、`InMemoryProductivityRepository`（测试和显式兼容
+  adapter）
 - 工具侧接入：`src/focus_agent/capabilities/default_tool_modules/productivity.py`
 - Web App：`apps/web/src/pages/productivity/productivity-page.tsx`
 - SDK：`frontend-sdk/src/client/productivity.ts`
@@ -30,9 +31,9 @@ flowchart LR
     Producer["Web / SDK / Tool"] --> APIRouter["/v1/notes, /v1/tasks, /v1/productivity/capture/*"]
     APIRouter --> ProductivityService["ProductivityService"]
     ProductivityService --> Repo["ProductivityRepository"]
-    Repo --> InMemory["InMemoryProductivityRepository"]
     Repo --> Postgres["PostgresProductivityRepository"]
-    Repo --> SQLite["SQLiteProductivityRepository (standalone adapter)"]
+    Repo --> SQLite["SQLiteProductivityRepository (local runtime)"]
+    Repo --> InMemory["InMemoryProductivityRepository (test/compat)"]
 ```
 
 ## 2. API 入口与行为边界
@@ -151,8 +152,11 @@ Capture 的关键规则：
 `runtime` 在有/无 `DATABASE_URI` 时会创建对应 repository：
 
 - Postgres：`PostgresProductivityRepository`
-- 无数据库时：`InMemoryProductivityRepository`
-- SQLite：`SQLiteProductivityRepository`（本地临时文件路径；通常用于独立适配验证，不是默认运行时主路径）
+- 无数据库时：`SQLiteProductivityRepository`，与 branch、conversation、thread
+  access 和 user app-state 共用 `BRANCH_DB_PATH`（默认
+  `.focus_agent/branches.sqlite3`）
+- In-memory：`InMemoryProductivityRepository` 只保留给测试和显式兼容注入，
+  不再是裸跑 API 的默认 repository
 
 路由层还会按注入边界创建并复用 `ProductivityService`。
 

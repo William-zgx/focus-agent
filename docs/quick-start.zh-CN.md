@@ -34,6 +34,16 @@ pnpm install --registry=https://registry.npmjs.org
 
 Provider 凭据请放在 `.focus_agent/local.env` 或其他未跟踪的本地配置文件里。根目录 `.env.example` 主要供 Docker Compose 或手动 shell export 参考；本地 API 启动路径读取 `.focus_agent/local.env` 和进程环境变量。
 
+配置优先级如下：
+
+| 来源 | 行为 |
+| --- | --- |
+| 进程环境变量 | 覆盖 `.focus_agent/local.env` 中的同名值 |
+| `MODEL` / `HELPER_MODEL` | 覆盖 model catalog 的默认模型 |
+| `FOCUS_AGENT_MODEL_CATALOG_DOC` / `FOCUS_AGENT_TOOL_CATALOG_DOC` | 替换默认 model/tool catalog 文档路径 |
+| Secret provider | 只补充尚未显式提供的 secret |
+| 本地 env 文件缺失 | 允许继续启动，使用进程环境变量和 catalog 默认值 |
+
 如果只是给某个部署新增 OpenAI-compatible chat 模型，请在 `.focus_agent/models.toml` 里增加 provider/model 元数据，并只把密钥和 endpoint 放到 `.focus_agent/local.env`。只有当模型需要成为所有新环境的内置默认支持时，才修改 `src/focus_agent/defaults/models.toml`。
 
 Skill 设置同样是 local-first。包内 bundled skills 提供基础 catalog；可选项目或用户 Skill 可以放在 `.focus_agent/skills`，也可以放在 `FOCUS_AGENT_SKILLS_DIRS` 指定的目录。通过 `/app/admin/config` 的「能力」分区可以启停整个 Skill 系统或单个 Skill；页面会把 `FOCUS_AGENT_SKILLS_ENABLED`、`SKILL_DISABLED_IDS` 和语义匹配等本地设置写入 `.focus_agent/local.env`。
@@ -94,7 +104,9 @@ make api
 
 如果你在启动前已经显式设置了 `DATABASE_URI`，启动命令会保留该值，不再覆盖，也不会再做托管本地 Postgres 的注入。
 
-如果你更希望直接运行 `.venv/bin/focus-agent-api`，请先自行准备并导出 `DATABASE_URI`。裸跑二进制不会帮你启动这套托管本地 PostgreSQL。
+如果你更希望直接运行 `.venv/bin/focus-agent-api`，只有在需要 Postgres primary
+persistence 时才需要自行准备并导出 `DATABASE_URI`。裸跑二进制不会帮你启动这套托管本地 PostgreSQL；未设置 `DATABASE_URI` 时会使用
+[本地持久化](#5-本地持久化)所述的单进程 SQLite/local fallback。
 
 启动脚本会把运行态写入 `.focus_agent/postgres/runtime.env`，方便另一条 shell 连接同一套数据库：
 
@@ -149,8 +161,8 @@ AGENT_MEMORY_EMBEDDING_API_KEY_ENV=OPENAI_API_KEY
 focus-agent-retrieval-index doctor
 focus-agent-retrieval-index stats
 focus-agent-retrieval-index backfill --target all --limit 1000
-focus-agent-memory-embedding doctor --database-uri "$DATABASE_URI"
-focus-agent-memory-embedding rebuild --database-uri "$DATABASE_URI" --confirm-delete-index --backfill
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
+focus-agent-memory-embedding --database-uri "$DATABASE_URI" rebuild --confirm-delete-index --backfill
 ```
 
 `focus-agent-retrieval-index rebuild` 只输出非破坏性重建指引：停止 writer，删除 `AGENT_ZVEC_DATA_DIR`，再执行 backfill。`focus-agent-memory-embedding rebuild` 只会删除并重建 `focus_memory_embeddings`，不会删除 `focus_memories`、audit events、tombstones、candidates 或 checkpoints。
@@ -163,7 +175,53 @@ AGENT_MEMORY_PGVECTOR_EXTENSION_MODE=required
 
 collection 名称、安全校验、backfill target 和多副本约束见 [Zvec Retrieval Index](retrieval-zvec.md)。
 
-## 5. Runtime 协调
+## 5. 本地持久化
+
+API 二进制在没有 `DATABASE_URI` 时也会默认持久化本地 app-state：
+branch、conversation、thread access、用户和 productivity repository 共用
+`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`）。Agent Team 仍是
+in-memory 本地 fallback；该模式也没有 Postgres trajectory recorder 和 artifact
+metadata repository。
+
+LangGraph checkpoint/store 默认使用 SQLite，文件分别为
+`.focus_agent/langgraph-checkpoints.sqlite3` 和
+`.focus_agent/langgraph-store.sqlite3`，重启不需要 HMAC key：
+
+```env
+FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite
+```
+
+Pickle 仅作为显式兼容路径保留。选择
+`FOCUS_AGENT_CHECKPOINT_BACKEND=pickle` 时，默认开启签名校验，必须提供稳定的
+`FOCUS_AGENT_CHECKPOINT_HMAC_KEY`；pickle 与对应 `.sig` 还必须属于当前用户。
+owner 不匹配、key/signature 缺失、签名无效或 payload 损坏都会在启动时 fail
+closed，不会静默丢弃旧状态并创建空状态。
+
+如果没有显式设置 backend，但目录中已有历史 pickle，runtime 也只会在 owner
+和 HMAC 均校验通过时继续兼容使用。仅在受控回滚或迁移窗口内，才可以临时设置：
+
+```env
+FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=false
+```
+
+迁移完成后应立即恢复校验。把本地状态迁移到 Postgres 前，先停止本地 runtime，
+再执行：
+
+```bash
+focus-agent-migrate-local-state \
+  --source-dir .focus_agent \
+  --database-uri "$DATABASE_URI" \
+  --checkpoint-mode latest-stable \
+  --report-path reports/release-gate/postgres-migration.json
+```
+
+迁移器支持 canonical SQLite 和 legacy pickle checkpoint/store。同类 SQLite 与
+pickle 同时存在时必须显式设置 `FOCUS_AGENT_CHECKPOINT_BACKEND`；backend 与文件
+格式不一致、SQLite schema 未知或仍存在活动 `-wal` / `-shm` sidecar 时会拒绝
+迁移。Postgres app-state 导入在单个事务中完成，并拒绝用不同 owner 覆盖已有
+thread、conversation 或 branch。
+
+## 6. Runtime 协调
 
 默认本地协调是 local-first：
 
@@ -183,7 +241,7 @@ DATABASE_URI=postgresql://user:pass@host:5432/focus_agent
 
 Durable jobs 使用 claim token 和 claim heartbeat；chat/branch 写操作使用 per-thread lease。首轮 branch title/metadata refresh 会在 chat turn lease release 后再调度，避免 immediate background worker 和当前 turn lock 竞争。
 
-## 6. 分支推荐
+## 7. 分支推荐
 
 Branch decision 自动化默认关闭。若只想收集推荐证据、不改变聊天行为，可配置：
 
@@ -204,7 +262,7 @@ AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE=0.72
 
 `suggest` 模式仍不会静默 fork；用户需要在聊天卡片里确认或取消。完整配置、API、SDK 和验证口径见 [分支决策与推荐](branch-decisions.md)。
 
-## 7. 前端开发模式
+## 8. 前端开发模式
 
 如果你要本地联调前端：
 
@@ -225,7 +283,7 @@ WEB_APP_DEV_SERVER_URL=http://127.0.0.1:5173/app
 
 Web App 默认把 `VITE_FOCUS_AGENT_API_BASE_URL` 解析为 `window.location.origin`。只有当 Vite 页面需要调用另一个 API origin 时才显式设置。
 
-## 8. Android App
+## 9. Android App
 
 Android App 是一层 Capacitor 原生壳，包住 React 构建产物。移动构建使用 `/` 作为应用内路由 base，并设置 Android web target：保留对话与系统管理功能，排除 Agent Team 和 Productivity 路由。
 
@@ -248,7 +306,14 @@ pnpm android:sync
 pnpm android:apk:debug
 ```
 
-Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus Agent HTTP 后端地址；对话、分支、账号与管理数据会保存在 App WebView 本地存储中。模型请求会直接发往 Admin 设置中心里配置的 OpenAI-compatible 供应商，并使用保存在 App 本机数据里的 API Key。Skill 和工具可用性也通过 Android-local 的 Admin 设置页维护。需要打开 Android Studio 时运行 `pnpm android:open`；需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
+Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连接 Focus
+Agent HTTP 后端地址。它是设备内单用户 runtime：对话、分支、本地
+governance/memory/observability 兼容数据和非 secret 设备配置保存在 App WebView
+本地存储中；账号、密码、token、session、用户管理和 audit governance 不可用。
+模型请求会直接发往配置的 OpenAI-compatible 供应商，API Key 由 native secure
+storage 保存，不写入 WebView local storage。Skill 和工具可用性通过
+Android-local 配置页维护。需要打开 Android Studio 时运行 `pnpm android:open`；
+需要同步并运行到设备/模拟器时运行 `pnpm android:run`。
 
 如果改动 SDK endpoint、本地 transport、stream parsing、模型配置或 Android-only 路由，请跑 Android 本地 runtime smoke：
 
@@ -256,14 +321,14 @@ Android target 使用 App 内本地 Focus Agent runtime，不需要填写或连�
 make frontend-android-runtime-smoke
 ```
 
-## 9. 一键本地模式
+## 10. 一键本地模式
 
 - `make serve` / `make serve-dev`：启动前端 Vite dev server 和带热重载的后端 API
 - `API_RELOAD=0 make serve-dev`：使用同一套 dev 栈但关闭后端 reload，适合完整浏览器验证
 - `make serve-prod`：先构建静态前端，再以非 reload 模式启动后端
 - `make dev`：只启动后端，并启用 `API_RELOAD=1`
 
-## 10. 本地鉴权
+## 11. 本地鉴权
 
 内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
 
@@ -300,7 +365,7 @@ Admin Console 本地检查入口：
 - 状态、角色、会话撤销和密码重置动作都需要填写 reason，并写入审计事件。
 - Bearer token scope 不能单独授予 admin 权限；必须有持久化用户角色支持。
 
-## 11. 浏览器 Smoke 测试
+## 12. 浏览器 Smoke 测试
 
 `make ui-smoke` 默认使用 `scripts/ui_smoke_test.py` 中配置的 app URL，通常对应 Vite dev server。当你想验证后端托管的静态 bundle，或本地调试时临时关闭鉴权，可以显式启动 API 并传入页面地址：
 
@@ -316,7 +381,7 @@ uv run python scripts/ui_smoke_test.py \
 
 如果使用 Vite dev server，请保留 `http://127.0.0.1:5173/app/` 末尾的斜杠；`http://127.0.0.1:5173/app` 在 dev server 下可能有不同处理。Smoke 脚本会用临时 Chrome profile，避免本地 localStorage、扩展和个人 profile 中的登录态影响结果。如果手动浏览器打开空白登录页而 smoke 通过，请先清理 `127.0.0.1` 站点数据或使用干净 profile，再判断是否是 UI 回归。
 
-## 12. 下一步文档
+## 13. 下一步文档
 
 - [Memory System v2](memory-system-v2.md)
 - [分支决策与推荐](branch-decisions.md)

@@ -21,6 +21,15 @@ Focus Agent is an open-source application scaffold and reference implementation,
 
 The branch workflow, backend API, SSE stream contract, frontend SDK, and documented Web surfaces are protected by contract, build, and smoke checks. Deployment choices such as model provider, auth policy, PostgreSQL hosting, observability backend, and release process remain explicit configuration decisions for each adopter.
 
+### Hardened And Validated Baseline
+
+- **Durable local state:** the maintained `make api` / `make dev` / `make serve*` entry points still manage a repo-local PostgreSQL when `DATABASE_URI` is unset. Direct API startup without `DATABASE_URI` instead persists app-state plus LangGraph checkpoints/store in local SQLite; signed legacy pickle is compatibility-only and fails closed on owner or HMAC verification errors. See [Quick Start](docs/quick-start.md) and [Architecture](docs/architecture.md).
+- **Security boundaries:** cookie-authenticated mutations enforce same-origin browser metadata and use CSRF double-submit when non-development clients omit that metadata; disabled users are rejected on protected requests and lose refresh sessions, governance trajectories are owner-scoped unless a global permission is granted, and `web_fetch` combines DNS validation with fixed-IP transport to resist rebinding SSRF. See [Security](SECURITY.md) and [Auth / Access](docs/auth-access.md).
+- **Production evidence:** schema-v2 evidence packs bind reports to commit, deployment ID, deployment version, environment, and timezone-aware generation time; production mode validates identity and freshness instead of accepting an unrelated or stale report. See [Release Checklist](docs/release-checklist.md) and [CI Release Gate](docs/ci/github-actions-release-gate.md).
+- **Executable UI and mobile gates:** a dedicated workflow runs real Chrome chat and observability interactions, while CI builds, lints, and unit-tests the Android debug project. Android also has bounded/cancellable native HTTP, one-shot cold/hot deep-link delivery, secure key storage, and disabled Capacitor bridge logging. See [Validation](docs/validation-runbook.md) and [Android](docs/android.md).
+- **Resilient streams:** ended in-memory streams are reclaimed after a replay window; SDK reconnects deduplicate event IDs across connections and raise `FocusAgentIncompleteStreamError` if EOF arrives without a terminal event. See [Streaming Contract](docs/streaming-contract.md) and the [Frontend SDK](frontend-sdk/README.md).
+- **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains 170 intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
+
 ## Why Focus Agent
 
 Most agent demos assume one chat box and one final answer. Focus Agent is built around a different idea: serious research, debugging, writing, and review work are not linear.
@@ -62,6 +71,7 @@ Requirements:
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - Node.js 20+ if you want to build the web frontend and SDK
+- Corepack with pnpm 9.15.9 (`corepack enable && corepack prepare pnpm@9.15.9 --activate`)
 - Node.js 22+, JDK 21, and Android Studio / Android SDK if you want to build the Android app
 
 ```bash
@@ -76,6 +86,12 @@ make api
 
 `make setup-local` creates `.focus_agent/local.env`, `.focus_agent/models.toml`, and `.focus_agent/tools.toml`.
 The root `.env.example` is a reference for Compose or manual shell exports; the local API startup path reads `.focus_agent/local.env` and process environment variables.
+
+`make api` and the other maintained local `make` entry points manage a
+repo-local PostgreSQL when `DATABASE_URI` is not explicitly exported. The raw
+API binary does not start that helper; without `DATABASE_URI`, it uses durable
+local SQLite app-state, checkpoints, and store instead. The exact startup and
+migration boundaries are documented in [docs/quick-start.md](docs/quick-start.md).
 
 Model/provider metadata is loaded from the packaged default catalog and can be
 overridden locally through `.focus_agent/models.toml`; keep provider secrets in
@@ -101,25 +117,16 @@ Then open:
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
-- `http://127.0.0.1:8000/app/agent/memory`
-- `http://127.0.0.1:8000/app/agent/roles`
 - `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
-- `http://127.0.0.1:8000/app/admin/users`
-- `http://127.0.0.1:8000/app/admin/audit-events`
-- `http://127.0.0.1:8000/app/productivity/notes`
-- `http://127.0.0.1:8000/app/productivity/tasks`
 - `http://127.0.0.1:8000/app/observability/overview`
-- `http://127.0.0.1:8000/app/observability/trajectory`
-- `http://127.0.0.1:8000/healthz`
-- `http://127.0.0.1:8000/readyz`
-- `http://127.0.0.1:8000/metrics`
+- `http://127.0.0.1:8000/readyz` and `http://127.0.0.1:8000/metrics`
 
 For the full local startup flow, managed repo-local PostgreSQL behavior, Vite dev mode, and local auth examples, see [docs/quick-start.md](docs/quick-start.md). The built-in auth page supports username/password, Demo login, and Bearer Token login; account switching is logout followed by another login method.
 
 ## Android App
 
-The Android target packages the React app with Capacitor. It keeps Chat, Admin, Focus Score branch routing, recommended Branch Actions, merge review, local governance/memory/observability routes, and Android-local web search tool calls, uses `/` as the in-app route base, and disables only the Agent Team / Productivity workbenches for the mobile build. Android uses the SDK local transport for an in-app Focus Agent runtime instead of connecting to a Focus Agent HTTP backend; model calls go directly to the user-configured OpenAI-compatible provider API key stored in native secure storage. The Web target still uses the default `/v1` and `/v2` backend transport.
+The Android target packages the React app with Capacitor and uses the SDK local transport for a device-local single-user runtime. Provider keys stay in native secure storage; native HTTP is bounded and cancellable, deep links are allowlisted and delivered once for cold and hot intents, and bridge logging is disabled. The Web target remains server-backed on `/v1` and `/v2`. See [Android App](docs/android.md) for the capability boundary, limits, CI checks, and device/emulator validation.
 
 ```bash
 pnpm android:web:build
@@ -162,6 +169,8 @@ For focused changes, use the narrower gates documented in [docs/development.md](
 ```bash
 make lint-strict
 make contract-check
+make architecture-gate
+make compat-gate
 pnpm sdk:check
 pnpm web:check
 pnpm web:build
@@ -169,6 +178,11 @@ make frontend-qa
 ```
 
 If your change affects user-facing behavior, streaming events, auth, storage, or SDK types, include the relevant tests and update documentation in the same pull request.
+
+GitHub Actions also contains a real Chrome workflow for chat, branch/review, and
+observability interaction gates, plus an Android job that runs debug build,
+lint, and unit tests. Local equivalents and simulator/device checks are listed
+in [docs/validation-runbook.md](docs/validation-runbook.md).
 
 For broad runtime, sandbox, Skill, Agent Team, observability, or release-readiness
 work, follow [docs/validation-runbook.md](docs/validation-runbook.md). It
@@ -188,19 +202,11 @@ Please use the GitHub issue templates for bugs, feature requests, and documentat
 - [Development Guide](docs/development.md)
 - [Validation Runbook](docs/validation-runbook.md)
 - [Architecture and module map](docs/architecture.md)
-- [Android App](docs/android.md)
-- [Auth / Access](docs/auth-access.md)
-- [Agent Team Workbench](docs/agent-team-workbench.md)
-- [Productivity System](docs/productivity-system.md)
-- [Admin Console](docs/admin-console.md)
-- [Branch Decisions](docs/branch-decisions.md)
 - [Streaming Contract](docs/streaming-contract.md)
-- [Frontend Visual System](docs/frontend-visual-system.md)
+- [Auth / Access](docs/auth-access.md)
+- [Android App](docs/android.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)
-- [Current Context Window](docs/context-window.md)
-- [Docker Deployment](docs/docker-deployment.md)
-- [Sandbox Execution](docs/sandbox-execution.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 

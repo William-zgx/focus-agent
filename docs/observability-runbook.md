@@ -1,6 +1,6 @@
 # Observability Runbook
 
-Updated: 2026-06-25
+Updated: 2026-07-12
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -8,6 +8,10 @@ Production smoke and release-health reports are release evidence, not a
 replacement for real UI smoke. Live stream validation still needs supplied
 stream events or a real browser/API flow; dry-run reports should be treated as
 setup checks only.
+
+Production evidence packs use manifest schema version 2. Every JSON input in a
+production pack must identify the exact release and collection time; passing
+content from a different commit or deployment is not reusable evidence.
 
 ```mermaid
 flowchart TD
@@ -45,6 +49,13 @@ curl http://127.0.0.1:8000/metrics
 - `status` and `ready`
 - `app_version`, `environment`, and `deployment`
 - per-component `checks`, including trajectory recorder status when trajectory persistence is expected and `retrieval_zvec` when the embedded retrieval index is enabled
+
+For a production evidence capture, `deployment`, `app_version`, and
+`environment` must equal `RELEASE_DEPLOYMENT_ID`,
+`RELEASE_DEPLOYMENT_VERSION`, and `RELEASE_ENVIRONMENT`. The evidence pack
+builder performs this cross-check in addition to validating the enclosing
+`release_binding`; a healthy response from the wrong deployment must fail the
+release.
 
 Typical interpretation:
 
@@ -338,7 +349,21 @@ uv run python scripts/observability_ui_smoke.py --scenario all
 pnpm --dir apps/web smoke:observability
 ```
 
-The browser smoke seeds representative success, failed, zero-step, and missing-detail turns, opens `/app/observability/overview`, then follows request/turn deep links into `/app/observability/trajectory`. It records completed fetch request URLs and verifies endpoint pathnames for overview, list, and detail calls, which catches route wiring regressions without depending on fragile query-string text.
+The local Python browser smoke launches the Chrome binary supplied through
+`CHROME_PATH`; it seeds representative success, failed, zero-step, and
+missing-detail turns, opens `/app/observability/overview`, then follows
+request/turn deep links into `/app/observability/trajectory`. It records
+completed fetch request URLs and verifies endpoint pathnames for overview,
+list, and detail calls, which catches route wiring regressions without
+depending on fragile query-string text.
+
+The local command is not the same artifact as the GitHub Actions
+`.github/workflows/browser-smoke.yml` gate. That workflow installs real Google
+Chrome, builds the production Web app, starts PostgreSQL and a deterministic
+OpenAI-compatible model fixture, runs both chat/branch/review and observability
+interaction smoke, and uploads `reports/browser-smoke/`. The source-level
+`pnpm --dir apps/web smoke:observability` command launches neither Chrome nor
+the API; use it as a fast wiring check, not as browser evidence.
 
 The release gate runs the helper after the smoke and observability eval suites have written JSON reports:
 
@@ -363,13 +388,88 @@ For a live deployment, switch to `--mode live` or `--mode production`, remove `-
 
 Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
 
+### Production Evidence Identity And Freshness
+
+Before generating any production report, export the complete release identity:
+
+```bash
+export RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+export RELEASE_DEPLOYMENT_ID='<deployment-id>'
+export RELEASE_DEPLOYMENT_VERSION='<deployment-version>'
+export RELEASE_ENVIRONMENT='production'
+```
+
+`RELEASE_COMMIT_SHA` must be a hexadecimal commit that resolves in the checked
+out repository and equals its current `HEAD`. The other three values must
+identify the deployed production instance. Production smoke, Postgres ops,
+OTel smoke, governance, and eval report writers derive their top-level
+`release_binding` from these four variables. If only part of the identity is
+present, a non-dry-run writer fails before writing the report; caller-supplied
+binding fields cannot override the environment-derived identity.
+
+Every JSON input supplied to `release_evidence.py` must contain:
+
+```json
+{
+  "generated_at": "2026-07-12T12:00:00Z",
+  "release_binding": {
+    "commit_sha": "<full commit SHA>",
+    "deployment_id": "<deployment id>",
+    "deployment_version": "<deployment version>",
+    "environment": "production"
+  }
+}
+```
+
+The timestamp may use another supported evidence timestamp field, but it must
+be ISO-8601 with a timezone. The default maximum age and maximum span across
+required inputs are both 21,600 seconds (6 hours); override that only with the
+explicit `--max-evidence-age-seconds` release policy. Missing timestamps,
+timezone-naive timestamps, stale inputs, mismatched bindings, non-production
+environments, and inputs collected too far in the future fail closed.
+
+Raw endpoint captures such as `/readyz`, trajectory stats, replay comparisons,
+alert reports, and migration reports are not automatically attested by report
+writers. Capture them to a temporary path, then run
+`scripts/release_evidence_capture.py`. The helper validates any existing
+binding before writing the environment-derived top-level binding, preserves
+existing timestamps, and writes atomically. For `readyz`, pass `--readyz` to
+cross-check `deployment`, `app_version`, and `environment`:
+
+```bash
+raw_readyz="$(mktemp)"
+curl --fail --show-error --silent --output "$raw_readyz" -- "$READY_URL"
+uv run python scripts/release_evidence_capture.py \
+  "$raw_readyz" \
+  --output reports/release-gate/readyz.json \
+  --readyz "$raw_readyz" \
+  --captured-now
+rm -f "$raw_readyz"
+```
+
+`--captured-now` is limited to timestamp-free live snapshots such as `/readyz`
+and trajectory stats. It never replaces an existing timestamp. Replay, alert,
+migration, baseline eval, and static stream-event reports must carry an
+upstream timezone-aware timestamp; missing, naive, stale, or conflicting
+evidence fails closed.
+
 Production release review should archive an evidence pack after the live signals are captured:
 
 ```bash
 make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
-The resulting `reports/release-gate/<release-id>/manifest.json` records artifact paths, hashes, artifact summaries, command summaries, release-health status, approval metadata, retention metadata, storage verification metadata, and missing required artifacts. Missing readyz, trajectory stats, replay comparison, eval report, baseline eval report, production smoke, Postgres ops, OTel smoke, or governance report artifacts should block production release review. Missing or non-approved deployment-platform approval should also block production evidence review; when `--storage-dir` is used, the manifest records whether the retained manifest and summary match the local pack.
+The resulting `reports/release-gate/<release-id>/manifest.json` has
+`meta.schema_version=2` and records the validated release binding, freshness
+records, artifact paths, hashes, artifact summaries, command summaries,
+release-health status, approval metadata, retention metadata, storage
+verification metadata, and missing required artifacts. Missing readyz,
+trajectory stats, replay comparison, eval report, baseline eval report,
+production smoke, Postgres ops, OTel smoke, or governance report artifacts
+should block production release review. Missing or non-approved
+deployment-platform approval should also block production evidence review;
+when `--storage-dir` is used, the manifest records whether the retained
+manifest and summary match the local pack.
 
 Postgres migration verification can be attached as either a machine-readable migration report or the command evidence that generated it:
 
@@ -470,10 +570,23 @@ uv run python -m tests.eval --suite observability --concurrency 1
 
 `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check. It complements the real-browser smoke; it does not launch a browser or call the API.
 
+For CI browser evidence, inspect the `Browser Smoke` workflow result and its
+`browser-smoke-<run_id>-<run_attempt>` artifact. A local run should be reported
+separately with its Chrome version, `CHROME_PATH`, API/base URL, and generated
+JSON output; do not describe it as the workflow result.
+
 If your local `.venv` cannot import `psycopg` because `libpq` is missing, use the focused test workaround already documented in [architecture.md](architecture.md).
 
 ## 10. Current Boundaries
 
 - Trajectory observability depends on PostgreSQL-backed persistence or another initialized trajectory recorder.
+- When `DATABASE_URI` is absent in a raw local process, app state and LangGraph
+  checkpoint/store data default to repo-local SQLite. This keeps local state
+  durable, but it does not provide production trajectory observability or
+  shared multi-process coordination.
+- Legacy pickle checkpoint/store files are loaded only when ownership and HMAC
+  verification succeed. Missing keys, missing or invalid signatures, owner
+  mismatches, and corrupt payloads fail closed; disabling verification is not a
+  normal observability recovery step.
 - `/metrics` currently includes trajectory aggregate metrics when they are available; high-frequency scrape behavior should still be reviewed alongside your global API rate-limit settings.
 - OpenTelemetry exporter wiring is implemented with standard `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_*` settings, but collector reachability and desktop-browser automation still depend on the current deployment and execution environment.

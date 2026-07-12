@@ -21,6 +21,15 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 
 分支工作流、后端 API、SSE stream contract、frontend SDK 和已记录的 Web 功能面会通过 contract、build 和 smoke checks 保护。模型 provider、鉴权策略、PostgreSQL 托管方式、observability backend 和发布流程等部署选择，仍然由采用方显式配置。
 
+### 已加固并验证的基线
+
+- **本地持久化：** 维护中的 `make api` / `make dev` / `make serve*` 入口在未设置 `DATABASE_URI` 时仍会托管 repo-local PostgreSQL。直接启动 API 且不设置 `DATABASE_URI` 时，则使用本地 SQLite 持久化 app-state、LangGraph checkpoint 和 store；签名 pickle 仅作为兼容路径，owner 或 HMAC 校验失败会 fail closed。详见[快速开始](docs/quick-start.zh-CN.md)和[架构说明](docs/architecture.md)。
+- **安全边界：** Cookie 鉴权的写请求会校验浏览器同源元数据；非开发客户端缺少这些元数据时才要求 CSRF double-submit。被禁用用户会在受保护请求中立即失效并撤销 refresh session；governance trajectory 默认按 owner 隔离；`web_fetch` 通过 DNS 校验和固定 IP transport 抵御 DNS rebinding SSRF。详见[安全策略](SECURITY.md)和 [Auth / Access](docs/auth-access.md)。
+- **生产证据：** schema v2 evidence pack 将报告绑定到 commit、deployment ID、deployment version、environment 和带时区的生成时间；production 模式会校验身份与新鲜度，不接受无关或过期报告。详见[发布检查清单](docs/release-checklist.md)和 [CI Release Gate](docs/ci/github-actions-release-gate.md)。
+- **可执行 UI 与移动端门禁：** 独立 workflow 在真实 Chrome 中验证聊天和 observability 交互；CI 同时构建、lint 并单测 Android debug 项目。Android 还具备有界可取消的原生 HTTP、cold/hot deep link 单次投递、原生安全存储和关闭 Capacitor bridge logging。详见[验证手册](docs/validation-runbook.md)和 [Android](docs/android.md)。
+- **流式韧性：** 已结束的内存 stream 会在 replay 窗口后回收；SDK reconnect 会跨连接按 event ID 去重，若 EOF 前没有 terminal event 则抛出 `FocusAgentIncompleteStreamError`。详见[流式事件契约](docs/streaming-contract.md)和[前端 SDK](frontend-sdk/README.md)。
+- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 170 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
+
 ## 为什么是 Focus Agent
 
 很多 Agent Demo 默认只有“一问一答”。而 Focus Agent 的核心假设不同：真实的研究、调试、写作和审查过程并不是线性的。
@@ -62,6 +71,7 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - 如果要构建 Web 前端和 SDK，需要 Node.js 20+
+- Corepack 与 pnpm 9.15.9（`corepack enable && corepack prepare pnpm@9.15.9 --activate`）
 - 如果要构建 Android App，需要 Node.js 22+、JDK 21，以及 Android Studio / Android SDK
 
 ```bash
@@ -76,6 +86,12 @@ make api
 
 `make setup-local` 会创建 `.focus_agent/local.env`、`.focus_agent/models.toml` 和 `.focus_agent/tools.toml`。
 根目录 `.env.example` 主要供 Compose 或手动 shell export 参考；本地 API 启动路径读取 `.focus_agent/local.env` 和进程环境变量。
+
+`make api` 及其他维护中的本地 `make` 入口，会在没有显式 export
+`DATABASE_URI` 时托管 repo-local PostgreSQL。直接运行 API binary 不会启动
+该 helper；此时若仍无 `DATABASE_URI`，会改用持久化的本地 SQLite app-state、
+checkpoint 和 store。精确的启动与迁移边界见
+[docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
 
 模型和 provider 元数据会先读取包内默认 catalog，也可以通过
 `.focus_agent/models.toml` 做本地覆盖；provider 密钥请放在
@@ -99,25 +115,16 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent-team`
-- `http://127.0.0.1:8000/app/agent/memory`
-- `http://127.0.0.1:8000/app/agent/roles`
 - `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
-- `http://127.0.0.1:8000/app/admin/users`
-- `http://127.0.0.1:8000/app/admin/audit-events`
-- `http://127.0.0.1:8000/app/productivity/notes`
-- `http://127.0.0.1:8000/app/productivity/tasks`
 - `http://127.0.0.1:8000/app/observability/overview`
-- `http://127.0.0.1:8000/app/observability/trajectory`
-- `http://127.0.0.1:8000/healthz`
-- `http://127.0.0.1:8000/readyz`
-- `http://127.0.0.1:8000/metrics`
+- `http://127.0.0.1:8000/readyz` 与 `http://127.0.0.1:8000/metrics`
 
 更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。内置登录页支持用户名密码、Demo 登录和 Bearer Token 登录；账号切换就是先退出再选择另一种登录方式。
 
 ## Android App
 
-Android target 使用 Capacitor 打包 React App。移动端保留对话、系统管理、Focus Score 分支路由、系统推荐 Branch Action、merge review、本地治理/记忆/观测路由和 Android 本地网页搜索工具调用能力，应用内路由挂在 `/`，并在移动构建中只关闭 Agent Team / Productivity 工作台。Android 构建通过 SDK 本地 transport 使用 App 内 Focus Agent runtime，不连接 Focus Agent HTTP 后端；模型请求会直接发往用户在 App 内配置的 OpenAI-compatible 供应商 API Key，Key 通过原生安全存储保存。Web 构建仍默认连接 `/v1` 与 `/v2` 后端。
+Android target 使用 Capacitor 打包 React App，并通过 SDK local transport 使用设备内单用户 runtime。Provider key 保存在原生安全存储中；原生 HTTP 有界且可取消，deep link 会经过 allowlist 并对 cold/hot intent 各投递一次，bridge logging 默认关闭。Web target 仍通过 `/v1` 和 `/v2` 连接服务端。能力边界、限制、CI 检查和设备/模拟器验证详见 [Android App](docs/android.md)。
 
 ```bash
 pnpm android:web:build
@@ -160,6 +167,8 @@ make sdk-openapi-types-check
 ```bash
 make lint-strict
 make contract-check
+make architecture-gate
+make compat-gate
 pnpm sdk:check
 pnpm web:check
 pnpm web:build
@@ -167,6 +176,11 @@ make frontend-qa
 ```
 
 如果改动影响用户可见行为、stream 事件、鉴权、存储或 SDK 类型，请在同一个 PR 中补齐相关测试和文档。
+
+GitHub Actions 还包含真实 Chrome workflow，用于验证聊天、branch/review 和
+observability 交互；Android job 会运行 debug build、lint 和 unit tests。
+本地等价命令及模拟器/真机检查见
+[docs/validation-runbook.md](docs/validation-runbook.md)。
 
 ## 贡献与支持
 
@@ -179,20 +193,13 @@ Bug、功能请求和文档改进请优先使用 GitHub issue templates。安全
 - [文档索引](docs/README.md)
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
+- [验证手册](docs/validation-runbook.md)
 - [架构说明与模块导航](docs/architecture.md)
-- [Android App](docs/android.md)
-- [Auth / Access](docs/auth-access.md)
-- [Agent Team Workbench](docs/agent-team-workbench.md)
-- [生产力工作台](docs/productivity-system.md)
-- [管理员控制台](docs/admin-console.md)
-- [分支决策与推荐](docs/branch-decisions.md)
 - [流式事件契约](docs/streaming-contract.md)
-- [前端视觉系统](docs/frontend-visual-system.md)
+- [Auth / Access](docs/auth-access.md)
+- [Android App](docs/android.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)
-- [当前上下文窗口](docs/context-window.md)
-- [Docker 部署说明](docs/docker-deployment.md)
-- [沙箱执行](docs/sandbox-execution.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 

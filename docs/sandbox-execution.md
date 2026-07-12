@@ -1,6 +1,6 @@
 # Sandbox Execution
 
-Updated: 2026-06-18
+Updated: 2026-07-12
 
 This document is the canonical reference for Focus Agent code execution. It covers
 `run_workspace_command`, `run_skill_entrypoint`, Docker image preparation, local
@@ -96,6 +96,16 @@ Docker runs use these defaults:
 - no Docker socket, host home directory, SSH agent, or provider secrets mounted
 - stdout/stderr truncation and output file enumeration in the structured result
 
+Declaring Skill network access changes the Docker network policy; it does not
+route arbitrary program traffic through the builtin `web_fetch` SSRF guard.
+The `web_fetch` tool independently requires every DNS answer to be public,
+connects to a validated IP while preserving the original Host/TLS SNI, and
+repeats domain and DNS validation for each redirect. A network-enabled Skill
+entrypoint or `local_*` fallback does not automatically inherit that URL policy
+or DNS pinning. Treat such entrypoints as separately reviewed executable code,
+and prefer a dedicated broker when outbound destinations need enforceable
+domain/IP policy.
+
 The current implementation reuses thread-level workspace/cache and, by default
 in real Docker mode, reuses a thread-level container for matching sandbox image,
 network, memory, uid/gid, and mount policy. If the container is missing or no
@@ -124,7 +134,8 @@ Both return structured output and always mark:
 
 These fallbacks are useful for local development and trusted Skill smoke tests,
 but they are not a strong sandbox. They do not provide Docker-level filesystem,
-network, or process isolation.
+network, or process isolation. In particular, host-local network access is not
+constrained by the `web_fetch` public-address/redirect checks.
 
 Fallback results may be used by the Agent as degraded evidence, but they must not
 satisfy assertions that require secure Docker execution. In particular,
@@ -273,5 +284,8 @@ workspace.
 - Local fallbacks are best-effort development paths, not strong isolation.
 - Network control is Docker-level only in v1. Host-local fallback cannot provide
   reliable network isolation.
+- Docker network enablement is currently coarse-grained. It does not apply the
+  builtin `web_fetch` domain policy, public-DNS validation, IP pinning, or
+  redirect checks to arbitrary Skill processes.
 - Host-control skills, such as Docker management, should use dedicated broker
   tools instead of mounting host sockets into the general sandbox.

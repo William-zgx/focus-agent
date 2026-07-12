@@ -55,13 +55,18 @@ Focus Agent 是一个 Web-first Agent 应用平台骨架。它已经超过单一
 ```mermaid
 flowchart LR
     User["Browser / SDK"] --> API["FastAPI API"]
-    API --> Chat["ChatService"]
+    API --> HarnessRoutes["Harness Runs APIs"]
+    API --> ChatRoutes["Conversation / Context APIs"]
     API --> Branch["BranchService"]
     API --> Governance["Agent Governance APIs"]
     API --> Decision["Branch Decision APIs"]
     API --> Admin["Admin APIs"]
     API --> Obs["Observability APIs"]
     API --> Productivity["Productivity APIs"]
+    HarnessRoutes --> Harness["FocusAgentHarness"]
+    HarnessRoutes --> Chat["ChatService preflight / lifecycle"]
+    ChatRoutes --> Chat
+    Harness --> Graph["LangGraph Agent Graph"]
     Chat --> Graph["LangGraph Agent Graph"]
     Graph --> Tools["Tool Runtime"]
     Graph --> Memory["Memory Pipeline"]
@@ -117,11 +122,11 @@ flowchart LR
 |------|----------|----------|
 | Core runtime | `engine/`、`core/`、conversation / branch / graph lifecycle | 保持协议稳定；新能力优先进入 typed port 或小型 helper，避免在 API route 中直接拼接 runtime 细节 |
 | Product surfaces | FastAPI routes、Web app、SDK、Admin、Observability | 路由、SDK 类型、SSE event 和用户可见主流程是兼容边界；route handler 只保留鉴权、参数校验和 presenter 组装 |
-| Agent Team module | `services/agent_team_*`、`apps/web/src/features/agent-team`、Agent Team API | 作为独立产品模块维护；planning/run/merge、workbench state、task output helper 分别收口，避免与普通 chat/harness 逻辑互相泄漏 |
+| Agent Team module | `services/agent_team/`、`services/agent_team_run*`、`apps/web/src/features/agent-team`、Agent Team API | 作为独立产品模块维护；planning/run/merge、workbench state、task output helper 分别收口；顶层同名模块只保留受支持的导入表面，避免与普通 chat/harness 逻辑互相泄漏 |
 | Persistence adapters | Postgres / SQLite repositories、schema、migration、本地 fallback | schema 和 repository contract 是稳定边界；兼容路径先用引用扫描证明安全，再删除 |
 | Release and eval tooling | `scripts/`、release/eval/smoke tests、contract snapshots | CLI 参数、exit code、报告字段稳定；重复 I/O 和 report 读取可抽 helper，但不改变输出 shape |
 
-`make architecture-report` 生成 `reports/architecture/latest.json`，用于非阻断地观察大型文件和 import 边界信号。它不属于 CI/release gate 的阻断条件；发现问题后按模块边界拆小 helper 或调整依赖方向。
+`make architecture-report` 生成 `reports/architecture/latest.json`，用于本地观察大型文件和 import 边界信号；`make architecture-gate` 使用同一份 canonical 800 行策略和 `docs/architecture-debt-baseline.json` 在 CI 中阻断回归。当前 baseline 没有 grandfathered large file；发现问题后应按模块边界拆小 helper 或调整依赖方向，而不是放宽阈值。
 
 当一个改动跨越两个以上边界时，默认拆成多阶段：先抽私有 helper 或 typed port，再迁移调用点，最后才考虑删除 compatibility alias。
 
@@ -168,8 +173,8 @@ flowchart LR
     Runtime["AppRuntime"] --> PGProvider["PostgresConnectionProvider"]
     PGProvider --> PGPool["psycopg pool"]
     Runtime --> CheckpointChoice{"FOCUS_AGENT_CHECKPOINT_BACKEND"}
-    CheckpointChoice --> Pickle["signed pickle saver"]
-    CheckpointChoice --> SQLite["SQLite checkpoint saver"]
+    CheckpointChoice --> Pickle["signed pickle checkpoint + store"]
+    CheckpointChoice --> SQLite["SQLite checkpoint + store"]
     Memory["MemoryService"] --> Redact["sensitive redaction"]
     Redact -->|safe| Queue["memory_embedding job"]
     Queue --> Worker["DurableBackgroundWorker"]
@@ -181,8 +186,8 @@ Key boundaries:
 
 - Postgres repositories share `PostgresConnectionProvider`; `FOCUS_AGENT_DB_POOL_ENABLED=false` restores short-lived connections.
 - Local checkpoint writes are debounced by default; `FOCUS_AGENT_CHECKPOINT_INCREMENTAL=false` restores per-write flush.
-- Pickle checkpoints require owner and HMAC validation when `FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=true`; `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` must be stable across restarts.
-- `FOCUS_AGENT_CHECKPOINT_BACKEND=sqlite` switches only the local LangGraph checkpointer to SQLite. The default remains `pickle`.
+- Local LangGraph checkpoints and the local store both use SQLite by default.
+- `FOCUS_AGENT_CHECKPOINT_BACKEND=pickle` explicitly switches both local files to pickle. When `FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=true`, startup requires a stable `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` before either file is created; owner and HMAC validation remain mandatory on restore.
 - Memory writes enqueue `memory_embedding` durable jobs when `FOCUS_AGENT_MEMORY_EMBED_ASYNC=true`; setting it to `false` restores synchronous best-effort embedding.
 - Tool execution uses `tool_thread_pool` when `FOCUS_AGENT_TOOL_POOL_ISOLATED=true`; setting it to `false` returns tool batches to the shared pool.
 
@@ -244,7 +249,9 @@ API 层保持薄封装：鉴权、参数校验和 response shape 在 API；业�
 
 `src/focus_agent/api/deps.py` 是 API dependency 的 canonical 入口：
 
-- `get_current_principal()` 强制 bearer token，并在 auth disabled 时返回 anonymous principal。
+- `get_current_principal()` 接受 Bearer 或 auth access cookie，并在 auth enabled
+  时对每次受保护请求重新读取持久化 active user；已禁用用户即使持有未过期
+  access token 也会被拒绝。auth disabled 时返回 anonymous principal。
 - `get_optional_principal()` 用于允许匿名读取或渐进鉴权的路由。
 - `require_scopes()` / `require_roles()` 为路由级 scope / role enforcement 提供 dependency helper。
 - `get_chat_service()` 通过 `ChatServicePorts.from_runtime(runtime)` 创建 `ChatService`，避免 ChatService 直接依赖完整 runtime 对象。
@@ -261,8 +268,9 @@ flowchart TD
     APIRouter --> AuthN["get_current_principal"]
     AuthN --> ProductService["ProductivityService"]
     ProductService --> Repo["ProductivityRepository"]
-    Repo --> InMemory["InMemoryProductivityRepository"]
+    Repo --> SQLite["SQLiteProductivityRepository (local runtime)"]
     Repo --> Postgres["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+    Repo --> InMemory["InMemoryProductivityRepository (test/compat)"]
 ```
 
 ```mermaid
@@ -273,9 +281,9 @@ flowchart LR
     Capture --> AuthN
     AuthN --> ProductService["ProductivityService"]
     ProductService --> Repo["ProductivityRepository"]
-    Repo --> InMemory["InMemoryProductivityRepository"]
-    Repo --> SQLite["SQLiteProductivityRepository (adapter)"]
+    Repo --> SQLite["SQLiteProductivityRepository (local runtime)"]
     Repo --> PG["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+    Repo --> InMemory["InMemoryProductivityRepository (test/compat)"]
     PG --> Events["Task events"]
 ```
 
@@ -367,7 +375,8 @@ POST /v2/threads/{thread_id}/runs/stream
 流式入口会把 LangGraph chunk 映射成 canonical SSE events，但 `message.delta` 有额外强约束：它只能承载确认可见的 assistant answer text。
 
 - graph 内部模型调用会标记内部 `stream_phase`，工具绑定调用和 repair 调用默认 `quarantine`，最终 tool-free answer 才能标为 `visible`。
-- `harness_runs.py` 在发布 `message.delta` 前做 phase gate；缺省 phase 也按 `quarantine` 处理。
+- `src/focus_agent/api/routers/harness_runs/replay_streaming.py` 在发布
+  `message.delta` 前做 phase gate；缺省 phase 也按 `quarantine` 处理。
 - `tool.call.delta`、`tool.requested/result/error`、`reasoning.delta`、`task.update` 和 `state.update` 不受 visible gate 阻断，工具处理卡仍能正常展示。
 - DSML/XML/function-call 文本、内部工具规划口播和 split protocol prefix 会在后端与 SDK reducer 两侧过滤。
 - 对外事件 payload 不暴露内部 `stream_phase` metadata/tags。
@@ -440,8 +449,8 @@ flowchart LR
 
 ## 10. 分支、Branch Action 与 Merge-back
 
-分支业务在 `src/focus_agent/services/branches/service.py`，历史
-`src/focus_agent/services/branches.py` 仍作为兼容 shim。聊天里的分支意图
+分支业务与兼容导出统一位于 `src/focus_agent/services/branches/` package。
+聊天里的分支意图
 先进入 Branch Action proposal；用户确认后才 fork、open 或 return。AI 辅助
 的发送前推荐由 [branch-decisions.md](branch-decisions.md) 维护。
 
@@ -519,11 +528,14 @@ Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-rout
 
 ```mermaid
 flowchart TD
-    Runtime["App Runtime"] --> Decision{"DATABASE_URI available?"}
+    Launch{"Launch mode"}
+    Launch -- "maintained make command; DATABASE_URI unset" --> Managed["Start managed repo-local PostgreSQL"]
+    Managed --> Inject["Inject DATABASE_URI"]
+    Launch -- "raw binary or explicit DATABASE_URI" --> Runtime["Create App Runtime"]
+    Inject --> Runtime
+    Runtime --> Decision{"DATABASE_URI available?"}
     Decision -- "Yes" --> PG["Postgres primary persistence"]
-    Decision -- "No make command" --> Managed["Managed repo-local PostgreSQL"]
-    Decision -- "No raw binary" --> Fallback["Local fallback persistence"]
-    Managed --> PG
+    Decision -- "No" --> Fallback["Single-process SQLite/local fallback"]
     PG --> AppState["Conversations, branches, access, Agent Team"]
     PG --> AdminState["Users, sessions, roles, admin audit"]
     PG --> GraphStore["LangGraph checkpoint and store"]
@@ -567,22 +579,41 @@ Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使�
 
 未配置 `DATABASE_URI` 且直接裸跑 API 二进制时，runtime 使用：
 
-- In-memory branch repository
+- SQLite branch / conversation / thread-access repository
 - In-memory Agent Team repository
-- in-memory user and productivity repositories
-- pickle-backed LangGraph checkpointer
-- pickle-backed LangGraph store
+- SQLite user and productivity repositories
+- SQLite-backed LangGraph checkpointer
+- SQLite-backed LangGraph store
 - SQLite harness run journal
 - no trajectory recorder
 - no artifact metadata repository
 
-这是本地 fallback，不是生产多副本方案。
+branch、conversation、thread access、用户和 productivity 数据统一写入
+`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`），因此直接重启裸跑 API
+不会丢失这些 app-state。Agent Team 仍保留 in-memory fallback；trajectory 和
+artifact metadata 也不会在该模式下获得 Postgres durability。这是单机本地
+fallback，不是生产多副本方案。
+
+LangGraph checkpoint/store 默认分别写入
+`.focus_agent/langgraph-checkpoints.sqlite3` 和
+`.focus_agent/langgraph-store.sqlite3`。`FOCUS_AGENT_CHECKPOINT_BACKEND=pickle`
+只保留为显式兼容路径；签名校验默认开启并要求稳定
+`FOCUS_AGENT_CHECKPOINT_HMAC_KEY`。如果 backend 未显式设置但发现历史 pickle，
+runtime 只有在 pickle 与 `.sig` 都属于当前用户且 HMAC 校验通过时才继续使用；
+owner、签名、格式或 key 校验失败都会在启动时 fail closed，不会静默创建空状态。
 
 ### 14.4 Managed repo-local PostgreSQL
 
 本机启动命令（`make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod`）会在未显式设置 `DATABASE_URI` 时自动托管 repo-local PostgreSQL，并把生成的运行态环境写入 `.focus_agent/postgres/runtime.env`。
 
 直接运行 `.venv/bin/focus-agent-api` 不会启动托管数据库。历史 `.focus_agent` 状态需要通过 `focus-agent-migrate-local-state` 显式迁移。
+
+迁移器同时识别 canonical SQLite 与 legacy signed-pickle checkpoint/store。
+如果同一类源同时存在 SQLite 与 pickle，必须先显式设置
+`FOCUS_AGENT_CHECKPOINT_BACKEND`；配置的 backend 与实际文件头不匹配、SQLite
+schema 未知或存在活动 `-wal` / `-shm` sidecar 时都会拒绝迁移。迁移前应停止
+本地 runtime，让 SQLite 完成 checkpoint。app-state 导入在 Postgres 端以一个
+事务执行，并拒绝用不同 owner 覆盖已有 thread、conversation 或 branch。
 
 ### 14.5 Repository contract tests
 
@@ -654,8 +685,9 @@ flowchart LR
     SDK --> Routes["/v1/notes, /v1/tasks, /v1/productivity/capture/*"]
     Routes --> Service["ProductivityService"]
     Service --> Repo["ProductivityRepository"]
-    Repo --> InMemory["InMemoryProductivityRepository"]
+    Repo --> SQLite["SQLiteProductivityRepository (local runtime)"]
     Repo --> Postgres["PostgreSQL focus_notes/focus_tasks/focus_task_events"]
+    Repo --> InMemory["InMemoryProductivityRepository (test/compat)"]
 ```
 
 Admin Web 使用独立的 `pages/admin/` 路由和 admin CSS module。`/app/admin/users/{userId}` 通过详情抽屉承载 Profile、Access、Security 和 Audit tabs；`/app/admin/audit-events` 通过 URL query 同步 actor/resource/decision 过滤和选中事件。普通聊天 header 不暴露 admin 导航。
@@ -759,7 +791,14 @@ make format-check
 make ci
 ```
 
-`make ci` 当前覆盖 Python lint、CI pytest、contract-check、SDK check/build/transport validation、Web lint/format-check/check/build，以及 Node stream frontend regression。CI pytest 通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免 repo-local secrets 影响结果。GitHub CI 还会额外执行 `make sdk-openapi-types-check`，因此 API route、Pydantic response model 或 generated SDK types 改动必须提交 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts` 的生成结果。
+`make ci` 当前覆盖 strict Python lint、CI pytest、contract-check、阻断式
+architecture/compatibility gates、SDK check/build/transport validation、全量 Web
+lint/format-check/check/build，以及 Node stream frontend regression。CI pytest
+通过 `FOCUS_AGENT_LOCAL_ENV_FILE=/tmp/focus-agent-ci-missing.env` 避免
+repo-local secrets 影响结果。GitHub CI 还会额外执行
+`make sdk-openapi-types-check`，因此 API route、Pydantic response model 或
+generated SDK types 改动必须提交 `docs/api/openapi.json` 和
+`frontend-sdk/src/types/__generated__.ts` 的生成结果。
 
 影响生产力工作台：
 
@@ -870,8 +909,9 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Built-in model catalog：`src/focus_agent/defaults/models.toml`
 - OpenAI-compatible reasoning adapter：`src/focus_agent/providers/reasoning_openai.py`
 - State：`src/focus_agent/core/state.py`
-- Chat service orchestration：`src/focus_agent/services/chat/service.py`（`src/focus_agent/services/chat.py` 保持兼容导入）
-- Harness run API：`src/focus_agent/api/routers/harness_runs.py`
+- Chat service orchestration：`src/focus_agent/services/chat/service.py`；兼容导入由
+  `src/focus_agent/services/chat/__init__.py` 维护。
+- Harness run API：`src/focus_agent/api/routers/harness_runs/`
 - SSE helper：`src/focus_agent/api/streaming/sse.py`
 - Harness runtime：`src/focus_agent/harness/`
 - Auth API：`src/focus_agent/api/routers/auth_models.py`
@@ -885,7 +925,10 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Productivity API：`src/focus_agent/api/routers/productivity.py`
 - Productivity Service：`src/focus_agent/services/productivity.py`
-- Productivity Repository：`src/focus_agent/repositories/productivity_repository.py`，其中 `InMemoryProductivityRepository` 与 `PostgresProductivityRepository` 为运行时默认路径；`sqlite_productivity_repository.py` 提供本地持久化适配。
+- Productivity Repository：`src/focus_agent/repositories/productivity_repository.py`
+  定义 contract 与 test/compat 用 `InMemoryProductivityRepository`；
+  `PostgresProductivityRepository` 是数据库部署 primary path，
+  `SQLiteProductivityRepository` 是无 `DATABASE_URI` 时的单机持久化 runtime path。
 - Productivity Tool Module：`src/focus_agent/capabilities/default_tool_modules/productivity.py`
 - Alembic config：`alembic.ini`、`migrations/env.py`、`migrations/versions/001_baseline.py`
 - Trajectory repository：`src/focus_agent/repositories/postgres_trajectory_repository.py`
