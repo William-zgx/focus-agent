@@ -15,6 +15,11 @@ from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 from uuid import uuid4
 
+if __package__:
+    from scripts.release_identity import attest_release_report
+else:
+    from release_identity import attest_release_report
+
 DEFAULT_REPORT_JSON = Path("reports/release-gate/otel-smoke.json")
 DEFAULT_SERVICE_NAME = "focus-agent"
 SYNTHETIC_SPAN_NAME = "focus_agent.release.otel_smoke"
@@ -387,8 +392,10 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    payload = attest_release_report(report)
     target.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     return target
 

@@ -22,6 +22,13 @@ from scripts._report_io import (  # noqa: E402
     resolve_optional_path,
     write_json_report,
 )
+from scripts.release_evidence_binding import (  # noqa: E402
+    DEFAULT_MAX_EVIDENCE_AGE_SECONDS,
+    build_release_evidence_validation,
+    extend_failure_summary,
+    extend_production_validation,
+    extend_summary_payload,
+)
 from scripts.release_evidence_inputs import prepare_dry_run_inputs  # noqa: E402
 from scripts.release_evidence_manifest import (  # noqa: E402
     REQUIRED_PRODUCTION_ARTIFACT_KEYS,
@@ -321,6 +328,11 @@ def run_release_evidence(
     *,
     dry_run: bool = False,
     release_id: str | None = None,
+    commit_sha: str | None = None,
+    deployment_id: str | None = None,
+    deployment_version: str | None = None,
+    environment: str | None = None,
+    max_evidence_age_seconds: int = DEFAULT_MAX_EVIDENCE_AGE_SECONDS,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     output_dir: str | Path | None = None,
     retention_days: int = DEFAULT_RETENTION_DAYS,
@@ -415,6 +427,19 @@ def run_release_evidence(
     manifest_json = pack_dir / "manifest.json"
     summary_json = pack_dir / "summary.json"
     ci = _ci_metadata()
+    release_binding, evidence_validation = build_release_evidence_validation(
+        ci=ci,
+        commit_sha=commit_sha,
+        deployment_id=deployment_id,
+        deployment_version=deployment_version,
+        dry_run=dry_run,
+        environment=environment,
+        generated_at=generated_at,
+        max_age_seconds=max_evidence_age_seconds,
+        prepared_inputs=prepared_inputs,
+        release_id=resolved_release_id,
+        root=root,
+    )
     approval = _approval_metadata(
         approval_id=approval_id,
         approval_status=approval_status,
@@ -430,12 +455,16 @@ def run_release_evidence(
         storage_dir=storage_dir,
         summary_json=summary_json,
     )
-    production_validation = _production_validation(
-        approval=approval,
-        artifacts=artifacts,
-        missing_required_artifacts=missing_required_artifacts,
-        release_health=release_health,
-        storage=storage,
+    production_validation = extend_production_validation(
+        _production_validation(
+            approval=approval,
+            artifacts=artifacts,
+            missing_required_artifacts=missing_required_artifacts,
+            release_health=release_health,
+            storage=storage,
+        ),
+        binding=release_binding,
+        evidence_validation=evidence_validation,
     )
     failed = (
         bool(failed_commands)
@@ -445,12 +474,16 @@ def run_release_evidence(
     )
     status = "failed" if failed else "passed"
     artifact_summary = _artifact_summary(artifacts)
-    failure_summary = _failure_summary(
-        approval=approval,
-        commands=commands,
-        missing_required_artifacts=missing_required_artifacts,
-        release_health=release_health,
-        storage=storage,
+    failure_summary = extend_failure_summary(
+        _failure_summary(
+            approval=approval,
+            commands=commands,
+            missing_required_artifacts=missing_required_artifacts,
+            release_health=release_health,
+            storage=storage,
+        ),
+        binding=release_binding,
+        evidence_validation=evidence_validation,
     )
     summary = {
         "artifact_count": _artifact_count(artifacts),
@@ -469,6 +502,7 @@ def run_release_evidence(
         "artifacts": artifacts,
         "ci": ci,
         "commands": commands,
+        "evidence_validation": evidence_validation,
         "failure_summary": failure_summary,
         "meta": {
             "ci": ci,
@@ -478,9 +512,10 @@ def run_release_evidence(
             "release_id_source": release_id_source,
             "release_id": resolved_release_id,
             "root": str(root),
-            "schema_version": 1,
+            "schema_version": 2,
         },
         "production_validation": production_validation,
+        "release_binding": release_binding,
         "release_health": release_health,
         "retention": retention,
         "storage": storage,
@@ -495,28 +530,36 @@ def run_release_evidence(
     _write_json(manifest_json, manifest)
     _write_json(
         summary_json,
-        _summary_payload(
-            approval=approval,
-            artifact_summary=artifact_summary,
-            artifact_storage=manifest["artifact_storage"],
-            failure_summary=failure_summary,
-            manifest_json=manifest_json,
-            release_health=release_health,
-            release_id=resolved_release_id,
-            retention=retention,
-            storage=storage,
-            summary=summary,
+        extend_summary_payload(
+            _summary_payload(
+                approval=approval,
+                artifact_summary=artifact_summary,
+                artifact_storage=manifest["artifact_storage"],
+                failure_summary=failure_summary,
+                manifest_json=manifest_json,
+                release_health=release_health,
+                release_id=resolved_release_id,
+                retention=retention,
+                storage=storage,
+                summary=summary,
+            ),
+            binding=release_binding,
+            evidence_validation=evidence_validation,
         ),
     )
     _copy_pack_to_storage(pack_dir=pack_dir, storage=storage)
     storage["verification"] = _verify_storage_metadata(storage=storage)
     manifest["storage"] = storage
-    manifest["production_validation"] = _production_validation(
-        approval=approval,
-        artifacts=artifacts,
-        missing_required_artifacts=missing_required_artifacts,
-        release_health=release_health,
-        storage=storage,
+    manifest["production_validation"] = extend_production_validation(
+        _production_validation(
+            approval=approval,
+            artifacts=artifacts,
+            missing_required_artifacts=missing_required_artifacts,
+            release_health=release_health,
+            storage=storage,
+        ),
+        binding=release_binding,
+        evidence_validation=evidence_validation,
     )
     final_failed = (
         bool(failed_commands)
@@ -526,12 +569,16 @@ def run_release_evidence(
     )
     summary["status"] = "failed" if final_failed else "passed"
     manifest["summary"] = summary
-    manifest["failure_summary"] = _failure_summary(
-        approval=approval,
-        commands=commands,
-        missing_required_artifacts=missing_required_artifacts,
-        release_health=release_health,
-        storage=storage,
+    manifest["failure_summary"] = extend_failure_summary(
+        _failure_summary(
+            approval=approval,
+            commands=commands,
+            missing_required_artifacts=missing_required_artifacts,
+            release_health=release_health,
+            storage=storage,
+        ),
+        binding=release_binding,
+        evidence_validation=evidence_validation,
     )
     manifest["artifact_storage"] = _artifact_storage_metadata(
         ci=ci,
@@ -542,17 +589,21 @@ def run_release_evidence(
     _write_json(manifest_json, manifest)
     _write_json(
         summary_json,
-        _summary_payload(
-            approval=approval,
-            artifact_summary=artifact_summary,
-            artifact_storage=manifest["artifact_storage"],
-            failure_summary=manifest["failure_summary"],
-            manifest_json=manifest_json,
-            release_health=release_health,
-            release_id=resolved_release_id,
-            retention=retention,
-            storage=storage,
-            summary=summary,
+        extend_summary_payload(
+            _summary_payload(
+                approval=approval,
+                artifact_summary=artifact_summary,
+                artifact_storage=manifest["artifact_storage"],
+                failure_summary=manifest["failure_summary"],
+                manifest_json=manifest_json,
+                release_health=release_health,
+                release_id=resolved_release_id,
+                retention=retention,
+                storage=storage,
+                summary=summary,
+            ),
+            binding=release_binding,
+            evidence_validation=evidence_validation,
         ),
     )
     _sync_storage_manifest_files(storage=storage)
@@ -568,6 +619,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--release-id",
         help="Release identifier. Required for production packs; dry-runs default to git short SHA or UTC timestamp.",
+    )
+    parser.add_argument(
+        "--commit-sha",
+        help="Commit SHA bound to the production evidence. Defaults to RELEASE_COMMIT_SHA or CI commit metadata.",
+    )
+    parser.add_argument(
+        "--deployment-id",
+        help="Deployment identifier bound to the production evidence. Defaults to RELEASE_DEPLOYMENT_ID, DEPLOYMENT_ID, or DEPLOYMENT_NAME.",
+    )
+    parser.add_argument(
+        "--deployment-version",
+        help="Deployment version bound to the production evidence. Defaults to RELEASE_DEPLOYMENT_VERSION, DEPLOYMENT_VERSION, or APP_VERSION.",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Deployment environment bound to the production evidence. Defaults to RELEASE_ENVIRONMENT or CI environment metadata.",
+    )
+    parser.add_argument(
+        "--max-evidence-age-seconds",
+        type=int,
+        default=DEFAULT_MAX_EVIDENCE_AGE_SECONDS,
+        help="Maximum age and collection-window span for production evidence inputs. Defaults to 21600 seconds.",
     )
     parser.add_argument(
         "--output-root",
@@ -636,8 +709,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             approval_status=args.approval_status,
             approval_url=args.approval_url,
             baseline_eval_report_json=args.baseline_eval_report_json,
+            commit_sha=args.commit_sha,
+            deployment_id=args.deployment_id,
+            deployment_version=args.deployment_version,
             dry_run=bool(args.dry_run),
+            environment=args.environment,
             eval_report_json=args.eval_report_json,
+            max_evidence_age_seconds=args.max_evidence_age_seconds,
             output_dir=args.output_dir,
             output_root=args.output_root,
             readyz_json=args.readyz_json,

@@ -32,6 +32,7 @@ from scripts.memory_context_helpers import (  # noqa: E402,F401
     _slug,
     _strings,
 )
+from scripts.release_identity import attest_release_report  # noqa: E402
 
 DEFAULT_DATASET = REPO_ROOT / "tests" / "eval" / "datasets" / "memory_context_quality.jsonl"
 DEFAULT_REPORT_JSON = Path("reports/release-gate/memory-context-eval.json")
@@ -319,13 +320,14 @@ def write_trend_report(
     target = Path(path)
     if not target.is_absolute():
         target = REPO_ROOT / target
-    target.parent.mkdir(parents=True, exist_ok=True)
     payload = build_memory_regression_trend_report(
         candidate_jsonl=candidate_jsonl,
         reviewed_jsonl=reviewed_jsonl,
         promoted_jsonl=promoted_jsonl,
         golden_jsonl=golden_jsonl,
     )
+    payload = attest_release_report(payload)
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -345,7 +347,6 @@ def write_report(path: str | Path, *, dataset: Path, results: Sequence[ProbeResu
     target = Path(path)
     if not target.is_absolute():
         target = REPO_ROOT / target
-    target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "meta": {
             "dataset": str(dataset),
@@ -356,6 +357,8 @@ def write_report(path: str | Path, *, dataset: Path, results: Sequence[ProbeResu
         "comparison": {"regressions": []},
         "results": [result.to_dict() for result in results],
     }
+    payload = attest_release_report(payload)
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

@@ -7,15 +7,28 @@ from typing import Any
 
 DEFAULT_COMMAND_TIMEOUT_S = 30 * 60
 
+
 @dataclass(frozen=True)
 class GateCommand:
     label: str
     command: tuple[str, ...]
     timeout_s: float | None = DEFAULT_COMMAND_TIMEOUT_S
 
+
 def production_signal_commands() -> list[list[str]]:
     return [
-        ["mkdir", "-p", "reports/release-gate"],
+        ["rm", "-rf", "reports/release-gate-raw"],
+        ["mkdir", "-p", "reports/release-gate-raw"],
+        [
+            "rm",
+            "-f",
+            "reports/release-gate/readyz.json",
+            "reports/release-gate/trajectory-stats.json",
+            "reports/release-gate/replay-comparisons.json",
+            "reports/release-gate/alert-report.json",
+            "reports/release-gate/postgres-migration.json",
+            "reports/release-gate/baseline-eval-smoke.json",
+        ],
         [
             "python",
             "scripts/release_gate.py",
@@ -28,25 +41,59 @@ def production_signal_commands() -> list[list[str]]:
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/readyz.json",
+            "--",
             "$READY_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/readyz.json",
             "--output",
             "reports/release-gate/readyz.json",
+            "--readyz",
+            "reports/release-gate-raw/readyz.json",
+            "--captured-now",
         ],
         [
             "curl",
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/trajectory-stats.json",
+            "--",
             "$TRAJECTORY_STATS_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/trajectory-stats.json",
             "--output",
             "reports/release-gate/trajectory-stats.json",
+            "--captured-now",
         ],
         [
             "curl",
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/replay-comparisons.json",
+            "--",
             "$REPLAY_COMPARISONS_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/replay-comparisons.json",
             "--output",
             "reports/release-gate/replay-comparisons.json",
         ],
@@ -55,7 +102,17 @@ def production_signal_commands() -> list[list[str]]:
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/alert-report.json",
+            "--",
             "$ALERT_REPORT_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/alert-report.json",
             "--output",
             "reports/release-gate/alert-report.json",
         ],
@@ -64,7 +121,17 @@ def production_signal_commands() -> list[list[str]]:
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/postgres-migration.json",
+            "--",
             "$POSTGRES_MIGRATION_REPORT_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/postgres-migration.json",
             "--output",
             "reports/release-gate/postgres-migration.json",
         ],
@@ -73,10 +140,21 @@ def production_signal_commands() -> list[list[str]]:
             "--fail",
             "--show-error",
             "--silent",
+            "--output",
+            "reports/release-gate-raw/baseline-eval-smoke.json",
+            "--",
             "$BASELINE_EVAL_REPORT_URL",
+        ],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/baseline-eval-smoke.json",
             "--output",
             "reports/release-gate/baseline-eval-smoke.json",
         ],
+        ["rm", "-rf", "reports/release-gate-raw"],
         [
             "uv",
             "run",
@@ -110,10 +188,19 @@ def production_signal_commands() -> list[list[str]]:
         ["test", "-s", "$GOVERNANCE_REPORT_JSON"],
     ]
 
+
 def production_release_evidence_args() -> list[str]:
     return [
         "--release-id",
         "${RELEASE_ID}",
+        "--commit-sha",
+        "${RELEASE_COMMIT_SHA}",
+        "--deployment-id",
+        "${RELEASE_DEPLOYMENT_ID}",
+        "--deployment-version",
+        "${RELEASE_DEPLOYMENT_VERSION}",
+        "--environment",
+        "${RELEASE_ENVIRONMENT}",
         "--approval-id",
         "${APPROVAL_ID}",
         "--approval-status",
@@ -159,6 +246,30 @@ def production_release_evidence_args() -> list[str]:
 
 PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
     {
+        "key": "release_commit_sha",
+        "env": "RELEASE_COMMIT_SHA",
+        "source": "github.sha",
+        "used_by": "release_evidence_capture attestation and release-evidence --commit-sha",
+    },
+    {
+        "key": "release_deployment_id",
+        "env": "RELEASE_DEPLOYMENT_ID",
+        "source": "vars.FOCUS_AGENT_DEPLOYMENT_ID",
+        "used_by": "release_evidence_capture attestation/readyz validation and release-evidence --deployment-id",
+    },
+    {
+        "key": "release_deployment_version",
+        "env": "RELEASE_DEPLOYMENT_VERSION",
+        "source": "vars.FOCUS_AGENT_DEPLOYMENT_VERSION",
+        "used_by": "release_evidence_capture attestation/readyz validation and release-evidence --deployment-version",
+    },
+    {
+        "key": "release_environment",
+        "env": "RELEASE_ENVIRONMENT",
+        "source": "hardcoded production job environment",
+        "used_by": "release_evidence_capture attestation/readyz validation and release-evidence --environment",
+    },
+    {
         "key": "base_url",
         "env": "BASE_URL",
         "source": "vars.FOCUS_AGENT_BASE_URL",
@@ -169,42 +280,42 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
         "env": "READY_URL",
         "source": "vars.FOCUS_AGENT_READY_URL",
         "artifact_path": "reports/release-gate/readyz.json",
-        "used_by": "release-evidence --readyz-json",
+        "used_by": "release_evidence_capture --captured-now/--readyz, then release-evidence --readyz-json",
     },
     {
         "key": "trajectory_stats",
         "env": "TRAJECTORY_STATS_URL",
         "source": "vars.FOCUS_AGENT_TRAJECTORY_STATS_URL",
         "artifact_path": "reports/release-gate/trajectory-stats.json",
-        "used_by": "release-evidence --trajectory-stats-json",
+        "used_by": "release_evidence_capture --captured-now, then release-evidence --trajectory-stats-json",
     },
     {
         "key": "replay_comparison",
         "env": "REPLAY_COMPARISONS_URL",
         "source": "vars.FOCUS_AGENT_REPLAY_COMPARISONS_URL",
         "artifact_path": "reports/release-gate/replay-comparisons.json",
-        "used_by": "release-evidence --replay-comparisons-json",
+        "used_by": "release_evidence_capture with required upstream timestamp, then release-evidence --replay-comparisons-json",
     },
     {
         "key": "alert_report",
         "env": "ALERT_REPORT_URL",
         "source": "vars.FOCUS_AGENT_ALERT_REPORT_URL",
         "artifact_path": "reports/release-gate/alert-report.json",
-        "used_by": "release-evidence --alert-report-json",
+        "used_by": "release_evidence_capture with required upstream timestamp, then release-evidence --alert-report-json",
     },
     {
         "key": "postgres_migration_report",
         "env": "POSTGRES_MIGRATION_REPORT_URL",
         "source": "vars.FOCUS_AGENT_POSTGRES_MIGRATION_REPORT_URL",
         "artifact_path": "reports/release-gate/postgres-migration.json",
-        "used_by": "release-evidence --postgres-migration-report-json",
+        "used_by": "release_evidence_capture with required upstream timestamp, then release-evidence --postgres-migration-report-json",
     },
     {
         "key": "baseline_eval",
         "env": "BASELINE_EVAL_REPORT_URL",
         "source": "vars.FOCUS_AGENT_BASELINE_EVAL_REPORT_URL",
         "artifact_path": "reports/release-gate/baseline-eval-smoke.json",
-        "used_by": "release-evidence --baseline-eval-report-json",
+        "used_by": "release_evidence_capture with required upstream timestamp, then release-evidence --baseline-eval-report-json",
     },
     {
         "key": "approval_id",
@@ -253,7 +364,8 @@ PRODUCTION_SIGNAL_MAPPINGS: tuple[dict[str, Any], ...] = (
         "env": "STREAM_EVENTS_REPORT_URL",
         "required_in_production": False,
         "source": "vars.FOCUS_AGENT_STREAM_EVENTS_REPORT_URL",
-        "used_by": "production-smoke --stream-events-json after curl",
+        "artifact_path": "reports/release-gate/stream-events.json",
+        "used_by": "workflow release_evidence_capture with required upstream timestamp, then production-smoke --stream-events-json",
     },
     {
         "key": "stream_events_url",

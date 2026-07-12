@@ -5,12 +5,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+
+if __package__:
+    from scripts.production_smoke_stream import (
+        DEFAULT_MAX_EVIDENCE_AGE_SECONDS,  # noqa: F401 - public test seam
+        RELEASE_IDENTITY_ENV,  # noqa: F401 - public test seam
+        build_stream_events_report,
+        http_stream_events,
+    )
+    from scripts.release_identity import attest_release_report
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from scripts.production_smoke_stream import (
+        DEFAULT_MAX_EVIDENCE_AGE_SECONDS,  # noqa: F401 - public test seam
+        RELEASE_IDENTITY_ENV,  # noqa: F401 - public test seam
+        build_stream_events_report,
+        http_stream_events,
+    )
+    from scripts.release_identity import attest_release_report
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/production-smoke.json")
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
@@ -64,25 +83,6 @@ DEFAULT_CHECKS: tuple[
     ),
 )
 GRAPH_TURN_CHECKS = ("graph_min_conversation", "graph_min_chat_turn")
-KNOWN_STREAM_EVENT_NAMES = {
-    "message.completed",
-    "message.delta",
-    "reasoning.delta",
-    "run.closed",
-    "run.completed",
-    "run.failed",
-    "run.interrupt",
-    "run.metadata",
-    "run.status",
-    "state.update",
-    "task.update",
-    "tool.call.delta",
-    "tool.error",
-    "tool.requested",
-    "tool.result",
-}
-REQUIRED_STREAM_TERMINAL_EVENT = "run.completed"
-FAILED_STREAM_TERMINAL_EVENTS = {"run.failed"}
 PASS_STATUSES = {"pass", "passed", "success", "succeeded", "ok", "dry-run"}
 
 
@@ -243,157 +243,11 @@ def _http_stream_events(
     auth_token: str | None,
     timeout_seconds: float,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    headers = {
-        "Accept": "text/event-stream",
-        **_headers_for_check("stream_events", auth_token=auth_token),
-    }
-    request = urllib_request.Request(url, headers=headers, method="GET")
-    with urllib_request.urlopen(request, timeout=timeout_seconds) as response:
-        raw = _read_sse_sample(response)
-        source = {
-            "type": "url",
-            "url": url,
-            "status_code": int(getattr(response, "status", 0) or 0),
-            "response_headers": _safe_headers(getattr(response, "headers", None)),
-        }
-        return _parse_sse_events(raw), source
-
-
-def _read_sse_sample(response: Any) -> str:
-    if not hasattr(response, "readline"):
-        return response.read(256 * 1024).decode("utf-8", errors="replace")
-
-    lines: list[str] = []
-    for _index in range(1000):
-        line_bytes = response.readline()
-        if not line_bytes:
-            break
-        line = line_bytes.decode("utf-8", errors="replace")
-        lines.append(line)
-        if line in {"\n", "\r\n"}:
-            events = _parse_sse_events("".join(lines))
-            if any(
-                event.get("event")
-                in {REQUIRED_STREAM_TERMINAL_EVENT, *FAILED_STREAM_TERMINAL_EVENTS}
-                for event in events
-            ):
-                break
-        if sum(len(line) for line in lines) >= 256 * 1024:
-            break
-    return "".join(lines)
-
-
-def _parse_sse_events(raw: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    event_name = "message"
-    data_lines: list[str] = []
-    for line in raw.splitlines():
-        if not line:
-            if data_lines:
-                events.append(_event_from_sse_frame(event_name, data_lines))
-            event_name = "message"
-            data_lines = []
-            continue
-        if line.startswith(":"):
-            continue
-        if line.startswith("event:"):
-            event_name = line.removeprefix("event:").strip()
-            continue
-        if line.startswith("data:"):
-            data_lines.append(line.removeprefix("data:").lstrip())
-    if data_lines:
-        events.append(_event_from_sse_frame(event_name, data_lines))
-    return events
-
-
-def _event_from_sse_frame(event_name: str, data_lines: Sequence[str]) -> dict[str, Any]:
-    raw_data = "\n".join(data_lines)
-    try:
-        payload = json.loads(raw_data)
-    except json.JSONDecodeError:
-        payload = raw_data
-    return {"event": event_name, "data": payload, "raw": raw_data}
-
-
-def _events_from_json_payload(payload: Any) -> list[Any]:
-    if isinstance(payload, list):
-        return payload
-    if not isinstance(payload, dict):
-        return []
-    if "event" in payload:
-        return [payload]
-    stream_events = payload.get("stream_events")
-    if isinstance(stream_events, dict) and isinstance(stream_events.get("events"), list):
-        return list(stream_events["events"])
-    if isinstance(stream_events, list):
-        return list(stream_events)
-    events = payload.get("events")
-    if isinstance(events, list):
-        return list(events)
-    return []
-
-
-def _normalize_stream_event(item: Any, *, index: int) -> tuple[dict[str, Any] | None, str | None]:
-    if isinstance(item, str):
-        return {"event": item, "data": {}}, None
-    if not isinstance(item, dict):
-        return None, f"event[{index}] must be an object or event name string"
-    event_name = str(item.get("event") or item.get("name") or "").strip()
-    if not event_name:
-        return None, f"event[{index}] is missing event"
-    data = item.get("data", {})
-    if data is None:
-        data = {}
-    if not isinstance(data, dict):
-        return None, f"event[{index}] data must be an object"
-    return {"event": event_name, "data": data}, None
-
-
-def _validate_stream_events(
-    events: Sequence[Any],
-    *,
-    source: dict[str, Any],
-) -> dict[str, Any]:
-    normalized_events: list[dict[str, Any]] = []
-    errors: list[str] = []
-    for index, item in enumerate(events):
-        event, error = _normalize_stream_event(item, index=index)
-        if error:
-            errors.append(error)
-            continue
-        if event is not None:
-            normalized_events.append(event)
-
-    events_seen = [event["event"] for event in normalized_events]
-    unique_events = sorted(set(events_seen))
-    unknown_events = sorted(
-        {event_name for event_name in events_seen if event_name not in KNOWN_STREAM_EVENT_NAMES}
+    return http_stream_events(
+        url,
+        auth_token=auth_token,
+        timeout_seconds=timeout_seconds,
     )
-    if unknown_events:
-        errors.append(f"unknown stream events: {', '.join(unknown_events)}")
-    if not normalized_events:
-        errors.append("stream event report contains no events")
-    if REQUIRED_STREAM_TERMINAL_EVENT not in events_seen:
-        errors.append(f"missing required stream event: {REQUIRED_STREAM_TERMINAL_EVENT}")
-    failed_terminals = sorted(FAILED_STREAM_TERMINAL_EVENTS.intersection(events_seen))
-    if failed_terminals:
-        errors.append(f"stream reported failure events: {', '.join(failed_terminals)}")
-
-    passed = not errors
-    return {
-        "status": "passed" if passed else "failed",
-        "passed": passed,
-        "source": source,
-        "required_events": [REQUIRED_STREAM_TERMINAL_EVENT],
-        "known_event_count": len(KNOWN_STREAM_EVENT_NAMES),
-        "event_count": len(normalized_events),
-        "events_seen": unique_events,
-        "errors": errors,
-        "events": normalized_events[:25],
-        "detail": "stream event contract validated"
-        if passed
-        else "stream event contract validation failed",
-    }
 
 
 def _build_stream_events_report(
@@ -404,68 +258,14 @@ def _build_stream_events_report(
     stream_events_url: str | None,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    if dry_run:
-        return {
-            "status": "dry-run",
-            "passed": True,
-            "source": {
-                "type": "planned",
-                "json": str(stream_events_json) if stream_events_json else None,
-                "url": stream_events_url,
-            },
-            "required_events": [REQUIRED_STREAM_TERMINAL_EVENT],
-            "event_count": 0,
-            "events_seen": [],
-            "errors": [],
-            "detail": "planned stream event contract validation",
-        }
-    if stream_events_json:
-        path = _resolve_path(stream_events_json)
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            return {
-                "status": "failed",
-                "passed": False,
-                "source": {"type": "file", "path": str(path)},
-                "required_events": [REQUIRED_STREAM_TERMINAL_EVENT],
-                "event_count": 0,
-                "events_seen": [],
-                "errors": [str(exc)],
-                "detail": "failed to load stream event report",
-            }
-        return _validate_stream_events(
-            _events_from_json_payload(payload), source={"type": "file", "path": str(path)}
-        )
-    if stream_events_url:
-        try:
-            events, source = _http_stream_events(
-                stream_events_url,
-                auth_token=auth_token,
-                timeout_seconds=timeout_seconds,
-            )
-        except (OSError, TimeoutError, urllib_error.URLError, urllib_error.HTTPError) as exc:
-            return {
-                "status": "failed",
-                "passed": False,
-                "source": {"type": "url", "url": stream_events_url},
-                "required_events": [REQUIRED_STREAM_TERMINAL_EVENT],
-                "event_count": 0,
-                "events_seen": [],
-                "errors": [str(exc)],
-                "detail": "failed to load stream event URL",
-            }
-        return _validate_stream_events(events, source=source)
-    return {
-        "status": "failed",
-        "passed": False,
-        "source": {"type": "none"},
-        "required_events": [REQUIRED_STREAM_TERMINAL_EVENT],
-        "event_count": 0,
-        "events_seen": [],
-        "errors": ["stream event validation input is required in live mode"],
-        "detail": "stream event validation input is required in live mode",
-    }
+    return build_stream_events_report(
+        auth_token=auth_token,
+        dry_run=dry_run,
+        stream_events_json=stream_events_json,
+        stream_events_url=stream_events_url,
+        timeout_seconds=timeout_seconds,
+        http_stream_loader=_http_stream_events,
+    )
 
 
 def _build_graph_turn_report(
@@ -694,8 +494,10 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = _resolve_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    payload = attest_release_report(report)
     target.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     return target
 

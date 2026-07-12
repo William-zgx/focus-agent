@@ -8,6 +8,8 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from scripts.release_identity import attest_release_report
+
 from .metrics import MetricSummary
 from .schema import EvalResult
 
@@ -22,12 +24,14 @@ def write_json_report(
 ) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "meta": dict(meta or {}),
-        "summary": summary.to_dict(),
-        "comparison": comparison or {},
-        "results": [result.to_dict() for result in results],
-    }
+    payload = attest_release_report(
+        {
+            "meta": dict(meta or {}),
+            "summary": summary.to_dict(),
+            "comparison": comparison or {},
+            "results": [result.to_dict() for result in results],
+        }
+    )
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return target
 

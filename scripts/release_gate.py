@@ -13,6 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
 TAIL_LINE_LIMIT = 80
 TAIL_CHAR_LIMIT = 12_000
 DEFAULT_REPORT_JSON = Path("reports/release-gate/latest.json")
@@ -304,6 +307,10 @@ def _report_status(records: Sequence[dict], *, dry_run: bool) -> str:
         return "failed"
     if dry_run:
         return "dry-run"
+    if not any(record["status"] == "passed" for record in records):
+        return "incomplete"
+    if any(record["status"] == "skipped" for record in records):
+        return "incomplete"
     return "passed"
 
 
@@ -328,10 +335,28 @@ def run_release_gate(
     runner = runner or _subprocess_runner
     only = _validate_labels(only_labels or (), option_name="--only")
     skip = _validate_labels(skip_labels or (), option_name="--skip")
+    production_selection_options = [
+        option_name for option_name, labels in (("--only", only), ("--skip", skip)) if labels
+    ]
+    production_selection_reason = (
+        "production mode requires the full release gate; "
+        f"{' and '.join(production_selection_options)} are not allowed"
+        if not dry_run and production_selection_options
+        else None
+    )
 
     records: list[dict] = []
     failed_label: str | None = None
     for command in RELEASE_GATE_COMMANDS:
+        if production_selection_reason is not None:
+            records.append(
+                _empty_record(
+                    command,
+                    status="skipped",
+                    skip_reason=production_selection_reason,
+                )
+            )
+            continue
         if only and command.label not in only:
             records.append(
                 _empty_record(command, status="skipped", skip_reason="not selected by --only")
@@ -460,7 +485,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     print(json.dumps({"status": report["status"], "report_json": report["report_json"]}, indent=2))
-    return 1 if report["status"] == "failed" else 0
+    return 0 if report["status"] in {"passed", "dry-run"} else 1
 
 
 if __name__ == "__main__":

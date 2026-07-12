@@ -1,10 +1,34 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 from scripts import release_gate
+
+
+def test_release_gate_script_runs_from_repo_root(tmp_path: Path) -> None:
+    report_path = tmp_path / "release-gate.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/release_gate.py",
+            "--dry-run",
+            "--only",
+            "lint",
+            "--report-json",
+            str(report_path),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(report_path.read_text(encoding="utf-8"))["status"] == "dry-run"
 
 
 def test_release_gate_plan_matches_release_checklist_order() -> None:
@@ -118,8 +142,15 @@ def test_release_gate_skip_overrides_selected_command(tmp_path: Path) -> None:
     assert commands["ci-test"]["skip_reason"] == "requested by --skip"
 
 
-def test_release_gate_failure_records_output_tail_and_skips_remaining(tmp_path: Path) -> None:
+def test_release_gate_failure_records_output_tail_and_skips_remaining(
+    tmp_path: Path, monkeypatch
+) -> None:
     calls: list[str] = []
+    monkeypatch.setattr(
+        release_gate,
+        "RELEASE_GATE_COMMANDS",
+        release_gate.RELEASE_GATE_COMMANDS[:3],
+    )
 
     def _fake_runner(command: release_gate.GateCommand, root: Path):  # noqa: ARG001
         calls.append(command.label)
@@ -132,7 +163,6 @@ def test_release_gate_failure_records_output_tail_and_skips_remaining(tmp_path: 
         )
 
     report = release_gate.run_release_gate(
-        only_labels=["lint", "ci-test", "sdk-check"],
         report_json=tmp_path / "report.json",
         root=tmp_path,
         runner=_fake_runner,
@@ -151,8 +181,13 @@ def test_release_gate_failure_records_output_tail_and_skips_remaining(tmp_path: 
     assert commands["sdk-check"]["skip_reason"] == "prior failure: ci-test"
 
 
-def test_release_gate_keep_going_runs_after_failure(tmp_path: Path) -> None:
+def test_release_gate_keep_going_runs_after_failure(tmp_path: Path, monkeypatch) -> None:
     calls: list[str] = []
+    monkeypatch.setattr(
+        release_gate,
+        "RELEASE_GATE_COMMANDS",
+        release_gate.RELEASE_GATE_COMMANDS[:3],
+    )
 
     def _fake_runner(command: release_gate.GateCommand, root: Path):  # noqa: ARG001
         calls.append(command.label)
@@ -162,7 +197,6 @@ def test_release_gate_keep_going_runs_after_failure(tmp_path: Path) -> None:
         )
 
     report = release_gate.run_release_gate(
-        only_labels=["lint", "ci-test", "sdk-check"],
         report_json=tmp_path / "report.json",
         root=tmp_path,
         runner=_fake_runner,
@@ -219,6 +253,52 @@ def test_release_gate_main_dry_run_uses_cli_options(tmp_path: Path) -> None:
     assert report["summary"]["skipped"] == len(release_gate.RELEASE_GATE_COMMANDS) - 1
 
 
+def test_release_gate_production_only_and_skip_is_incomplete_without_execution(
+    tmp_path: Path, monkeypatch
+) -> None:
+    report_path = tmp_path / "production-selection.json"
+
+    def _unexpected_runner(command: release_gate.GateCommand, root: Path):  # noqa: ARG001
+        raise AssertionError("production selection options must not execute commands")
+
+    monkeypatch.setattr(release_gate, "_subprocess_runner", _unexpected_runner)
+
+    exit_code = release_gate.main(
+        [
+            "--only",
+            "lint",
+            "--skip",
+            "lint",
+            "--report-json",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert report["status"] == "incomplete"
+    assert report["summary"]["passed"] == 0
+    assert report["summary"]["skipped"] == len(release_gate.RELEASE_GATE_COMMANDS)
+    assert {command["skip_reason"] for command in report["commands"]} == {
+        "production mode requires the full release gate; --only and --skip are not allowed"
+    }
+
+
+def test_release_gate_production_with_zero_passed_is_incomplete(
+    tmp_path: Path, monkeypatch
+) -> None:
+    report_path = tmp_path / "empty-production-gate.json"
+    monkeypatch.setattr(release_gate, "RELEASE_GATE_COMMANDS", ())
+
+    exit_code = release_gate.main(["--report-json", str(report_path)])
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert report["status"] == "incomplete"
+    assert report["summary"]["passed"] == 0
+    assert report["summary"]["total"] == 0
+
+
 def test_release_gate_deployment_binding_fails_closed_in_production(tmp_path: Path) -> None:
     env = {
         "DRY_RUN": "false",
@@ -233,8 +313,174 @@ def test_release_gate_deployment_binding_fails_closed_in_production(tmp_path: Pa
 
     assert payload["summary"]["status"] == "failed"
     assert "base_url" in payload["summary"]["missing"]
+    assert "release_commit_sha" in payload["summary"]["missing"]
+    assert "release_deployment_id" in payload["summary"]["missing"]
+    assert "release_deployment_version" in payload["summary"]["missing"]
+    assert "release_environment" in payload["summary"]["missing"]
     assert "stream_events" in payload["summary"]["missing"]
     assert payload["summary"]["invalid"] == ["approval_status"]
+
+
+def test_release_gate_production_evidence_args_bind_release_identity() -> None:
+    args = release_gate.production_release_evidence_args()
+
+    for option, value in (
+        ("--commit-sha", "${RELEASE_COMMIT_SHA}"),
+        ("--deployment-id", "${RELEASE_DEPLOYMENT_ID}"),
+        ("--deployment-version", "${RELEASE_DEPLOYMENT_VERSION}"),
+        ("--environment", "${RELEASE_ENVIRONMENT}"),
+    ):
+        index = args.index(option)
+        assert args[index + 1] == value
+
+
+def test_release_gate_production_signal_commands_attest_raw_artifacts_in_order() -> None:
+    commands = release_gate.production_signal_commands()
+    expected_artifacts = (
+        (
+            "$READY_URL",
+            "reports/release-gate-raw/readyz.json",
+            "reports/release-gate/readyz.json",
+        ),
+        (
+            "$TRAJECTORY_STATS_URL",
+            "reports/release-gate-raw/trajectory-stats.json",
+            "reports/release-gate/trajectory-stats.json",
+        ),
+        (
+            "$REPLAY_COMPARISONS_URL",
+            "reports/release-gate-raw/replay-comparisons.json",
+            "reports/release-gate/replay-comparisons.json",
+        ),
+        (
+            "$ALERT_REPORT_URL",
+            "reports/release-gate-raw/alert-report.json",
+            "reports/release-gate/alert-report.json",
+        ),
+        (
+            "$POSTGRES_MIGRATION_REPORT_URL",
+            "reports/release-gate-raw/postgres-migration.json",
+            "reports/release-gate/postgres-migration.json",
+        ),
+        (
+            "$BASELINE_EVAL_REPORT_URL",
+            "reports/release-gate-raw/baseline-eval-smoke.json",
+            "reports/release-gate/baseline-eval-smoke.json",
+        ),
+    )
+
+    assert commands[:4] == [
+        ["rm", "-rf", "reports/release-gate-raw"],
+        ["mkdir", "-p", "reports/release-gate-raw"],
+        [
+            "rm",
+            "-f",
+            "reports/release-gate/readyz.json",
+            "reports/release-gate/trajectory-stats.json",
+            "reports/release-gate/replay-comparisons.json",
+            "reports/release-gate/alert-report.json",
+            "reports/release-gate/postgres-migration.json",
+            "reports/release-gate/baseline-eval-smoke.json",
+        ],
+        [
+            "python",
+            "scripts/release_gate.py",
+            "deployment-binding",
+            "--output",
+            "${DEPLOYMENT_BINDING_JSON}",
+        ],
+    ]
+    for offset, (source_url, raw_path, output_path) in enumerate(
+        expected_artifacts,
+        start=3,
+    ):
+        curl_command = commands[offset * 2 - 2]
+        capture_command = commands[offset * 2 - 1]
+        assert curl_command == [
+            "curl",
+            "--fail",
+            "--show-error",
+            "--silent",
+            "--output",
+            raw_path,
+            "--",
+            source_url,
+        ]
+        assert capture_command[:6] == [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            raw_path,
+            "--output",
+        ]
+        assert capture_command[6] == output_path
+
+    assert commands[16] == ["rm", "-rf", "reports/release-gate-raw"]
+    assert "scripts/production_smoke.py" in commands[17]
+
+
+def test_release_gate_production_signal_capture_time_and_readyz_are_fail_closed() -> None:
+    capture_commands = [
+        command
+        for command in release_gate.production_signal_commands()
+        if "scripts/release_evidence_capture.py" in command
+    ]
+    captured_now_inputs = {
+        command[4] for command in capture_commands if "--captured-now" in command
+    }
+    readyz_commands = [command for command in capture_commands if "--readyz" in command]
+
+    assert captured_now_inputs == {
+        "reports/release-gate-raw/readyz.json",
+        "reports/release-gate-raw/trajectory-stats.json",
+    }
+    assert readyz_commands == [
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/release_evidence_capture.py",
+            "reports/release-gate-raw/readyz.json",
+            "--output",
+            "reports/release-gate/readyz.json",
+            "--readyz",
+            "reports/release-gate-raw/readyz.json",
+            "--captured-now",
+        ]
+    ]
+    assert all(
+        "--captured-now" not in command
+        for command in capture_commands
+        if command[4]
+        not in {
+            "reports/release-gate-raw/readyz.json",
+            "reports/release-gate-raw/trajectory-stats.json",
+        }
+    )
+
+
+def test_release_gate_production_signal_mappings_describe_attested_workflow_inputs() -> None:
+    mappings = {str(mapping["key"]): mapping for mapping in release_gate.PRODUCTION_SIGNAL_MAPPINGS}
+
+    for key in (
+        "release_commit_sha",
+        "release_deployment_id",
+        "release_deployment_version",
+        "release_environment",
+        "readyz",
+        "trajectory_stats",
+        "replay_comparison",
+        "alert_report",
+        "postgres_migration_report",
+        "baseline_eval",
+        "stream_events_report_url",
+    ):
+        assert "release_evidence_capture" in mappings[key]["used_by"]
+    assert mappings["stream_events_report_url"]["artifact_path"] == (
+        "reports/release-gate/stream-events.json"
+    )
+    assert mappings["stream_events_report_url"]["required_in_production"] is False
 
 
 def test_release_gate_production_signal_commands_wire_otel_smoke_inputs() -> None:

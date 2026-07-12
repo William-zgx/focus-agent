@@ -13,6 +13,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from scripts.release_identity import attest_release_report
+else:
+    from release_identity import attest_release_report
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_JSON = Path("reports/agent-governance/latest.json")
 DEFAULT_EVAL_REPORTS: tuple[tuple[str, Path], ...] = (
@@ -543,7 +548,7 @@ def build_governance_report(
 def write_governance_report(path: str | Path, **kwargs: Any) -> Path:
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_governance_report(**kwargs)
+    payload = attest_release_report(build_governance_report(**kwargs))
     target.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

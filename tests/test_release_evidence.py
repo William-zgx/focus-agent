@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -177,11 +179,53 @@ def _source_dir(tmp_path: Path) -> Path:
     return source_dir
 
 
+def _current_release_binding() -> dict[str, str]:
+    commit_sha = subprocess.check_output(
+        ("git", "rev-parse", "HEAD"),
+        cwd=Path.cwd(),
+        text=True,
+    ).strip()
+    return {
+        "commit_sha": commit_sha,
+        "deployment_id": "focus-agent-production",
+        "deployment_version": "2026.07.12.1",
+        "environment": "production",
+    }
+
+
+def _bind_input_reports(
+    inputs: dict[str, object],
+    *,
+    release_binding: dict[str, str],
+) -> dict[str, object]:
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    paths: list[Path] = []
+    for value in inputs.values():
+        if isinstance(value, list):
+            paths.extend(path for path in value if isinstance(path, Path))
+        elif isinstance(value, Path):
+            paths.append(value)
+    for path in paths:
+        payload = load_json(path)
+        if path.name == "replay.json" and isinstance(payload, list):
+            payload = {"comparisons": payload}
+        assert isinstance(payload, dict)
+        payload["generated_at"] = generated_at
+        payload["release_binding"] = release_binding
+        if path.name == "readyz.json":
+            payload["app_version"] = release_binding["deployment_version"]
+            payload["deployment"] = release_binding["deployment_id"]
+            payload["environment"] = release_binding["environment"]
+        _write_json(path, payload)
+    return inputs
+
+
 def _production_inputs(
     source_dir: Path,
     *,
     include_baseline: bool = True,
     include_optional_reports: bool = False,
+    release_binding: dict[str, str] | None = None,
 ) -> dict[str, object]:
     inputs: dict[str, object] = {
         "readyz_json": _readyz(source_dir / "readyz.json"),
@@ -202,6 +246,8 @@ def _production_inputs(
         inputs["postgres_migration_report_json"] = _postgres_migration_report(
             source_dir / "postgres-migration.json"
         )
+    if release_binding is not None:
+        return _bind_input_reports(inputs, release_binding=release_binding)
     return inputs
 
 
@@ -272,11 +318,20 @@ def test_release_evidence_manifest_records_github_actions_metadata(
 
 def test_release_evidence_production_inputs_are_copied_and_gate_passes(tmp_path: Path) -> None:
     source_dir = _source_dir(tmp_path)
+    release_binding = _current_release_binding()
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",
+        commit_sha=release_binding["commit_sha"],
+        deployment_id=release_binding["deployment_id"],
+        deployment_version=release_binding["deployment_version"],
+        environment=release_binding["environment"],
         output_root=tmp_path / "packs",
         storage_dir=tmp_path / "storage",
-        **_production_inputs(source_dir, include_optional_reports=True),
+        **_production_inputs(
+            source_dir,
+            include_optional_reports=True,
+            release_binding=release_binding,
+        ),
         approval_id="approval-1",
         approval_status="approved",
         approval_url="https://github.example/actions/runs/1",
@@ -398,12 +453,17 @@ def test_release_evidence_writes_summary_and_copies_pack_to_storage(
     monkeypatch.delenv("RELEASE_GATE_ARTIFACT_NAME", raising=False)
 
     source_dir = _source_dir(tmp_path)
+    release_binding = _current_release_binding()
     manifest = release_evidence.run_release_evidence(
         release_id="prod-release",
+        commit_sha=release_binding["commit_sha"],
+        deployment_id=release_binding["deployment_id"],
+        deployment_version=release_binding["deployment_version"],
+        environment=release_binding["environment"],
         output_root=tmp_path / "packs",
         retention_days=7,
         storage_dir=tmp_path / "storage",
-        **_production_inputs(source_dir),
+        **_production_inputs(source_dir, release_binding=release_binding),
         approval_id="approval-1",
         approval_status="approved",
         approval_url="https://github.example/actions/runs/1",

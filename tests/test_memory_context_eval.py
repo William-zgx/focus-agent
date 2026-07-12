@@ -4,7 +4,22 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from scripts import memory_context_eval
+
+RELEASE_ENV = {
+    "RELEASE_COMMIT_SHA": "0123456789abcdef0123456789abcdef01234567",
+    "RELEASE_DEPLOYMENT_ID": "focus-agent-prod-20260712",
+    "RELEASE_DEPLOYMENT_VERSION": "1.4.0",
+    "RELEASE_ENVIRONMENT": "production",
+}
+EXPECTED_RELEASE_BINDING = {
+    "commit_sha": RELEASE_ENV["RELEASE_COMMIT_SHA"],
+    "deployment_id": RELEASE_ENV["RELEASE_DEPLOYMENT_ID"],
+    "deployment_version": RELEASE_ENV["RELEASE_DEPLOYMENT_VERSION"],
+    "environment": RELEASE_ENV["RELEASE_ENVIRONMENT"],
+}
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -87,6 +102,123 @@ def _run_cli(args: list[str], capsys) -> tuple[int, dict, str]:
     exit_code = memory_context_eval.main(args)
     output = capsys.readouterr()
     return exit_code, json.loads(output.out) if output.out else {}, output.err
+
+
+def _write_quality_report(path: Path) -> None:
+    memory_context_eval.write_report(path, dataset=Path("memory-context.jsonl"), results=[])
+
+
+def _write_trend_report(path: Path) -> None:
+    memory_context_eval.write_trend_report(path, golden_jsonl=())
+
+
+REPORT_WRITERS = (
+    pytest.param(_write_quality_report, id="quality"),
+    pytest.param(_write_trend_report, id="trend"),
+)
+
+
+def _clear_release_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for env_name in RELEASE_ENV:
+        monkeypatch.delenv(env_name, raising=False)
+
+
+def _assert_timezone_aware(value: object) -> None:
+    assert isinstance(value, str)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() is not None
+
+
+@pytest.mark.parametrize("writer", REPORT_WRITERS)
+def test_memory_context_report_attests_complete_release_identity(
+    writer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_release_env(monkeypatch)
+    for env_name, value in RELEASE_ENV.items():
+        monkeypatch.setenv(env_name, value)
+    report_path = tmp_path / "report.json"
+
+    writer(report_path)
+
+    report = _read_json(report_path)
+    assert report["release_binding"] == EXPECTED_RELEASE_BINDING
+    _assert_timezone_aware(report["generated_at"])
+
+
+@pytest.mark.parametrize("writer", REPORT_WRITERS)
+@pytest.mark.parametrize("missing_env_name", RELEASE_ENV)
+def test_memory_context_report_rejects_partial_release_identity_before_write(
+    writer,
+    missing_env_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_release_env(monkeypatch)
+    for env_name, value in RELEASE_ENV.items():
+        if env_name != missing_env_name:
+            monkeypatch.setenv(env_name, value)
+    report_path = tmp_path / "report.json"
+
+    with pytest.raises(ValueError, match=missing_env_name):
+        writer(report_path)
+
+    assert not report_path.exists()
+
+
+@pytest.mark.parametrize("writer", REPORT_WRITERS)
+@pytest.mark.parametrize("generic_ci", (False, True), ids=("local", "generic-ci"))
+def test_memory_context_report_preserves_no_identity_compatibility(
+    writer,
+    generic_ci: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_release_env(monkeypatch)
+    if generic_ci:
+        monkeypatch.setenv("CI", "true")
+    else:
+        monkeypatch.delenv("CI", raising=False)
+    report_path = tmp_path / "report.json"
+
+    writer(report_path)
+
+    report = _read_json(report_path)
+    assert "release_binding" not in report
+    assert "release_binding" not in report.get("meta", {})
+    _assert_timezone_aware(report["generated_at"])
+
+
+def test_memory_context_report_replaces_caller_supplied_release_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    for env_name, value in RELEASE_ENV.items():
+        monkeypatch.setenv(env_name, value)
+    monkeypatch.setattr(
+        memory_context_eval,
+        "build_memory_regression_trend_report",
+        lambda **_: {
+            "generated_at": "2026-07-12T08:30:00Z",
+            "release_binding": {"commit_sha": "caller-supplied"},
+            "meta": {
+                "release_binding": {"commit_sha": "caller-supplied"},
+                "suite": "memory_context_regression_trend",
+            },
+            "pollution_alerts": [],
+            "status": "ok",
+        },
+    )
+    report_path = tmp_path / "trend.json"
+
+    memory_context_eval.write_trend_report(report_path, golden_jsonl=())
+
+    report = _read_json(report_path)
+    assert report["release_binding"] == EXPECTED_RELEASE_BINDING
+    assert "release_binding" not in report["meta"]
+    assert report["generated_at"] == "2026-07-12T08:30:00Z"
 
 
 def test_memory_context_quality_dataset_passes(tmp_path: Path) -> None:

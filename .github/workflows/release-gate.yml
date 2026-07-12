@@ -12,34 +12,12 @@ on:
         required: true
         default: true
         type: boolean
-      approval_id:
-        description: "Deployment approval id from GitHub Environments or the release operator."
-        required: false
-        type: string
-      approval_status:
-        description: "Deployment approval status recorded in the evidence manifest."
-        required: true
-        default: "pending"
-        type: choice
-        options:
-          - approved
-          - pending
-          - rejected
-          - missing
-      approval_url:
-        description: "Optional URL for the approval record or workflow run."
-        required: false
-        type: string
       retention_days:
         description: "Retention window recorded in release evidence metadata."
         required: true
         default: "90"
         type: string
-      environment_name:
-        description: "GitHub protected Environment used for production approval."
-        required: true
-        default: "production"
-        type: string
+
 permissions:
   contents: read
 
@@ -48,17 +26,85 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-gate:
-    name: Release gate
+  release-gate-dry-run:
+    name: Release gate dry-run
+    if: ${{ inputs.dry_run == true }}
     runs-on: ubuntu-latest
-    environment: ${{ inputs.dry_run && 'release-dry-run' || inputs.environment_name }}
     env:
       RELEASE_ID: ${{ inputs.release_id || github.ref_name || github.sha }}
-      DRY_RUN: ${{ inputs.dry_run || false }}
-      ENVIRONMENT_NAME: ${{ inputs.dry_run && 'release-dry-run' || inputs.environment_name }}
-      APPROVAL_ID: ${{ inputs.approval_id }}
-      APPROVAL_STATUS: ${{ inputs.approval_status || 'missing' }}
-      APPROVAL_URL: ${{ inputs.approval_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      DRY_RUN: "true"
+      ENVIRONMENT_NAME: release-dry-run
+      APPROVAL_URL: ${{ format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      RETENTION_DAYS: ${{ inputs.retention_days || '90' }}
+      ARTIFACT_STORAGE_DIR: reports/release-gate/dry-run/archive
+      RELEASE_GATE_ARTIFACT_NAME: release-gate-dry-run-reports-${{ github.run_id }}-${{ github.run_attempt }}
+      DEPLOYMENT_BINDING_JSON: reports/release-gate/dry-run/deployment-binding.json
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Install frontend SDK dependencies
+        run: make sdk-install
+
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Validate dry-run deployment binding metadata
+        run: |
+          mkdir -p reports/release-gate/dry-run
+          python scripts/release_gate.py deployment-binding --output "$DEPLOYMENT_BINDING_JSON"
+
+      - name: Run release gate dry-run
+        run: make release-gate RELEASE_GATE_ARGS="--dry-run --report-json reports/release-gate/dry-run/latest.json"
+
+      - name: Build dry-run release evidence
+        run: |
+          make release-evidence RELEASE_EVIDENCE_ARGS="--dry-run --release-id ${RELEASE_ID:-${GITHUB_SHA::7}} --output-root reports/release-gate/dry-run/evidence --approval-id gha-dry-run-${GITHUB_RUN_ID} --approval-status approved --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR}"
+
+      - name: Upload dry-run release gate reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.RELEASE_GATE_ARTIFACT_NAME }}
+          path: reports/release-gate/dry-run/
+          retention-days: ${{ fromJSON(env.RETENTION_DAYS) }}
+          if-no-files-found: ignore
+
+  release-gate-production:
+    name: Release gate production
+    if: ${{ inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      RELEASE_ID: ${{ inputs.release_id || github.ref_name || github.sha }}
+      DRY_RUN: "false"
+      ENVIRONMENT_NAME: production
+      RELEASE_COMMIT_SHA: ${{ github.sha }}
+      RELEASE_DEPLOYMENT_ID: ${{ vars.FOCUS_AGENT_DEPLOYMENT_ID }}
+      RELEASE_DEPLOYMENT_VERSION: ${{ vars.FOCUS_AGENT_DEPLOYMENT_VERSION }}
+      RELEASE_ENVIRONMENT: production
+      APPROVAL_ID: github-environment-production-${{ github.run_id }}-${{ github.run_attempt }}
+      APPROVAL_STATUS: approved
+      APPROVAL_URL: ${{ format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
       RETENTION_DAYS: ${{ inputs.retention_days || '90' }}
       ARTIFACT_STORAGE_DIR: reports/release-gate/archive
       RELEASE_GATE_ARTIFACT_NAME: release-gate-reports-${{ github.run_id }}-${{ github.run_attempt }}
@@ -116,17 +162,12 @@ jobs:
           mkdir -p reports/release-gate
           python scripts/release_gate.py deployment-binding --output "$DEPLOYMENT_BINDING_JSON"
 
-      - name: Run release gate dry-run
-        if: env.DRY_RUN == 'true'
-        run: make release-gate RELEASE_GATE_ARGS="--dry-run --report-json reports/release-gate/latest.json"
-
       - name: Run release gate
-        if: env.DRY_RUN != 'true'
         run: make release-gate
 
       - name: Capture production release signals
-        if: env.DRY_RUN != 'true'
         run: |
+          set -euo pipefail
           mkdir -p reports/release-gate
           test -n "$BASE_URL"
           test -n "$READY_URL"
@@ -135,7 +176,13 @@ jobs:
           test -n "$ALERT_REPORT_URL"
           test -n "$POSTGRES_MIGRATION_REPORT_URL"
           test -n "$BASELINE_EVAL_REPORT_URL"
-          test -n "$ENVIRONMENT_NAME"
+          test "$ENVIRONMENT_NAME" = "production"
+          test -n "$RELEASE_COMMIT_SHA"
+          test "$RELEASE_COMMIT_SHA" = "$GITHUB_SHA"
+          test -n "$RELEASE_DEPLOYMENT_ID"
+          test -n "$RELEASE_DEPLOYMENT_VERSION"
+          test -n "$RELEASE_ENVIRONMENT"
+          test "$RELEASE_ENVIRONMENT" = "production"
           test -n "$ARTIFACT_STORAGE_DIR"
           test -n "$RELEASE_GATE_ARTIFACT_NAME"
           test -n "$RETENTION_DAYS"
@@ -148,15 +195,77 @@ jobs:
           test -n "$OTEL_ENDPOINT"
           test -n "$OTEL_COLLECTOR_HEALTH_URL"
           test -n "$OTEL_TRACE_QUERY_URL"
-          curl --fail --show-error --silent "$READY_URL" > reports/release-gate/readyz.json
-          curl --fail --show-error --silent "$TRAJECTORY_STATS_URL" > reports/release-gate/trajectory-stats.json
-          curl --fail --show-error --silent "$REPLAY_COMPARISONS_URL" > reports/release-gate/replay-comparisons.json
-          curl --fail --show-error --silent "$ALERT_REPORT_URL" > reports/release-gate/alert-report.json
-          curl --fail --show-error --silent "$POSTGRES_MIGRATION_REPORT_URL" > reports/release-gate/postgres-migration.json
-          curl --fail --show-error --silent "$BASELINE_EVAL_REPORT_URL" > reports/release-gate/baseline-eval-smoke.json
+
+          capture_release_json() {
+            local artifact_name="$1"
+            local source_url="$2"
+            local output_path="$3"
+            shift 3
+
+            local raw_dir
+            local raw_path
+            raw_dir="$(mktemp -d "${RUNNER_TEMP:?}/focus-agent-${artifact_name}.XXXXXX")"
+            raw_path="${raw_dir}/${artifact_name}.json"
+            rm -f "$output_path"
+            if ! curl --fail --show-error --silent --output "$raw_path" -- "$source_url"; then
+              rm -rf "$raw_dir"
+              return 1
+            fi
+            if [ "$artifact_name" = "readyz" ]; then
+              if ! uv run python scripts/release_evidence_capture.py \
+                "$raw_path" \
+                --output "$output_path" \
+                --readyz "$raw_path" \
+                "$@"; then
+                rm -rf "$raw_dir"
+                rm -f "$output_path"
+                return 1
+              fi
+            else
+              if ! uv run python scripts/release_evidence_capture.py \
+                "$raw_path" \
+                --output "$output_path" \
+                "$@"; then
+                rm -rf "$raw_dir"
+                rm -f "$output_path"
+                return 1
+              fi
+            fi
+            rm -rf "$raw_dir"
+          }
+
+          capture_release_json \
+            readyz \
+            "$READY_URL" \
+            reports/release-gate/readyz.json \
+            --captured-now
+          capture_release_json \
+            trajectory_stats \
+            "$TRAJECTORY_STATS_URL" \
+            reports/release-gate/trajectory-stats.json \
+            --captured-now
+          capture_release_json \
+            replay_comparisons \
+            "$REPLAY_COMPARISONS_URL" \
+            reports/release-gate/replay-comparisons.json
+          capture_release_json \
+            alert_report \
+            "$ALERT_REPORT_URL" \
+            reports/release-gate/alert-report.json
+          capture_release_json \
+            postgres_migration_report \
+            "$POSTGRES_MIGRATION_REPORT_URL" \
+            reports/release-gate/postgres-migration.json
+          capture_release_json \
+            baseline_eval_report \
+            "$BASELINE_EVAL_REPORT_URL" \
+            reports/release-gate/baseline-eval-smoke.json
           stream_args=()
           if [ -n "$STREAM_EVENTS_REPORT_URL" ]; then
-            curl --fail --show-error --silent "$STREAM_EVENTS_REPORT_URL" > reports/release-gate/stream-events.json
+            capture_release_json \
+              stream_events \
+              "$STREAM_EVENTS_REPORT_URL" \
+              reports/release-gate/stream-events.json
             stream_args+=(--stream-events-json reports/release-gate/stream-events.json)
           elif [ -n "$STREAM_EVENTS_URL" ]; then
             stream_args+=(--stream-events-url "$STREAM_EVENTS_URL")
@@ -166,7 +275,6 @@ jobs:
           fi
           uv run python scripts/production_smoke.py \
             --base-url "$BASE_URL" \
-            --web-base-url "$BASE_URL" \
             --auth-token "$AUTH_TOKEN" \
             "${stream_args[@]}" \
             --report-json reports/release-gate/production-smoke.json
@@ -185,20 +293,14 @@ jobs:
             --report-json reports/release-gate/otel-smoke.json
           test -s "$GOVERNANCE_REPORT_JSON"
 
-      - name: Build dry-run release evidence
-        if: env.DRY_RUN == 'true'
-        run: |
-          make release-evidence RELEASE_EVIDENCE_ARGS="--dry-run --release-id ${RELEASE_ID:-${GITHUB_SHA::7}} --approval-id gha-dry-run-${GITHUB_RUN_ID} --approval-status approved --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR}"
-
       - name: Build production release evidence
-        if: env.DRY_RUN != 'true'
         run: |
           test -n "$RELEASE_ID"
           test -n "$APPROVAL_ID"
           test "$APPROVAL_STATUS" = "approved"
           make release-evidence RELEASE_EVIDENCE_ARGS="--release-id ${RELEASE_ID} --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json ${GOVERNANCE_REPORT_JSON} --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 
-      - name: Upload release gate reports
+      - name: Upload production release gate reports
         if: always()
         uses: actions/upload-artifact@v7
         with:

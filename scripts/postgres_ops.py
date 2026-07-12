@@ -12,12 +12,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from scripts.postgres_ops_report import (
-    _expected_migration_versions,
-    _expected_schema_version,
-    _report_sections,
-    _schema_migration_lock_id,
-)
+if __package__:
+    from scripts.postgres_ops_report import (
+        _expected_migration_versions,
+        _expected_schema_version,
+        _report_sections,
+        _schema_migration_lock_id,
+    )
+    from scripts.release_identity import attest_release_report
+else:
+    from postgres_ops_report import (
+        _expected_migration_versions,
+        _expected_schema_version,
+        _report_sections,
+        _schema_migration_lock_id,
+    )
+    from release_identity import attest_release_report
 
 try:
     import psycopg
@@ -683,8 +693,10 @@ def build_report(
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    payload = attest_release_report(report)
     target.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     return target
 
