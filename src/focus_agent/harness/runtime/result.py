@@ -12,21 +12,25 @@ Usage::
 
     def divide(a: int, b: int) -> Result[float, CodedError]:
         if b == 0:
-            return err(CodedError(
-                code=INVALID_ARGUMENT,
-                message="division by zero",
-            ))
+            return err(
+                CodedError(
+                    code=INVALID_ARGUMENT,
+                    message="division by zero",
+                )
+            )
         return ok(a / b)
 
+
     outcome = divide(10, 2)
-    value = outcome.get_or(0.0)                 # -> 5.0
-    doubled = outcome.map(lambda x: x * 2)     # -> Ok(10.0)
+    value = outcome.get_or(0.0)  # -> 5.0
+    doubled = outcome.map(lambda x: x * 2)  # -> Ok(10.0)
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, TypeVar, Union
+from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -145,7 +149,7 @@ class Err(Generic[E]):
 # Result alias and constructors
 # ---------------------------------------------------------------------------
 
-Result = Union[Ok[T], Err[E]]
+Result = Ok[T] | Err[E]
 """Discriminated union: ``Ok[T] | Err[E]``.
 
 Use as the return type of any operation that can fail, e.g.::

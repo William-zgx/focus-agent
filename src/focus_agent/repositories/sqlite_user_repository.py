@@ -13,7 +13,12 @@ from focus_agent.core.users import (
 )
 from focus_agent.security.tokens import Principal
 
-from .user_repository import AuditEventListFilters, UserListFilters, UserRepository
+from .user_repository import (
+    AuditEventListFilters,
+    LastActiveAdminError,
+    UserListFilters,
+    UserRepository,
+)
 
 
 class SQLiteUserRepository(UserRepository):
@@ -175,49 +180,33 @@ class SQLiteUserRepository(UserRepository):
 
     def save_user(self, user: User) -> User:
         with self._connect() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE users SET
-                    username = ?,
-                    display_name = ?,
-                    email = ?,
-                    tenant_id = ?,
-                    status = ?,
-                    roles_json = ?,
-                    password_hash = ?,
-                    auth_provider = ?,
-                    external_subject = ?,
-                    failed_login_count = ?,
-                    locked_until = ?,
-                    updated_at = ?,
-                    last_seen_at = ?,
-                    last_login_at = ?,
-                    password_updated_at = ?,
-                    data_json = ?
-                WHERE user_id = ?
-                """,
-                (
-                    user.username,
-                    user.display_name,
-                    user.email,
-                    user.tenant_id,
-                    user.status.value if hasattr(user.status, "value") else str(user.status),
-                    json.dumps(user.roles, separators=(",", ":"), sort_keys=True),
-                    user.password_hash,
-                    user.auth_provider,
-                    user.external_subject,
-                    user.failed_login_count,
-                    user.locked_until,
-                    user.updated_at,
-                    user.last_seen_at,
-                    user.last_login_at,
-                    user.password_updated_at,
-                    user.model_dump_json(),
-                    user.user_id,
-                ),
-            )
-            if cursor.rowcount == 0:
+            self._update_user(conn, user)
+            conn.commit()
+        return user
+
+    def save_user_preserving_last_active_admin(self, user: User) -> User:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT data_json FROM users WHERE user_id = ?",
+                (user.user_id,),
+            ).fetchone()
+            if row is None:
                 raise KeyError(f"Unknown user: {user.user_id}")
+            current = self._user_from_row(row)
+            if self._removes_active_admin(current, user):
+                rows = conn.execute(
+                    "SELECT data_json FROM users WHERE status = ?",
+                    ("active",),
+                ).fetchall()
+                active_admin_count = sum(
+                    1
+                    for active_row in rows
+                    if self._is_active_admin(self._user_from_row(active_row))
+                )
+                if active_admin_count <= 1:
+                    raise LastActiveAdminError("Cannot remove the last active admin.")
+            self._update_user(conn, user)
             conn.commit()
         return user
 
@@ -474,6 +463,61 @@ class SQLiteUserRepository(UserRepository):
                 user.model_dump_json(),
             ),
         )
+
+    @staticmethod
+    def _update_user(conn: sqlite3.Connection, user: User) -> None:
+        cursor = conn.execute(
+            """
+            UPDATE users SET
+                username = ?,
+                display_name = ?,
+                email = ?,
+                tenant_id = ?,
+                status = ?,
+                roles_json = ?,
+                password_hash = ?,
+                auth_provider = ?,
+                external_subject = ?,
+                failed_login_count = ?,
+                locked_until = ?,
+                updated_at = ?,
+                last_seen_at = ?,
+                last_login_at = ?,
+                password_updated_at = ?,
+                data_json = ?
+            WHERE user_id = ?
+            """,
+            (
+                user.username,
+                user.display_name,
+                user.email,
+                user.tenant_id,
+                user.status.value if hasattr(user.status, "value") else str(user.status),
+                json.dumps(user.roles, separators=(",", ":"), sort_keys=True),
+                user.password_hash,
+                user.auth_provider,
+                user.external_subject,
+                user.failed_login_count,
+                user.locked_until,
+                user.updated_at,
+                user.last_seen_at,
+                user.last_login_at,
+                user.password_updated_at,
+                user.model_dump_json(),
+                user.user_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(f"Unknown user: {user.user_id}")
+
+    @staticmethod
+    def _is_active_admin(user: User) -> bool:
+        status = user.status.value if hasattr(user.status, "value") else str(user.status)
+        return status == "active" and "admin" in set(user.roles)
+
+    @classmethod
+    def _removes_active_admin(cls, current: User, updated: User) -> bool:
+        return cls._is_active_admin(current) and not cls._is_active_admin(updated)
 
     @staticmethod
     def _insert_session(conn: sqlite3.Connection, session: UserSession) -> None:

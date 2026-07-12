@@ -8,6 +8,109 @@ on:
   pull_request:
 
 jobs:
+  architecture-gate:
+    name: Architecture gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Enforce architecture debt baseline
+        run: make architecture-gate
+
+  compat-gate:
+    name: Compatibility gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Enforce compatibility debt baseline
+        run: make compat-gate
+
+  format-check:
+    name: Format check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Check Python formatting
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          case "$EVENT_NAME" in
+            pull_request)
+              base_sha="$PR_BASE_SHA"
+              head_sha="$PR_HEAD_SHA"
+              ;;
+            push)
+              base_sha="$PUSH_BASE_SHA"
+              head_sha="$PUSH_HEAD_SHA"
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$base_sha" =~ ^0+$ ]]; then
+            base_sha="$(git hash-object -t tree /dev/null)"
+          fi
+
+          git cat-file -e "${base_sha}^{tree}"
+          if git diff --quiet --diff-filter=ACMR "$base_sha" "$head_sha" -- '*.py'; then
+            echo "No changed Python files to format."
+            exit 0
+          fi
+
+          git diff --name-only -z --diff-filter=ACMR "$base_sha" "$head_sha" -- '*.py' |
+            xargs -0 uv run ruff format --check --
+
   python:
     name: Python lint and test
     runs-on: ubuntu-latest
@@ -120,3 +223,48 @@ jobs:
 
       - name: Run stream frontend regression tests
         run: make test-thread-stream-frontend-regressions
+
+  android:
+    name: Android debug check/build/test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle
+            android/gradle/wrapper/gradle-wrapper.properties
+            android/app/*.gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
+      - name: Install frontend workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync Android debug project
+        run: pnpm android:sync:debug
+
+      - name: Build, lint, and test Android debug project
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest

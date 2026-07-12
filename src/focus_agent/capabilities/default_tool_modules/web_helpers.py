@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import socket
 from html.parser import HTMLParser
 from typing import Any
 from urllib import parse as stdlib_urllib_parse
@@ -19,6 +20,7 @@ _WEB_SEARCH_ERROR_CATEGORIES = {
     "invalid_payload",
     "empty_results",
 }
+
 
 class _WebSearchProviderError(RuntimeError):
     def __init__(
@@ -43,12 +45,14 @@ class _WebSearchProviderError(RuntimeError):
         self.errors = list(errors or [])
         super().__init__(message)
 
+
 def _normalize_search_result(*, title: Any, url: Any, content: Any) -> dict[str, str]:
     return {
         "title": str(title or ""),
         "url": str(url or ""),
         "content": str(content or ""),
     }
+
 
 class _ReadableHTMLExtractor(HTMLParser):
     def __init__(self):
@@ -92,6 +96,7 @@ class _ReadableHTMLExtractor(HTMLParser):
     def text(self) -> str:
         return _collapse_whitespace("\n".join(self.text_parts))
 
+
 def _is_blocked_fetch_host(host: str | None) -> bool:
     if not host:
         return True
@@ -102,13 +107,74 @@ def _is_blocked_fetch_host(host: str | None) -> bool:
         address = ipaddress.ip_address(normalized)
     except ValueError:
         return False
-    return (
-        address.is_private
+    return not _is_public_fetch_address(address)
+
+
+def _is_public_fetch_address(
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> bool:
+    return not (
+        not address.is_global
+        or address.is_private
         or address.is_loopback
         or address.is_link_local
         or address.is_reserved
         or address.is_multicast
+        or address.is_unspecified
+        or getattr(address, "is_site_local", False)
     )
+
+
+def _resolve_public_fetch_addresses(host: str, port: int) -> tuple[str, ...]:
+    normalized = host.strip().lower().strip("[]").rstrip(".")
+    if not normalized:
+        raise ValueError("Web fetch URL must include a valid hostname.")
+
+    try:
+        literal_address = ipaddress.ip_address(normalized)
+    except ValueError:
+        try:
+            answers = socket.getaddrinfo(
+                normalized,
+                port,
+                family=socket.AF_UNSPEC,
+                type=socket.SOCK_STREAM,
+                proto=socket.IPPROTO_TCP,
+            )
+        except socket.gaierror as exc:
+            raise ValueError(f"Web fetch DNS resolution failed for {normalized}: {exc}") from exc
+        raw_addresses = [str(answer[4][0]).split("%", 1)[0] for answer in answers]
+    else:
+        raw_addresses = [str(literal_address)]
+
+    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    seen: set[str] = set()
+    for raw_address in raw_addresses:
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise ValueError(
+                f"Web fetch DNS resolution returned an invalid address for {normalized}: "
+                f"{raw_address}"
+            ) from exc
+        canonical_address = str(address)
+        if canonical_address not in seen:
+            addresses.append(address)
+            seen.add(canonical_address)
+
+    if not addresses:
+        raise ValueError(f"Web fetch DNS resolution returned no addresses for {normalized}.")
+
+    blocked_addresses = [
+        str(address) for address in addresses if not _is_public_fetch_address(address)
+    ]
+    if blocked_addresses:
+        raise ValueError(
+            f"Web fetch host {normalized} resolved to non-public address(es): "
+            f"{', '.join(blocked_addresses)}."
+        )
+    return tuple(str(address) for address in addresses)
+
 
 def _normalize_domain_rule(rule: Any) -> str:
     normalized = str(rule or "").strip().lower()
@@ -122,11 +188,13 @@ def _normalize_domain_rule(rule: Any) -> str:
         normalized = normalized[4:]
     return normalized
 
+
 def _normalize_policy_host(host: str | None) -> str:
     normalized = str(host or "").strip().lower().strip("[]").rstrip(".")
     if normalized.startswith("www."):
         normalized = normalized[4:]
     return normalized
+
 
 def _host_matches_domain_rule(host: str, rule: str) -> bool:
     if not host or not rule:
@@ -135,6 +203,7 @@ def _host_matches_domain_rule(host: str, rule: str) -> bool:
         suffix = rule[2:]
         return host.endswith(f".{suffix}")
     return host == rule or host.endswith(f".{rule}")
+
 
 def _web_fetch_policy_violation(
     host: str | None,
@@ -182,6 +251,7 @@ def _web_fetch_policy_violation(
         }
     return None
 
+
 def _is_timeout_exception(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError):
         return True
@@ -190,6 +260,7 @@ def _is_timeout_exception(exc: BaseException) -> bool:
         return True
     message = str(reason if reason is not None else exc).lower()
     return "timed out" in message or "timeout" in message
+
 
 def _provider_error_record(error: _WebSearchProviderError) -> dict[str, Any]:
     record: dict[str, Any] = {

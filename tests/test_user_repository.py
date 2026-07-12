@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -9,6 +11,7 @@ from focus_agent.repositories.sqlite_user_repository import SQLiteUserRepository
 from focus_agent.repositories.user_repository import (
     AuditEventListFilters,
     InMemoryUserRepository,
+    LastActiveAdminError,
     UserListFilters,
     UserRepository,
 )
@@ -65,6 +68,36 @@ def test_user_repository_crud_filters_and_admin_count(kind: str, tmp_path: Path)
     assert repo.list_users(filters=UserListFilters(role="admin")).count == 1
     assert repo.list_users(filters=UserListFilters(query="renamed")).items[0].user_id == "member-1"
     assert repo.list_users(filters=UserListFilters(query="member_1")).items[0].user_id == "member-1"
+    assert repo.count_active_admins() == 1
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite"])
+def test_user_repository_concurrent_admin_demotion_preserves_one_admin(
+    kind: str, tmp_path: Path
+) -> None:
+    repo = _repo(kind, tmp_path)
+    repo.create_user(_user("admin-1", roles=["admin"]))
+    repo.create_user(_user("admin-2", roles=["admin"]))
+    barrier = Barrier(2)
+
+    def demote(user_id: str, *, disable: bool) -> User | LastActiveAdminError:
+        user = repo.get_user(user_id)
+        update = {"status": UserStatus.DISABLED} if disable else {"roles": ["member"]}
+        barrier.wait()
+        try:
+            return repo.save_user_preserving_last_active_admin(user.model_copy(update=update))
+        except LastActiveAdminError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = [
+            executor.submit(demote, "admin-1", disable=True),
+            executor.submit(demote, "admin-2", disable=False),
+        ]
+        outcomes = [result.result() for result in results]
+
+    assert sum(isinstance(outcome, User) for outcome in outcomes) == 1
+    assert sum(isinstance(outcome, LastActiveAdminError) for outcome in outcomes) == 1
     assert repo.count_active_admins() == 1
 
 

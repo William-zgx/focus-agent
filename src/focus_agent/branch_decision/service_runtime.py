@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from importlib import import_module
 from typing import Any
 
 from focus_agent.core.branching import (
@@ -30,6 +29,7 @@ from focus_agent.services.branch_actions import (
     target_parent_thread_id,
 )
 
+from .classifier import classify_topic_relation
 from .service_helpers import (
     _branch_action_kind_for_decision,
     _branch_role_for_recommendation,
@@ -82,13 +82,6 @@ class BranchDecisionServiceRuntimeMixin:
         return _normalize_semantic_topic_relation_result(result)
 
     def _semantic_topic_relation_classifier(self) -> Any | None:
-        for attr in (
-            "classify_branch_recommendation_semantic",
-            "semantic_branch_recommendation_classifier",
-        ):
-            classifier = globals().get(attr)
-            if classifier is not None:
-                return classifier
         for owner in (self.settings, self.branch_service, self.coordination_backend):
             for attr in (
                 "agent_branch_recommendation_semantic_classifier",
@@ -101,26 +94,7 @@ class BranchDecisionServiceRuntimeMixin:
                 classifier = getattr(owner, attr, None) if owner is not None else None
                 if classifier is not None:
                     return classifier
-        for module_name in (
-            "focus_agent.branch_decision.semantic",
-            "focus_agent.branch_decision.semantic_topic_relation",
-            "focus_agent.branch_decision.classifier",
-        ):
-            try:
-                module = import_module(module_name)
-            except ImportError:
-                continue
-            for attr in (
-                "classify_semantic_topic_relation",
-                "classify_topic_relation",
-                "semantic_topic_relation_classifier",
-                "classify_branch_recommendation_semantic",
-                "semantic_branch_recommendation_classifier",
-            ):
-                classifier = getattr(module, attr, None)
-                if classifier is not None:
-                    return classifier
-        return None
+        return classify_topic_relation
 
     def _gate_status(
         self,
@@ -167,10 +141,14 @@ class BranchDecisionServiceRuntimeMixin:
         }:
             return BranchDecisionStatus.BLOCKED, "closed_branch"
         pending_action = latest_pending_branch_action(values.get("branch_actions"))
-        if action in {
-            BranchDecisionAction.FORK_CHILD_BRANCH,
-            BranchDecisionAction.FORK_SIBLING_BRANCH,
-        } and pending_action is not None:
+        if (
+            action
+            in {
+                BranchDecisionAction.FORK_CHILD_BRANCH,
+                BranchDecisionAction.FORK_SIBLING_BRANCH,
+            }
+            and pending_action is not None
+        ):
             handoff_message = str(values.get("_branch_decision_handoff_message") or "").strip()
             if not self._can_replace_pending_branch_action(
                 action=action,

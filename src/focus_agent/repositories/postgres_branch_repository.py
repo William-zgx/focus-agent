@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import MutableSequence
 
-import psycopg
+import psycopg as psycopg
 from psycopg.types.json import Jsonb
 
 from focus_agent.storage.postgres import PostgresConnectionProvider
@@ -22,8 +22,6 @@ from .branch_repository import BranchRepository
 from .postgres_branch_mappers import PostgresBranchMapperMixin, branch_row_params
 from .postgres_branch_mappers import branch_params as _branch_params
 from .postgres_schema import ensure_app_postgres_schema_on_connection
-
-_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
 
 _BRANCH_COLUMNS = """
     branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
@@ -517,26 +515,36 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
         if not rows:
             return 0
         with self._cursor(dict_row=True) as cur:
-            for row in rows:
-                cur.execute(
-                    """
-                        INSERT INTO focus_thread_access (
-                            thread_id,
-                            root_thread_id,
-                            owner_user_id,
-                            created_at
-                        )
-                        VALUES (%s, %s, %s, COALESCE(%s, now()))
-                        ON CONFLICT (thread_id) DO UPDATE SET
-                            root_thread_id = EXCLUDED.root_thread_id,
-                            owner_user_id = EXCLUDED.owner_user_id
-                        """,
-                    (
-                        str(row["thread_id"]),
-                        str(row["root_thread_id"]),
-                        str(row["owner_user_id"]),
-                        row.get("created_at"),
-                    ),
+            return self._upsert_thread_access_rows_on_cursor(cur, rows)
+
+    def _upsert_thread_access_rows_on_cursor(self, cur, rows: list[dict[str, object]]) -> int:
+        for row in rows:
+            cur.execute(
+                """
+                    INSERT INTO focus_thread_access (
+                        thread_id,
+                        root_thread_id,
+                        owner_user_id,
+                        created_at
+                    )
+                    VALUES (%s, %s, %s, COALESCE(%s, now()))
+                    ON CONFLICT (thread_id) DO UPDATE SET
+                        root_thread_id = EXCLUDED.root_thread_id
+                    WHERE focus_thread_access.owner_user_id = EXCLUDED.owner_user_id
+                    RETURNING owner_user_id
+                    """,
+                (
+                    str(row["thread_id"]),
+                    str(row["root_thread_id"]),
+                    str(row["owner_user_id"]),
+                    row.get("created_at"),
+                ),
+            )
+            if cur.fetchone() is None:
+                raise PermissionError(
+                    "Cannot migrate thread "
+                    f"{row['thread_id']} for owner {row['owner_user_id']}: "
+                    "the target row belongs to another owner."
                 )
         return len(rows)
 
@@ -544,38 +552,48 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
         if not rows:
             return 0
         with self._cursor(dict_row=True) as cur:
-            for row in rows:
-                cur.execute(
-                    """
-                        INSERT INTO focus_conversations (
-                            root_thread_id,
-                            owner_user_id,
-                            title,
-                            title_pending_ai,
-                            is_archived,
-                            archived_at,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, now()), COALESCE(%s, now()))
-                        ON CONFLICT (root_thread_id) DO UPDATE SET
-                            owner_user_id = EXCLUDED.owner_user_id,
-                            title = EXCLUDED.title,
-                            title_pending_ai = EXCLUDED.title_pending_ai,
-                            is_archived = EXCLUDED.is_archived,
-                            archived_at = EXCLUDED.archived_at,
-                            updated_at = COALESCE(EXCLUDED.updated_at, now())
-                        """,
-                    (
-                        str(row["root_thread_id"]),
-                        str(row["owner_user_id"]),
-                        str(row["title"]),
-                        bool(row.get("title_pending_ai", False)),
-                        bool(row.get("is_archived", False)),
-                        row.get("archived_at"),
-                        row.get("created_at"),
-                        row.get("updated_at"),
-                    ),
+            return self._upsert_conversation_rows_on_cursor(cur, rows)
+
+    def _upsert_conversation_rows_on_cursor(self, cur, rows: list[dict[str, object]]) -> int:
+        for row in rows:
+            cur.execute(
+                """
+                    INSERT INTO focus_conversations (
+                        root_thread_id,
+                        owner_user_id,
+                        title,
+                        title_pending_ai,
+                        is_archived,
+                        archived_at,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, now()), COALESCE(%s, now()))
+                    ON CONFLICT (root_thread_id) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        title_pending_ai = EXCLUDED.title_pending_ai,
+                        is_archived = EXCLUDED.is_archived,
+                        archived_at = EXCLUDED.archived_at,
+                        updated_at = COALESCE(EXCLUDED.updated_at, now())
+                    WHERE focus_conversations.owner_user_id = EXCLUDED.owner_user_id
+                    RETURNING owner_user_id
+                    """,
+                (
+                    str(row["root_thread_id"]),
+                    str(row["owner_user_id"]),
+                    str(row["title"]),
+                    bool(row.get("title_pending_ai", False)),
+                    bool(row.get("is_archived", False)),
+                    row.get("archived_at"),
+                    row.get("created_at"),
+                    row.get("updated_at"),
+                ),
+            )
+            if cur.fetchone() is None:
+                raise PermissionError(
+                    "Cannot migrate conversation root "
+                    f"{row['root_thread_id']} for owner {row['owner_user_id']}: "
+                    "the target row belongs to another owner."
                 )
         return len(rows)
 
@@ -583,43 +601,88 @@ class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchR
         if not rows:
             return 0
         with self._cursor(dict_row=True) as cur:
-            for row in rows:
-                payload = branch_row_params(row)
-                cur.execute(
-                    """
-                        INSERT INTO focus_branches (
-                            branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
-                            owner_user_id, branch_name, branch_role, branch_depth, branch_status,
-                            is_archived, archived_at, fork_checkpoint_id, fork_strategy,
-                            merge_proposal, merge_decision
-                        ) VALUES (
-                            %(branch_id)s, %(root_thread_id)s, %(parent_thread_id)s, %(child_thread_id)s,
-                            %(return_thread_id)s, %(owner_user_id)s, %(branch_name)s, %(branch_role)s,
-                            %(branch_depth)s, %(branch_status)s, %(is_archived)s, %(archived_at)s,
-                            %(fork_checkpoint_id)s, %(fork_strategy)s, %(merge_proposal)s, %(merge_decision)s
-                        )
-                        ON CONFLICT (branch_id) DO UPDATE SET
-                            root_thread_id = EXCLUDED.root_thread_id,
-                            parent_thread_id = EXCLUDED.parent_thread_id,
-                            child_thread_id = EXCLUDED.child_thread_id,
-                            return_thread_id = EXCLUDED.return_thread_id,
-                            owner_user_id = EXCLUDED.owner_user_id,
-                            branch_name = EXCLUDED.branch_name,
-                            branch_role = EXCLUDED.branch_role,
-                            branch_depth = EXCLUDED.branch_depth,
-                            branch_status = EXCLUDED.branch_status,
-                            is_archived = EXCLUDED.is_archived,
-                            archived_at = EXCLUDED.archived_at,
-                            fork_checkpoint_id = EXCLUDED.fork_checkpoint_id,
-                            fork_strategy = EXCLUDED.fork_strategy,
-                            merge_proposal = EXCLUDED.merge_proposal,
-                            merge_decision = EXCLUDED.merge_decision,
-                            updated_at = now()
-                        """,
-                    payload,
+            return self._upsert_branch_rows_on_cursor(cur, rows)
+
+    def _upsert_branch_rows_on_cursor(self, cur, rows: list[dict[str, object]]) -> int:
+        for row in rows:
+            payload = branch_row_params(row)
+            cur.execute(
+                """
+                    INSERT INTO focus_branches (
+                        branch_id, root_thread_id, parent_thread_id, child_thread_id, return_thread_id,
+                        owner_user_id, branch_name, branch_role, branch_depth, branch_status,
+                        is_archived, archived_at, fork_checkpoint_id, fork_strategy,
+                        merge_proposal, merge_decision
+                    ) VALUES (
+                        %(branch_id)s, %(root_thread_id)s, %(parent_thread_id)s, %(child_thread_id)s,
+                        %(return_thread_id)s, %(owner_user_id)s, %(branch_name)s, %(branch_role)s,
+                        %(branch_depth)s, %(branch_status)s, %(is_archived)s, %(archived_at)s,
+                        %(fork_checkpoint_id)s, %(fork_strategy)s, %(merge_proposal)s, %(merge_decision)s
+                    )
+                    ON CONFLICT (branch_id) DO UPDATE SET
+                        root_thread_id = EXCLUDED.root_thread_id,
+                        parent_thread_id = EXCLUDED.parent_thread_id,
+                        child_thread_id = EXCLUDED.child_thread_id,
+                        return_thread_id = EXCLUDED.return_thread_id,
+                        branch_name = EXCLUDED.branch_name,
+                        branch_role = EXCLUDED.branch_role,
+                        branch_depth = EXCLUDED.branch_depth,
+                        branch_status = EXCLUDED.branch_status,
+                        is_archived = EXCLUDED.is_archived,
+                        archived_at = EXCLUDED.archived_at,
+                        fork_checkpoint_id = EXCLUDED.fork_checkpoint_id,
+                        fork_strategy = EXCLUDED.fork_strategy,
+                        merge_proposal = EXCLUDED.merge_proposal,
+                        merge_decision = EXCLUDED.merge_decision,
+                        updated_at = now()
+                    WHERE focus_branches.owner_user_id = EXCLUDED.owner_user_id
+                    RETURNING owner_user_id
+                    """,
+                payload,
+            )
+            if cur.fetchone() is None:
+                raise PermissionError(
+                    "Cannot migrate branch "
+                    f"{row['branch_id']} for owner {row['owner_user_id']}: "
+                    "the target row belongs to another owner."
                 )
         return len(rows)
 
 
+class _PostgresLocalStateMigrationSink(PostgresBranchRepository):
+    def __init__(self, database_uri: str):
+        super().__init__(database_uri)
+        self._pending_thread_access_rows: list[dict[str, object]] | None = None
+        self._pending_conversation_rows: list[dict[str, object]] | None = None
+
+    def upsert_thread_access_rows(self, rows: list[dict[str, object]]) -> int:
+        if self._pending_thread_access_rows is not None:
+            raise RuntimeError("Thread access rows are already staged for migration.")
+        self._pending_thread_access_rows = [dict(row) for row in rows]
+        return len(rows)
+
+    def upsert_conversation_rows(self, rows: list[dict[str, object]]) -> int:
+        if self._pending_thread_access_rows is None:
+            raise RuntimeError("Thread access rows must be staged before conversation rows.")
+        if self._pending_conversation_rows is not None:
+            raise RuntimeError("Conversation rows are already staged for migration.")
+        self._pending_conversation_rows = [dict(row) for row in rows]
+        return len(rows)
+
+    def upsert_branch_rows(self, rows: list[dict[str, object]]) -> int:
+        if self._pending_thread_access_rows is None or self._pending_conversation_rows is None:
+            raise RuntimeError(
+                "Thread access and conversation rows must be staged before branches."
+            )
+        try:
+            with self._cursor(dict_row=True) as cur:
+                self._upsert_thread_access_rows_on_cursor(cur, self._pending_thread_access_rows)
+                self._upsert_conversation_rows_on_cursor(cur, self._pending_conversation_rows)
+                return self._upsert_branch_rows_on_cursor(cur, rows)
+        finally:
+            self._pending_thread_access_rows = None
+            self._pending_conversation_rows = None
+
+
 def create_local_state_migration_sink(database_uri: str) -> PostgresBranchRepository:
-    return PostgresBranchRepository(database_uri)
+    return _PostgresLocalStateMigrationSink(database_uri)

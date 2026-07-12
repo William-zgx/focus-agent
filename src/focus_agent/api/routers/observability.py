@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.security.permissions import is_admin_role
 from focus_agent.security.tokens import Principal
+from focus_agent.services.users import UserInactiveError
 
 from ..contracts import (
     ObservabilityOverviewResponse,
@@ -22,7 +24,11 @@ from ..contracts import (
     TrajectoryTurnStatsEnvelopeResponse,
     TrajectoryTurnStatsResponse,
 )
-from ..deps import get_app_runtime, get_current_principal
+from ..deps import (
+    allow_implicit_admin_bootstrap,
+    get_app_runtime,
+    get_current_principal,
+)
 from ..route_utils.observability_actions import (
     build_batch_promotion_preview_response,
     build_batch_replay_compare_response,
@@ -51,10 +57,32 @@ from ..route_utils.trajectory import (
 router = APIRouter()
 
 
+def require_observability_admin(
+    principal: Principal = Depends(get_current_principal),
+    runtime: AppRuntime = Depends(get_app_runtime),
+) -> Principal:
+    if not runtime.settings.auth_enabled:
+        return principal
+    user_service = getattr(runtime, "user_service", None)
+    if user_service is None:
+        raise HTTPException(status_code=500, detail="User service is not configured.")
+    try:
+        user = user_service.ensure_user_from_principal(
+            principal,
+            allow_admin_bootstrap=allow_implicit_admin_bootstrap(runtime.settings),
+            bootstrap_admin_user_ids=runtime.settings.auth_bootstrap_admin_user_ids,
+        )
+    except UserInactiveError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not is_admin_role(user.roles):
+        raise HTTPException(status_code=403, detail="Admin permission is required.")
+    return principal
+
+
 @router.get("/v1/observability/overview", response_model=ObservabilityOverviewResponse)
 def get_observability_overview(
     trajectory_params: ObservabilityTrajectoryParams = Depends(observability_trajectory_params),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ObservabilityOverviewResponse:
     del principal
@@ -87,7 +115,7 @@ def list_trajectory_turns(
     trajectory_params: ObservabilityTrajectoryParams = Depends(
         observability_trajectory_list_params
     ),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryTurnListResponse:
     del principal
@@ -109,7 +137,7 @@ def list_trajectory_turns(
 )
 def get_trajectory_turn_stats(
     trajectory_params: ObservabilityTrajectoryParams = Depends(observability_trajectory_params),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryTurnStatsEnvelopeResponse:
     del principal
@@ -128,7 +156,7 @@ def get_trajectory_turn_stats(
 )
 def promote_trajectory_turn_batch_preview(
     payload: TrajectoryBatchPromotionPreviewRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryBatchPromotionPreviewResponse:
     del principal
@@ -151,7 +179,7 @@ def promote_trajectory_turn_batch_preview(
 )
 def replay_trajectory_turn_batch_compare(
     payload: TrajectoryBatchReplayCompareRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryBatchReplayCompareResponse:
     del principal
@@ -174,7 +202,7 @@ def replay_trajectory_turn_batch_compare(
 )
 def get_trajectory_turn_detail(
     turn_id: str,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryTurnDetailEnvelopeResponse:
     del principal
@@ -204,7 +232,7 @@ def get_trajectory_turn_detail(
 def replay_trajectory_turn(
     turn_id: str,
     payload: TrajectoryReplayRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryReplayResponse:
     del principal
@@ -229,7 +257,7 @@ def replay_trajectory_turn(
 def promote_trajectory_turn(
     turn_id: str,
     payload: TrajectoryPromotionRequest,
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_observability_admin),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> TrajectoryPromotionResponse:
     del principal

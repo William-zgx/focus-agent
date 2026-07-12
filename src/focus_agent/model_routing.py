@@ -22,8 +22,9 @@ dataclass to build request-sending primitives.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 from .config_parts.catalog_config_types import ProviderConfig
 

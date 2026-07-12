@@ -92,11 +92,11 @@ class FocusAgent:
 
         # --- Build payload ------------------------------------------------
         try:
-            from langchain.messages import HumanMessage
+            import langchain.messages as langchain_messages
         except Exception:  # pragma: no cover - langchain always present at runtime
-            HumanMessage = None  # type: ignore[assignment]
-        if HumanMessage is not None:
-            payload: Any = {"messages": [HumanMessage(content=clean_message)]}
+            langchain_messages = None  # type: ignore[assignment]
+        if langchain_messages is not None:
+            payload: Any = {"messages": [langchain_messages.HumanMessage(content=clean_message)]}
         else:
             payload = {"messages": [{"role": "user", "content": clean_message}]}
         payload["metadata"] = run_metadata
@@ -252,18 +252,12 @@ class FocusAgent:
             # for a completion signal.  When the model produced no visible
             # assistant text (e.g. only tool calls), send an empty content
             # string -- downstream consumers can still detect turn completion.
-            await _safe_publish(
-                publisher.on_message_completed(
-                    content=visible_text_buffer or ""
-                )
-            )
+            await _safe_publish(publisher.on_message_completed(content=visible_text_buffer or ""))
             if interrupted:
                 await _safe_publish(publisher.on_turn_interrupted())
                 status = "interrupted"
             elif success:
-                await _safe_publish(
-                    publisher.on_turn_completed("success", final_state=final_state)
-                )
+                await _safe_publish(publisher.on_turn_completed("success", final_state=final_state))
                 status = "success"
             else:
                 await _safe_publish(publisher.on_turn_completed("error"))

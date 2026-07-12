@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from focus_agent.config import Settings
 from focus_agent.core.users import User
 from focus_agent.engine.runtime import AppRuntime, create_runtime
+from focus_agent.repositories.user_repository import InMemoryUserRepository
 from focus_agent.security.permissions import AuthContext, is_admin_role, permissions_for_roles
 from focus_agent.security.tokens import AuthError, Principal, decode_access_token
 from focus_agent.services.auth import AuthService
@@ -77,6 +78,35 @@ def allow_implicit_admin_bootstrap(settings: Settings) -> bool:
     if not settings.database_uri:
         return True
     return settings.app_environment.lower() in _BOOTSTRAP_DEVELOPMENT_ENVIRONMENTS
+
+
+def _user_service_for_principal(runtime: AppRuntime) -> UserService:
+    user_service = getattr(runtime, "user_service", None)
+    if user_service is not None:
+        return user_service
+    repository = getattr(runtime, "user_repository", None)
+    settings = runtime.settings
+    if (
+        repository is None
+        and not settings.database_uri
+        and settings.app_environment.lower() in _BOOTSTRAP_DEVELOPMENT_ENVIRONMENTS
+    ):
+        repository = InMemoryUserRepository()
+        try:
+            runtime.user_repository = repository
+        except Exception:  # noqa: BLE001 - test runtimes may be immutable namespaces.
+            pass
+    if repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User authorization state is unavailable.",
+        )
+    user_service = UserService(repository, auth_enabled=True)
+    try:
+        runtime.user_service = user_service
+    except Exception:  # noqa: BLE001 - test runtimes may be immutable namespaces.
+        pass
+    return user_service
 
 
 def _principal_from_credentials(
@@ -159,6 +189,27 @@ def get_current_principal(
             detail="Missing bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if runtime.settings.auth_enabled:
+        user_service = _user_service_for_principal(runtime)
+        try:
+            user = user_service.authorize_principal(
+                principal,
+                allow_admin_bootstrap=allow_implicit_admin_bootstrap(runtime.settings),
+                bootstrap_admin_user_ids=runtime.settings.auth_bootstrap_admin_user_ids,
+            )
+        except UserInactiveError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+            ) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 - authorization state must fail closed.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="User authorization state is unavailable.",
+            ) from exc
+        request.state.current_user = user
     return principal
 
 
@@ -184,6 +235,9 @@ def get_current_user(
     runtime: AppRuntime = Depends(get_app_runtime),
     user_service: UserService = Depends(get_user_service),
 ) -> User:
+    current_user = getattr(request.state, "current_user", None)
+    if isinstance(current_user, User) and current_user.user_id == principal.user_id:
+        return current_user
     try:
         return user_service.ensure_user_from_principal(
             principal,

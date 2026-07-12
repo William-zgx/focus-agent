@@ -171,7 +171,9 @@ class ZvecRetrievalIndex:
     def _query(self, *, field_name: str, vector: Sequence[float]):
         query_cls = getattr(self._zvec, "Query", None)
         if query_cls is None:
-            from zvec.model.param.query import Query as query_cls  # type: ignore[import-not-found]
+            from zvec.model.param.query import Query  # type: ignore[import-not-found]
+
+            query_cls = Query
 
         return query_cls(field_name=field_name, vector=[float(value) for value in vector])
 

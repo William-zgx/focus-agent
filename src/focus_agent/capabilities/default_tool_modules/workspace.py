@@ -4,11 +4,10 @@ import fnmatch
 import json
 import os
 import re
-import shlex
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
@@ -28,6 +27,32 @@ from .workspace_command import (
     validate_command_paths,
     workspace_command_allowed,
     workspace_command_env,
+)
+from .workspace_patch import _patch_line_token as _patch_line_token
+from .workspace_patch import (
+    _patch_mentions_unsupported_file_mode as _patch_mentions_unsupported_file_mode,
+)
+from .workspace_patch import _patch_paths as _patch_paths
+from .workspace_patch import _patch_token_path as _patch_token_path
+from .workspace_patch import _validate_patch_paths as _validate_patch_paths
+from .workspace_paths import (
+    _resolve_focus_home_skill_cwd as _resolve_focus_home_skill_cwd,
+)
+from .workspace_paths import (
+    _resolve_workspace_command_cwd as _resolve_workspace_command_cwd,
+)
+from .workspace_paths import _resolve_workspace_path as _resolve_workspace_path
+from .workspace_paths import (
+    _resolve_workspace_skill_collection_root as _resolve_workspace_skill_collection_root,
+)
+from .workspace_paths import (
+    _trusted_skill_python_interpreter_name as _trusted_skill_python_interpreter_name,
+)
+from .workspace_paths import (
+    _trusted_workspace_skill_collection_roots as _trusted_workspace_skill_collection_roots,
+)
+from .workspace_paths import (
+    _workspace_skill_root_for_path as _workspace_skill_root_for_path,
 )
 
 _SKIP_DIR_NAMES = {
@@ -80,137 +105,12 @@ _TEXT_FILE_SUFFIX_TO_LANGUAGE = {
     ".yaml": "YAML",
     ".yml": "YAML",
 }
-_UNSUPPORTED_PATCH_FILE_MODES = {"120000", "160000"}
-_FOCUS_HOME_FOCUS_AGENT_PARTS = PurePosixPath("/home/focus/.focus_agent").parts
-_FOCUS_HOME_SKILLS_PARTS = PurePosixPath("/home/focus/.focus_agent/skills").parts
-_TRUSTED_SKILL_PYTHON_RE = re.compile(r"python(?:3(?:\.\d+)?)?\Z")
-_DEFAULT_WORKSPACE_SKILL_COLLECTION_ROOT_PARTS: tuple[tuple[str, ...], ...] = (
-    (".focus_agent", "skills"),
-)
 
 
 def _language_for_path(path: Path) -> str:
     return _TEXT_FILE_SUFFIX_TO_LANGUAGE.get(
         path.suffix.lower(), path.suffix.lower() or "no_extension"
     )
-
-
-def _resolve_workspace_path(*, raw_path: str, workspace_root: Path) -> Path:
-    candidate = Path(raw_path).expanduser()
-    resolved = (
-        candidate.resolve() if candidate.is_absolute() else (workspace_root / candidate).resolve()
-    )
-    try:
-        resolved.relative_to(workspace_root)
-    except ValueError as exc:
-        raise ValueError(f"Path must stay within workspace root: {workspace_root}") from exc
-    return resolved
-
-
-def _resolve_workspace_command_cwd(*, raw_cwd: object, workspace_root: Path) -> Path:
-    cwd_text = "." if raw_cwd is None else str(raw_cwd)
-    if not cwd_text.strip():
-        raise ValueError("cwd must not be empty.")
-    repaired = _resolve_focus_home_skill_cwd(raw_cwd=cwd_text, workspace_root=workspace_root)
-    if repaired is not None:
-        return repaired
-    return _resolve_workspace_path(raw_path=cwd_text, workspace_root=workspace_root)
-
-
-def _resolve_focus_home_skill_cwd(*, raw_cwd: str, workspace_root: Path) -> Path | None:
-    parts = PurePosixPath(raw_cwd).parts
-    if parts[: len(_FOCUS_HOME_FOCUS_AGENT_PARTS)] != _FOCUS_HOME_FOCUS_AGENT_PARTS:
-        return None
-    if parts[: len(_FOCUS_HOME_SKILLS_PARTS)] != _FOCUS_HOME_SKILLS_PARTS:
-        raise ValueError(
-            "Skill cwd must start with /home/focus/.focus_agent/skills/<id>."
-        )
-    relative_parts = parts[len(_FOCUS_HOME_SKILLS_PARTS) :]
-    if not relative_parts:
-        raise ValueError("Skill cwd must include a non-empty skill id.")
-    if any(part == ".." for part in relative_parts):
-        raise ValueError("Skill cwd must not contain '..'.")
-
-    skill_id = relative_parts[0]
-    if not skill_id:
-        raise ValueError("Skill cwd must include a non-empty skill id.")
-
-    skill_root = workspace_root / ".focus_agent" / "skills" / skill_id
-    target = workspace_root / ".focus_agent" / "skills" / Path(*relative_parts)
-    resolved = target.resolve()
-    try:
-        resolved.relative_to(skill_root)
-        resolved.relative_to(workspace_root)
-    except ValueError as exc:
-        raise ValueError("Skill cwd must not escape the workspace skill directory.") from exc
-    return resolved
-
-
-def _trusted_skill_python_interpreter_name(command_name: str) -> bool:
-    if "/" in command_name or "\\" in command_name:
-        return False
-    return bool(_TRUSTED_SKILL_PYTHON_RE.fullmatch(command_name))
-
-
-def _resolve_workspace_skill_collection_root(
-    *, raw_root: str | Path, workspace_root: Path
-) -> Path | None:
-    root_text = os.fspath(raw_root).strip()
-    if not root_text:
-        return None
-    candidate = Path(root_text).expanduser()
-    resolved = (
-        candidate.resolve() if candidate.is_absolute() else (workspace_root / candidate).resolve()
-    )
-    try:
-        resolved.relative_to(workspace_root)
-    except ValueError:
-        return None
-    return resolved
-
-
-def _trusted_workspace_skill_collection_roots(
-    *, workspace_root: Path, configured_roots: Iterable[str | Path]
-) -> tuple[Path, ...]:
-    roots: list[Path] = []
-
-    def append_root(root: Path | None) -> None:
-        if root is not None and root not in roots:
-            roots.append(root)
-
-    for root_parts in _DEFAULT_WORKSPACE_SKILL_COLLECTION_ROOT_PARTS:
-        append_root((workspace_root / Path(*root_parts)).resolve())
-    for configured_root in configured_roots:
-        append_root(
-            _resolve_workspace_skill_collection_root(
-                raw_root=configured_root, workspace_root=workspace_root
-            )
-        )
-    return tuple(roots)
-
-
-def _workspace_skill_root_for_path(
-    *,
-    path: Path,
-    workspace_root: Path,
-    skill_collection_roots: Iterable[Path],
-) -> Path | None:
-    for skill_collection_root in skill_collection_roots:
-        try:
-            skill_collection_root.relative_to(workspace_root)
-            relative = path.relative_to(skill_collection_root)
-        except ValueError:
-            continue
-        if not relative.parts:
-            return None
-        skill_root = (skill_collection_root / relative.parts[0]).resolve()
-        try:
-            skill_root.relative_to(workspace_root)
-            path.relative_to(skill_root)
-        except ValueError:
-            continue
-        return skill_root
-    return None
 
 
 def _matches_glob_pattern(path_text: str, pattern: str) -> bool:
@@ -243,79 +143,6 @@ def _search_result_context(lines: list[str], *, line_number: int) -> str | None:
         return None
     end_line = min(len(lines), line_number + 16)
     return _format_numbered_lines(lines[line_number - 1 : end_line], start_line=line_number)
-
-
-def _patch_token_path(token: str) -> str | None:
-    path = token.strip()
-    if not path or path in {"/dev/null", "dev/null"}:
-        return None
-    if path.startswith(("a/", "b/")):
-        path = path[2:]
-    return path or None
-
-
-def _patch_line_token(value: str) -> str | None:
-    try:
-        parts = shlex.split(value, posix=True)
-    except ValueError:
-        parts = value.split()
-    return parts[0] if parts else None
-
-
-def _patch_paths(patch: str) -> tuple[str, ...]:
-    paths: list[str] = []
-    for line in patch.splitlines():
-        candidates: list[str] = []
-        if line.startswith("diff --git "):
-            try:
-                parts = shlex.split(line, posix=True)
-            except ValueError:
-                parts = line.split()
-            candidates.extend(parts[2:4])
-        elif line.startswith(("--- ", "+++ ")):
-            token = _patch_line_token(line[4:])
-            if token is not None:
-                candidates.append(token)
-        elif line.startswith(("rename from ", "rename to ")):
-            candidates.append(line.split(" ", 2)[2])
-        elif line.startswith(("copy from ", "copy to ")):
-            candidates.append(line.split(" ", 2)[2])
-
-        for token in candidates:
-            path = _patch_token_path(token)
-            if path is not None:
-                paths.append(path)
-    return tuple(dict.fromkeys(paths))
-
-
-def _validate_patch_paths(
-    *, patch: str, workspace_root: Path, max_patch_bytes: int
-) -> tuple[str, ...]:
-    patch_size = len(patch.encode("utf-8"))
-    if patch_size > max_patch_bytes:
-        raise ValueError(f"patch exceeds max_patch_bytes ({max_patch_bytes}).")
-    if "GIT binary patch" in patch:
-        raise ValueError("Binary patches are not supported.")
-    if _patch_mentions_unsupported_file_mode(patch):
-        raise ValueError("Symlink and submodule patches are not supported.")
-    paths = _patch_paths(patch)
-    if not paths:
-        raise ValueError("patch must include at least one file path.")
-    for path in paths:
-        resolved = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
-        if resolved.exists() and resolved.is_file():
-            _read_text_file(resolved)
-    return paths
-
-
-def _patch_mentions_unsupported_file_mode(patch: str) -> bool:
-    for line in patch.splitlines():
-        if not line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ")):
-            continue
-        mode = line.rsplit(" ", 1)[-1].strip()
-        if mode in _UNSUPPORTED_PATCH_FILE_MODES:
-            return True
-    return False
 
 
 def _run_git_apply(*, workspace_root: Path, patch: str, check: bool) -> str:
@@ -634,9 +461,7 @@ def build_workspace_tools(
             if not normalized_query:
                 raise ValueError("query must not be empty.")
             requested_limit = (
-                tool_catalog.workspace_search.default_limit
-                if limit is None
-                else int(limit)
+                tool_catalog.workspace_search.default_limit if limit is None else int(limit)
             )
             capped_limit = max(
                 1,
@@ -774,7 +599,9 @@ def build_workspace_tools(
         """Run an allowlisted workspace command without a shell."""
         tool_name = "run_workspace_command"
         args = {"command": command, "cwd": cwd}
-        normalized_command, working_dir, normalized_cwd = _normalize_run_workspace_command_args(args)
+        normalized_command, working_dir, normalized_cwd = _normalize_run_workspace_command_args(
+            args
+        )
         emit_tool_event(
             tool_name=tool_name, stage="start", command=normalized_command, cwd=normalized_cwd
         )
@@ -796,9 +623,7 @@ def build_workspace_tools(
                     "command is not allowlisted; pass argv for a supported test, lint, "
                     "build, check, or trusted local skill script command."
                 )
-            validate_command_paths(
-                normalized_command, resolve_path=_resolve_workspace_command_path
-            )
+            validate_command_paths(normalized_command, resolve_path=_resolve_workspace_command_path)
             resolve_command_executable(
                 normalized_command, resolve_path=_resolve_workspace_command_path
             )

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-import psycopg
+import psycopg as psycopg
 
 from focus_agent.storage.postgres import PostgresConnectionProvider
 
@@ -44,9 +44,7 @@ class TrajectoryTurnQuery:
     limit: int | None = 100
     offset: int = 0
     newest_first: bool = True
-
-
-_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
+    owner_user_id: str | None = None
 
 
 class PostgresTrajectoryRepository(

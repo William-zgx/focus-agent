@@ -76,6 +76,7 @@ _BASE_SECRET_ENV_KEYS = frozenset(
         "AUTH_JWT_SECRETS",
         "DATABASE_URI",
         "DEEPSEEK_API_KEY",
+        "FOCUS_AGENT_CHECKPOINT_HMAC_KEY",
         "LANGSMITH_API_KEY",
         "MOONSHOT_API_KEY",
         "OLLAMA_API_KEY",

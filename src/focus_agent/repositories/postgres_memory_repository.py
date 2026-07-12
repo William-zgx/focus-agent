@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-import psycopg
+import psycopg as psycopg
 from psycopg.types.json import Jsonb
 
 from focus_agent.memory.models import (
@@ -37,8 +37,6 @@ from .postgres_schema import (
     ensure_app_postgres_schema_on_connection,
     rebuild_memory_embedding_index_on_connection,
 )
-
-_PSYCOPG_MODULE = psycopg  # Preserve the legacy monkeypatch path used by unit tests.
 
 
 class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, MemoryRepository):
@@ -164,6 +162,13 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
         )
 
     def upsert_record(self, record: MemoryRecord) -> str:
+        self._upsert_record_unless_protected(record)
+        return record.memory_id
+
+    def upsert_record_if_not_tombstoned(self, record: MemoryRecord) -> bool:
+        return self._upsert_record_unless_protected(record)
+
+    def _upsert_record_unless_protected(self, record: MemoryRecord) -> bool:
         payload = record.model_dump(mode="json")
         with self._cursor(dict_row=True) as cur:
             cur.execute(
@@ -175,13 +180,18 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
                         semantic_key, fingerprint, confidence, importance,
                         summary, content, promoted_to_main,
                         created_at, updated_at, deleted_at, data_json
-                    ) VALUES (
+                    )
+                    SELECT
                         %(memory_id)s, %(namespace)s, %(kind)s, %(scope)s, %(visibility)s, %(status)s,
                         %(embedding_status)s,
                         %(user_id)s, %(root_thread_id)s, %(source_thread_id)s, %(source_branch_id)s,
                         %(semantic_key)s, %(fingerprint)s, %(confidence)s, %(importance)s,
                         %(summary)s, %(content)s, %(promoted_to_main)s,
                         %(created_at)s, %(updated_at)s, %(deleted_at)s, %(data_json)s
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM focus_memory_tombstones
+                        WHERE memory_id = %(memory_id)s
                     )
                     ON CONFLICT (memory_id) DO UPDATE SET
                         namespace = EXCLUDED.namespace,
@@ -204,10 +214,59 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
                         updated_at = EXCLUDED.updated_at,
                         deleted_at = EXCLUDED.deleted_at,
                         data_json = EXCLUDED.data_json
+                    WHERE focus_memories.status <> 'forgotten'
+                      AND focus_memories.deleted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM focus_memory_tombstones
+                          WHERE memory_id = focus_memories.memory_id
+                      )
                     """,
                 record_params(record, payload=payload),
             )
-        return record.memory_id
+            rowcount = cur.rowcount
+        return rowcount > 0
+
+    def update_record_embedding_status(
+        self,
+        *,
+        memory_id: str,
+        status: str,
+        model_id: str | None,
+        updated_at: datetime,
+    ) -> bool:
+        embedding_payload = {
+            "embedding_status": status,
+            "embedding_model_id": model_id,
+            "embedding_updated_at": updated_at.isoformat(),
+            "updated_at": updated_at.isoformat(),
+        }
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
+                    UPDATE focus_memories
+                    SET
+                        embedding_status = %(embedding_status)s,
+                        updated_at = %(updated_at)s,
+                        data_json = data_json || %(embedding_payload)s
+                    WHERE memory_id = %(memory_id)s
+                      AND status <> 'forgotten'
+                      AND deleted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM focus_memory_tombstones
+                          WHERE memory_id = focus_memories.memory_id
+                      )
+                    """,
+                {
+                    "memory_id": memory_id,
+                    "embedding_status": status,
+                    "updated_at": updated_at,
+                    "embedding_payload": Jsonb(embedding_payload),
+                },
+            )
+            rowcount = cur.rowcount
+        return rowcount > 0
 
     def find_existing(
         self,
@@ -323,7 +382,6 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
         if row is None:
             return None
         return record_from_payload(row["data_json"])
-
 
     def forget_record(
         self,

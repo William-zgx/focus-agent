@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -152,7 +153,9 @@ def test_docker_backend_reuses_thread_container_when_enabled(tmp_path):
         commands.append(command)
         if command[1] == "inspect":
             stdout = "true\n" if container_running else "false\n"
-            return subprocess.CompletedProcess(command, 1 if not container_running else 0, stdout, "")
+            return subprocess.CompletedProcess(
+                command, 1 if not container_running else 0, stdout, ""
+            )
         if command[1] == "run":
             sandbox_mount = _volume_host_path(command, "/sandbox")
             container_running = True
@@ -248,10 +251,9 @@ def test_docker_backend_rebuilds_reusable_container_when_exec_finds_stopped_cont
                     "Error response from daemon: Container is not running",
                 )
             assert sandbox_mount is not None
-            output_path = (
-                sandbox_mount
-                / _docker_exec_env_value(command, "SANDBOX_OUTPUT").removeprefix("/sandbox/")
-            )
+            output_path = sandbox_mount / _docker_exec_env_value(
+                command, "SANDBOX_OUTPUT"
+            ).removeprefix("/sandbox/")
             output_path.mkdir(parents=True, exist_ok=True)
             output_path.joinpath("result.json").write_text(
                 json.dumps(
@@ -518,7 +520,7 @@ def test_sandbox_service_falls_back_to_local_backend_with_visible_reason(tmp_pat
         SandboxExecutionRequest(
             workspace_root=workspace,
             command=[
-                "python",
+                sys.executable,
                 "-c",
                 (
                     "import os; "
@@ -552,12 +554,7 @@ def test_sandbox_service_falls_back_to_local_backend_with_visible_reason(tmp_pat
 def test_docker_backend_cleans_old_run_directories(tmp_path):
     workspace = tmp_path / "workspace"
     runs_root = (
-        workspace
-        / ".focus_agent"
-        / "sandboxes"
-        / "threads"
-        / "thread-cleanup-thread"
-        / "runs"
+        workspace / ".focus_agent" / "sandboxes" / "threads" / "thread-cleanup-thread" / "runs"
     )
     old_run = runs_root / "old-run"
     old_run.mkdir(parents=True)

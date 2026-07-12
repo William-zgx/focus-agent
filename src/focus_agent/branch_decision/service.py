@@ -16,12 +16,6 @@ from focus_agent.core.governance import (
     BranchDecisionRecommendationTarget,
     BranchDecisionSignal,
     BranchDecisionStatus,
-    BranchDecisionSummary,
-)
-from focus_agent.core.repo_call import has_repo_method
-from focus_agent.retrieval.branch_context import (
-    BranchContextRetrievalService,
-    index_branch_decision_event,
 )
 from focus_agent.services.branch_actions import (
     branch_handoff_message_from_text,
@@ -30,7 +24,9 @@ from focus_agent.services.branch_actions import (
     target_parent_thread_id,
 )
 
+from .indexing import index_branch_decision_best_effort, zvec_branch_context_shadow_signals
 from .scorers import score_branch_decisions, score_branch_recommendation, select_best_score
+from .service_decision_operations import BranchDecisionServiceDecisionOperationsMixin
 from .service_helpers import (
     _branch_action_kind_for_decision,
     _branch_decision_mode,
@@ -52,7 +48,10 @@ from .signals import collect_branch_decision_signals, collect_branch_recommendat
 logger = logging.getLogger("focus_agent.branch_decision")
 
 
-class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
+class BranchDecisionService(
+    BranchDecisionServiceDecisionOperationsMixin,
+    BranchDecisionServiceRuntimeMixin,
+):
     def __init__(
         self,
         *,
@@ -260,9 +259,7 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
             "source": "branch_handoff",
             "branch_handoff_auto_run": True,
             "handoff_run_id": str(handoff_run_id).strip() if handoff_run_id else None,
-            "handoff_run_status": str(handoff_run_status).strip()
-            if handoff_run_status
-            else None,
+            "handoff_run_status": str(handoff_run_status).strip() if handoff_run_status else None,
             "handoff_message_preview": message_preview,
             "message_hash": _normalized_message_hash(message),
             "reason": "branch_handoff_auto_run",
@@ -421,102 +418,8 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
             event = self._save_event(event)
         return event.model_dump(mode="json")
 
-    def list_decisions(
-        self,
-        *,
-        thread_id: str,
-        user_id: str,
-        status: str | None = None,
-        action: str | None = None,
-        limit: int = 50,
-    ) -> list[BranchDecisionEvent]:
-        self._assert_thread_owner(thread_id=thread_id, user_id=user_id)
-        return self.governance_repository.list_branch_decision_events(
-            user_id=user_id,
-            source_thread_id=thread_id,
-            status=status,
-            action=action,
-            limit=limit,
-        )
-
-    def summary_for_thread(self, *, thread_id: str, user_id: str) -> BranchDecisionSummary:
-        if not has_repo_method(self.governance_repository, "list_branch_decision_events"):
-            return BranchDecisionSummary()
-        events = self.governance_repository.list_branch_decision_events(
-            user_id=user_id,
-            source_thread_id=thread_id,
-            limit=20,
-        )
-        latest = events[0] if events else None
-        dismissed_count = sum(1 for item in events if item.status == BranchDecisionStatus.DISMISSED)
-        pending_action_id = (
-            latest.promoted_action_id
-            if latest and latest.status == BranchDecisionStatus.PROMOTED
-            else None
-        )
-        return BranchDecisionSummary(
-            latest_decision=latest,
-            actionable=bool(latest and latest.can_promote),
-            pending_action_id=pending_action_id,
-            dismissed_count=dismissed_count,
-        )
-
-    def promote_decision(
-        self,
-        *,
-        thread_id: str,
-        decision_id: str,
-        user_id: str,
-        request_id: str | None = None,
-    ) -> BranchDecisionEvent:
-        self._assert_thread_owner(thread_id=thread_id, user_id=user_id)
-        event = self._require_event(decision_id)
-        if event.source_thread_id != thread_id:
-            raise PermissionError("Branch decision does not belong to this thread.")
-        if event.user_id not in {None, user_id}:
-            raise PermissionError("Branch decision is not owned by this user.")
-        if event.status == BranchDecisionStatus.DISMISSED:
-            raise ValueError("Dismissed branch decisions cannot be promoted.")
-        if event.promoted_action_id:
-            return event
-        if event.action not in {
-            BranchDecisionAction.SPLIT,
-            BranchDecisionAction.FORK_CHILD_BRANCH,
-            BranchDecisionAction.FORK_SIBLING_BRANCH,
-        }:
-            updated = self._update_event(
-                event,
-                status=BranchDecisionStatus.BLOCKED,
-                error="Only branch fork decisions can be promoted to a branch action.",
-                metadata={**event.metadata, "reason": "unsupported_promotion_action"},
-            )
-            return updated
-        return self._promote_branch_action_decision(
-            event,
-            user_id=user_id,
-            request_id=request_id,
-        )
-
-    def dismiss_decision(
-        self,
-        *,
-        thread_id: str,
-        decision_id: str,
-        user_id: str,
-        reason: str | None = None,
-    ) -> BranchDecisionEvent:
-        self._assert_thread_owner(thread_id=thread_id, user_id=user_id)
-        event = self._require_event(decision_id)
-        if event.source_thread_id != thread_id:
-            raise PermissionError("Branch decision does not belong to this thread.")
-        if event.user_id not in {None, user_id}:
-            raise PermissionError("Branch decision is not owned by this user.")
-        return self._update_event(
-            event,
-            status=BranchDecisionStatus.DISMISSED,
-            dismiss_reason=reason or "user_dismissed",
-            executed_at=_now_iso(),
-        )
+    def _decision_event_timestamp(self) -> str:
+        return _now_iso()
 
     def _evaluate(
         self,
@@ -649,9 +552,9 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
             BranchDecisionAction.FORK_CHILD_BRANCH,
             BranchDecisionAction.FORK_SIBLING_BRANCH,
         }:
-            handoff_message = branch_handoff_message_from_text(message) or str(
-                message or ""
-            ).strip()
+            handoff_message = (
+                branch_handoff_message_from_text(message) or str(message or "").strip()
+            )
             requested_kind = _branch_action_kind_for_decision(action)
             resolved_kind, target_parent = target_parent_thread_id(
                 source_thread_id=thread_id,
@@ -670,18 +573,16 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
                 handoff_message=handoff_message,
             ):
                 semantic_diagnostic = _semantic_topic_relation_diagnostic(signals)
-                semantic_confidence = float(
-                    semantic_diagnostic.get("semantic_confidence") or 0.0
-                )
+                semantic_confidence = float(semantic_diagnostic.get("semantic_confidence") or 0.0)
                 best = replace(
                     best,
                     score=max(best.score, semantic_confidence),
                     rationale=f"{best.rationale}, replacing stale pending branch action.",
                 )
         else:
-            handoff_message = branch_handoff_message_from_text(message) or str(
-                message or ""
-            ).strip()
+            handoff_message = (
+                branch_handoff_message_from_text(message) or str(message or "").strip()
+            )
         recommendation_target = _recommendation_target_for_decision(action)
         status, gate_reason = self._gate_recommendation_status(
             config=config,
@@ -725,9 +626,9 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
             BranchDecisionAction.FORK_CHILD_BRANCH,
             BranchDecisionAction.FORK_SIBLING_BRANCH,
         }:
-            handoff_message = branch_handoff_message_from_text(message) or str(
-                message or ""
-            ).strip()
+            handoff_message = (
+                branch_handoff_message_from_text(message) or str(message or "").strip()
+            )
             metadata["handoff_message"] = handoff_message
             metadata["handoff_message_preview"] = handoff_message[:240]
         if status == BranchDecisionStatus.SUGGESTED and config.mode == BranchDecisionMode.EXECUTE:
@@ -773,48 +674,21 @@ class BranchDecisionService(BranchDecisionServiceRuntimeMixin):
         user_id: str | None,
         root_thread_id: str | None,
     ) -> list[BranchDecisionSignal]:
-        if self.retrieval_index is None or self.memory_embedding_provider is None:
-            return []
-        try:
-            hits = BranchContextRetrievalService(
-                retrieval_index=self.retrieval_index,
-                embedding_provider=self.memory_embedding_provider,
-                repository=self.governance_repository,
-            ).search_similar_context(
-                query=message,
-                user_id=user_id,
-                root_thread_id=root_thread_id,
-                limit=3,
-            )
-        except Exception:  # noqa: BLE001
-            return []
-        if not hits:
-            return []
-        return [
-            BranchDecisionSignal(
-                name="zvec_branch_context",
-                value={
-                    "mode": "shadow",
-                    "hit_count": len(hits),
-                    "top_score": hits[0].score,
-                    "source_ids": [hit.source_id for hit in hits],
-                },
-                score=hits[0].score,
-                weight=0.0,
-                evidence_refs=[hit.source_id for hit in hits],
-                rationale="Zvec branch context shadow retrieval.",
-            )
-        ]
+        return zvec_branch_context_shadow_signals(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.memory_embedding_provider,
+            governance_repository=self.governance_repository,
+            message=message,
+            user_id=user_id,
+            root_thread_id=root_thread_id,
+        )
 
     def _index_branch_decision_best_effort(self, event: BranchDecisionEvent) -> None:
-        try:
-            index_branch_decision_event(
-                retrieval_index=self.retrieval_index,
-                embedding_provider=self.memory_embedding_provider,
-                event=event,
-            )
-        except Exception:  # noqa: BLE001
-            return
+        index_branch_decision_best_effort(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.memory_embedding_provider,
+            event=event,
+        )
 
 
 __all__ = ["BranchDecisionService"]

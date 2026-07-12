@@ -34,9 +34,7 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert 'CMD ["focus-agent-api"]' in dockerfile_text
     assert "FOCUS_AGENT_LOCAL_ENV_FILE=/data/local.env" in dockerfile_text
 
-    sandbox_dockerfile_text = (root / "docker" / "sandbox.Dockerfile").read_text(
-        encoding="utf-8"
-    )
+    sandbox_dockerfile_text = (root / "docker" / "sandbox.Dockerfile").read_text(encoding="utf-8")
     assert "ARG BASE_IMAGE=node:20-bookworm-slim" in sandbox_dockerfile_text
     assert "mcr.microsoft.com/devcontainers" not in sandbox_dockerfile_text
     assert "ARG APT_MIRROR=" in sandbox_dockerfile_text
@@ -96,6 +94,14 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
         "AUTH_DEMO_TOKENS_ENABLED: ${FOCUS_AGENT_AUTH_DEMO_TOKENS_ENABLED:-false}"
         in compose_prod_text
     )
+    assert 'AUTH_COOKIE_SECURE: "true"' in compose_prod_text
+    assert (
+        "CORS_ALLOWED_ORIGINS: "
+        "${FOCUS_AGENT_CORS_ALLOWED_ORIGINS:?Set FOCUS_AGENT_CORS_ALLOWED_ORIGINS}"
+        in compose_prod_text
+    )
+    assert 'FOCUS_AGENT_SANDBOX_BACKEND: "docker"' in compose_prod_text
+    assert 'FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK: "0"' in compose_prod_text
     assert "ANTHROPIC_API_KEY:" in compose_prod_text
     assert "OPENAI_API_KEY:" in compose_prod_text
     assert "MIMO_API_KEY:" in compose_prod_text
@@ -115,9 +121,7 @@ def test_containerization_docs_explain_current_boundary():
     deployment_text = (root / "docs" / "docker-deployment.md").read_text(encoding="utf-8")
     docs_index_text = (root / "docs" / "README.md").read_text(encoding="utf-8")
     quick_start_text = (root / "docs" / "quick-start.md").read_text(encoding="utf-8")
-    quick_start_zh_text = (root / "docs" / "quick-start.zh-CN.md").read_text(
-        encoding="utf-8"
-    )
+    quick_start_zh_text = (root / "docs" / "quick-start.zh-CN.md").read_text(encoding="utf-8")
     tool_skill_text = (root / "docs" / "tool-skill-design.md").read_text(encoding="utf-8")
     sandbox_text = (root / "docs" / "sandbox-execution.md").read_text(encoding="utf-8")
 

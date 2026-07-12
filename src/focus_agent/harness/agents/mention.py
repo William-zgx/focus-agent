@@ -18,8 +18,9 @@ Design notes:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 # A mention is an @ token followed by a word-ish identifier.
 _MENTION_RE = re.compile(r"@([A-Za-z0-9_\-]+)")

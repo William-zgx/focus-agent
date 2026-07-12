@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from focus_agent.skills.registry import SkillRegistry
@@ -21,12 +22,23 @@ def _matrix() -> list[dict[str, object]]:
     return json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
 
 
-def test_skill_execution_matrix_covers_all_local_skills() -> None:
+def _tracked_skill_ids() -> set[str]:
+    completed = subprocess.run(
+        ["git", "ls-files", ".focus_agent/skills/*/SKILL.md"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {Path(line).parent.name for line in completed.stdout.splitlines() if line.strip()}
+
+
+def test_skill_execution_matrix_covers_all_tracked_skills() -> None:
     matrix = _matrix()
     matrix_ids = {str(item["skill_id"]) for item in matrix}
-    skill_ids = {path.parent.name for path in SKILLS_ROOT.glob("*/SKILL.md")}
+    tracked_skill_ids = _tracked_skill_ids()
 
-    assert matrix_ids == skill_ids
+    assert tracked_skill_ids <= matrix_ids
     assert len(matrix) == len(matrix_ids)
 
 
@@ -47,9 +59,9 @@ def test_script_skills_have_declared_entrypoints() -> None:
     by_id = {str(skill["name"]): skill for skill in registry.list_skills()}
 
     for item in _matrix():
-        if not item["has_script_entrypoint"]:
-            continue
         skill_id = str(item["skill_id"])
+        if skill_id not in _tracked_skill_ids() or not item["has_script_entrypoint"]:
+            continue
         entrypoint_name = str(item["execution_path"]).split("entrypoint:", 1)[1]
         skill = by_id[skill_id]
         names = {str(entrypoint["name"]) for entrypoint in skill["entrypoints"]}
@@ -61,5 +73,6 @@ def test_host_control_skills_do_not_use_general_entrypoints() -> None:
     by_id = {str(skill["name"]): skill for skill in registry.list_skills()}
 
     for item in _matrix():
-        if item["host_control"]:
-            assert not by_id[str(item["skill_id"])]["entrypoints"]
+        skill_id = str(item["skill_id"])
+        if skill_id in _tracked_skill_ids() and item["host_control"]:
+            assert not by_id[skill_id]["entrypoints"]

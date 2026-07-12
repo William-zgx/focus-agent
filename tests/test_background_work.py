@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 
 import pytest
@@ -51,6 +52,152 @@ def test_background_queue_drops_after_close() -> None:
         assert snapshot["dropped_total"] == 1
     finally:
         queue.close()
+
+
+def test_background_queue_close_timeout_does_not_hang_on_blocked_task() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    queue = BoundedBackgroundQueue(name="blocked-close", max_concurrency=1, max_size=1)
+
+    def blocked_task() -> None:
+        started.set()
+        release.wait()
+
+    try:
+        assert queue.submit(key="blocked", func=blocked_task)
+        assert started.wait(timeout=1.0)
+
+        before_close = time.monotonic()
+        assert not queue.close(timeout=0.05)
+        assert time.monotonic() - before_close < 0.5
+        assert not queue.submit(key="late", func=lambda: None)
+        assert queue.snapshot()["active_workers"] == 1
+
+        release.set()
+        assert queue.close(timeout=1.0)
+        snapshot = queue.snapshot()
+        assert snapshot["queue_depth"] == 0
+        assert snapshot["active_workers"] == 0
+        assert snapshot["completed_total"] == 1
+    finally:
+        release.set()
+        queue.close(timeout=1.0)
+
+
+def test_background_queue_close_drains_full_queue_and_releases_claims() -> None:
+    class TrackingDeduper:
+        def __init__(self) -> None:
+            self.claimed: set[str] = set()
+            self.released: list[str] = []
+            self.lock = threading.Lock()
+
+        def try_claim_job_key(self, key: str) -> bool:
+            with self.lock:
+                if key in self.claimed:
+                    return False
+                self.claimed.add(key)
+                return True
+
+        def release_job_key(self, key: str) -> None:
+            with self.lock:
+                self.claimed.discard(key)
+                self.released.append(key)
+
+    deduper = TrackingDeduper()
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+    queue = BoundedBackgroundQueue(
+        name="full-close",
+        max_concurrency=1,
+        max_size=1,
+        job_deduper=deduper,
+    )
+
+    def blocked_task() -> None:
+        started.set()
+        release.wait()
+        calls.append("running")
+
+    releaser = threading.Thread(
+        target=lambda: (time.sleep(0.05), release.set()),
+        daemon=True,
+    )
+    try:
+        assert queue.submit(key="running", func=blocked_task)
+        assert started.wait(timeout=1.0)
+        assert queue.submit(key="queued", func=lambda: calls.append("queued"))
+        assert queue.snapshot()["queue_depth"] == 1
+
+        releaser.start()
+        assert queue.close(timeout=1.0)
+        releaser.join(timeout=1.0)
+
+        assert calls == ["running", "queued"]
+        assert deduper.claimed == set()
+        assert deduper.released == ["running", "queued"]
+        assert queue.snapshot()["active_workers"] == 0
+    finally:
+        release.set()
+        queue.close(timeout=1.0)
+
+
+def test_background_queue_close_joins_all_workers() -> None:
+    worker_count = 3
+    started_count = 0
+    started_lock = threading.Lock()
+    all_started = threading.Event()
+    release = threading.Event()
+    queue = BoundedBackgroundQueue(
+        name="multi-worker-close",
+        max_concurrency=worker_count,
+        max_size=worker_count,
+    )
+
+    def blocked_task() -> None:
+        nonlocal started_count
+        with started_lock:
+            started_count += 1
+            if started_count == worker_count:
+                all_started.set()
+        release.wait()
+
+    releaser = threading.Thread(
+        target=lambda: (time.sleep(0.05), release.set()),
+        daemon=True,
+    )
+    try:
+        for index in range(worker_count):
+            assert queue.submit(key=f"worker-{index}", func=blocked_task)
+        assert all_started.wait(timeout=1.0)
+
+        releaser.start()
+        assert queue.close(timeout=1.0)
+        releaser.join(timeout=1.0)
+
+        assert all(not worker.is_alive() for worker in queue._workers)
+        snapshot = queue.snapshot()
+        assert snapshot["active_workers"] == 0
+        assert snapshot["completed_total"] == worker_count
+    finally:
+        release.set()
+        queue.close(timeout=1.0)
+
+
+def test_background_queue_close_is_idempotent() -> None:
+    calls: list[str] = []
+    queue = BoundedBackgroundQueue(name="repeat-close", max_concurrency=2, max_size=2)
+    try:
+        assert queue.submit(key="once", func=lambda: calls.append("once"))
+
+        assert queue.close(timeout=1.0)
+        assert queue.close(timeout=0.01)
+
+        assert calls == ["once"]
+        assert all(not worker.is_alive() for worker in queue._workers)
+        assert queue.snapshot()["active_workers"] == 0
+    finally:
+        queue.close(timeout=1.0)
 
 
 def test_background_queue_uses_shared_job_deduper() -> None:

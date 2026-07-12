@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import hashlib
 import re
-import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -12,12 +10,13 @@ from ..retrieval import RetrievalDocument, RetrievalIndex
 from .models import (
     SkillDefinition,
     SkillEntrypoint,
-    SkillInstallResult,
     SkillSearchResult,
     SkillSelection,
     SkillSemanticCandidate,
     SkillSourceDefinition,
 )
+from .registry_discovery import SkillRegistryDiscoveryMixin
+from .registry_management import SkillRegistryManagementMixin
 from .registry_matching import (
     _SEMANTIC_CANDIDATE_LIMIT,
     _add_weighted_tokens,
@@ -26,13 +25,7 @@ from .registry_matching import (
     _semantic_enabled,
     _skill_semantic_vector,
 )
-from .registry_parsing import (
-    _coerce_prompt_mode,
-    _normalize_entrypoints,
-    _normalize_list,
-    _split_frontmatter,
-)
-from .registry_paths import _is_safe_skill_id, _normalize_skill_id, bundled_skills_dir
+from .registry_paths import _normalize_skill_id, bundled_skills_dir
 from .registry_rendering import (
     _install_result_to_dict as _install_result_to_dict,
 )
@@ -61,12 +54,9 @@ from .registry_sources import (
     _parse_source_location as _parse_source_location,
 )
 from .registry_sources import (
-    _path_is_relative_to,
     _search_result_from_skill,
     _source_definitions_from_settings,
 )
-
-_SKILL_FILE_NAME = "SKILL.md"
 
 
 def _entrypoint_to_dict(entrypoint: SkillEntrypoint) -> dict[str, Any]:
@@ -97,7 +87,7 @@ def _skill_retrieval_text(skill: SkillDefinition) -> str:
     return "\n".join(str(part).strip() for part in parts if str(part).strip())
 
 
-class SkillRegistry:
+class SkillRegistry(SkillRegistryManagementMixin, SkillRegistryDiscoveryMixin):
     def __init__(
         self,
         skill_dirs: Iterable[Path],
@@ -284,138 +274,6 @@ class SkillRegistry:
             )
         results.sort(key=lambda item: (-item.score, item.source_id, item.skill_id))
         return tuple(results[: max(0, int(limit or 0))])
-
-    def install_skill(
-        self,
-        skill_id: str,
-        *,
-        source_id: str = "installed",
-        version: str | None = None,
-        mode: str = "project",
-    ) -> SkillInstallResult:
-        del version
-        normalized_skill_id = _normalize_skill_id(skill_id)
-        if not self._enabled:
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source_id or "installed",
-                error="Skill registry is disabled.",
-            )
-        if not _is_safe_skill_id(normalized_skill_id):
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source_id or "installed",
-                error="Skill id must be a simple skill name without path separators.",
-            )
-        installed = self.resolve(normalized_skill_id)
-        if installed is not None:
-            return SkillInstallResult(
-                success=True,
-                skill_id=installed.skill_id,
-                source_id=installed.source_id,
-                installed=True,
-                installed_path=str(installed.path),
-                metadata={"already_installed": True},
-            )
-
-        source = self._source_by_id(source_id)
-        if source is None:
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source_id or "installed",
-                error=f"Skill source '{source_id}' not found.",
-            )
-        if source.source_type != "local" or not source.location or not source.trusted:
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source.source_id,
-                requires_review=True,
-                error="Only trusted local skill sources can be installed by this runtime.",
-                metadata={
-                    "source_type": source.source_type,
-                    "trusted": source.trusted,
-                    "mode": mode,
-                },
-            )
-
-        source_root = Path(source.location).expanduser().resolve()
-        candidate = self._load_external_skill_from_root(
-            source_root,
-            normalized_skill_id,
-            source=source,
-        )
-        if candidate is None:
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source.source_id,
-                error=f"Skill '{normalized_skill_id}' not found in source '{source.source_id}'.",
-            )
-        install_root = self._install_dir or (self._skill_dirs[0] if self._skill_dirs else None)
-        if install_root is None:
-            return SkillInstallResult(
-                success=False,
-                skill_id=normalized_skill_id,
-                source_id=source.source_id,
-                error="No skill install directory is configured.",
-            )
-        target_dir = install_root / candidate.skill_id
-        target_dir.parent.mkdir(parents=True, exist_ok=True)
-        target_path = target_dir / _SKILL_FILE_NAME
-        shutil.copytree(candidate.path.parent, target_dir, dirs_exist_ok=True)
-        self.refresh_index()
-        installed_after_copy = self.resolve(candidate.skill_id)
-        return SkillInstallResult(
-            success=installed_after_copy is not None,
-            skill_id=candidate.skill_id,
-            source_id=source.source_id,
-            installed=installed_after_copy is not None,
-            installed_path=str(target_path),
-            metadata={"mode": mode},
-        )
-
-    def refresh_index(self, *, sources: Iterable[str] = ()) -> dict[str, Any]:
-        del sources
-        before = len(self._skills)
-        self._skills = self._discover()
-        self._reindex()
-        return {
-            "success": True,
-            "enabled": self._enabled,
-            "previous_count": before,
-            "count": len(self._skills),
-            "sources": self.list_sources(),
-        }
-
-    def reload_from_settings(self, settings: Settings) -> dict[str, Any]:
-        before = len(self._skills)
-        updated = type(self).from_settings(
-            settings,
-            retrieval_index=self._retrieval_index,
-            embedding_provider=self._embedding_provider,
-        )
-        self._skill_dirs = updated._skill_dirs
-        self._enabled = updated._enabled
-        self._disabled_skill_ids = updated._disabled_skill_ids
-        self._semantic_match_enabled = updated._semantic_match_enabled
-        self._semantic_match_threshold = updated._semantic_match_threshold
-        self._source_definitions = updated._source_definitions
-        self._install_dir = updated._install_dir
-        self._retrieval_index = updated._retrieval_index
-        self._embedding_provider = updated._embedding_provider
-        self._skills = updated._skills
-        self._reindex()
-        return {
-            "success": True,
-            "enabled": self._enabled,
-            "previous_count": before,
-            "count": len(self._skills),
-            "sources": self.list_sources(),
-        }
 
     def select_for_message(
         self,
@@ -809,9 +667,7 @@ class SkillRegistry:
     def render_active_skills_block(self, skill_ids: Iterable[str]) -> str:
         skills = [self.resolve(skill_id) for skill_id in skill_ids]
         resolved = [
-            skill
-            for skill in skills
-            if skill is not None and self.is_skill_enabled(skill.skill_id)
+            skill for skill in skills if skill is not None and self.is_skill_enabled(skill.skill_id)
         ]
         if not resolved:
             return ""
@@ -825,100 +681,10 @@ class SkillRegistry:
             if skill.entrypoints:
                 lines = ["Declared entrypoints:"]
                 for entry in skill.entrypoints:
-                    lines.append(
-                        f"- {entry.name}: {' '.join(entry.command)}"
-                    )
+                    lines.append(f"- {entry.name}: {' '.join(entry.command)}")
                 entrypoint_block = "\n\n" + "\n".join(lines)
             sections.append(f"### {skill.skill_id}\n{skill.body}{entrypoint_block}")
         return "\n\n".join(sections)
-
-    def _discover(self) -> tuple[SkillDefinition, ...]:
-        discovered: list[SkillDefinition] = []
-        seen: set[str] = set()
-
-        for root in self._skill_dirs:
-            if not root.exists():
-                continue
-            for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-                if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                    continue
-                skill = self._load_skill(skill_path)
-                if skill is None:
-                    continue
-                normalized = _normalize_skill_id(skill.skill_id)
-                if normalized in seen:
-                    continue
-                seen.add(normalized)
-                discovered.append(skill)
-
-        return tuple(discovered)
-
-    def _load_skill(
-        self,
-        skill_path: Path,
-        *,
-        source: SkillSourceDefinition | None = None,
-    ) -> SkillDefinition | None:
-        raw_text = skill_path.read_text(encoding="utf-8")
-        frontmatter, body = _split_frontmatter(raw_text)
-        skill_id = str(frontmatter.get("name") or skill_path.parent.name).strip()
-        description = str(frontmatter.get("description") or "").strip()
-        if not skill_id or not description or not _is_safe_skill_id(skill_id):
-            return None
-        resolved_source = source or self._source_for_path(skill_path)
-        return SkillDefinition(
-            skill_id=_normalize_skill_id(skill_id),
-            description=description,
-            path=skill_path,
-            body=body,
-            raw_text=raw_text,
-            triggers=_normalize_list(frontmatter.get("triggers")),
-            aliases=_normalize_list(frontmatter.get("aliases")),
-            localized_triggers=_normalize_list(frontmatter.get("localized_triggers")),
-            domains=_normalize_list(frontmatter.get("domains")),
-            intents=_normalize_list(frontmatter.get("intents")),
-            when_to_use=_normalize_list(frontmatter.get("when_to_use")),
-            primary_tools=_normalize_list(frontmatter.get("primary_tools")),
-            recommended_tools=_normalize_list(frontmatter.get("recommended_tools")),
-            prompt_mode=_coerce_prompt_mode(frontmatter.get("prompt_mode")),
-            source_id=resolved_source.source_id,
-            source_type=resolved_source.source_type,
-            version=str(frontmatter.get("version") or "").strip() or None,
-            trust_level="trusted" if resolved_source.trusted else "untrusted",
-            install_state="installed",
-            provenance=str(frontmatter.get("provenance") or "").strip() or resolved_source.location,
-            checksum=hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
-            capability_requirements=_normalize_list(frontmatter.get("capability_requirements")),
-            entrypoints=_normalize_entrypoints(frontmatter.get("entrypoints")),
-        )
-
-    def _source_for_path(self, skill_path: Path) -> SkillSourceDefinition:
-        bundled = bundled_skills_dir().resolve()
-        resolved = skill_path.resolve()
-        if _path_is_relative_to(resolved, bundled):
-            return SkillSourceDefinition(
-                source_id="builtin",
-                source_type="builtin",
-                label="Bundled skills",
-                enabled=True,
-                trusted=True,
-                location=str(bundled),
-            )
-        return SkillSourceDefinition(
-            source_id="project",
-            source_type="local",
-            label="Project skills",
-            enabled=True,
-            trusted=True,
-            location=str(self._skill_dirs[0]) if self._skill_dirs else None,
-        )
-
-    def _source_by_id(self, source_id: str) -> SkillSourceDefinition | None:
-        normalized = str(source_id or "installed").strip().lower()
-        for source in self._source_definitions:
-            if source.source_id == normalized:
-                return source
-        return None
 
     def _search_installed(
         self,
@@ -970,63 +736,3 @@ class SkillRegistry:
                 score = 0.1
             results.append(_search_result_from_skill(skill, score=score, installed=True))
         return results[: max(0, int(limit or 0))]
-
-    def _search_local_sources(
-        self,
-        query: str,
-        *,
-        source_filter: set[str],
-        limit: int,
-    ) -> list[SkillSearchResult]:
-        results: list[SkillSearchResult] = []
-        query_vector: dict[str, float] = {}
-        _add_weighted_tokens(query_vector, query, 1.0)
-        for source in self._source_definitions:
-            if not source.enabled or source.source_type != "local" or not source.location:
-                continue
-            if source.source_id in {"project", "installed"}:
-                continue
-            if source_filter and source.source_id not in source_filter:
-                continue
-            root = Path(source.location).expanduser().resolve()
-            if not root.exists():
-                continue
-            for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-                if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                    continue
-                skill = self._load_skill(skill_path, source=source)
-                if skill is None or self.resolve(skill.skill_id) is not None:
-                    continue
-                score = 1.0
-                if query.strip():
-                    score = round(_cosine_score(query_vector, _skill_semantic_vector(skill)), 4)
-                    haystack = (
-                        f"{skill.skill_id} {skill.description} {' '.join(skill.aliases)} "
-                        f"{' '.join(skill.localized_triggers)} {' '.join(skill.domains)} "
-                        f"{' '.join(skill.intents)} {' '.join(skill.when_to_use)} "
-                        f"{' '.join(skill.primary_tools)} "
-                        f"{' '.join(skill.capability_requirements)}"
-                    ).lower()
-                    if score <= 0 and query.lower() in haystack:
-                        score = 0.1
-                if query.strip() and score <= 0:
-                    continue
-                results.append(_search_result_from_skill(skill, score=score, installed=False))
-                if len(results) >= limit:
-                    return results
-        return results
-
-    def _load_external_skill_from_root(
-        self,
-        root: Path,
-        skill_id: str,
-        *,
-        source: SkillSourceDefinition,
-    ) -> SkillDefinition | None:
-        for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-            if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                continue
-            skill = self._load_skill(skill_path, source=source)
-            if skill is not None and skill.skill_id == skill_id:
-                return skill
-        return None

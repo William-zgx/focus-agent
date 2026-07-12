@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
+from focus_agent.core.users import UserStatus
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.security.permissions import is_admin_role, permissions_for_roles
 from focus_agent.security.tokens import Principal
 
 from ..contracts import (
@@ -105,8 +107,64 @@ from ..route_utils.agent_governance_operations import (
     _agent_skill_selection_feedback_response,
     _persist_skill_selection_event,
 )
+from ..route_utils.agent_governance_trajectory_responses import _scoped_governance_runtime
 
 router = APIRouter()
+_GLOBAL_GOVERNANCE_PERMISSIONS = {
+    "governance:read:global",
+    "governance:trajectories:read:global",
+}
+
+
+def _governance_list_runtime(
+    *,
+    runtime: AppRuntime,
+    principal: Principal,
+) -> AppRuntime:
+    return _scoped_governance_runtime(
+        runtime,
+        owner_user_id=(
+            None
+            if _can_view_global_governance(runtime=runtime, principal=principal)
+            else principal.user_id
+        ),
+        thread_id=None,
+    )
+
+
+def _can_view_global_governance(*, runtime: AppRuntime, principal: Principal) -> bool:
+    if not bool(getattr(runtime.settings, "auth_enabled", False)):
+        return False
+
+    user_service = getattr(runtime, "user_service", None)
+    if user_service is None:
+        return False
+    try:
+        user = user_service.get_user(principal.user_id)
+    except Exception:  # noqa: BLE001
+        return False
+    if str(getattr(user.status, "value", user.status)) != UserStatus.ACTIVE.value:
+        return False
+    claim_permissions = _claim_values(principal.claims.get("permissions"))
+    claim_permissions.update(_claim_values(principal.claims.get("permission")))
+    granted = set(principal.scopes)
+    granted.update(claim_permissions)
+    return is_admin_role(user.roles) or bool(
+        _GLOBAL_GOVERNANCE_PERMISSIONS.intersection(
+            granted.union(permissions_for_roles(user.roles))
+        )
+    )
+
+
+def _claim_values(raw: object) -> set[str]:
+    if raw is None:
+        return set()
+    if isinstance(raw, str):
+        return {item for item in raw.replace(",", " ").split() if item}
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return {str(item).strip() for item in raw if str(item).strip()}
+    value = str(raw).strip()
+    return {value} if value else set()
 
 
 def _skill_selection_response(
@@ -216,7 +274,11 @@ def get_agent_feedback_trend(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentFeedbackTrendResponse:
-    return _agent_feedback_trend_response(runtime=runtime, principal=principal)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_feedback_trend_response(runtime=scoped_runtime, principal=principal)
 
 
 @router.get("/v1/agent/skills/catalog", response_model=AgentSkillCatalogResponse)
@@ -258,8 +320,11 @@ def list_agent_role_decisions(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentRoleDecisionListResponse:
-    del principal
-    return _agent_role_decisions_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_role_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/capabilities", response_model=AgentCapabilityListResponse)
@@ -296,8 +361,11 @@ def list_agent_tool_route_decisions(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentToolRouteDecisionListResponse:
-    del principal
-    return _agent_tool_route_decisions_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_tool_route_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/memory/curator/policy", response_model=AgentMemoryCuratorPolicyResponse)
@@ -330,8 +398,11 @@ def list_agent_memory_curator_decisions(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentMemoryCuratorDecisionListResponse:
-    del principal
-    return _agent_memory_curator_decisions_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_memory_curator_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/delegation/policy", response_model=AgentDelegationPolicyResponse)
@@ -359,8 +430,11 @@ def list_agent_delegation_runs(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentDelegationRunListResponse:
-    del principal
-    return _agent_delegation_runs_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_delegation_runs_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/model-router/policy", response_model=AgentModelRouterPolicyResponse)
@@ -388,8 +462,11 @@ def list_agent_model_router_decisions(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentModelRouterDecisionListResponse:
-    del principal
-    return _agent_model_router_decisions_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_model_router_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/self-repair/failures", response_model=AgentSelfRepairFailureListResponse)
@@ -398,8 +475,11 @@ def list_agent_self_repair_failures(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentSelfRepairFailureListResponse:
-    del principal
-    return _agent_self_repair_failures_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_self_repair_failures_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.post(
@@ -420,8 +500,11 @@ def list_agent_review_queue(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentReviewQueueListResponse:
-    del principal
-    return _agent_review_queue_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_review_queue_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.post(
@@ -471,8 +554,11 @@ def list_agent_context_decisions(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentContextDecisionListResponse:
-    del principal
-    return _agent_context_decisions_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_context_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/context/artifacts", response_model=AgentContextArtifactListResponse)
@@ -481,8 +567,11 @@ def list_agent_context_artifacts(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentContextArtifactListResponse:
-    del principal
-    return _agent_context_artifacts_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_context_artifacts_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/context/evidence", response_model=AgentContextEvidenceListResponse)
@@ -540,8 +629,11 @@ def list_agent_task_ledger_runs(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTaskLedgerRunListResponse:
-    del principal
-    return _agent_task_ledger_runs_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_task_ledger_runs_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/artifacts", response_model=AgentArtifactListResponse)
@@ -550,8 +642,11 @@ def list_agent_artifacts(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentArtifactListResponse:
-    del principal
-    return _agent_artifacts_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_artifacts_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.post("/v1/agent/artifacts/synthesize", response_model=AgentArtifactSynthesisResponse)
@@ -570,8 +665,11 @@ def list_agent_critic_verdicts(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentCriticVerdictListResponse:
-    del principal
-    return _agent_critic_verdicts_response(runtime=runtime, limit=limit)
+    scoped_runtime = _governance_list_runtime(
+        runtime=runtime,
+        principal=principal,
+    )
+    return _agent_critic_verdicts_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.post("/v1/agent/critic/evaluate", response_model=AgentCriticEvaluateResponse)

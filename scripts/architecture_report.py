@@ -15,6 +15,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_JSON = Path("reports/architecture/latest.json")
+DEFAULT_BASELINE_JSON = Path("docs/architecture-debt-baseline.json")
 DEFAULT_SCAN_PATHS = (
     "src/focus_agent",
     "scripts",
@@ -30,6 +31,9 @@ GENERATED_FILE_MARKERS = (
     "This file was auto-generated",
     "Do not make direct changes",
 )
+GENERATED_FILE_PATHS = {
+    "frontend-sdk/src/types/__generated__.ts",
+}
 IGNORED_DIRS = {
     ".git",
     ".mypy_cache",
@@ -121,9 +125,11 @@ def _line_count(path: Path) -> int:
     return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
-def _is_generated_file(path: Path) -> bool:
+def _is_generated_file(path: Path, *, root: Path) -> bool:
+    if _relative(path, root=root) not in GENERATED_FILE_PATHS:
+        return False
     header = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[:8])
-    return any(marker in header for marker in GENERATED_FILE_MARKERS)
+    return all(marker in header for marker in GENERATED_FILE_MARKERS)
 
 
 def collect_large_files(
@@ -134,7 +140,7 @@ def collect_large_files(
 ) -> list[dict[str, Any]]:
     large_files: list[dict[str, Any]] = []
     for path in files:
-        if _is_generated_file(path):
+        if _is_generated_file(path, root=root):
             continue
         lines = _line_count(path)
         if lines <= threshold:
@@ -159,7 +165,7 @@ def collect_near_large_files(
     warning_at = max(1, math.ceil(threshold * warning_ratio))
     near_large_files: list[dict[str, Any]] = []
     for path in files:
-        if _is_generated_file(path):
+        if _is_generated_file(path, root=root):
             continue
         lines = _line_count(path)
         if lines < warning_at or lines > threshold:
@@ -187,7 +193,7 @@ def collect_line_count_top(
             "path": _relative(path, root=root),
         }
         for path in files
-        if not _is_generated_file(path)
+        if not _is_generated_file(path, root=root)
     ]
     return sorted(line_counts, key=lambda item: (-item["lines"], item["path"]))[:limit]
 
@@ -326,6 +332,65 @@ def write_architecture_report(
     return target
 
 
+def architecture_regressions(
+    report: dict[str, Any],
+    baseline: dict[str, Any],
+) -> list[str]:
+    allowed_files = {
+        str(path): int(config["max_lines"])
+        for path, config in dict(baseline.get("large_files") or {}).items()
+    }
+    regressions: list[str] = []
+    for item in report["large_files"]:
+        path = str(item["path"])
+        lines = int(item["lines"])
+        maximum = allowed_files.get(path)
+        if maximum is None:
+            regressions.append(f"new large file: {path} ({lines} lines)")
+        elif lines > maximum:
+            regressions.append(f"large file grew: {path} ({lines} > {maximum})")
+    if report["import_boundary_issues"]:
+        regressions.append(f"import boundary issues: {len(report['import_boundary_issues'])}")
+    return regressions
+
+
+def load_architecture_baseline(path: str | Path, *, root: Path) -> dict[str, Any]:
+    target = _resolve(path, root=root)
+    return json.loads(target.read_text(encoding="utf-8"))
+
+
+def _canonical_gate_configuration(
+    args: argparse.Namespace,
+) -> tuple[Path, tuple[str, ...], int, Path]:
+    root = Path(args.root).resolve()
+    canonical_root = REPO_ROOT.resolve()
+    canonical_baseline = (canonical_root / DEFAULT_BASELINE_JSON).resolve()
+    requested_baseline = _resolve(args.baseline_json, root=root).resolve()
+    invalid_options: list[str] = []
+    if root != canonical_root:
+        invalid_options.append("--root")
+    if args.path:
+        invalid_options.append("--path")
+    if requested_baseline != canonical_baseline:
+        invalid_options.append("--baseline-json")
+    if int(args.large_file_threshold) != DEFAULT_LARGE_FILE_THRESHOLD:
+        invalid_options.append("--large-file-threshold")
+    if invalid_options:
+        joined = ", ".join(invalid_options)
+        raise ValueError(
+            "architecture regression gate uses the repository's canonical policy; "
+            f"the following override(s) are not allowed: {joined}"
+        )
+    baseline = load_architecture_baseline(canonical_baseline, root=canonical_root)
+    threshold = int(baseline["large_file_threshold"])
+    if threshold != DEFAULT_LARGE_FILE_THRESHOLD:
+        raise ValueError(
+            "architecture baseline threshold must match the canonical "
+            f"{DEFAULT_LARGE_FILE_THRESHOLD}-line policy"
+        )
+    return canonical_root, DEFAULT_SCAN_PATHS, threshold, canonical_baseline
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -350,35 +415,68 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_LARGE_FILE_WARNING_RATIO,
         help="Report files at or above this fraction of --large-file-threshold.",
     )
+    parser.add_argument(
+        "--baseline-json",
+        default=str(DEFAULT_BASELINE_JSON),
+        help="Versioned architecture debt baseline used by --fail-on-regression.",
+    )
+    parser.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Fail when a new large file, file growth, or boundary violation exceeds baseline.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    root = Path(args.root).resolve()
+    if args.fail_on_regression:
+        try:
+            root, scan_paths, large_file_threshold, baseline_path = _canonical_gate_configuration(
+                args
+            )
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(json.dumps({"blocking": True, "error": str(exc), "status": "invalid"}))
+            return 2
+    else:
+        root = Path(args.root).resolve()
+        scan_paths = tuple(args.path) or DEFAULT_SCAN_PATHS
+        large_file_threshold = int(args.large_file_threshold)
+        baseline_path = _resolve(args.baseline_json, root=root)
     report = build_architecture_report(
         root=root,
-        scan_paths=args.path or DEFAULT_SCAN_PATHS,
-        large_file_threshold=int(args.large_file_threshold),
+        scan_paths=scan_paths,
+        large_file_threshold=large_file_threshold,
         large_file_warning_ratio=float(args.large_file_warning_ratio),
     )
+    regressions = (
+        architecture_regressions(
+            report,
+            load_architecture_baseline(baseline_path, root=root),
+        )
+        if args.fail_on_regression
+        else []
+    )
+    report["regressions"] = regressions
+    report["summary"]["blocking"] = bool(regressions)
     target = write_architecture_report(args.report_json, report, root=root)
     print(
         json.dumps(
             {
-                "blocking": False,
+                "blocking": bool(regressions),
                 "issue_count": report["summary"]["issue_count"],
                 "line_count_top10": report["line_count_top10"],
                 "near_large_file_count": report["summary"]["near_large_file_count"],
                 "near_large_files": report["near_large_files"][:10],
                 "report_json": str(target),
+                "regressions": regressions,
                 "status": report["summary"]["status"],
             },
             ensure_ascii=False,
             indent=2,
         )
     )
-    return 0
+    return 1 if regressions else 0
 
 
 if __name__ == "__main__":

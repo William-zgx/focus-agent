@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
-import re
-from dataclasses import fields, is_dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -14,29 +11,20 @@ if TYPE_CHECKING:
         AdminConfigResponse,
         AdminConfigSkillResponse,
         AdminConfigSkillSectionResponse,
-        AdminConfigSourceResponse,
         AdminConfigSystemSectionResponse,
         AdminConfigToolResponse,
         AdminConfigToolSectionResponse,
         AdminConfigValueResponse,
-        AdminModelConfigPayload,
         AdminModelConfigUpdateRequest,
-        AdminModelProviderConfigPayload,
         AdminPolicyConfigUpdateRequest,
         AdminSkillConfigUpdateRequest,
-        AdminToolConfigPayload,
         AdminToolConfigUpdateRequest,
     )
 
-from focus_agent.capabilities.tool_registry import build_tool_registry
+from focus_agent.capabilities.tool_registry import build_tool_registry as build_tool_registry
 from focus_agent.config import (
-    DEFAULT_LOCAL_ENV_FILE,
-    DEFAULT_MODEL_CATALOG_DOC,
-    DEFAULT_TOOL_CATALOG_DOC,
-    ConfiguredModel,
     ModelCatalogConfig,
     ModelCatalogValidationError,
-    ProviderConfig,
     ToolCatalogConfig,
     load_model_catalog_toml,
     load_tool_catalog_document,
@@ -45,6 +33,9 @@ from focus_agent.engine.runtime import AppRuntime
 from focus_agent.skills.registry import SkillRegistry
 from focus_agent.skills.registry_paths import _normalize_skill_id
 
+from . import admin_config_io as _admin_config_io
+from . import admin_config_rendering as _admin_config_rendering
+from . import admin_config_runtime as _admin_config_runtime
 from .admin_config_fields import (
     _POLICY_FIELD_SPECS,
     _SENSITIVE_FIELD_NAMES,
@@ -52,7 +43,37 @@ from .admin_config_fields import (
     ConfigFieldSpec,
 )
 
-_ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
+_configured_env_value = _admin_config_io._configured_env_value
+_format_env_value = _admin_config_io._format_env_value
+_local_env_path = _admin_config_io._local_env_path
+_model_catalog_path = _admin_config_io._model_catalog_path
+_path_writable = _admin_config_io._path_writable
+_settings_env = _admin_config_io._settings_env
+_source_response = _admin_config_io._source_response
+_tool_catalog_path = _admin_config_io._tool_catalog_path
+_write_local_env_updates = _admin_config_io._write_local_env_updates
+_write_text_atomic = _admin_config_io._write_text_atomic
+
+_append_toml_key = _admin_config_rendering._append_toml_key
+_coerce_config_value = _admin_config_rendering._coerce_config_value
+_dataclass_values = _admin_config_rendering._dataclass_values
+_field_or_existing = _admin_config_rendering._field_or_existing
+_merge_tool_payload = _admin_config_rendering._merge_tool_payload
+_model_payloads = _admin_config_rendering._model_payloads
+_provider_api_key_default = _admin_config_rendering._provider_api_key_default
+_provider_payloads = _admin_config_rendering._provider_payloads
+_render_model_catalog_toml = _admin_config_rendering._render_model_catalog_toml
+_render_tool_catalog_toml = _admin_config_rendering._render_tool_catalog_toml
+_toml_bare_or_quoted_key = _admin_config_rendering._toml_bare_or_quoted_key
+_toml_value = _admin_config_rendering._toml_value
+_tool_payload_from_current = _admin_config_rendering._tool_payload_from_current
+
+_refresh_runtime_skill_registry = _admin_config_runtime._refresh_runtime_skill_registry
+_reload_runtime_graph = _admin_config_runtime._reload_runtime_graph
+_reload_runtime_skill_registry = _admin_config_runtime._reload_runtime_skill_registry
+_reload_runtime_tool_registry = _admin_config_runtime._reload_runtime_tool_registry
+_sync_runtime_graph_dependents = _admin_config_runtime._sync_runtime_graph_dependents
+
 _SKILLS_ENABLED_ENV = "FOCUS_AGENT_SKILLS_ENABLED"
 _SKILL_DIRECTORIES_ENV = "FOCUS_AGENT_SKILLS_DIRS"
 _SKILL_INSTALL_DIRECTORY_ENV = "SKILL_INSTALL_DIRECTORY"
@@ -529,7 +550,10 @@ def _skill_registry_for_response(runtime: AppRuntime) -> SkillRegistry:
 
 
 def _known_skill_ids(runtime: AppRuntime) -> set[str]:
-    registries = [_skill_registry_for_response(runtime), SkillRegistry.from_settings(runtime.settings)]
+    registries = [
+        _skill_registry_for_response(runtime),
+        SkillRegistry.from_settings(runtime.settings),
+    ]
     return {
         _normalize_skill_id(skill.skill_id)
         for registry in registries
@@ -606,502 +630,11 @@ def _csv_env_value(values: tuple[str, ...]) -> str:
     return ",".join(values)
 
 
-def _reload_runtime_skill_registry(runtime: AppRuntime) -> dict[str, Any]:
-    registry = getattr(runtime, "skill_registry", None)
-    if isinstance(registry, SkillRegistry):
-        return registry.reload_from_settings(runtime.settings)
-    registry = SkillRegistry.from_settings(runtime.settings)
-    try:
-        runtime.skill_registry = registry
-    except Exception:
-        pass
-    return {
-        "success": True,
-        "enabled": registry.enabled,
-        "previous_count": 0,
-        "count": len(registry.all_skills()),
-        "sources": registry.list_sources(),
-    }
-
-
-def _refresh_runtime_skill_registry(runtime: AppRuntime) -> dict[str, Any]:
-    registry = getattr(runtime, "skill_registry", None)
-    if isinstance(registry, SkillRegistry):
-        return registry.refresh_index()
-    return _reload_runtime_skill_registry(runtime)
-
-
-def _reload_runtime_tool_registry(runtime: AppRuntime) -> dict[str, Any]:
-    registry = getattr(runtime, "skill_registry", None)
-    if not isinstance(registry, SkillRegistry):
-        registry = SkillRegistry.from_settings(runtime.settings)
-        try:
-            runtime.skill_registry = registry
-        except Exception:
-            pass
-    try:
-        runtime.tool_registry = build_tool_registry(
-            settings=runtime.settings,
-            skill_registry=registry,
-            store=getattr(runtime, "store", None),
-            checkpointer=getattr(runtime, "checkpointer", None),
-            artifact_metadata_repository=getattr(
-                runtime,
-                "artifact_metadata_repository",
-                None,
-            ),
-            artifact_store=getattr(runtime, "artifact_store", None),
-            memory_repository=getattr(runtime, "memory_repository", None),
-            memory_embedding_service=getattr(runtime, "memory_embedding_service", None),
-            productivity_repository=getattr(runtime, "productivity_repository", None),
-        )
-    except Exception as exc:
-        raise AdminConfigError(
-            "Failed to rebuild tool registry after skill configuration update."
-        ) from exc
-    return {
-        "success": True,
-        "count": len(getattr(runtime.tool_registry, "tools", ()) or ()),
-    }
-
-
-def _reload_runtime_graph(runtime: AppRuntime) -> dict[str, Any]:
-    if getattr(runtime, "graph", None) is None and getattr(runtime, "harness", None) is None:
-        return {"success": True, "rebuilt": False}
-    harness = getattr(runtime, "harness", None)
-    harness_config = getattr(harness, "config", None)
-    try:
-        if harness_config is not None:
-            from focus_agent.harness.agents.factory import create_focus_agent
-
-            rebuilt_harness = create_focus_agent(
-                harness_config,
-                settings=runtime.settings,
-                checkpointer=getattr(runtime, "checkpointer", None),
-                store=getattr(runtime, "store", None),
-                event_store=getattr(runtime, "event_store", None)
-                or getattr(harness, "event_store", None),
-                memory_retriever=getattr(runtime, "memory_retriever", None),
-                memory_policy=getattr(runtime, "memory_policy", None),
-                memory_writer=getattr(runtime, "memory_writer", None),
-                memory_extractor=getattr(runtime, "memory_extractor", None),
-                skill_registry=getattr(runtime, "skill_registry", None),
-                tool_registry=getattr(runtime, "tool_registry", None),
-                approval_queue=getattr(
-                    getattr(runtime, "coordination_backend", None),
-                    "approval_queue",
-                    None,
-                ),
-                subagent_executor=getattr(harness, "subagent_executor", None),
-            )
-            runtime.harness = rebuilt_harness
-            runtime.graph = rebuilt_harness.graph
-            runtime.run_manager = rebuilt_harness.run_manager
-            runtime.stream_bridge = rebuilt_harness.stream_bridge
-            runtime.event_store = rebuilt_harness.event_store
-        else:
-            from focus_agent.engine.graph_builder import build_graph
-
-            runtime.graph = build_graph(
-                settings=runtime.settings,
-                checkpointer=getattr(runtime, "checkpointer", None),
-                store=getattr(runtime, "store", None),
-                memory_retriever=getattr(runtime, "memory_retriever", None),
-                memory_policy=getattr(runtime, "memory_policy", None),
-                memory_writer=getattr(runtime, "memory_writer", None),
-                memory_extractor=getattr(runtime, "memory_extractor", None),
-                skill_registry=getattr(runtime, "skill_registry", None),
-                tool_registry=getattr(runtime, "tool_registry", None),
-                approval_queue=getattr(
-                    getattr(runtime, "coordination_backend", None),
-                    "approval_queue",
-                    None,
-                ),
-            )
-    except Exception as exc:
-        raise AdminConfigError(
-            "Failed to rebuild graph after skill configuration update."
-        ) from exc
-    _sync_runtime_graph_dependents(runtime)
-    return {"success": True, "rebuilt": True}
-
-
-def _sync_runtime_graph_dependents(runtime: AppRuntime) -> None:
-    graph = getattr(runtime, "graph", None)
-    if graph is None:
-        return
-    for attr_name in ("branch_service", "branch_decision_service"):
-        service = getattr(runtime, attr_name, None)
-        if service is not None and hasattr(service, "graph"):
-            service.graph = graph
-
-
 def _skill_update_message(changed: bool, refresh_result: dict[str, Any]) -> str:
     count = int(refresh_result.get("count") or 0)
     if changed:
         return f"Skill configuration saved. {count} skills available."
     return f"Skill index refreshed. {count} skills available."
-
-
-def _provider_payloads(
-    payloads: list[AdminModelProviderConfigPayload] | None,
-    current: tuple[ProviderConfig, ...],
-) -> list[ProviderConfig]:
-    if payloads is None:
-        return [replace(provider, api_key_default=None) for provider in current]
-    providers: list[ProviderConfig] = []
-    for payload in payloads:
-        api_key_default = _provider_api_key_default(payload)
-        providers.append(
-            ProviderConfig(
-                id=payload.id,
-                label=payload.label,
-                backend_provider=payload.backend_provider,
-                aliases=tuple(payload.aliases),
-                logo_slug=payload.logo_slug,
-                logo_letter=payload.logo_letter,
-                base_url_env=payload.base_url_env,
-                base_url_default=payload.base_url_default,
-                api_key_env=payload.api_key_env,
-                api_key_default=api_key_default,
-            )
-        )
-    return providers
-
-
-def _provider_api_key_default(
-    payload: AdminModelProviderConfigPayload,
-) -> str | None:
-    if payload.api_key_default is None:
-        return None
-    if str(payload.api_key_default).strip():
-        raise AdminConfigError(
-            "api_key_default cannot be persisted by Admin config; use api_key_env instead."
-        )
-    return None
-
-
-def _model_payloads(
-    payloads: list[AdminModelConfigPayload] | None,
-    current: tuple[ConfiguredModel, ...],
-) -> list[ConfiguredModel]:
-    if payloads is None:
-        return list(current)
-    return [
-        ConfiguredModel(
-            id=payload.id,
-            label=payload.label,
-            supports_thinking=payload.supports_thinking,
-            default_thinking_enabled=payload.default_thinking_enabled,
-            request_kwargs=dict(payload.request_kwargs),
-            thinking_enabled_request_kwargs=dict(payload.thinking_enabled_request_kwargs),
-            thinking_disabled_request_kwargs=dict(payload.thinking_disabled_request_kwargs),
-            thinking_disabled_model_name=payload.thinking_disabled_model_name,
-            reasoning_effort=payload.reasoning_effort,
-            no_temperature=payload.no_temperature,
-            thinking_enable_extra_body_type=payload.thinking_enable_extra_body_type,
-            thinking_disable_extra_body_type=payload.thinking_disable_extra_body_type,
-            thinking_disable_switch_model=payload.thinking_disable_switch_model,
-        )
-        for payload in payloads
-    ]
-
-
-def _render_model_catalog_toml(catalog: ModelCatalogConfig) -> str:
-    lines: list[str] = []
-    _append_toml_key(lines, "default_model", catalog.default_model)
-    _append_toml_key(lines, "helper_model", catalog.helper_model)
-    _append_toml_key(lines, "model_choices", list(catalog.model_choices))
-    if lines:
-        lines.append("")
-
-    for provider in catalog.providers:
-        lines.append("[[providers]]")
-        for key, value in _dataclass_values(provider).items():
-            _append_toml_key(lines, key, value)
-        lines.append("")
-
-    for model in catalog.models:
-        lines.append("[[models]]")
-        for key, value in _dataclass_values(model).items():
-            _append_toml_key(lines, key, value)
-        lines.append("")
-
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _render_tool_catalog_toml(
-    current: ToolCatalogConfig,
-    payload: AdminToolConfigUpdateRequest,
-) -> str:
-    tools_by_name = {
-        name: _tool_payload_from_current(name, getattr(current, name), current)
-        for name in current.section_names
-        if hasattr(current, name)
-    }
-    for item in payload.tools or []:
-        if item.name not in tools_by_name:
-            raise AdminConfigError(f"Unsupported tool config section: {item.name}")
-        tools_by_name[item.name] = _merge_tool_payload(
-            item,
-            existing=getattr(current, item.name),
-        )
-
-    contracts = _admin_config_contracts()
-    providers = [
-        contracts.AdminToolProviderConfigPayload(
-            id=provider.id,
-            enabled=provider.enabled,
-            order=provider.order,
-            metadata=dict(provider.metadata),
-            overrides=list(provider.overrides),
-        )
-        for provider in current.providers
-    ]
-    if payload.providers is not None:
-        providers = payload.providers
-
-    lines: list[str] = []
-    for name, tool in tools_by_name.items():
-        lines.append(f"[{name}]")
-        _append_toml_key(lines, "enabled", tool.enabled)
-        _append_toml_key(lines, "label", tool.label)
-        _append_toml_key(lines, "description", tool.description)
-        for key, value in tool.settings.items():
-            _append_toml_key(lines, key, value)
-        _append_toml_key(lines, "metadata", tool.metadata)
-        lines.append("")
-
-    for provider in providers:
-        lines.append("[[providers]]")
-        _append_toml_key(lines, "id", provider.id)
-        _append_toml_key(lines, "enabled", provider.enabled)
-        _append_toml_key(lines, "order", provider.order)
-        _append_toml_key(lines, "metadata", provider.metadata)
-        _append_toml_key(lines, "overrides", provider.overrides)
-        lines.append("")
-
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _tool_payload_from_current(
-    name: str,
-    config: Any,
-    catalog: ToolCatalogConfig,
-) -> AdminToolConfigPayload:
-    values = _dataclass_values(config)
-    contracts = _admin_config_contracts()
-    return contracts.AdminToolConfigPayload(
-        name=name,
-        enabled=bool(values.pop("enabled", True)),
-        label=str(values.pop("label", name)),
-        description=str(values.pop("description", "")),
-        settings={key: value for key, value in values.items() if value is not None},
-        metadata=catalog.metadata_overlay_for(name),
-    )
-
-
-def _merge_tool_payload(
-    payload: AdminToolConfigPayload,
-    *,
-    existing: Any,
-) -> AdminToolConfigPayload:
-    existing_values = _dataclass_values(existing)
-    allowed_settings = set(existing_values) - {"enabled", "label", "description"}
-    unknown_settings = set(payload.settings) - allowed_settings
-    if unknown_settings:
-        unknown = ", ".join(sorted(unknown_settings))
-        raise AdminConfigError(f"{payload.name} has unsupported setting keys: {unknown}")
-
-    settings = {
-        key: value
-        for key, value in existing_values.items()
-        if key in allowed_settings and value is not None
-    }
-    settings.update(payload.settings)
-    contracts = _admin_config_contracts()
-    return contracts.AdminToolConfigPayload(
-        name=payload.name,
-        enabled=payload.enabled
-        if payload.enabled is not None
-        else bool(existing_values.get("enabled", True)),
-        label=payload.label or str(existing_values.get("label") or payload.name),
-        description=payload.description or str(existing_values.get("description") or ""),
-        settings=settings,
-        metadata=dict(payload.metadata),
-    )
-
-
-def _field_or_existing(payload: Any, field_name: str, existing: Any) -> Any:
-    fields_set = getattr(payload, "model_fields_set", set())
-    return getattr(payload, field_name) if field_name in fields_set else existing
-
-
-def _dataclass_values(value: Any) -> dict[str, Any]:
-    if not is_dataclass(value):
-        return {}
-    return {field.name: getattr(value, field.name) for field in fields(value)}
-
-
-def _append_toml_key(lines: list[str], key: str, value: Any) -> None:
-    if value is None:
-        return
-    if isinstance(value, (tuple, list, dict)) and not value:
-        return
-    lines.append(f"{key} = {_toml_value(value)}")
-
-
-def _toml_value(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    if isinstance(value, str):
-        escaped = (
-            value.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-        )
-        return f'"{escaped}"'
-    if isinstance(value, tuple | list):
-        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
-    if isinstance(value, dict):
-        items = [
-            f"{_toml_bare_or_quoted_key(str(key))} = {_toml_value(item)}"
-            for key, item in value.items()
-            if item is not None
-        ]
-        return "{ " + ", ".join(items) + " }"
-    return _toml_value(str(value))
-
-
-def _toml_bare_or_quoted_key(key: str) -> str:
-    if re.fullmatch(r"[A-Za-z0-9_-]+", key):
-        return key
-    return _toml_value(key)
-
-
-def _coerce_config_value(value: Any, spec: ConfigFieldSpec) -> object:
-    if value is None:
-        raise AdminConfigError(f"{spec.key} cannot be null.")
-    if spec.value_type == "boolean":
-        if isinstance(value, bool):
-            return value
-        normalized = str(value).strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off"}:
-            return False
-        raise AdminConfigError(f"{spec.key} must be a boolean.")
-    if spec.value_type == "integer":
-        return int(value)
-    if spec.value_type == "float":
-        return float(value)
-    if spec.value_type == "string":
-        text = str(value).strip()
-        if spec.options and text not in spec.options:
-            allowed = ", ".join(spec.options)
-            raise AdminConfigError(f"{spec.key} must be one of: {allowed}.")
-        return text
-    raise AdminConfigError(f"{spec.key} has unsupported type {spec.value_type}.")
-
-
-def _write_local_env_updates(path: Path, updates: dict[str, object | None]) -> None:
-    existing_lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    seen: set[str] = set()
-    next_lines: list[str] = []
-    for line in existing_lines:
-        match = _ENV_ASSIGNMENT_RE.match(line.strip())
-        if match and match.group(1) in updates:
-            key = match.group(1)
-            seen.add(key)
-            value = updates[key]
-            if value is not None:
-                next_lines.append(f"{key}={_format_env_value(value)}")
-            continue
-        next_lines.append(line)
-
-    missing = [(key, value) for key, value in updates.items() if key not in seen]
-    if missing and next_lines and next_lines[-1].strip():
-        next_lines.append("")
-    if missing and not existing_lines:
-        next_lines.append("# Managed by Focus Agent admin config.")
-    for key, value in missing:
-        if value is not None:
-            next_lines.append(f"{key}={_format_env_value(value)}")
-
-    _write_text_atomic(path, "\n".join(next_lines).rstrip() + "\n")
-
-
-def _format_env_value(value: object) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-def _write_text_atomic(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f".{path.name}.tmp")
-    tmp_path.write_text(content, encoding="utf-8")
-    tmp_path.replace(path)
-
-
-def _settings_env(settings: Any) -> dict[str, str]:
-    return dict(getattr(settings, "resolved_env", {}) or {})
-
-
-def _configured_env_value(
-    env: dict[str, str],
-    env_key: str | None,
-    default_value: str | None,
-) -> bool:
-    return bool(default_value or (env_key and (env.get(env_key) or os.environ.get(env_key))))
-
-
-def _model_catalog_path(settings: Any) -> Path:
-    env = _settings_env(settings)
-    return Path(
-        env.get("FOCUS_AGENT_MODEL_CATALOG_DOC")
-        or os.environ.get("FOCUS_AGENT_MODEL_CATALOG_DOC")
-        or DEFAULT_MODEL_CATALOG_DOC
-    ).expanduser()
-
-
-def _tool_catalog_path(settings: Any) -> Path:
-    env = _settings_env(settings)
-    return Path(
-        env.get("FOCUS_AGENT_TOOL_CATALOG_DOC")
-        or os.environ.get("FOCUS_AGENT_TOOL_CATALOG_DOC")
-        or DEFAULT_TOOL_CATALOG_DOC
-    ).expanduser()
-
-
-def _local_env_path(settings: Any) -> Path:
-    env = _settings_env(settings)
-    return Path(
-        env.get("FOCUS_AGENT_LOCAL_ENV_FILE")
-        or os.environ.get("FOCUS_AGENT_LOCAL_ENV_FILE")
-        or DEFAULT_LOCAL_ENV_FILE
-    ).expanduser()
-
-
-def _source_response(path: Path) -> AdminConfigSourceResponse:
-    contracts = _admin_config_contracts()
-    return contracts.AdminConfigSourceResponse(
-        path=str(path),
-        exists=path.exists(),
-        writable=_path_writable(path),
-    )
-
-
-def _path_writable(path: Path) -> bool:
-    if path.exists():
-        return os.access(path, os.W_OK)
-    parent = path.parent
-    while not parent.exists() and parent != parent.parent:
-        parent = parent.parent
-    return os.access(parent, os.W_OK)
 
 
 __all__ = [

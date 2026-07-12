@@ -125,9 +125,7 @@ class ProcessSubagentRunner:
         stderr_text = stderr_bytes.decode("utf-8", errors="replace")
 
         if len(stdout_text) > config.max_output_chars:
-            truncated_note = (
-                f"\n\n[truncated: output exceeded {config.max_output_chars} chars]"
-            )
+            truncated_note = f"\n\n[truncated: output exceeded {config.max_output_chars} chars]"
             stdout_text = stdout_text[: config.max_output_chars] + truncated_note
 
         output, token_usage, parse_error = self._parse_output(stdout_text)
@@ -204,7 +202,7 @@ class ProcessSubagentRunner:
             comm_task = asyncio.create_task(proc.communicate())
             stdout_bytes, stderr_bytes = await asyncio.wait_for(comm_task, timeout=timeout)
             return proc.returncode or 0, stdout_bytes, stderr_bytes
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "ProcessSubagentRunner: timeout after %.1fs; sending SIGTERM (pid=%s)",
                 timeout,
@@ -223,7 +221,7 @@ class ProcessSubagentRunner:
                     proc.communicate(), timeout=graceful
                 )
                 return proc.returncode or -signal.SIGTERM, stdout_bytes, stderr_bytes
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "ProcessSubagentRunner: graceful shutdown expired; sending SIGKILL (pid=%s)",
                     proc.pid,
@@ -267,7 +265,11 @@ class ProcessSubagentRunner:
             parsed = json.loads(candidate)
             if isinstance(parsed, dict):
                 output = str(parsed.get("result") or parsed.get("output") or text)
-                usage = parsed.get("token_usage") if isinstance(parsed.get("token_usage"), dict) else None
+                usage = (
+                    parsed.get("token_usage")
+                    if isinstance(parsed.get("token_usage"), dict)
+                    else None
+                )
                 return output, usage, None
         except (json.JSONDecodeError, ValueError):
             pass
@@ -322,13 +324,11 @@ class ProcessSubagentTaskRunner:
         system_prompt = str(
             request.metadata.get("system_prompt") or request.input.get("system_prompt") or ""
         )
-        tools_allowed_raw = request.metadata.get("tools_allowed") or request.input.get(
-            "tools_allowed"
-        ) or ["*"]
+        tools_allowed_raw = (
+            request.metadata.get("tools_allowed") or request.input.get("tools_allowed") or ["*"]
+        )
         if isinstance(tools_allowed_raw, str):
-            tools_allowed = [
-                tool.strip() for tool in tools_allowed_raw.split(",") if tool.strip()
-            ]
+            tools_allowed = [tool.strip() for tool in tools_allowed_raw.split(",") if tool.strip()]
         else:
             try:
                 tools_allowed = [str(tool) for tool in tools_allowed_raw]

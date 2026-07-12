@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report compat-report release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -144,9 +144,9 @@ format: .venv/bin/python
 format-check: .venv/bin/python
 	$(RUFF) format --check .
 
-check: lint-strict test contract-check frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
+check: lint-strict test contract-check architecture-gate compat-gate frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
 
-ci: lint-strict ci-test contract-check frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
+ci: lint-strict ci-test contract-check architecture-gate compat-gate frontend-check-full sdk-build web-build test-thread-stream-frontend-regressions
 
 ci-test: .venv/bin/python
 	FOCUS_AGENT_LOCAL_ENV_FILE=$(CI_LOCAL_ENV_FILE) $(PYTEST)
@@ -167,8 +167,14 @@ sdk-openapi-types-check: node_modules .venv/bin/python
 architecture-report: .venv/bin/python
 	$(PYTHON) scripts/architecture_report.py $(ARCHITECTURE_REPORT_ARGS)
 
+architecture-gate: .venv/bin/python
+	$(PYTHON) scripts/architecture_report.py --fail-on-regression $(ARCHITECTURE_REPORT_ARGS)
+
 compat-report: .venv/bin/python
 	$(PYTHON) scripts/compat_report.py $(COMPAT_REPORT_ARGS)
+
+compat-gate: .venv/bin/python
+	$(PYTHON) scripts/compat_report.py --fail-on-regression $(COMPAT_REPORT_ARGS)
 
 release-gate: .venv/bin/python
 	$(PYTHON) scripts/release_gate.py $(RELEASE_GATE_ARGS)

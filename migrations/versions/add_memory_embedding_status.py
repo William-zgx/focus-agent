@@ -48,18 +48,19 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
-        DROP INDEX IF EXISTS idx_focus_memories_embedding_status_updated
-        """
-    )
-    op.execute(
-        """
-        UPDATE focus_memories
-        SET data_json = data_json - 'embedding_status'
-        """
-    )
-    op.execute(
-        """
-        ALTER TABLE focus_memories
-        DROP COLUMN IF EXISTS embedding_status
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM focus_schema_migrations
+                WHERE version = 18
+            ) THEN
+                DROP INDEX IF EXISTS idx_focus_memories_embedding_status_updated;
+                UPDATE focus_memories
+                SET data_json = data_json - 'embedding_status';
+                ALTER TABLE focus_memories
+                DROP COLUMN IF EXISTS embedding_status;
+            END IF;
+        END $$;
         """
     )

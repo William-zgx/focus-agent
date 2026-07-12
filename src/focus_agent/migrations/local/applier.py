@@ -214,29 +214,45 @@ def _migrate_focus_memories(
     dry_run: bool,
 ) -> dict[str, Any]:
     records, skipped = build_focus_memory_records(items)
-    details = {
-        "source_item_count": len(items),
-        "eligible_memory_count": len(records),
-        "skipped_item_count": len(skipped),
-        "skipped_reasons": _summarize_skip_reasons(skipped),
-    }
-
     if dry_run:
         return {
             "status": "dry-run",
             "migrated_memory_count": 0,
-            **details,
+            "source_item_count": len(items),
+            "eligible_memory_count": len(records),
+            "skipped_item_count": len(skipped),
+            "skipped_reasons": _summarize_skip_reasons(skipped),
+            "tombstoned_memory_count": 0,
         }
 
     repository = create_memory_repository(database_uri)
     migrated_count = 0
+    tombstoned_count = 0
     for record in records:
-        repository.upsert_record(record)
+        if has_repo_method(repository, "upsert_record_if_not_tombstoned"):
+            migrated = bool(repository.upsert_record_if_not_tombstoned(record))
+        else:
+            repository.upsert_record(record)
+            migrated = True
+        if not migrated:
+            tombstoned_count += 1
+            skipped.append(
+                {
+                    "namespace": list(record.namespace),
+                    "memory_id": record.memory_id,
+                    "reason": "tombstoned_memory_id",
+                }
+            )
+            continue
         migrated_count += 1
     return {
         "status": "completed",
         "migrated_memory_count": migrated_count,
-        **details,
+        "source_item_count": len(items),
+        "eligible_memory_count": len(records) - tombstoned_count,
+        "skipped_item_count": len(skipped),
+        "skipped_reasons": _summarize_skip_reasons(skipped),
+        "tombstoned_memory_count": tombstoned_count,
     }
 
 

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
 
 from ...agent_delegation import build_failure_records, build_review_queue
@@ -56,6 +53,7 @@ from ..graph_turn_helpers import (
     _tool_policy_note,
     _workspace_search_query,
 )
+from . import agent_loop_support as _agent_loop_support
 from .agent_loop_helpers import (
     _has_tool_named,
     _latest_tool_result_content,
@@ -83,6 +81,31 @@ from .agent_loop_helpers import (
     build_active_skill_execution_plan,
     skill_execution_policy_note,
 )
+from .agent_loop_skill_helpers import _READ_ONLY_SKILL_TOOL_RE  # noqa: F401
+from .agent_loop_skill_helpers import (
+    explicit_skill_tools_satisfied as _explicit_skill_tools_satisfied,
+)
+from .agent_loop_skill_helpers import (
+    skill_install_args_from_search_result as _skill_install_args_from_search_result,
+)
+from .agent_loop_support import (
+    _ALTERNATIVE_OUTCOME_ROLES,  # noqa: F401
+    _FAILED_OUTCOME_STATUSES,  # noqa: F401
+    _HTTP_URL_RE,  # noqa: F401
+    _PRIMARY_OUTCOME_ROLES,  # noqa: F401
+    _SUCCESS_OUTCOME_STATUSES,  # noqa: F401
+    _drain_steer_messages,
+    _estimate_context_fullness,
+    _filter_tools_by_agent_def,
+    _fire_system_agent_trigger,
+    _outcome_attempt_index,  # noqa: F401
+    _outcome_max_attempts,  # noqa: F401
+    _resolve_agent_definition,
+    _should_force_degraded_skill_recovery_answer,
+    _web_fetch_args,
+    _with_focus_agent_turn_metadata,
+)
+from .agent_loop_updates import finalize_agent_loop_turn
 from .policy import (
     _skill_install_name_from_text,
     _skill_view_name_from_text,
@@ -94,97 +117,20 @@ from .policy import (
 
 _logger = logging.getLogger(__name__)
 
-_HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
-_READ_ONLY_SKILL_TOOL_RE = re.compile(
-    r"(?<![a-z0-9_])"
-    r"(skills_search|skill_view|skills_list|skill_sources|skills_refresh_index)"
-    r"(?![a-z0-9_])",
-    re.IGNORECASE,
-)
-_PRIMARY_OUTCOME_ROLES = frozenset({"primary"})
-_ALTERNATIVE_OUTCOME_ROLES = frozenset({"alternative"})
-_FAILED_OUTCOME_STATUSES = frozenset({"failed", "blocked"})
-_SUCCESS_OUTCOME_STATUSES = frozenset({"succeeded", "recovered"})
-
 
 def _with_stream_phase(model: Any, phase: str) -> Any:
-    if not has_repo_method(model, "with_config"):
-        return model
-    return model.with_config(
-        {
-            "metadata": {"stream_phase": phase},
-            "tags": [f"stream_phase:{phase}"],
-        }
+    """Apply stream metadata while preserving the established patch seam."""
+
+    return _agent_loop_support._with_stream_phase(
+        model,
+        phase,
+        has_method=has_repo_method,
     )
-
-
-def _web_fetch_args(preferred_args: dict[str, Any] | None, fallback_text: str) -> dict[str, Any]:
-    args = dict(preferred_args or {})
-    if str(args.get("url") or "").strip():
-        return args
-    match = _HTTP_URL_RE.search(str(fallback_text or ""))
-    if not match:
-        return args
-    return {"url": match.group(0).rstrip(".,!?;:，。！？；：")}
-
-
-def _should_force_degraded_skill_recovery_answer(
-    state: AgentState,
-    *,
-    primary_tool_names: Sequence[str] = (),
-) -> bool:
-    """Stop tool storms after a Skill primary path is exhausted and fallback evidence exists."""
-
-    outcomes = [
-        dict(item)
-        for item in state.get("tool_outcomes") or []
-        if isinstance(item, Mapping)
-    ]
-    if not outcomes:
-        return False
-    primary_tools = {str(name).strip() for name in primary_tool_names if str(name).strip()}
-    if not primary_tools:
-        primary_tools = {"run_skill_entrypoint", "run_workspace_command"}
-    blocked_recovery_boundary = any(
-        str(item.get("status") or "") == "blocked" for item in outcomes
-    )
-    primary_exhausted = any(
-        (
-            str(item.get("tool_name") or "") in primary_tools
-            or str(item.get("evidence_role") or "") in _PRIMARY_OUTCOME_ROLES
-        )
-        and str(item.get("status") or "") in _FAILED_OUTCOME_STATUSES
-        and (
-            _outcome_attempt_index(item) >= _outcome_max_attempts(item)
-            or blocked_recovery_boundary
-        )
-        for item in outcomes
-    )
-    if not primary_exhausted:
-        return False
-    return any(
-        str(item.get("evidence_role") or "") in _ALTERNATIVE_OUTCOME_ROLES
-        and str(item.get("status") or "") in _SUCCESS_OUTCOME_STATUSES
-        for item in outcomes
-    )
-
-
-def _outcome_attempt_index(outcome: Mapping[str, Any]) -> int:
-    try:
-        return max(1, int(outcome.get("attempt_index") or 1))
-    except (TypeError, ValueError):
-        return 1
-
-
-def _outcome_max_attempts(outcome: Mapping[str, Any]) -> int:
-    try:
-        return max(1, int(outcome.get("max_attempts") or 1))
-    except (TypeError, ValueError):
-        return 1
 
 
 def _model_for_stream_phase(
-    model_for: Callable[[str, str], Any], phase: str
+    model_for: Callable[[str, str], Any],
+    phase: str,
 ) -> Callable[[str, str], Any]:
     def wrapped(model_id: str, thinking_mode: str) -> Any:
         return _with_stream_phase(model_for(model_id, thinking_mode), phase)
@@ -198,145 +144,60 @@ def _model_with_tools_for_stream_phase(
 ) -> Callable[[str, str, list[Any] | None], Any]:
     def wrapped(model_id: str, thinking_mode: str, available_tools: list[Any] | None) -> Any:
         return _with_stream_phase(
-            model_with_tools_for(model_id, thinking_mode, available_tools), phase
+            model_with_tools_for(model_id, thinking_mode, available_tools),
+            phase,
         )
 
     return wrapped
 
 
-def _with_focus_agent_turn_metadata(
-    response: AIMessage,
-    metadata: Mapping[str, Any],
-) -> AIMessage:
-    if not metadata:
-        return response
-    response_metadata = getattr(response, "response_metadata", None)
-    if not isinstance(response_metadata, Mapping):
-        response_metadata = {}
-    focus_agent = response_metadata.get("focus_agent")
-    focus_agent_metadata = dict(focus_agent) if isinstance(focus_agent, Mapping) else {}
-    focus_agent_metadata.update(dict(metadata))
-    return response.model_copy(
-        update={
-            "response_metadata": {
-                **dict(response_metadata),
-                "focus_agent": focus_agent_metadata,
-            }
-        }
-    )
+def _agent_loop_update_hooks(
+    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
+) -> dict[str, Any]:
+    """Resolve finalization dependencies at turn time for patch compatibility."""
 
-
-def _fire_system_agent_trigger(runner: Any | None, trigger_name: str, ctx: dict[str, Any]) -> None:
-    """Best-effort fire-and-forget trigger for system agents from a sync node.
-
-    Never raises; silently skips if no runner is provided or no running loop
-    is available (e.g. sync test invocations).
-    """
-
-    if runner is None:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    try:
-        loop.create_task(runner.trigger(trigger_name, ctx))
-    except Exception:  # noqa: BLE001
-        _logger.debug(
-            "Failed to fire system agent trigger '%s'", trigger_name, exc_info=True
-        )
-
-
-def _drain_steer_messages(run_manager: Any | None, thread_id: str | None) -> list[str]:
-    """Drain any steering messages queued for ``thread_id``; safe if None."""
-
-    if run_manager is None or not thread_id:
-        return []
-    try:
-        drainer = getattr(run_manager, "drain_steer_queue_nowait", None)
-        if drainer is None:
-            return []
-        return list(drainer(thread_id) or [])
-    except Exception:  # noqa: BLE001
-        _logger.debug("Failed to drain steer queue", exc_info=True)
-        return []
-
-
-def _resolve_agent_definition(
-    registry: Any | None,
-    state: AgentState,
-) -> tuple[Any | None, str | None]:
-    """Look up the requested AgentDefinition from state, if any.
-
-    Returns (definition, agent_name) or (None, None) when nothing is selected.
-    """
-
-    if registry is None:
-        return None, None
-    agent_name = (
-        state.get("agent_name")
-        or state.get("selected_agent")
-        or (state.get("metadata") or {}).get("agent_name")
-        or (state.get("metadata") or {}).get("target_agent")
-        or ""
-    )
-    agent_name = str(agent_name or "").strip()
-    if not agent_name:
-        return None, None
-    try:
-        definition = registry.get(agent_name)
-    except Exception:  # noqa: BLE001
-        _logger.debug("AgentDefinition lookup failed for '%s'", agent_name, exc_info=True)
-        return None, agent_name
-    return definition, agent_name
-
-
-def _filter_tools_by_agent_def(
-    available_tools: list[Any],
-    agent_def: Any,
-) -> list[Any]:
-    """Apply an AgentDefinition's tool_policy, if present."""
-
-    if agent_def is None:
-        return available_tools
-    policy = getattr(agent_def, "tool_policy", None)
-    if policy is None:
-        return available_tools
-    filter_fn = getattr(policy, "filter", None)
-    if filter_fn is None:
-        return available_tools
-    try:
-        names = [str(getattr(t, "name", "") or "") for t in available_tools]
-        allowed = set(filter_fn(names))
-        return [t for t in available_tools if str(getattr(t, "name", "") or "") in allowed]
-    except Exception:  # noqa: BLE001
-        _logger.debug("AgentDefinition tool_policy filter failed", exc_info=True)
-        return available_tools
-
-
-def _estimate_context_fullness(prompt_messages: list[Any]) -> float:
-    """Roughly estimate how full the prompt is as a 0..1 ratio.
-
-    Uses total character length of rendered message content against a
-    conservative ~32k-char ceiling; this is intentionally approximate —
-    the context_overflow trigger is advisory.
-    """
-
-    total = 0
-    for m in prompt_messages:
-        c = getattr(m, "content", "")
-        if isinstance(c, str):
-            total += len(c)
-        elif isinstance(c, list):
-            for part in c:
-                if isinstance(part, dict):
-                    total += len(str(part.get("text", "")))
-                else:
-                    total += len(str(part))
-        else:
-            total += len(str(c))
-    # Rough ceiling (chars ≈ tokens * 4); ~32k chars ~= ~8k tokens.
-    return min(1.0, total / 32000.0)
+    hooks = {
+        "_degraded_answer_from_tool_results": _degraded_answer_from_tool_results,
+        "_message_content_text": _message_content_text,
+        "_fallback_answer_from_tool_results": _fallback_answer_from_tool_results,
+        "_should_replace_unfound_workspace_answer": _should_replace_unfound_workspace_answer,
+        "_latest_tool_result_content": _latest_tool_result_content,
+        "normalize_evidence_bundle": normalize_evidence_bundle,
+        "normalize_evidence_ledger": normalize_evidence_ledger,
+        "skill_execution_evidence_facts": skill_execution_evidence_facts,
+        "tool_result_names": tool_result_names,
+        "evaluate_execution_contract": evaluate_execution_contract,
+        "verify_answer_against_evidence": verify_answer_against_evidence,
+        "_live_web_answer_repair_count": _live_web_answer_repair_count,
+        "_skill_execution_answer_repair_count": _skill_execution_answer_repair_count,
+        "_live_web_answer_needs_repair": _live_web_answer_needs_repair,
+        "apply_prompt_budget_guard": apply_prompt_budget_guard,
+        "_skill_execution_repair_prompt": _skill_execution_repair_prompt,
+        "_ensure_reasoning_content_for_tool_call_history": (
+            _ensure_reasoning_content_for_tool_call_history
+        ),
+        "_invoke_with_tool_result_fallback": _invoke_with_tool_result_fallback,
+        "_with_stream_phase": _with_stream_phase,
+        "_looks_like_textual_tool_call_artifact": _looks_like_textual_tool_call_artifact,
+        "_repair_textual_tool_call_response": _repair_textual_tool_call_response,
+        "_repair_and_dedupe_tool_calls": _repair_and_dedupe_tool_calls,
+        "_skill_execution_failure_answer": _skill_execution_failure_answer,
+        "_live_web_repair_response": _live_web_repair_response,
+        "_live_web_failure_answer": _live_web_failure_answer,
+        "evidence_bundle_to_citation_refs": evidence_bundle_to_citation_refs,
+        "_new_citation_refs": _new_citation_refs,
+        "_latest_turn_has_tool_result": _latest_turn_has_tool_result,
+        "build_task_outcome": build_task_outcome,
+        "_with_focus_agent_turn_metadata": _with_focus_agent_turn_metadata,
+        "_next_pending_tool_action": _next_pending_tool_action,
+        "append_agent_state_record": append_agent_state_record,
+        "build_failure_records": build_failure_records,
+        "build_review_queue": build_review_queue,
+        "_latest_turn_messages": _latest_turn_messages,
+        "STREAM_VISIBILITY_QUARANTINE": STREAM_VISIBILITY_QUARANTINE,
+        "model_with_tools_for": model_with_tools_for,
+    }
+    return hooks
 
 
 def make_agent_loop_node(
@@ -370,11 +231,11 @@ def make_agent_loop_node(
             try:
                 if getattr(agent_def, "model", None):
                     selected_model = str(agent_def.model)
-                agent_system_prompt_extra = str(getattr(agent_def, "system_prompt", "") or "").strip()
+                agent_system_prompt_extra = str(
+                    getattr(agent_def, "system_prompt", "") or ""
+                ).strip()
             except Exception:  # noqa: BLE001
-                _logger.debug(
-                    "Failed to apply AgentDefinition '%s'", agent_name, exc_info=True
-                )
+                _logger.debug("Failed to apply AgentDefinition '%s'", agent_name, exc_info=True)
                 agent_system_prompt_extra = ""
 
         assembled = state.get("assembled_context", "")
@@ -452,6 +313,7 @@ def make_agent_loop_node(
         if tool_policy == "workspace_lookup" and _explicit_skill_tools_satisfied(
             tool_intent_text,
             state_messages,
+            latest_turn_has_tool_result=_latest_turn_has_tool_result,
         ):
             available_tools = []
         tool_route_plan = None
@@ -515,7 +377,9 @@ def make_agent_loop_node(
             "just call that tool directly -- do not follow the full multi-step workflow."
         )
         if _multipart_note not in (policy_note or ""):
-            policy_note = f"{policy_note}\n\n{_multipart_note}".strip() if policy_note else _multipart_note
+            policy_note = (
+                f"{policy_note}\n\n{_multipart_note}".strip() if policy_note else _multipart_note
+            )
         plan = state.get("plan")
         if isinstance(plan, Plan) and plan.steps:
             plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
@@ -702,6 +566,8 @@ def make_agent_loop_node(
                 skill_install_args := _skill_install_args_from_search_result(
                     tool_intent_text,
                     state_messages,
+                    latest_tool_result_content=_latest_tool_result_content,
+                    skill_install_name_from_text=_skill_install_name_from_text,
                 )
             )
         ):
@@ -847,460 +713,35 @@ def make_agent_loop_node(
                 content=_degraded_answer_from_tool_results(_latest_turn_messages(state_messages))
             )
             forced_degraded_skill_recovery = True
-        completed_turn_messages = _latest_turn_messages([*state_messages, response])
-        if not getattr(response, "tool_calls", None) and _should_replace_unfound_workspace_answer(
-            _message_content_text(response),
-            completed_turn_messages,
-        ):
-            response = AIMessage(
-                content=_fallback_answer_from_tool_results(completed_turn_messages)
-            )
-            completed_turn_messages = _latest_turn_messages([*state_messages, response])
-            tool_protocol_repair_reason = (
-                tool_protocol_repair_reason or "workspace_evidence_fallback"
-            )
-        observed_at = _latest_tool_result_content(completed_turn_messages, "current_utc_time")
-        evidence_bundle = normalize_evidence_bundle(
-            completed_turn_messages,
-            observed_at=observed_at or None,
-            user_query=tool_intent_text,
-        )
-        evidence_ledger = normalize_evidence_ledger(
-            completed_turn_messages,
-            observed_at=observed_at or None,
-            user_query=tool_intent_text,
-        )
-        skill_evidence_facts = skill_execution_evidence_facts(
-            completed_turn_messages,
-            required_tools=[
-                str(item) for item in execution_contract.get("required_tools") or [] if str(item)
-            ],
-        )
-        execution_contract = evaluate_execution_contract(
-            execution_contract,
-            tool_results_seen=tool_result_names(completed_turn_messages),
-            evidence_ledger=evidence_ledger,
-            available_tool_names=known_names,
-            observed_at=observed_at or None,
-            user_query=tool_intent_text,
-            skill_evidence_facts=skill_evidence_facts,
-        )
-        answer_verification = verify_answer_against_evidence(
-            answer=_message_content_text(response)
-            if not getattr(response, "tool_calls", None)
-            else "",
-            contract=execution_contract,
-            evidence_ledger=evidence_ledger,
-        )
-        live_web_repair_count = _live_web_answer_repair_count(state)
-        live_web_repair_taken = ""
-        skill_execution_repair_count = _skill_execution_answer_repair_count(state)
-        skill_execution_repair_taken = ""
-        if (
-            str(execution_contract.get("policy") or "") == "skill_execution"
-            and not getattr(response, "tool_calls", None)
-            and _live_web_answer_needs_repair(answer_verification)
-        ):
-            if (
-                forced_degraded_skill_recovery
-                or str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results"
-            ):
-                response = AIMessage(
-                    content=_degraded_answer_from_tool_results(completed_turn_messages)
-                )
-                completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                answer_verification = verify_answer_against_evidence(
-                    answer=_message_content_text(response),
-                    contract=execution_contract,
-                    evidence_ledger=evidence_ledger,
-                )
-                answer_verification = {
-                    **answer_verification,
-                    "repair_action_taken": "fallback_to_tool_results",
-                }
-                skill_execution_repair_taken = "fallback_to_tool_results"
-            elif skill_execution_repair_count < 1 and available_tools:
-                repair_prompt = apply_prompt_budget_guard(
-                    [
-                        prompt_messages[0],
-                        SystemMessage(
-                            content=_skill_execution_repair_prompt(
-                                verification=answer_verification,
-                                execution_contract=execution_contract,
-                            )
-                        ),
-                        *prompt_messages[1:],
-                    ],
-                    budget=context_budget,
-                )
-                repair_prompt = _ensure_reasoning_content_for_tool_call_history(
-                    repair_prompt,
-                    model_id=selected_model,
-                    thinking_mode=selected_thinking_mode,
-                    settings=settings,
-                )
-                repair_response = _invoke_with_tool_result_fallback(
-                    _with_stream_phase(
-                        model_with_tools_for(
-                            selected_model,
-                            selected_thinking_mode,
-                            available_tools,
-                        ),
-                        STREAM_VISIBILITY_QUARANTINE,
-                    ),
-                    repair_prompt,
-                    fallback_messages=fallback_messages,
-                    known_tool_names=known_names,
-                )
-                if _looks_like_textual_tool_call_artifact(
-                    repair_response, known_tool_names=known_names
-                ):
-                    tool_protocol_repair_count += 1
-                    tool_protocol_repair_reason = (
-                        tool_protocol_repair_reason or "textual_tool_marker"
-                    )
-                repair_response = _repair_textual_tool_call_response(
-                    response=repair_response,
-                    prompt_messages=repair_prompt,
-                    fallback_messages=fallback_messages,
-                    context_budget=context_budget,
-                    selected_model=selected_model,
-                    selected_thinking_mode=selected_thinking_mode,
-                    available_tools=available_tools,
-                    model_for=quarantined_model_for,
-                    model_with_tools_for=quarantined_model_with_tools_for,
-                )
-                repair_response = _repair_and_dedupe_tool_calls(repair_response)
-                if getattr(repair_response, "tool_calls", None):
-                    response = repair_response
-                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                    answer_verification = {
-                        **answer_verification,
-                        "repair_action_taken": "retry_skill_primary_tool",
-                    }
-                    skill_execution_repair_taken = "retry_skill_primary_tool"
-            if not skill_execution_repair_taken:
-                response = AIMessage(
-                    content=_skill_execution_failure_answer(
-                        verification=answer_verification,
-                        execution_contract=execution_contract,
-                    )
-                )
-                completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                answer_verification = {
-                    **answer_verification,
-                    "repair_action_taken": "answer_with_uncertainty",
-                }
-                skill_execution_repair_taken = "answer_with_uncertainty"
-        if (
-            tool_policy == "live_web_research"
-            and not getattr(response, "tool_calls", None)
-            and _live_web_answer_needs_repair(answer_verification)
-        ):
-            if str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
-                response = AIMessage(
-                    content=_fallback_answer_from_tool_results(completed_turn_messages)
-                )
-                completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                answer_verification = verify_answer_against_evidence(
-                    answer=_message_content_text(response),
-                    contract=execution_contract,
-                    evidence_ledger=evidence_ledger,
-                )
-                answer_verification = {
-                    **answer_verification,
-                    "repair_action_taken": "fallback_to_tool_results",
-                }
-                live_web_repair_taken = "fallback_to_tool_results"
-            else:
-                repair_response = _live_web_repair_response(
-                    state=state,
-                    available_tools=available_tools,
-                    tool_intent_plan=tool_intent_plan.model_dump(mode="json"),
-                    fallback_query=tool_intent_text,
-                    current_utc_time=observed_at or current_utc_time_result,
-                    repair_count=live_web_repair_count,
-                    verification=answer_verification,
-                    execution_contract=execution_contract,
-                )
-                if repair_response is not None:
-                    response = repair_response
-                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                    answer_verification = {
-                        **answer_verification,
-                        "repair_action_taken": "retry_web_search",
-                    }
-                    live_web_repair_taken = "retry_web_search"
-                else:
-                    response = AIMessage(
-                        content=_live_web_failure_answer(
-                            verification=answer_verification,
-                            execution_contract=execution_contract,
-                            evidence_ledger=evidence_ledger,
-                        )
-                    )
-                    completed_turn_messages = _latest_turn_messages([*state_messages, response])
-                    answer_verification = {
-                        **answer_verification,
-                        "repair_action_taken": "answer_with_uncertainty",
-                    }
-                    live_web_repair_taken = "answer_with_uncertainty"
-        citation_refs = _new_citation_refs(
-            evidence_bundle_to_citation_refs(evidence_bundle),
-            existing=list(state.get("citations", []) or []),
-        )
-        web_tool_result_seen = _latest_turn_has_tool_result(
-            state_messages, "web_search"
-        ) or _latest_turn_has_tool_result(
-            state_messages,
-            "web_fetch",
-        )
-        external_answer_missing_citation = bool(
-            tool_policy == "live_web_research"
-            and web_tool_result_seen
-            and not getattr(response, "tool_calls", None)
-            and _message_content_text(response)
-            and not citation_refs
-            and not state.get("citations")
-        )
-        current_tool_outcomes = list(state.get("tool_outcomes") or [])
-        current_human_turn_index = sum(
-            1 for message in state_messages if isinstance(message, HumanMessage)
-        )
-        current_turn_id = str(current_human_turn_index or 1)
-        task_outcome = (
-            None
-            if getattr(response, "tool_calls", None)
-            else build_task_outcome(
-                user_goal=tool_intent_text,
-                execution_contract=execution_contract,
-                answer_verification=answer_verification,
-                evidence_ledger=evidence_ledger,
-                tool_outcomes=current_tool_outcomes,
-                final_answer=_message_content_text(response),
-                repair_action_taken=skill_execution_repair_taken or live_web_repair_taken,
-                current_turn_id=current_turn_id,
-                current_human_turn_index=current_human_turn_index or 1,
-            )
-        )
-        updates: dict[str, Any] = {
-            "messages": [response],
-            "llm_calls": state.get("llm_calls", 0) + 1,
-            "evidence_bundle": evidence_bundle,
-            "evidence_ledger": evidence_ledger,
-            "execution_contract": execution_contract,
-            "answer_verification": answer_verification,
-        }
-        if task_outcome is not None:
-            updates["task_outcome"] = task_outcome
-        if citation_refs:
-            updates["citations"] = citation_refs
-        intent_dumped = tool_intent_plan.model_dump(mode="json")
-        if temporal_anchor_required:
-            intent_dumped["temporal_anchor_required"] = True
-        if temporal_anchor_forced:
-            intent_dumped["temporal_anchor_forced"] = True
-        if external_answer_missing_citation:
-            intent_dumped["external_answer_missing_citation"] = True
-        if live_web_repair_taken:
-            intent_dumped["live_web_answer_repair_action_taken"] = live_web_repair_taken
-            if live_web_repair_taken == "retry_web_search":
-                intent_dumped["live_web_answer_repair_count"] = live_web_repair_count + 1
-        if skill_execution_repair_taken:
-            intent_dumped["skill_execution_repair_action_taken"] = skill_execution_repair_taken
-            if skill_execution_repair_taken == "retry_skill_primary_tool":
-                intent_dumped["skill_execution_answer_repair_count"] = (
-                    skill_execution_repair_count + 1
-                )
-        turn_metadata: dict[str, Any] = {}
-        if intent_dumped.get("skill_execution_plan"):
-            turn_metadata["skill_execution_plan"] = intent_dumped["skill_execution_plan"]
-            selected_skill_ids = intent_dumped["skill_execution_plan"].get("selected_skill_ids")
-            if isinstance(selected_skill_ids, list):
-                turn_metadata["selected_skill_ids"] = selected_skill_ids
-                turn_metadata["active_skill_ids"] = selected_skill_ids
-        if str(execution_contract.get("policy") or "") == "skill_execution":
-            turn_metadata["execution_contract"] = execution_contract
-        if task_outcome is not None:
-            turn_metadata["task_outcome"] = task_outcome
-        if skill_execution_repair_taken:
-            turn_metadata["answer_verification"] = answer_verification
-        if turn_metadata:
-            response = _with_focus_agent_turn_metadata(response, turn_metadata)
-            updates["messages"] = [response]
-        updates["pending_tool_action"] = _next_pending_tool_action(
+        return finalize_agent_loop_turn(
             state=state,
-            tool_intent_plan=intent_dumped,
+            state_messages=state_messages,
             response=response,
-            web_tool_result_seen=web_tool_result_seen,
+            hooks=_agent_loop_update_hooks(model_with_tools_for),
+            settings=settings,
+            tool_intent_plan=tool_intent_plan,
+            tool_route_plan=tool_route_plan,
+            tool_policy=tool_policy,
+            tool_intent_text=tool_intent_text,
+            available_tools=available_tools,
+            known_names=known_names,
+            execution_contract=execution_contract,
+            prompt_messages=prompt_messages,
+            fallback_messages=fallback_messages,
+            context_budget=context_budget,
+            selected_model=selected_model,
+            selected_thinking_mode=selected_thinking_mode,
+            quarantined_model_for=quarantined_model_for,
+            quarantined_model_with_tools_for=quarantined_model_with_tools_for,
+            current_utc_time_result=current_utc_time_result,
+            temporal_anchor_required=temporal_anchor_required,
+            temporal_anchor_forced=temporal_anchor_forced,
+            forced_degraded_skill_recovery=forced_degraded_skill_recovery,
+            tool_protocol_repair_count=tool_protocol_repair_count,
+            tool_protocol_repair_reason=tool_protocol_repair_reason,
         )
-        append_agent_state_record(
-            updates,
-            "tool_intent_plan",
-            intent_dumped,
-            source="agent_loop",
-        )
-        append_agent_state_record(
-            updates,
-            "execution_contract",
-            execution_contract,
-            source="agent_loop",
-            domain="observability",
-        )
-        append_agent_state_record(
-            updates,
-            "answer_verification",
-            answer_verification,
-            source="agent_loop",
-            domain="observability",
-        )
-        if task_outcome is not None:
-            append_agent_state_record(
-                updates,
-                "task_outcome",
-                task_outcome,
-                source="agent_loop",
-                domain="observability",
-            )
-        updates["plan_meta"] = {
-            **(state.get("plan_meta") or {}),
-            "tool_intent_plan": intent_dumped,
-            "execution_contract": execution_contract,
-            "evidence_ledger": evidence_ledger,
-            "answer_verification": answer_verification,
-            "tool_outcomes": current_tool_outcomes,
-        }
-        if task_outcome is not None:
-            updates["plan_meta"]["task_outcome"] = task_outcome
-        if live_web_repair_taken == "retry_web_search":
-            updates["plan_meta"]["live_web_answer_repair_count"] = live_web_repair_count + 1
-        if skill_execution_repair_taken == "retry_skill_primary_tool":
-            updates["plan_meta"]["skill_execution_answer_repair_count"] = (
-                skill_execution_repair_count + 1
-            )
-        if tool_route_plan is not None:
-            dumped = tool_route_plan.model_dump(mode="json")
-            append_agent_state_record(
-                updates,
-                "tool_route_plan",
-                dumped,
-                source="agent_loop",
-            )
-            plan_meta = {
-                **(updates.get("plan_meta") or state.get("plan_meta") or {}),
-                "tool_route_plan": dumped,
-            }
-            if settings.agent_self_repair_enabled:
-                failures = [
-                    item.model_dump(mode="json")
-                    for item in build_failure_records(
-                        delegation_plan=state.get("agent_delegation_plan"),
-                        tool_route_plan=dumped,
-                        model_route_decision=state.get("model_route_decision"),
-                    )
-                ]
-                append_agent_state_record(
-                    updates,
-                    "agent_failure_records",
-                    failures,
-                    source="agent_loop",
-                )
-                plan_meta["agent_failure_records"] = failures
-            if settings.agent_review_queue_enabled:
-                review_items = [
-                    item.model_dump(mode="json")
-                    for item in build_review_queue(
-                        settings=settings,
-                        memory_curator_decision=state.get("memory_curator_decision"),
-                        tool_route_plan=dumped,
-                        model_route_decision=state.get("model_route_decision"),
-                        agent_failure_records=updates.get("agent_failure_records")
-                        or state.get("agent_failure_records")
-                        or [],
-                    )
-                ]
-                append_agent_state_record(
-                    updates,
-                    "agent_review_queue",
-                    review_items,
-                    source="agent_loop",
-                )
-                plan_meta["agent_review_queue"] = review_items
-            if updates.get("governance_records"):
-                plan_meta["governance_records"] = [
-                    *list(plan_meta.get("governance_records") or []),
-                    *list(updates.get("governance_records") or []),
-                ]
-            updates["plan_meta"] = plan_meta
-        if tool_protocol_repair_count:
-            current_plan_meta = updates.get("plan_meta") or state.get("plan_meta") or {}
-            plan_meta = {
-                **current_plan_meta,
-                "tool_protocol_repair_count": int(
-                    current_plan_meta.get("tool_protocol_repair_count", 0)
-                )
-                + tool_protocol_repair_count,
-                "tool_protocol_repair_reason": tool_protocol_repair_reason,
-            }
-            updates["plan_meta"] = plan_meta
-        return updates
 
     return agent_loop
-
-
-def _explicit_skill_tools_satisfied(text: str, messages: list[Any]) -> bool:
-    requested = {
-        match.group(1).lower()
-        for match in _READ_ONLY_SKILL_TOOL_RE.finditer(str(text or "").lower())
-    }
-    return bool(requested) and all(
-        _latest_turn_has_tool_result(messages, tool_name) for tool_name in requested
-    )
-
-
-def _skill_install_args_from_search_result(
-    text: str,
-    messages: list[Any],
-) -> dict[str, Any] | None:
-    content = _latest_tool_result_content(messages, "skills_search")
-    if not content:
-        return None
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict):
-        return None
-    raw_results = payload.get("results")
-    if not isinstance(raw_results, list):
-        return None
-    results = [item for item in raw_results if isinstance(item, dict)]
-    if not results:
-        return None
-
-    requested_skill = _skill_install_name_from_text(text).lower()
-    if requested_skill:
-        exact = [
-            item
-            for item in results
-            if str(item.get("skill_id") or "").strip().lower() == requested_skill
-        ]
-        if exact:
-            results = exact
-        else:
-            return None
-    if len(results) != 1:
-        return None
-
-    result = results[0]
-    skill_id = str(result.get("skill_id") or "").strip()
-    if not skill_id:
-        return None
-    args: dict[str, Any] = {"skill_id": skill_id}
-    source_id = str(result.get("source_id") or "").strip()
-    if source_id:
-        args["source_id"] = source_id
-    return args
 
 
 __all__ = ["make_agent_loop_node"]

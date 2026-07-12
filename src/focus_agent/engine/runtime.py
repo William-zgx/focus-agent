@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import inspect
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 from ..branch_decision import BranchDecisionService
 from ..capabilities import ToolRegistry, build_tool_registry
@@ -21,8 +21,8 @@ from ..engine.local_persistence import (
     PersistentSQLiteSaver as PersistentSQLiteSaver,
 )
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
+from ..memory.embedding import MemoryEmbeddingError as MemoryEmbeddingError
 from ..memory.embedding import (
-    MemoryEmbeddingError,
     MemoryEmbeddingService,
     create_memory_embedding_provider,
 )
@@ -60,6 +60,42 @@ from ..services.users import UserService
 from ..skills import SkillRegistry
 from ..storage.namespaces import conversation_namespace_for_context
 from ..storage.postgres import PostgresConnectionProvider
+from .runtime_composition import (
+    build_tool_registry_compat as _build_tool_registry_compat_impl,
+)
+from .runtime_composition import (
+    create_memory_components as _create_memory_components_impl,
+)
+from .runtime_composition import (
+    create_memory_embedding_service as _create_memory_embedding_service_impl,
+)
+from .runtime_composition import (
+    create_runtime_graph as _create_runtime_graph_impl,
+)
+from .runtime_composition import (
+    create_runtime_harness as _create_runtime_harness_impl,
+)
+from .runtime_composition import (
+    create_runtime_registries as _create_runtime_registries_impl,
+)
+from .runtime_composition import (
+    create_runtime_services as _create_runtime_services_impl,
+)
+from .runtime_composition import (
+    start_durable_background_worker as _start_durable_background_worker_impl,
+)
+from .runtime_memory_setup import (
+    _memory_embedding_configured as _memory_embedding_configured,
+)
+from .runtime_memory_setup import (
+    _memory_embedding_schema_dimensions as _memory_embedding_schema_dimensions,
+)
+from .runtime_memory_setup import (
+    _resolve_memory_embedding_setup as _resolve_memory_embedding_setup_impl,
+)
+from .runtime_memory_setup import (
+    _setup_memory_repository_if_available as _setup_memory_repository_if_available,
+)
 from .runtime_persistence import (
     _create_local_checkpointer as _create_local_checkpointer,
 )
@@ -160,41 +196,13 @@ class AppRuntime:
     def start_durable_background_worker(
         self, chat_service: object
     ) -> DurableBackgroundWorker | None:
-        if (
-            str(getattr(self.settings, "background_job_execution", "best_effort")).strip().lower()
-            != "durable"
-        ):
-            return None
-        if self.durable_background_worker is not None:
-            return self.durable_background_worker
-        if (
-            not self.settings.database_uri
-            or str(self.settings.background_job_backend).lower() != "postgres"
-        ):
-            raise RuntimeError(
-                "BACKGROUND_JOB_EXECUTION=durable requires DATABASE_URI and "
-                "BACKGROUND_JOB_BACKEND=postgres."
-            )
-        registry = BackgroundJobHandlerRegistry()
-        register_default_background_job_handlers(
-            registry,
+        return _start_durable_background_worker_impl(
+            runtime=self,
             chat_service=chat_service,
-            branch_service=self.branch_service,
-            agent_team_service=self.agent_team_service,
-            branch_decision_service=self.branch_decision_service,
-            memory_embedding_service=self.memory_embedding_service,
-            memory_repository=self.memory_repository,
+            handler_registry_factory=BackgroundJobHandlerRegistry,
+            handler_registrar=register_default_background_job_handlers,
+            durable_worker_factory=DurableBackgroundWorker,
         )
-        worker = DurableBackgroundWorker(
-            name="runtime",
-            job_backend=self.coordination_backend.job_deduper,
-            handlers=registry,
-            claim_ttl_seconds=self.settings.background_job_claim_ttl_seconds,
-        )
-        worker.start()
-        self.durable_background_worker = worker
-        self._exit_stack.callback(worker.close)
-        return worker
 
 
 def create_runtime(settings: Settings | None = None) -> AppRuntime:
@@ -466,53 +474,19 @@ def _create_memory_components(
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
     coordination_backend: CoordinationBackend | None = None,
 ) -> RuntimeMemoryComponents:
-    memory_policy = MemoryPolicy()
-    setup = memory_embedding_setup or _resolve_memory_embedding_setup(settings)
-    retrieval_index, retrieval_index_error = create_retrieval_index(
-        settings,
-        dimensions=setup.dimensions,
-    )
-    memory_embedding_service, memory_embedding_backend_error = _create_memory_embedding_service(
-        settings,
+    return _create_memory_components_impl(
+        settings=settings,
+        store=store,
         memory_repository=memory_repository,
-        memory_embedding_setup=setup,
-        retrieval_index=retrieval_index,
-    )
-    memory_embedding_provider = (
-        memory_embedding_service.provider if memory_embedding_service is not None else None
-    )
-    vector_search_mode = (
-        str(getattr(settings, "agent_memory_vector_search_mode", "shadow")).strip().lower()
-    )
-    memory_retriever = MemoryRetriever(
-        store=store,
-        repository=memory_repository,
-        policy=memory_policy,
-        retrieval_mode="hybrid" if vector_search_mode == "hybrid" else "fts",
-        vector_shadow=vector_search_mode == "shadow",
-        embedding_provider=memory_embedding_provider,
-        retrieval_index=retrieval_index,
-    )
-    memory_writer = MemoryWriter(
-        store=store,
-        repository=memory_repository,
-        policy=memory_policy,
-        embedding_service=memory_embedding_service,
-        retrieval_index=retrieval_index,
+        memory_embedding_setup=memory_embedding_setup,
         coordination_backend=coordination_backend,
-    )
-    memory_extractor = MemoryExtractor(mode=settings.agent_memory_extractor_mode)
-    return RuntimeMemoryComponents(
-        memory_policy=memory_policy,
-        memory_retriever=memory_retriever,
-        memory_writer=memory_writer,
-        memory_extractor=memory_extractor,
-        memory_repository=memory_repository,
-        memory_embedding_service=memory_embedding_service,
-        memory_embedding_provider=memory_embedding_provider,
-        memory_embedding_backend_error=memory_embedding_backend_error,
-        retrieval_index=retrieval_index,
-        retrieval_index_error=retrieval_index_error,
+        memory_policy_factory=MemoryPolicy,
+        memory_retriever_factory=MemoryRetriever,
+        memory_writer_factory=MemoryWriter,
+        memory_extractor_factory=MemoryExtractor,
+        retrieval_index_factory=create_retrieval_index,
+        memory_embedding_service_factory=_create_memory_embedding_service,
+        memory_embedding_setup_resolver=_resolve_memory_embedding_setup,
     )
 
 
@@ -523,21 +497,14 @@ def _create_memory_embedding_service(
     memory_embedding_setup: RuntimeMemoryEmbeddingSetup | None = None,
     retrieval_index: object | None = None,
 ) -> tuple[MemoryEmbeddingService | None, str | None]:
-    setup = memory_embedding_setup or _resolve_memory_embedding_setup(settings)
-    if setup.backend_error is not None:
-        return None, setup.backend_error
-    provider = setup.provider
-    if provider is None:
-        return None, None
-    if memory_repository is None:
-        return None, "local_fallback"
-    service = MemoryEmbeddingService(
-        repository=memory_repository,
-        provider=provider,
+    return _create_memory_embedding_service_impl(
+        settings,
+        memory_repository=memory_repository,
+        memory_embedding_setup=memory_embedding_setup,
         retrieval_index=retrieval_index,
-        batch_size=getattr(settings, "agent_memory_embedding_batch_size", 32),
+        memory_embedding_setup_resolver=_resolve_memory_embedding_setup,
+        memory_embedding_service_factory=MemoryEmbeddingService,
     )
-    return service, None
 
 
 def _create_runtime_registries(
@@ -546,25 +513,13 @@ def _create_runtime_registries(
     persistence: RuntimePersistence,
     memory: RuntimeMemoryComponents,
 ) -> RuntimeRegistries:
-    skill_registry_kwargs = {"settings": settings}
-    skill_registry_signature = inspect.signature(SkillRegistry.from_settings)
-    if "retrieval_index" in skill_registry_signature.parameters:
-        skill_registry_kwargs["retrieval_index"] = memory.retrieval_index
-    if "embedding_provider" in skill_registry_signature.parameters:
-        skill_registry_kwargs["embedding_provider"] = memory.memory_embedding_provider
-    skill_registry = SkillRegistry.from_settings(**skill_registry_kwargs)
-    tool_registry = _build_tool_registry_compat(
+    return _create_runtime_registries_impl(
         settings=settings,
-        skill_registry=skill_registry,
-        store=persistence.store,
-        checkpointer=persistence.checkpointer,
-        artifact_metadata_repository=persistence.artifact_metadata_repository,
-        memory_repository=persistence.memory_repository,
-        memory_embedding_service=memory.memory_embedding_service,
-        retrieval_index=memory.retrieval_index,
-        productivity_repository=persistence.productivity_repository,
+        persistence=persistence,
+        memory=memory,
+        skill_registry_cls=SkillRegistry,
+        tool_registry_compat_builder=_build_tool_registry_compat,
     )
-    return RuntimeRegistries(skill_registry=skill_registry, tool_registry=tool_registry)
 
 
 def _create_runtime_graph(
@@ -574,16 +529,12 @@ def _create_runtime_graph(
     memory: RuntimeMemoryComponents,
     registries: RuntimeRegistries,
 ) -> object:
-    return build_graph(
+    return _create_runtime_graph_impl(
         settings=settings,
-        checkpointer=persistence.checkpointer,
-        store=persistence.store,
-        memory_retriever=memory.memory_retriever,
-        memory_policy=memory.memory_policy,
-        memory_writer=memory.memory_writer,
-        memory_extractor=memory.memory_extractor,
-        skill_registry=registries.skill_registry,
-        tool_registry=registries.tool_registry,
+        persistence=persistence,
+        memory=memory,
+        registries=registries,
+        graph_builder=build_graph,
     )
 
 
@@ -595,30 +546,13 @@ def _create_runtime_harness(
     registries: RuntimeRegistries,
     coordination_backend: CoordinationBackend,
 ) -> object:
-    from ..harness.schemas.config import HarnessConfig
-
-    harness_config = HarnessConfig(
-        name="focus-agent",
-        model=settings.model,
-        streaming={"heartbeat_seconds": settings.sse_heartbeat_seconds},
-        subagents={
-            "enabled": bool(settings.agent_delegation_enabled),
-            "max_concurrent_subagents": max(1, int(settings.agent_role_max_parallel_runs or 1)),
-        },
-    )
-    return create_focus_agent(
-        harness_config,
+    return _create_runtime_harness_impl(
         settings=settings,
-        checkpointer=persistence.checkpointer,
-        store=persistence.store,
-        memory_retriever=memory.memory_retriever,
-        memory_policy=memory.memory_policy,
-        memory_writer=memory.memory_writer,
-        memory_extractor=memory.memory_extractor,
-        skill_registry=registries.skill_registry,
-        tool_registry=registries.tool_registry,
-        approval_queue=coordination_backend.approval_queue,
-        event_store=persistence.run_journal,
+        persistence=persistence,
+        memory=memory,
+        registries=registries,
+        coordination_backend=coordination_backend,
+        focus_agent_factory=create_focus_agent,
     )
 
 
@@ -638,43 +572,25 @@ def _create_runtime_services(
     coordination_backend: CoordinationBackend,
     background_work: BoundedBackgroundQueue,
 ) -> RuntimeServices:
-    branch_service = BranchService(
+    return _create_runtime_services_impl(
         settings=settings,
         graph=graph,
         repo=repo,
+        user_repository=user_repository,
         store=store,
         memory_writer=memory_writer,
-    )
-    branch_service._coordination_backend = coordination_backend
-    agent_team_service = AgentTeamService(
-        branch_service=branch_service,
-        repository=_create_agent_team_repository(settings),
-        settings=settings,
+        productivity_repository=productivity_repository,
+        governance_repository=governance_repository,
+        memory_embedding_provider=memory_embedding_provider,
+        retrieval_index=retrieval_index,
         coordination_backend=coordination_backend,
         background_work=background_work,
-        retrieval_index=retrieval_index,
-        memory_embedding_provider=memory_embedding_provider,
-    )
-    user_service = UserService(
-        user_repository,
-        auth_enabled=settings.auth_enabled,
-    )
-    branch_decision_service = BranchDecisionService(
-        settings=settings,
-        graph=graph,
-        governance_repository=governance_repository,
-        branch_service=branch_service,
-        coordination_backend=coordination_backend,
-        retrieval_index=retrieval_index,
-        memory_embedding_provider=memory_embedding_provider,
-    )
-    productivity_service = ProductivityService(productivity_repository)
-    return RuntimeServices(
-        branch_service=branch_service,
-        agent_team_service=agent_team_service,
-        branch_decision_service=branch_decision_service,
-        user_service=user_service,
-        productivity_service=productivity_service,
+        agent_team_repository=_create_agent_team_repository(settings),
+        branch_service_factory=BranchService,
+        agent_team_service_factory=AgentTeamService,
+        user_service_factory=UserService,
+        branch_decision_service_factory=BranchDecisionService,
+        productivity_service_factory=ProductivityService,
     )
 
 
@@ -703,7 +619,6 @@ def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[objec
         yield pool
 
 
-
 def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
     if settings.database_uri:
         from ..repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
@@ -721,79 +636,11 @@ def _setup_component_if_available(component: object) -> None:
 
 
 def _resolve_memory_embedding_setup(settings: Settings) -> RuntimeMemoryEmbeddingSetup:
-    provider: object | None = None
-    backend_error: str | None = None
-    try:
-        provider = create_memory_embedding_provider(settings)
-    except MemoryEmbeddingError as exc:
-        backend_error = str(exc)
-        logger.warning("Memory embedding backend unavailable: %s", exc)
-    dimensions = _memory_embedding_schema_dimensions(settings, provider=provider)
-    try:
-        settings.agent_memory_embedding_dimensions = dimensions
-    except Exception:  # pragma: no cover - Settings is mutable in production.
-        pass
-    return RuntimeMemoryEmbeddingSetup(
-        provider=provider,
-        backend_error=backend_error,
-        dimensions=dimensions,
-        memory_embeddings_enabled=_memory_embedding_configured(settings),
-    )
-
-
-def _memory_embedding_schema_dimensions(settings: Settings, *, provider: object | None) -> int:
-    provider_dimensions = getattr(provider, "dimensions", None)
-    if provider_dimensions:
-        return max(1, int(provider_dimensions))
-    configured = int(getattr(settings, "agent_memory_embedding_dimensions", 1536) or 1536)
-    if configured > 0:
-        return configured
-    model_id = str(getattr(settings, "agent_memory_embedding_model", "") or "").strip().lower()
-    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
-    provider_id = (
-        str(getattr(settings, "agent_memory_embedding_provider", "") or "").strip().lower()
-    )
-    if (
-        model_id in {"embeddinggemma", "embedding-gemma"}
-        or backend == "ollama"
-        or provider_id == "ollama"
-    ):
-        return 768
-    return 1536
-
-
-def _setup_memory_repository_if_available(
-    component: object,
-    *,
-    settings: Settings,
-    memory_embedding_setup: RuntimeMemoryEmbeddingSetup,
-) -> None:
-    if not has_repo_method(component, "setup"):
-        return
-    signature = inspect.signature(component.setup)
-    if not signature.parameters:
-        component.setup()
-        return
-    component.setup(
-        dimensions=memory_embedding_setup.dimensions,
-        vector_index=getattr(settings, "agent_memory_vector_index_enabled", False),
-        memory_embeddings_enabled=memory_embedding_setup.memory_embeddings_enabled,
-        pgvector_extension_mode=getattr(
-            settings,
-            "agent_memory_pgvector_extension_mode",
-            "auto_create",
-        ),
-    )
-
-
-def _memory_embedding_configured(settings: Settings) -> bool:
-    backend = str(getattr(settings, "agent_memory_embedding_backend", "") or "").strip().lower()
-    if backend and backend not in {"disabled", "none", "off"}:
-        return True
-    if bool(getattr(settings, "agent_memory_embedding_enabled", False)):
-        return True
-    return (
-        str(getattr(settings, "agent_memory_vector_search_mode", "off")).strip().lower() == "hybrid"
+    return _resolve_memory_embedding_setup_impl(
+        settings,
+        provider_factory=create_memory_embedding_provider,
+        dimensions_resolver=_memory_embedding_schema_dimensions,
+        configured_resolver=_memory_embedding_configured,
     )
 
 
@@ -809,23 +656,18 @@ def _build_tool_registry_compat(
     retrieval_index: object | None = None,
     productivity_repository: object | None = None,
 ) -> ToolRegistry:
-    kwargs = {
-        "settings": settings,
-        "skill_registry": skill_registry,
-        "store": store,
-        "checkpointer": checkpointer,
-    }
-    if "artifact_metadata_repository" in inspect.signature(build_tool_registry).parameters:
-        kwargs["artifact_metadata_repository"] = artifact_metadata_repository
-    if "memory_repository" in inspect.signature(build_tool_registry).parameters:
-        kwargs["memory_repository"] = memory_repository
-    if "memory_embedding_service" in inspect.signature(build_tool_registry).parameters:
-        kwargs["memory_embedding_service"] = memory_embedding_service
-    if "retrieval_index" in inspect.signature(build_tool_registry).parameters:
-        kwargs["retrieval_index"] = retrieval_index
-    if "productivity_repository" in inspect.signature(build_tool_registry).parameters:
-        kwargs["productivity_repository"] = productivity_repository
-    return build_tool_registry(**kwargs)
+    return _build_tool_registry_compat_impl(
+        settings=settings,
+        skill_registry=skill_registry,
+        store=store,
+        checkpointer=checkpointer,
+        artifact_metadata_repository=artifact_metadata_repository,
+        memory_repository=memory_repository,
+        memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
+        productivity_repository=productivity_repository,
+        tool_registry_builder=build_tool_registry,
+    )
 
 
 def _trajectory_enabled(settings: Settings) -> bool:

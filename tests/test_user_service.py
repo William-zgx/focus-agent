@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
 
 from focus_agent.repositories.user_repository import AuditEventListFilters, InMemoryUserRepository
@@ -95,3 +98,39 @@ def test_service_rejects_removing_last_active_admin_role() -> None:
     updated = service.update_user_roles("admin-1", roles=["member"])
     assert updated.roles == ["member"]
     assert repo.count_active_admins() == 1
+
+
+def test_service_concurrent_admin_demotion_allows_only_one_success() -> None:
+    class CoordinatedDemotionRepository(InMemoryUserRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.demotion_barrier = Barrier(2)
+
+        def save_user_preserving_last_active_admin(self, user):
+            self.demotion_barrier.wait()
+            return super().save_user_preserving_last_active_admin(user)
+
+    repo = CoordinatedDemotionRepository()
+    service = UserService(repo)
+    service.create_user(user_id="admin-1", roles=["admin"])
+    service.create_user(user_id="admin-2", roles=["admin"])
+    start_barrier = Barrier(2)
+
+    def demote(user_id: str, *, disable: bool) -> object:
+        start_barrier.wait()
+        try:
+            if disable:
+                return service.update_user_status(user_id, status="disabled")
+            return service.update_user_roles(user_id, roles=["member"])
+        except LastAdminError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = [
+            executor.submit(demote, "admin-1", disable=True),
+            executor.submit(demote, "admin-2", disable=False),
+        ]
+        outcomes = [result.result() for result in results]
+
+    assert sum(isinstance(outcome, LastAdminError) for outcome in outcomes) == 1
+    assert InMemoryUserRepository.count_active_admins(repo) == 1

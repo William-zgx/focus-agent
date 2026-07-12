@@ -384,10 +384,7 @@ def test_prepare_merge_proposal_persists_findings_and_proposal(monkeypatch):
     service.memory_writer = FakeMemoryWriter()
     service.proposal_model = None
 
-    monkeypatch.setattr(
-        "focus_agent.services.branches.generate_merge_proposal",
-        lambda *_args, **_kwargs: MergeProposal(summary="usable"),
-    )
+    service.proposal_generator = lambda *_args, **_kwargs: MergeProposal(summary="usable")
 
     proposal = service.prepare_merge_proposal(
         child_thread_id=record.child_thread_id, user_id="user-1"
@@ -415,7 +412,7 @@ def test_prepare_merge_proposal_reverts_status_when_generation_fails(monkeypatch
     def _boom(*_args, **_kwargs):
         raise RuntimeError("proposal failed")
 
-    monkeypatch.setattr("focus_agent.services.branches.generate_merge_proposal", _boom)
+    service.proposal_generator = _boom
 
     with caplog.at_level(logging.WARNING, logger="focus_agent.branches"):
         with pytest.raises(RuntimeError, match="proposal failed"):

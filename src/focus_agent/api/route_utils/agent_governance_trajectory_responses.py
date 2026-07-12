@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from focus_agent.core.state import (
@@ -12,6 +13,85 @@ from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 
 from .trajectory import _maybe_get_trajectory_repository
+
+
+class _ScopedTrajectoryRepository:
+    def __init__(
+        self,
+        repository: Any,
+        *,
+        owner_user_id: str | None,
+        thread_id: str | None,
+    ) -> None:
+        self._repository = repository
+        self._owner_user_id = owner_user_id
+        self._thread_id = thread_id
+
+    def list_turns(
+        self,
+        query: TrajectoryTurnQuery | dict[str, Any] | None = None,
+        *,
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
+        scoped_query = _scoped_trajectory_query(
+            query,
+            owner_user_id=self._owner_user_id,
+            thread_id=self._thread_id,
+        )
+        if filters is None and limit is None and offset is None:
+            return self._repository.list_turns(scoped_query)
+        return self._repository.list_turns(
+            scoped_query, filters=filters, limit=limit, offset=offset
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._repository, name)
+
+
+def _scoped_governance_runtime(
+    runtime: AppRuntime | Any,
+    *,
+    owner_user_id: str | None,
+    thread_id: str | None,
+) -> Any:
+    repository = _maybe_get_trajectory_repository(runtime)
+    if repository is None:
+        return runtime
+    scoped_repository = _ScopedTrajectoryRepository(
+        repository,
+        owner_user_id=owner_user_id,
+        thread_id=thread_id,
+    )
+    return _RuntimeWithScopedTrajectory(runtime, scoped_repository)
+
+
+class _RuntimeWithScopedTrajectory:
+    def __init__(self, runtime: AppRuntime | Any, trajectory_repository: Any) -> None:
+        self._runtime = runtime
+        self.trajectory_recorder = trajectory_repository
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._runtime, name)
+
+
+def _scoped_trajectory_query(
+    query: TrajectoryTurnQuery | dict[str, Any] | None,
+    *,
+    owner_user_id: str | None,
+    thread_id: str | None,
+) -> TrajectoryTurnQuery:
+    if isinstance(query, TrajectoryTurnQuery):
+        scoped = replace(query)
+    elif isinstance(query, dict):
+        scoped = TrajectoryTurnQuery(**query)
+    else:
+        scoped = TrajectoryTurnQuery()
+    scoped.owner_user_id = owner_user_id
+    if thread_id is not None:
+        scoped.thread_id = thread_id
+    return scoped
 
 
 def _role_route_decision_items(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -161,4 +241,5 @@ __all__ = [
     "_list_response_fields",
     "_plan_meta_items",
     "_role_route_decision_items",
+    "_scoped_governance_runtime",
 ]

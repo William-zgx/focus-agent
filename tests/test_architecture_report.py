@@ -95,6 +95,31 @@ def test_architecture_report_ignores_generated_files_for_maintenance_size(
     assert report["line_count_top10"] == [{"lines": 4, "path": "frontend-sdk/src/client.ts"}]
 
 
+def test_architecture_report_does_not_trust_generated_marker_in_arbitrary_file(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "src/focus_agent/hidden.py",
+        "\n".join(
+            [
+                "# This file was auto-generated",
+                "# Do not make direct changes",
+                "x = 1",
+                "x = 2",
+            ]
+        ),
+    )
+
+    report = architecture_report.build_architecture_report(
+        root=tmp_path,
+        scan_paths=["src/focus_agent"],
+        large_file_threshold=2,
+    )
+
+    assert report["summary"]["large_file_count"] == 1
+    assert report["large_files"][0]["path"] == "src/focus_agent/hidden.py"
+
+
 def test_architecture_report_surfaces_near_threshold_files_without_issue(
     tmp_path: Path,
 ) -> None:
@@ -119,3 +144,79 @@ def test_architecture_report_surfaces_near_threshold_files_without_issue(
             "warning_at": 4,
         }
     ]
+
+
+def test_architecture_regression_gate_rejects_new_and_growing_large_files() -> None:
+    report = {
+        "large_files": [
+            {"path": "src/focus_agent/existing.py", "lines": 11},
+            {"path": "src/focus_agent/new.py", "lines": 9},
+        ],
+        "import_boundary_issues": [{"path": "src/focus_agent/service.py"}],
+    }
+    baseline = {
+        "large_files": {
+            "src/focus_agent/existing.py": {
+                "max_lines": 10,
+                "owner": "runtime",
+                "exit_criteria": "split responsibilities",
+            }
+        }
+    }
+
+    assert architecture_report.architecture_regressions(report, baseline) == [
+        "large file grew: src/focus_agent/existing.py (11 > 10)",
+        "new large file: src/focus_agent/new.py (9 lines)",
+        "import boundary issues: 1",
+    ]
+
+
+def test_architecture_regression_gate_allows_debt_reduction() -> None:
+    report = {
+        "large_files": [{"path": "src/focus_agent/existing.py", "lines": 9}],
+        "import_boundary_issues": [],
+    }
+    baseline = {
+        "large_files": {
+            "src/focus_agent/existing.py": {
+                "max_lines": 10,
+                "owner": "runtime",
+                "exit_criteria": "split responsibilities",
+            }
+        }
+    }
+
+    assert architecture_report.architecture_regressions(report, baseline) == []
+
+
+def test_architecture_regression_gate_rejects_a_resolved_file_that_becomes_large_again() -> None:
+    baseline = architecture_report.load_architecture_baseline(
+        architecture_report.DEFAULT_BASELINE_JSON,
+        root=architecture_report.REPO_ROOT,
+    )
+    report = {
+        "large_files": [{"path": "src/focus_agent/engine/graph/agent_loop.py", "lines": 801}],
+        "import_boundary_issues": [],
+    }
+
+    assert baseline["large_file_threshold"] == 800
+    assert baseline["large_files"] == {}
+    assert architecture_report.architecture_regressions(report, baseline) == [
+        "new large file: src/focus_agent/engine/graph/agent_loop.py (801 lines)"
+    ]
+
+
+def test_architecture_regression_gate_rejects_policy_overrides(capsys) -> None:
+    override_sets = [
+        ["--root", "/tmp"],
+        ["--path", "src/focus_agent/engine"],
+        ["--large-file-threshold", "999999"],
+        ["--baseline-json", "/tmp/empty-baseline.json"],
+    ]
+
+    for override in override_sets:
+        assert architecture_report.main(["--fail-on-regression", *override]) == 2
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["blocking"] is True
+        assert payload["status"] == "invalid"
+        assert override[0] in payload["error"]

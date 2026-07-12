@@ -2,61 +2,93 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import shutil
 import subprocess
+import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .default_tool_modules.workspace_command import workspace_command_env
+from . import sandbox_execution_backends as _backends
+from . import sandbox_runner as _runner
+from . import sandbox_snapshot as _snapshot
+from .default_tool_modules import workspace_command as _workspace_command
+
+workspace_command_env = _workspace_command.workspace_command_env
 
 _DEFAULT_DOCKER_IMAGE = "focus-agent-sandbox:latest"
-_DEFAULT_MEMORY_MB = 1024
-_DEFAULT_PIDS_LIMIT = 512
-_MAX_OUTPUT_FILES = 200
-_MAX_OUTPUT_BYTES = 50 * 1024 * 1024
-_RUNNER_FILENAME = "sandbox_runner.py"
-_REQUEST_FILENAME = "sandbox_request.json"
-_RESULT_FILENAME = "result.json"
-_WORKSPACE_MANIFEST_FILENAME = ".focus-agent-workspace-manifest.json"
-_DEFAULT_RUN_TTL_SECONDS = 7 * 24 * 60 * 60
-_WORKSPACE_MODE_COPY_DISCARD = "copy_discard"
-_WORKSPACE_MODE_THREAD_PERSISTENT_COPY = "thread_persistent_copy"
-_WORKSPACE_MODE_HOST = "host"
 _FALLBACK_POLICY_ALLOW_DEV_LOCAL = "allow_dev_local"
-_SANDBOX_ID_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_.-]+")
-_COPY_SKIP_NAMES = {
-    ".cache",
-    ".git",
-    ".hg",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".tox",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-}
-_SENSITIVE_ENV_NAME_MARKERS = (
-    "API_KEY",
-    "AUTH",
-    "COOKIE",
-    "CREDENTIAL",
-    "JWT",
-    "KEY",
-    "PASSWORD",
-    "PRIVATE",
-    "SECRET",
-    "SESSION",
-    "TOKEN",
-)
+
+_DEFAULT_MEMORY_MB = _runner._DEFAULT_MEMORY_MB
+_DEFAULT_PIDS_LIMIT = _runner._DEFAULT_PIDS_LIMIT
+_DEFAULT_RUN_TTL_SECONDS = _runner._DEFAULT_RUN_TTL_SECONDS
+_MAX_OUTPUT_BYTES = _runner._MAX_OUTPUT_BYTES
+_MAX_OUTPUT_FILES = _runner._MAX_OUTPUT_FILES
+_REQUEST_FILENAME = _runner._REQUEST_FILENAME
+_RESULT_FILENAME = _runner._RESULT_FILENAME
+_RUNNER_FILENAME = _runner._RUNNER_FILENAME
+_SENSITIVE_ENV_NAME_MARKERS = _runner._SENSITIVE_ENV_NAME_MARKERS
+_cleanup_old_run_dirs = _runner._cleanup_old_run_dirs
+_coerce_output = _runner._coerce_output
+_docker_image_available = _runner._docker_image_available
+_docker_image_unavailable_message = _runner._docker_image_unavailable_message
+_force_remove_container = _runner._force_remove_container
+_looks_like_container_missing_or_stopped = _runner._looks_like_container_missing_or_stopped
+_looks_like_docker_unavailable = _runner._looks_like_docker_unavailable
+_result_from_parts = _runner._result_from_parts
+_run_docker_command = _runner._run_docker_command
+_run_outputs = _runner._run_outputs
+_sandbox_env = _runner._sandbox_env
+_trim_output = _runner._trim_output
+_write_runner = _runner._write_runner
+
+_COPY_SKIP_NAMES = _snapshot._COPY_SKIP_NAMES
+_SANDBOX_ID_UNSAFE_RE = _snapshot._SANDBOX_ID_UNSAFE_RE
+_WORKSPACE_MANIFEST_FILENAME = _snapshot._WORKSPACE_MANIFEST_FILENAME
+_WORKSPACE_MODE_COPY_DISCARD = _snapshot._WORKSPACE_MODE_COPY_DISCARD
+_WORKSPACE_MODE_HOST = _snapshot._WORKSPACE_MODE_HOST
+_WORKSPACE_MODE_THREAD_PERSISTENT_COPY = _snapshot._WORKSPACE_MODE_THREAD_PERSISTENT_COPY
+_add_snapshot_manifest_entry = _snapshot._add_snapshot_manifest_entry
+_copytree_ignore = _snapshot._copytree_ignore
+_delete_removed_snapshot_paths = _snapshot._delete_removed_snapshot_paths
+_is_safe_manifest_path = _snapshot._is_safe_manifest_path
+_optional_string = _snapshot._optional_string
+_prune_snapshot_entry_to_manifest = _snapshot._prune_snapshot_entry_to_manifest
+_prune_workspace_to_manifest = _snapshot._prune_workspace_to_manifest
+_read_workspace_snapshot_manifest = _snapshot._read_workspace_snapshot_manifest
+_remove_snapshot_path = _snapshot._remove_snapshot_path
+_sandbox_id_for_parts = _snapshot._sandbox_id_for_parts
+_sandbox_id_for_request = _snapshot._sandbox_id_for_request
+_sandbox_paths = _snapshot._sandbox_paths
+_sanitize_sandbox_identifier = _snapshot._sanitize_sandbox_identifier
+_sync_workspace_snapshot = _snapshot._sync_workspace_snapshot
+_workspace_snapshot_manifest = _snapshot._workspace_snapshot_manifest
+_write_request = _snapshot._write_request
+_write_workspace_snapshot_manifest = _snapshot._write_workspace_snapshot_manifest
+
+
+_sandbox_run_locks_guard = threading.Lock()
+_sandbox_run_locks: dict[str, tuple[threading.Lock, int]] = {}
+
+
+@contextmanager
+def _serialized_sandbox_run(sandbox_id: str) -> Iterator[None]:
+    with _sandbox_run_locks_guard:
+        sandbox_lock, users = _sandbox_run_locks.get(sandbox_id, (threading.Lock(), 0))
+        _sandbox_run_locks[sandbox_id] = (sandbox_lock, users + 1)
+    try:
+        with sandbox_lock:
+            yield
+    finally:
+        with _sandbox_run_locks_guard:
+            sandbox_lock, users = _sandbox_run_locks[sandbox_id]
+            if users == 1:
+                del _sandbox_run_locks[sandbox_id]
+            else:
+                _sandbox_run_locks[sandbox_id] = (sandbox_lock, users - 1)
 
 
 class SandboxBackendUnavailableError(RuntimeError):
@@ -187,26 +219,7 @@ class SandboxExecutionResult:
         return json.dumps(self.to_payload(), ensure_ascii=False)
 
 
-class SandboxExecutionService:
-    def __init__(
-        self,
-        *,
-        primary_backend: Any,
-        fallback_backend: Any | None = None,
-        allow_fallback: bool = True,
-    ) -> None:
-        self.primary_backend = primary_backend
-        self.fallback_backend = fallback_backend
-        self.allow_fallback = allow_fallback
-
-    def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
-        try:
-            return self.primary_backend.run(request)
-        except SandboxBackendUnavailableError as exc:
-            if not self.allow_fallback or self.fallback_backend is None:
-                raise
-            result = self.fallback_backend.run(request)
-            return _with_fallback_reason(result, str(exc))
+SandboxExecutionService = _backends.SandboxExecutionService
 
 
 class SandboxSession:
@@ -301,6 +314,15 @@ class DockerSandboxBackend:
         run_id = self._run_id_factory()
         sandbox_id = _sandbox_id_for_request(request, run_id=run_id)
         request = replace(request, sandbox_id=sandbox_id)
+        if (
+            self.reuse_containers
+            or request.workspace_mode == _WORKSPACE_MODE_THREAD_PERSISTENT_COPY
+        ):
+            with _serialized_sandbox_run(sandbox_id):
+                return self._run(request=request, run_id=run_id)
+        return self._run(request=request, run_id=run_id)
+
+    def _run(self, *, request: SandboxExecutionRequest, run_id: str) -> SandboxExecutionResult:
         (
             run_root,
             runs_root,
@@ -316,17 +338,14 @@ class DockerSandboxBackend:
         )
         for path in (sandbox_workspace, sandbox_output, sandbox_tmp, sandbox_cache):
             path.mkdir(parents=True, exist_ok=True)
-        _sync_workspace_snapshot(
-            source_root=request.workspace_root,
-            target_root=sandbox_workspace,
-        )
+        _sync_workspace_snapshot(source_root=request.workspace_root, target_root=sandbox_workspace)
         runner_path = run_root / _RUNNER_FILENAME
         request_path = run_root / _REQUEST_FILENAME
         _write_runner(runner_path)
         _write_request(request_path, request)
 
         started = time.monotonic()
-        container_name = f"focus-agent-sandbox-{sandbox_id[:48]}-{run_id[:12]}"
+        container_name = f"focus-agent-sandbox-{request.sandbox_id[:48]}-{run_id[:12]}"
         try:
             if self.reuse_containers:
                 container_name = self._thread_container_name(request)
@@ -623,7 +642,7 @@ class DockerSandboxBackend:
         return command
 
     def _thread_container_name(self, request: SandboxExecutionRequest) -> str:
-        sandbox_id = request.sandbox_id or _sanitize_sandbox_identifier("anonymous", prefix="sandbox")
+        sandbox_id = request.sandbox_id or "anonymous"
         network = "net" if request.allow_network else "none"
         memory = int(request.memory_mb or _DEFAULT_MEMORY_MB)
         suffix = _sanitize_sandbox_identifier(sandbox_id, prefix="sandbox")[:42]
@@ -642,717 +661,9 @@ class DockerSandboxBackend:
         }
 
 
-class LocalSubprocessSandboxBackend:
-    backend_name = "local_subprocess"
-
-    def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
-        run_id = uuid.uuid4().hex
-        started = time.monotonic()
-        cwd = (request.workspace_root / request.cwd).resolve()
-        try:
-            cwd.relative_to(request.workspace_root)
-        except ValueError as exc:
-            raise ValueError("cwd must stay inside the workspace.") from exc
-        env = workspace_command_env()
-        env.update(_sandbox_env(request.env))
-        timed_out = False
-        try:
-            completed = subprocess.run(
-                request.command,
-                cwd=cwd,
-                env=env,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=request.timeout_seconds,
-                check=False,
-            )
-            exit_code: int | None = completed.returncode
-            stdout = completed.stdout
-            stderr = completed.stderr
-        except subprocess.TimeoutExpired as exc:
-            timed_out = True
-            exit_code = None
-            stdout = _coerce_output(exc.stdout)
-            stderr = _coerce_output(exc.stderr)
-        duration_ms = round((time.monotonic() - started) * 1000, 3)
-        return _result_from_parts(
-            request=request,
-            run_id=run_id,
-            backend="local_subprocess",
-            exit_code=exit_code,
-            timed_out=timed_out,
-            stdout=stdout,
-            stderr=stderr,
-            duration_ms=duration_ms,
-            output_dir=None,
-            policy={
-                "backend": "local_subprocess",
-                "network": "host",
-                "workspace": "host",
-                "fallback": True,
-            },
-        )
-
-
-def default_sandbox_execution_service(
-    *,
-    fallback_backend: Any | None = None,
-    allow_fallback: bool | None = None,
-) -> SandboxExecutionService:
-    backend = os.environ.get("FOCUS_AGENT_SANDBOX_BACKEND", "auto").strip().lower()
-    image = os.environ.get("FOCUS_AGENT_SANDBOX_IMAGE", _DEFAULT_DOCKER_IMAGE).strip()
-    resolved_allow_fallback = (
-        os.environ.get("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1") != "0"
-        if allow_fallback is None
-        else bool(allow_fallback)
-    )
-    resolved_fallback = fallback_backend or LocalSubprocessSandboxBackend()
-    if backend == "local":
-        return SandboxExecutionService(
-            primary_backend=resolved_fallback,
-            fallback_backend=None,
-            allow_fallback=False,
-        )
-    if backend == "docker":
-        return SandboxExecutionService(
-            primary_backend=DockerSandboxBackend(image=image),
-            fallback_backend=None,
-            allow_fallback=False,
-        )
-    return SandboxExecutionService(
-        primary_backend=DockerSandboxBackend(image=image),
-        fallback_backend=resolved_fallback,
-        allow_fallback=resolved_allow_fallback,
-    )
-
-
-def _with_fallback_reason(
-    result: SandboxExecutionResult, fallback_reason: str
-) -> SandboxExecutionResult:
-    payload = result.to_payload()
-    payload["fallback_reason"] = fallback_reason
-    payload["fallback_used"] = True
-    payload["degraded_reason"] = "local_host_execution"
-    policy = dict(payload.get("policy") or {})
-    policy["fallback_reason"] = fallback_reason
-    policy["degraded_reason"] = "local_host_execution"
-    payload["policy"] = policy
-    return SandboxExecutionResult(**payload)
-
-
-def _result_from_parts(
-    *,
-    request: SandboxExecutionRequest,
-    run_id: str,
-    backend: str,
-    exit_code: int | None,
-    timed_out: bool,
-    stdout: str,
-    stderr: str,
-    duration_ms: float,
-    output_dir: Path | None,
-    policy: dict[str, Any],
-) -> SandboxExecutionResult:
-    stdout, stdout_truncated = _trim_output(stdout, request.max_output_chars)
-    stderr, stderr_truncated = _trim_output(stderr, request.max_output_chars)
-    outputs, outputs_truncated = (
-        _run_outputs(output_dir=output_dir, workspace_root=request.workspace_root)
-        if output_dir is not None
-        else ([], False)
-    )
-    status = "timeout" if timed_out else ("completed" if exit_code == 0 else "failed")
-    network_policy = str(policy.get("network") or ("host" if backend.startswith("local") else "none"))
-    workspace_mode = str(policy.get("workspace") or request.workspace_mode)
-    degraded_reason = "local_host_execution" if backend.startswith("local") else None
-    if degraded_reason:
-        policy = {**policy, "degraded_reason": degraded_reason}
-    memory_mb = int(request.memory_mb or _DEFAULT_MEMORY_MB)
-    resource_limits: dict[str, Any] = {}
-    if backend == "docker":
-        resource_limits = {"memory_mb": memory_mb, "pids_limit": _DEFAULT_PIDS_LIMIT}
-    elif request.memory_mb is not None:
-        resource_limits = {"memory_mb": request.memory_mb}
-    return SandboxExecutionResult(
-        status=status,
-        command=list(request.command),
-        cwd=request.cwd,
-        exit_code=exit_code,
-        timed_out=timed_out,
-        timeout_seconds=request.timeout_seconds,
-        stdout=stdout,
-        stderr=stderr,
-        stdout_truncated=stdout_truncated,
-        stderr_truncated=stderr_truncated,
-        outputs=outputs,
-        outputs_truncated=outputs_truncated,
-        duration_ms=duration_ms,
-        sandbox_backend=backend,
-        run_id=run_id,
-        policy=policy,
-        skill_id=request.skill_id,
-        entrypoint=request.entrypoint,
-        memory_mb=request.memory_mb,
-        sandbox_id=request.sandbox_id or _sandbox_id_for_request(request, run_id=run_id),
-        fallback_used=bool(policy.get("fallback")) or backend.startswith("local"),
-        workspace_mode=workspace_mode,
-        network_policy=network_policy,
-        resource_limits=resource_limits,
-        degraded_reason=degraded_reason,
-    )
-
-
-def _write_request(path: Path, request: SandboxExecutionRequest) -> None:
-    payload = {
-        "command": request.command,
-        "cwd": request.cwd,
-        "timeout_seconds": request.timeout_seconds,
-        "dependencies": list(request.dependencies),
-        "output_dir_arg": request.output_dir_arg,
-        "workspace_mode": request.workspace_mode,
-        "sandbox_id": request.sandbox_id,
-    }
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-
-def _sync_workspace_snapshot(*, source_root: Path, target_root: Path) -> None:
-    target_root.mkdir(parents=True, exist_ok=True)
-    manifest_path = target_root.parent / _WORKSPACE_MANIFEST_FILENAME
-    current_manifest = _workspace_snapshot_manifest(source_root)
-    previous_manifest = _read_workspace_snapshot_manifest(manifest_path)
-    if previous_manifest is None:
-        _prune_workspace_to_manifest(target_root=target_root, manifest=current_manifest)
-    else:
-        _delete_removed_snapshot_paths(
-            target_root=target_root,
-            previous_manifest=previous_manifest,
-            current_manifest=current_manifest,
-        )
-    for child in source_root.iterdir():
-        if child.name in _COPY_SKIP_NAMES or child.name == ".git":
-            continue
-        target = target_root / child.name
-        if child.name == ".focus_agent":
-            skills = child / "skills"
-            if skills.is_dir():
-                skills_target = target / "skills"
-                if skills_target.exists() and not skills_target.is_dir():
-                    skills_target.unlink()
-                skills_target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(
-                    skills,
-                    skills_target,
-                    symlinks=False,
-                    ignore=_copytree_ignore,
-                    dirs_exist_ok=True,
-                )
-            continue
-        if child.is_dir():
-            if target.exists() and not target.is_dir():
-                target.unlink()
-            shutil.copytree(
-                child,
-                target,
-                symlinks=False,
-                ignore=_copytree_ignore,
-                dirs_exist_ok=True,
-            )
-        elif child.is_file():
-            if target.exists() and target.is_dir():
-                shutil.rmtree(target)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(child, target)
-    _write_workspace_snapshot_manifest(manifest_path, current_manifest)
-
-
-def _workspace_snapshot_manifest(source_root: Path) -> set[str]:
-    manifest: set[str] = set()
-    for child in source_root.iterdir():
-        if child.name in _COPY_SKIP_NAMES or child.name == ".git":
-            continue
-        if child.name == ".focus_agent":
-            skills = child / "skills"
-            if skills.is_dir():
-                manifest.add(".focus_agent")
-                _add_snapshot_manifest_entry(
-                    manifest,
-                    source=skills,
-                    relative_path=PurePosixPath(".focus_agent") / "skills",
-                )
-            continue
-        _add_snapshot_manifest_entry(
-            manifest,
-            source=child,
-            relative_path=PurePosixPath(child.name),
-        )
-    return manifest
-
-
-def _add_snapshot_manifest_entry(
-    manifest: set[str],
-    *,
-    source: Path,
-    relative_path: PurePosixPath,
-) -> None:
-    if source.is_dir():
-        manifest.add(relative_path.as_posix())
-        for child in source.iterdir():
-            if child.name in _COPY_SKIP_NAMES or child.name == ".focus_agent":
-                continue
-            _add_snapshot_manifest_entry(
-                manifest,
-                source=child,
-                relative_path=relative_path / child.name,
-            )
-    elif source.is_file():
-        manifest.add(relative_path.as_posix())
-
-
-def _read_workspace_snapshot_manifest(path: Path) -> set[str] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, list):
-        return None
-    manifest: set[str] = set()
-    for item in payload:
-        if not isinstance(item, str) or not _is_safe_manifest_path(item):
-            return None
-        manifest.add(item)
-    return manifest
-
-
-def _write_workspace_snapshot_manifest(path: Path, manifest: set[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(sorted(manifest), ensure_ascii=False), encoding="utf-8")
-
-
-def _is_safe_manifest_path(value: str) -> bool:
-    relative_path = PurePosixPath(value)
-    return bool(value) and not relative_path.is_absolute() and ".." not in relative_path.parts
-
-
-def _delete_removed_snapshot_paths(
-    *,
-    target_root: Path,
-    previous_manifest: set[str],
-    current_manifest: set[str],
-) -> None:
-    removed_paths = previous_manifest - current_manifest
-    for relative_path in sorted(
-        removed_paths,
-        key=lambda value: (value.count("/"), value),
-        reverse=True,
-    ):
-        _remove_snapshot_path(target_root / Path(relative_path))
-
-
-def _prune_workspace_to_manifest(*, target_root: Path, manifest: set[str]) -> None:
-    for child in list(target_root.iterdir()):
-        _prune_snapshot_entry_to_manifest(
-            target=child,
-            relative_path=PurePosixPath(child.name),
-            manifest=manifest,
-        )
-
-
-def _prune_snapshot_entry_to_manifest(
-    *,
-    target: Path,
-    relative_path: PurePosixPath,
-    manifest: set[str],
-) -> None:
-    if relative_path.as_posix() not in manifest:
-        _remove_snapshot_path(target)
-        return
-    if target.is_dir() and not target.is_symlink():
-        for child in list(target.iterdir()):
-            _prune_snapshot_entry_to_manifest(
-                target=child,
-                relative_path=relative_path / child.name,
-                manifest=manifest,
-            )
-
-
-def _remove_snapshot_path(path: Path) -> None:
-    if not path.exists() and not path.is_symlink():
-        return
-    if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path)
-    else:
-        path.unlink()
-
-
-def _copytree_ignore(_dir: str, names: list[str]) -> set[str]:
-    return {name for name in names if name in _COPY_SKIP_NAMES or name == ".focus_agent"}
-
-
-def _sandbox_paths(
-    *,
-    request: SandboxExecutionRequest,
-    run_id: str,
-) -> tuple[Path, Path, Path, Path, Path, Path]:
-    if request.workspace_mode == _WORKSPACE_MODE_COPY_DISCARD:
-        runs_root = request.workspace_root / ".focus_agent" / "sandboxes" / "runs"
-        run_root = runs_root / run_id
-        return (
-            run_root,
-            runs_root,
-            run_root / "workspace",
-            run_root / "output",
-            run_root / "tmp",
-            run_root / "cache",
-        )
-
-    sandbox_id = request.sandbox_id or _sandbox_id_for_request(request, run_id=run_id)
-    sandbox_root = request.workspace_root / ".focus_agent" / "sandboxes" / "threads" / sandbox_id
-    runs_root = sandbox_root / "runs"
-    run_root = runs_root / run_id
-    return (
-        run_root,
-        runs_root,
-        sandbox_root / "workspace",
-        run_root / "output",
-        run_root / "tmp",
-        sandbox_root / "cache",
-    )
-
-
-def _sandbox_id_for_request(request: SandboxExecutionRequest, *, run_id: str) -> str:
-    return _sandbox_id_for_parts(
-        thread_id=request.thread_id,
-        branch_id=request.branch_id,
-        sandbox_id=request.sandbox_id,
-        run_id=run_id,
-    )
-
-
-def _sandbox_id_for_parts(
-    *,
-    thread_id: str | None,
-    branch_id: str | None,
-    sandbox_id: str | None = None,
-    run_id: str | None = None,
-) -> str:
-    if sandbox_id:
-        return _sanitize_sandbox_identifier(sandbox_id, prefix="sandbox")
-    if branch_id:
-        return f"branch-{_sanitize_sandbox_identifier(branch_id, prefix='branch')}"
-    if thread_id:
-        return f"thread-{_sanitize_sandbox_identifier(thread_id, prefix='thread')}"
-    if run_id:
-        return f"run-{_sanitize_sandbox_identifier(run_id, prefix='run')}"
-    return "anonymous"
-
-
-def _sanitize_sandbox_identifier(value: str, *, prefix: str) -> str:
-    sanitized = _SANDBOX_ID_UNSAFE_RE.sub("-", str(value)).strip(".-_")
-    sanitized = sanitized[:96].strip(".-_")
-    return sanitized or prefix
-
-
-def _optional_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _write_runner(path: Path) -> None:
-    template = r'''
-from __future__ import annotations
-
-import hashlib
-import json
-import os
-import shutil
-import subprocess
-import sys
-from pathlib import Path
-
-INPUT = Path(os.environ.get("SANDBOX_INPUT", "/workspace_input"))
-WORKSPACE = Path(os.environ.get("SANDBOX_WORKSPACE", "/workspace"))
-OUTPUT = Path(os.environ.get("SANDBOX_OUTPUT", "/sandbox_output"))
-CACHE = Path(os.environ.get("SANDBOX_CACHE", "/sandbox_cache"))
-REQUEST = Path(os.environ.get("SANDBOX_REQUEST", "/sandbox_request.json"))
-RESULT = OUTPUT / "result.json"
-SKIP_NAMES = __SKIP_NAMES__
-SEED_MARKER = WORKSPACE / ".focus-agent-workspace-seeded"
-
-
-def _ignore(_dir, names):
-    return {{name for name in names if name in SKIP_NAMES or name == ".focus_agent"}}
-
-
-def _copy_workspace():
-    for child in INPUT.iterdir():
-        target = WORKSPACE / child.name
-        if child.name == ".focus_agent":
-            skills = child / "skills"
-            if skills.is_dir():
-                (target).mkdir(parents=True, exist_ok=True)
-                shutil.copytree(
-                    skills,
-                    target / "skills",
-                    symlinks=False,
-                    ignore=_ignore,
-                    dirs_exist_ok=True,
-                )
-            continue
-        if child.name in SKIP_NAMES:
-            continue
-        if child.name == ".git":
-            continue
-        if child.is_dir():
-            shutil.copytree(child, target, symlinks=False, ignore=_ignore, dirs_exist_ok=True)
-        elif child.is_file():
-            shutil.copy2(child, target)
-
-
-def _prepare_workspace(workspace_mode):
-    if workspace_mode == "thread_persistent_copy" and SEED_MARKER.exists():
-        return
-    _copy_workspace()
-    if workspace_mode == "thread_persistent_copy":
-        SEED_MARKER.write_text("ok\n", encoding="utf-8")
-
-
-def _ensure_venv(dependencies):
-    if not dependencies:
-        return None
-    digest = hashlib.sha256("\n".join(dependencies).encode("utf-8")).hexdigest()
-    venv_dir = CACHE / "venvs" / digest
-    python = venv_dir / "bin" / "python"
-    marker = venv_dir / ".focus-agent-deps-ok"
-    if not marker.exists():
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
-        subprocess.run([str(python), "-m", "pip", "install", *dependencies], check=True)
-        marker.write_text("ok\n", encoding="utf-8")
-    return python
-
-
-def main():
-    request = json.loads(REQUEST.read_text(encoding="utf-8"))
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    WORKSPACE.mkdir(parents=True, exist_ok=True)
-    _prepare_workspace(request.get("workspace_mode") or "thread_persistent_copy")
-    command = list(request["command"])
-    output_dir_arg = request.get("output_dir_arg")
-    if output_dir_arg:
-        command.extend([str(output_dir_arg), str(OUTPUT)])
-    venv_python = _ensure_venv(request.get("dependencies") or [])
-    if venv_python is not None and Path(command[0]).name in {"python", "python3"}:
-        command[0] = str(venv_python)
-    cwd = WORKSPACE / request.get("cwd", ".")
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=int(request.get("timeout_seconds") or 60),
-        check=False,
-    )
-    RESULT.write_text(
-        json.dumps(
-            {
-                "exit_code": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
-                "timed_out": False,
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.TimeoutExpired as exc:
-        RESULT.write_text(
-            json.dumps(
-                {
-                    "exit_code": None,
-                    "stdout": exc.stdout or "",
-                    "stderr": exc.stderr or "",
-                    "timed_out": True,
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
-    except Exception as exc:
-        RESULT.write_text(
-            json.dumps(
-                {
-                    "exit_code": 1,
-                    "stdout": "",
-                    "stderr": f"{type(exc).__name__}: {exc}",
-                    "timed_out": False,
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
-        raise
-'''
-    path.write_text(
-        template.replace("__SKIP_NAMES__", repr(sorted(_COPY_SKIP_NAMES))).lstrip(),
-        encoding="utf-8",
-    )
-
-
-def _sandbox_env(env: Mapping[str, str]) -> dict[str, str]:
-    allowed: dict[str, str] = {}
-    for key, value in env.items():
-        normalized = str(key).upper()
-        if (
-            normalized == "PYTHONPATH"
-            or normalized.startswith("PIP_")
-            or any(marker in normalized for marker in _SENSITIVE_ENV_NAME_MARKERS)
-        ):
-            continue
-        allowed[str(key)] = str(value)
-    return allowed
-
-
-def _run_docker_command(
-    command: list[str],
-    *,
-    timeout: int,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        check=False,
-    )
-
-
-def _docker_image_available(*, docker_binary: str, image: str) -> bool:
-    try:
-        completed = subprocess.run(
-            [docker_binary, "image", "inspect", image],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-            check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    return completed.returncode == 0
-
-
-def _docker_image_unavailable_message(image: str) -> str:
-    return (
-        f"docker image is not available: {image}. "
-        f"Run `python scripts/ensure_sandbox_image.py --image {image}` "
-        "to check Docker compatibility and build the sandbox image, or set "
-        "FOCUS_AGENT_SANDBOX_IMAGE to an existing trusted image."
-    )
-
-
-def _force_remove_container(docker_binary: str, container_name: str) -> None:
-    try:
-        subprocess.run(
-            [docker_binary, "rm", "-f", container_name],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception:
-        return None
-
-
-def _cleanup_old_run_dirs(*, runs_root: Path, now: float, ttl_seconds: int) -> None:
-    if ttl_seconds <= 0 or not runs_root.exists():
-        return
-    cutoff = now - ttl_seconds
-    for path in runs_root.iterdir():
-        try:
-            stat_result = path.stat()
-        except OSError:
-            continue
-        if not path.is_dir() or path.is_symlink() or stat_result.st_mtime >= cutoff:
-            continue
-        try:
-            shutil.rmtree(path)
-        except OSError:
-            continue
-
-
-def _looks_like_docker_unavailable(output: str) -> bool:
-    lowered = output.lower()
-    return (
-        "cannot connect to the docker daemon" in lowered
-        or "is the docker daemon running" in lowered
-        or "command not found" in lowered
-    )
-
-
-def _looks_like_container_missing_or_stopped(output: str) -> bool:
-    lowered = output.lower()
-    return (
-        "no such container" in lowered
-        or "is not running" in lowered
-        or "container is not running" in lowered
-    )
-
-
-def _trim_output(value: str, max_chars: int) -> tuple[str, bool]:
-    if len(value) <= max_chars:
-        return value, False
-    return value[:max_chars], True
-
-
-def _coerce_output(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value)
-
-
-def _run_outputs(
-    *,
-    output_dir: Path,
-    workspace_root: Path,
-) -> tuple[list[dict[str, Any]], bool]:
-    outputs: list[dict[str, Any]] = []
-    total_bytes = 0
-    truncated = False
-    for path in sorted(output_dir.rglob("*")):
-        if len(outputs) >= _MAX_OUTPUT_FILES:
-            truncated = True
-            break
-        try:
-            stat_result = path.lstat()
-        except OSError:
-            continue
-        if path.name == _RESULT_FILENAME or path.is_symlink() or not path.is_file():
-            continue
-        size_bytes = stat_result.st_size
-        if total_bytes + size_bytes > _MAX_OUTPUT_BYTES:
-            truncated = True
-            break
-        try:
-            relative = path.relative_to(workspace_root).as_posix()
-        except ValueError:
-            relative = path.as_posix()
-        total_bytes += size_bytes
-        outputs.append({"path": relative, "size_bytes": size_bytes})
-    return outputs, truncated
+LocalSubprocessSandboxBackend = _backends.LocalSubprocessSandboxBackend
+default_sandbox_execution_service = _backends.default_sandbox_execution_service
+_with_fallback_reason = _backends._with_fallback_reason
 
 
 __all__ = [

@@ -31,6 +31,7 @@ _CONFIG_ENV_KEYS = (
     "AUTH_JWT_ISSUER",
     "AUTH_JWT_AUDIENCE",
     "AUTH_ACCESS_TOKEN_TTL_SECONDS",
+    "AUTH_COOKIE_SECURE",
     "RATE_LIMIT_ENABLED",
     "RATE_LIMIT_PER_MINUTE",
     "RATE_LIMIT_CHAT_PER_MINUTE",
@@ -71,6 +72,7 @@ def _set_secure_non_development_env(
     monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
 
@@ -177,6 +179,17 @@ def test_settings_from_env_fails_in_production_when_jwt_secret_missing(monkeypat
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
 
     with pytest.raises(ValueError, match="AUTH_JWT_SECRET must be set"):
+        Settings.from_env()
+
+
+def test_settings_from_env_fails_in_production_when_auth_cookie_is_not_secure(
+    monkeypatch, tmp_path
+):
+    _isolate_settings_env(monkeypatch, tmp_path)
+    _set_secure_non_development_env(monkeypatch)
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+
+    with pytest.raises(ValueError, match="AUTH_COOKIE_SECURE must be true"):
         Settings.from_env()
 
 
@@ -302,6 +315,7 @@ def test_settings_from_env_allows_staging_with_secure_settings(monkeypatch, tmp_
     monkeypatch.setenv("AUTH_JWT_SECRET", _SECURE_STAGING_JWT_SECRET)
     monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "on")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://staging.example.com")
 
@@ -353,6 +367,7 @@ def test_settings_from_env_allows_production_with_jwt_key_set_without_single_sec
     )
     monkeypatch.setenv("AUTH_JWT_ISSUER", "https://issuer.example.com")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
 
@@ -471,6 +486,7 @@ def test_settings_from_env_preserves_external_jwt_issuer_audience_and_ttl(monkey
     monkeypatch.setenv("AUTH_JWT_AUDIENCE", "focus-agent-web")
     monkeypatch.setenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")
     monkeypatch.setenv("AUTH_DEMO_TOKENS_ENABLED", "false")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
 

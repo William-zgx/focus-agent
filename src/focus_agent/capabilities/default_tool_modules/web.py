@@ -17,9 +17,11 @@ from .web_helpers import (
     _normalize_search_result,
     _provider_error_record,
     _ReadableHTMLExtractor,
+    _resolve_public_fetch_addresses,
     _web_fetch_policy_violation,
     _WebSearchProviderError,
 )
+from .web_transport import request_pinned_fetch_url
 
 _WEB_FETCH_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _WEB_FETCH_MAX_REDIRECTS = 5
@@ -130,13 +132,33 @@ def build_web_tools(
         max_bytes: int,
     ) -> tuple[bytes, str, Any, str]:
         current_url = url
+        client = _http()
+        secure_transport = http_client is not None or isinstance(client, httpx.Client)
+        pinned_client = client if http_client is not None else None
+        current_addresses: tuple[str, ...] | None = None
         response = None
         for _ in range(_WEB_FETCH_MAX_REDIRECTS + 1):
-            response = _http().get(
-                current_url,
-                headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
-                timeout=30,
-            )
+            parsed_current = urllib_parse_module.urlparse(current_url)
+            if secure_transport and current_addresses is None:
+                port = parsed_current.port or (443 if parsed_current.scheme == "https" else 80)
+                current_addresses = _resolve_public_fetch_addresses(
+                    str(parsed_current.hostname or ""),
+                    port,
+                )
+            if secure_transport:
+                response = request_pinned_fetch_url(
+                    client=pinned_client,
+                    parsed_url=parsed_current,
+                    addresses=current_addresses or (),
+                    urllib_parse_module=urllib_parse_module,
+                )
+            else:
+                response = client.get(
+                    current_url,
+                    headers={"User-Agent": "FocusAgent/1.0 (+https://example.local/focus-agent)"},
+                    timeout=30,
+                )
+            current_addresses = None
             if int(response.status_code) not in _WEB_FETCH_REDIRECT_STATUSES:
                 break
             location = (
@@ -144,7 +166,7 @@ def build_web_tools(
             )
             if not location:
                 break
-            next_url = urllib_parse_module.urljoin(str(response.url), str(location))
+            next_url = urllib_parse_module.urljoin(current_url, str(location))
             parsed_next = urllib_parse_module.urlparse(next_url)
             if parsed_next.scheme not in {"http", "https"}:
                 raise ValueError("Only http and https redirect URLs are supported.")
@@ -158,6 +180,15 @@ def build_web_tools(
                     "Web fetch redirect blocked by access policy "
                     f"({policy_violation['category']}): {policy_violation['message']}"
                 )
+            if secure_transport:
+                try:
+                    next_port = parsed_next.port or (443 if parsed_next.scheme == "https" else 80)
+                    current_addresses = _resolve_public_fetch_addresses(
+                        str(parsed_next.hostname or ""),
+                        next_port,
+                    )
+                except ValueError as exc:
+                    raise ValueError(f"Web fetch redirect blocked: {exc}") from exc
             current_url = urllib_parse_module.urlunparse(parsed_next)
         else:
             raise ValueError(f"Web fetch exceeded {_WEB_FETCH_MAX_REDIRECTS} redirects.")
@@ -165,7 +196,7 @@ def build_web_tools(
             raise ValueError("Web fetch failed before issuing a request.")
         response.raise_for_status()
         raw = response.content[:max_bytes]
-        return raw, str(response.url), response.headers, response.encoding or "utf-8"
+        return raw, current_url, response.headers, response.encoding or "utf-8"
 
     def _record_error(
         errors: list[dict[str, Any]],

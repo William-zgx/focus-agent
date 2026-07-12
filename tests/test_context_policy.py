@@ -489,6 +489,48 @@ def test_prompt_budget_guard_tokenizer_first_uses_token_estimates(monkeypatch):
     assert "low priority memory" not in rendered
 
 
+def test_prompt_budget_guard_tokenizer_first_preserves_current_user_with_policy_note(
+    monkeypatch,
+):
+    def fake_estimate(message, *, budget):  # noqa: ARG001
+        text = str(getattr(message, "content", ""))
+        if "Current user turn must stay exact." in text:
+            return 20
+        if "Preserve this exact constraint." in text:
+            return 18
+        if "low priority memory" in text:
+            return 40
+        return max(1, len(text) // 10)
+
+    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            "## Retrieved long-term memories\n" + ("low priority memory " * 20),
+            "## Constraints and goals\n- Preserve this exact constraint.",
+        ]
+    )
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content=system_text),
+            SystemMessage(content="This turn should be answered directly. Do not call tools."),
+            HumanMessage(content="Current user turn must stay exact."),
+        ],
+        budget=ContextBudget(
+            prompt_token_limit=45,
+            chars_per_token=4,
+            token_budget_mode="tokenizer_first",
+            tokenizer_id="fake-model",
+        ),
+    )
+
+    rendered = "\n".join(str(message.content) for message in guarded)
+    assert "Current user turn must stay exact." in rendered
+    assert "Preserve this exact constraint." in rendered
+    assert "low priority memory" not in rendered
+
+
 def test_assemble_context_dedupes_imported_and_local_findings_in_prompt():
     state = {
         "branch_meta": {

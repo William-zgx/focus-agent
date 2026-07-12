@@ -31,6 +31,8 @@ from ..graph_memory_nodes import (
     make_retrieve_memory_node,
     make_write_memories_node,
     maybe_interrupt_for_merge,
+)
+from ..graph_memory_nodes import (
     summarize_turn as _summarize_turn_impl,
 )
 from ..graph_plan_nodes import (
@@ -214,9 +216,7 @@ def build_graph(
     def bootstrap_turn(state: AgentState, runtime) -> dict[str, Any]:
         _fire_on_turn_start(state)
         # Fire first_user_message trigger when this is the first human turn.
-        human_count = sum(
-            1 for m in state.get("messages", []) or [] if isinstance(m, HumanMessage)
-        )
+        human_count = sum(1 for m in state.get("messages", []) or [] if isinstance(m, HumanMessage))
         if human_count <= 1:
             _fire_system_agent(
                 system_agent_runner,

@@ -1,0 +1,5 @@
+{
+  "large_file_threshold": 800,
+  "large_files": {},
+  "policy": "No large-file debt is grandfathered. Every non-generated scanned file above 800 lines is a blocking new-large-file regression; resolved entries must remain absent."
+}

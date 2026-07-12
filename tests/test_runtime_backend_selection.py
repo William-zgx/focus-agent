@@ -10,6 +10,7 @@ import pytest
 from langchain.tools import tool
 
 import focus_agent.engine.runtime as runtime_mod
+import focus_agent.engine.runtime_persistence as runtime_persistence_mod
 from focus_agent.config import Settings, ToolCatalogConfig, ensure_runtime_directories
 from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.services.coordination import (
@@ -274,7 +275,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
         runtime.close()
 
 
-def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
+def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_missing(
     monkeypatch, tmp_path, caplog
 ):
     captured: dict[str, object] = {}
@@ -286,18 +287,19 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
         captured["checkpointer"] = checkpointer
         return {"tool_registry": True}
 
-    class _FakeLocalSaver:
+    class _FakeSQLiteSaver:
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeLocalStore:
+    class _FakeSQLiteStore:
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeInMemoryBranchRepository:
-        instances: list[_FakeInMemoryBranchRepository] = []
+    class _FakeSQLiteBranchRepository:
+        instances: list[_FakeSQLiteBranchRepository] = []
 
-        def __init__(self):
+        def __init__(self, path: str):
+            self.path = Path(path)
             self.__class__.instances.append(self)
 
     class _FakeInMemoryAgentTeamRepository:
@@ -306,33 +308,57 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
         def __init__(self):
             self.__class__.instances.append(self)
 
-    class _FakeInMemoryUserRepository:
-        instances: list[_FakeInMemoryUserRepository] = []
+    class _FakeSQLiteUserRepository:
+        instances: list[_FakeSQLiteUserRepository] = []
 
-        def __init__(self):
+        def __init__(self, path: str):
+            self.path = Path(path)
+            self.__class__.instances.append(self)
+
+    class _FakeSQLiteProductivityRepository:
+        instances: list[_FakeSQLiteProductivityRepository] = []
+
+        def __init__(self, path: str):
+            self.path = Path(path)
             self.__class__.instances.append(self)
 
     fakes = _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
-    monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
-    monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
-    monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
+    monkeypatch.setattr(runtime_mod, "PersistentSQLiteSaver", _FakeSQLiteSaver)
+    monkeypatch.setattr(runtime_persistence_mod, "PersistentSQLiteStore", _FakeSQLiteStore)
+    monkeypatch.setattr(
+        "focus_agent.repositories.sqlite_branch_repository.SQLiteBranchRepository",
+        _FakeSQLiteBranchRepository,
+    )
+    monkeypatch.setattr(
+        "focus_agent.repositories.sqlite_user_repository.SQLiteUserRepository",
+        _FakeSQLiteUserRepository,
+    )
+    monkeypatch.setattr(
+        "focus_agent.repositories.sqlite_productivity_repository.SQLiteProductivityRepository",
+        _FakeSQLiteProductivityRepository,
+    )
     monkeypatch.setattr(
         runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
     )
-    monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
     runtime = runtime_mod.create_runtime(settings)
     try:
-        assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.pkl"
-        assert runtime.store.path == tmp_path / "langgraph-store.pkl"
+        assert isinstance(runtime.checkpointer, _FakeSQLiteSaver)
+        assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.sqlite3"
+        assert isinstance(runtime.store, _FakeSQLiteStore)
+        assert runtime.store.path == tmp_path / "langgraph-store.sqlite3"
         assert runtime.event_store is fakes["local_run_journal"].instances[0]
         assert runtime.event_store.value == tmp_path / "harness_runs.sqlite3"
         assert runtime.event_store.setup_calls == 1
-        assert isinstance(runtime.repo, _FakeInMemoryBranchRepository)
-        assert isinstance(runtime.user_repository, _FakeInMemoryUserRepository)
-        assert isinstance(runtime.user_service.repository, _FakeInMemoryUserRepository)
+        assert isinstance(runtime.repo, _FakeSQLiteBranchRepository)
+        assert runtime.repo.path == tmp_path / "branches.sqlite3"
+        assert isinstance(runtime.user_repository, _FakeSQLiteUserRepository)
+        assert runtime.user_repository.path == tmp_path / "branches.sqlite3"
+        assert isinstance(runtime.user_service.repository, _FakeSQLiteUserRepository)
+        assert isinstance(runtime.productivity_repository, _FakeSQLiteProductivityRepository)
+        assert runtime.productivity_repository.path == tmp_path / "branches.sqlite3"
         assert isinstance(runtime.agent_team_service.repository, _FakeInMemoryAgentTeamRepository)
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
@@ -349,7 +375,7 @@ def test_create_runtime_keeps_local_fallback_when_database_uri_is_missing(
         runtime.close()
 
 
-def test_create_runtime_selects_optional_sqlite_checkpoint_backend(monkeypatch, tmp_path):
+def test_create_runtime_selects_explicit_sqlite_persistence_backend(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
 
     def fake_build_tool_registry(*, settings, skill_registry, store=None, checkpointer=None):
@@ -365,7 +391,7 @@ def test_create_runtime_selects_optional_sqlite_checkpoint_backend(monkeypatch, 
         def __init__(self, path: Path):
             self.path = Path(path)
 
-    class _FakeLocalStore:
+    class _FakeSQLiteStore:
         def __init__(self, path: Path):
             self.path = Path(path)
 
@@ -381,7 +407,7 @@ def test_create_runtime_selects_optional_sqlite_checkpoint_backend(monkeypatch, 
     _patch_runtime_collaborators(monkeypatch, build_tool_registry=fake_build_tool_registry)
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakePickleSaver)
     monkeypatch.setattr(runtime_mod, "PersistentSQLiteSaver", _FakeSQLiteSaver)
-    monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
+    monkeypatch.setattr(runtime_persistence_mod, "PersistentSQLiteStore", _FakeSQLiteStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
     monkeypatch.setattr(
         runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
@@ -394,7 +420,8 @@ def test_create_runtime_selects_optional_sqlite_checkpoint_backend(monkeypatch, 
     try:
         assert isinstance(runtime.checkpointer, _FakeSQLiteSaver)
         assert runtime.checkpointer.path == tmp_path / "langgraph-checkpoints.sqlite3"
-        assert runtime.store.path == tmp_path / "langgraph-store.pkl"
+        assert isinstance(runtime.store, _FakeSQLiteStore)
+        assert runtime.store.path == tmp_path / "langgraph-store.sqlite3"
         assert captured["checkpointer"] is runtime.checkpointer
     finally:
         runtime.close()

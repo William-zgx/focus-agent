@@ -173,7 +173,10 @@ def create_focus_agent(
     journal = event_store if event_store is not None else InMemoryRunJournal()
     stream_bridge = JournaledStreamBridge(
         journal=journal,
-        bridge=InMemoryStreamBridge(max_buffer_size=config.streaming.event_buffer_size),
+        bridge=InMemoryStreamBridge(
+            max_buffer_size=config.streaming.event_buffer_size,
+            cleanup_delay_seconds=config.streaming.cleanup_delay_seconds,
+        ),
     )
 
     # Build the run_manager first so we can pass it to the graph.

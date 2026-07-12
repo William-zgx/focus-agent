@@ -58,9 +58,7 @@ class BranchMergeCoordinator:
             findings=list(values.get("branch_local_findings", [])),
         )
         try:
-            from focus_agent.services import branches as branch_module
-
-            proposal = branch_module.generate_merge_proposal(
+            proposal = svc.proposal_generator(
                 svc.proposal_model,
                 values,
                 values.get("branch_meta"),

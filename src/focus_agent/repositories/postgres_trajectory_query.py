@@ -65,6 +65,18 @@ class PostgresTrajectoryQueryMixin:
         step_params: dict[str, Any] = {}
 
         self._add_scalar_filter(turn_conditions, params, "turn_ids", "t.id", query.turn_ids)
+        if query.owner_user_id is not None:
+            params["owner_user_id"] = str(query.owner_user_id)
+            turn_conditions.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM focus_thread_access ta
+                    WHERE ta.thread_id = t.thread_id
+                      AND ta.owner_user_id = %(owner_user_id)s
+                )
+                """.strip()
+            )
         self._add_scalar_filter(
             turn_conditions, params, "request_id", "t.request_id", query.request_id
         )
@@ -207,6 +219,7 @@ class PostgresTrajectoryQueryMixin:
         if "turn_ids" in filters and filters["turn_ids"] is not None:
             parsed["turn_ids"] = list(filters["turn_ids"])
         for key in (
+            "owner_user_id",
             "thread_id",
             "request_id",
             "trace_id",

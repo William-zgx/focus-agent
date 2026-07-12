@@ -227,9 +227,7 @@ def _jwt_secret_security_failures(settings: Any) -> list[str]:
     )
 
 
-def validate_auth_enabled_jwt_secrets(
-    settings: Any, *, require_configured: bool = False
-) -> None:
+def validate_auth_enabled_jwt_secrets(settings: Any, *, require_configured: bool = False) -> None:
     if not getattr(settings, "auth_enabled", False):
         return
 
@@ -279,6 +277,10 @@ def _validate_non_development_security(settings: Any, env: MutableMapping[str, s
         failures.append("AUTH_ENABLED must be true")
     if settings.auth_demo_tokens_enabled:
         failures.append("AUTH_DEMO_TOKENS_ENABLED must be false")
+    if not settings.auth_cookie_secure:
+        failures.append("AUTH_COOKIE_SECURE must be true")
+    if settings.auth_cookie_samesite not in {"lax", "strict"}:
+        failures.append("AUTH_COOKIE_SAMESITE must be 'lax' or 'strict'")
     if not settings.rate_limit_enabled:
         failures.append("RATE_LIMIT_ENABLED must be true")
     if settings.rate_limit_per_minute <= 0:

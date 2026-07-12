@@ -220,19 +220,13 @@ def classify_topic_relation(
             branch_meta = args[2]
 
     if settings is None:
-        legacy = _legacy_semantic_classifier_hook()
-        if legacy is not None:
-            return legacy(
-                message=message or "",
-                messages=list(messages or (values or {}).get("messages", []) or []),
-                values=values,
-                branch_meta=branch_meta,
-            )
         settings = Settings.from_env()
 
     resolved_history: Sequence[Any] | str = branch_history if branch_history is not None else ""
     if not resolved_history:
-        resolved_history = messages if messages is not None else list((values or {}).get("messages", []) or [])
+        resolved_history = (
+            messages if messages is not None else list((values or {}).get("messages", []) or [])
+        )
     if selected_model is None and isinstance(values, dict):
         selected_model = _selected_model_from_values(values)
 
@@ -262,25 +256,6 @@ def _branch_history_text(branch_history: Sequence[Any] | str) -> str:
         role = _message_role(item) or "message"
         lines.append(f"{role}: {text}")
     return "\n".join(lines)[-6000:]
-
-
-def _legacy_semantic_classifier_hook() -> Callable[..., Any] | None:
-    for module_name in (
-        "focus_agent.branch_decision.service",
-        "focus_agent.branch_decision.signals",
-    ):
-        try:
-            module = __import__(module_name, fromlist=["_"])
-        except ImportError:
-            continue
-        for attr in (
-            "classify_branch_recommendation_semantic",
-            "semantic_branch_recommendation_classifier",
-        ):
-            candidate = getattr(module, attr, None)
-            if callable(candidate):
-                return candidate
-    return None
 
 
 def _message_role(message: Any) -> str:

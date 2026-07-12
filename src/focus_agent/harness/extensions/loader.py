@@ -4,12 +4,9 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from . import BaseExtension, Extension
-
-if TYPE_CHECKING:
-    from os import PathLike
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +49,7 @@ class ExtensionLoader:
                     continue
                 name = getattr(ext, "name", None)
                 if name and name in seen:
-                    logger.warning(
-                        "Skipping duplicate extension %r from %s", name, entry
-                    )
+                    logger.warning("Skipping duplicate extension %r from %s", name, entry)
                     continue
                 if name:
                     seen.add(name)
@@ -161,9 +156,7 @@ class ExtensionLoader:
                 try:
                     produced = factory()
                 except Exception:
-                    logger.exception(
-                        "Extension entrypoint %r in %s raised", attr, source_path
-                    )
+                    logger.exception("Extension entrypoint %r in %s raised", attr, source_path)
                     produced = None
                 if produced is not None and ExtensionLoader._is_extension(produced):
                     return produced  # type: ignore[return-value]

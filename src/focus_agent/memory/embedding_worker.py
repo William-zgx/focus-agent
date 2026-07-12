@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..core.repo_call import has_repo_method
-from .models import MemoryAuditEvent, MemoryRecord, MemoryWriteDecisionStatus
+from .models import MemoryAuditEvent, MemoryRecord, MemoryStatus, MemoryWriteDecisionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ class MemoryEmbeddingWorker:
             raise ValueError(f"memory record not found: {memory_id}")
         if tuple(record.namespace) != tuple(namespace):
             raise ValueError(f"memory namespace mismatch: {memory_id}")
+        if _memory_is_forgotten(record):
+            return
         if _memory_is_redacted(record):
             self._set_embedding_status(record, "failed", reason="sensitive_content_redacted")
             self._append_audit_event(
@@ -72,10 +74,29 @@ class MemoryEmbeddingWorker:
     def _set_embedding_status(self, record: MemoryRecord, status: str, *, reason: str) -> None:
         now = datetime.now(UTC)
         provider = getattr(self.embedding_service, "provider", None)
+        model_id = getattr(provider, "model_id", None)
+        if has_repo_method(self.repository, "update_record_embedding_status"):
+            updated = self.repository.update_record_embedding_status(
+                memory_id=record.memory_id,
+                status=status,
+                model_id=model_id,
+                updated_at=now,
+            )
+            if not updated:
+                self._delete_stale_embedding(record.memory_id)
+                logger.info(
+                    "memory embedding status update skipped for protected memory",
+                    extra={
+                        "memory_id": record.memory_id,
+                        "status": status,
+                        "reason": reason,
+                    },
+                )
+            return
         updated = record.model_copy(
             update={
                 "embedding_status": status,
-                "embedding_model_id": getattr(provider, "model_id", None),
+                "embedding_model_id": model_id,
                 "embedding_updated_at": now,
                 "updated_at": now,
             }
@@ -87,6 +108,13 @@ class MemoryEmbeddingWorker:
             "memory embedding status update skipped",
             extra={"memory_id": record.memory_id, "status": status, "reason": reason},
         )
+
+    def _delete_stale_embedding(self, memory_id: str) -> None:
+        if has_repo_method(self.repository, "delete_embedding"):
+            self.repository.delete_embedding(memory_id)
+            return
+        if has_repo_method(self.repository, "delete_memory_embedding"):
+            self.repository.delete_memory_embedding(memory_id)
 
     def _append_audit_event(
         self,
@@ -118,6 +146,10 @@ class MemoryEmbeddingWorker:
 
 def _memory_is_redacted(record: MemoryRecord) -> bool:
     return any(str(tag).casefold() == "redacted" for tag in record.tags)
+
+
+def _memory_is_forgotten(record: MemoryRecord) -> bool:
+    return record.status == MemoryStatus.FORGOTTEN or record.deleted_at is not None
 
 
 __all__ = ["MemoryEmbeddingWorker"]

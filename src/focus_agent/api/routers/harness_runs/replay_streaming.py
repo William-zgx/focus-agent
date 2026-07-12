@@ -36,6 +36,7 @@ from ...route_utils.branch_handoff_decisions import (
     mark_branch_handoff_decision_outcome,
     record_branch_handoff_decision_for_run,
 )
+from . import replay_streaming_lifecycle as _streaming_lifecycle
 from .replay_helpers import (
     _branch_action_intent_for_run,
     _branch_recommendation_timeout_seconds,
@@ -50,7 +51,6 @@ from .replay_helpers import (
     _message_text_from_graph_payload,
     _prepare_resume_payload,
     _prepare_run_payload,
-    _publish_run_event,
     _record_harness_turn_and_schedule,
     _run_branch_action_turn_to_completion,
     _run_event_streaming_response,
@@ -67,36 +67,9 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
-
-
-def _task_outcome_event_payload(task_outcome: Any) -> dict[str, Any]:
-    return {"task_outcome": task_outcome} if task_outcome is not None else {}
-
-
-def _is_cancel_cleanup_exception(exc: BaseException) -> bool:
-    return isinstance(exc, ValueError) and "generator already executing" in str(exc)
-
-
-def _safe_failed_thread_state(
-    *,
-    chat: ChatService,
-    thread_id: str,
-    user_id: str,
-    context: Any,
-    branch_meta: Any,
-    trace_correlation: Any,
-) -> dict[str, Any] | None:
-    try:
-        return chat._response_payload(
-            thread_id=thread_id,
-            user_id=user_id,
-            context=context,
-            branch_meta=branch_meta,
-            interrupts=chat._safe_get_interrupts(thread_id),
-            trace_correlation=trace_correlation,
-        )
-    except Exception:  # noqa: BLE001
-        return None
+_is_cancel_cleanup_exception = _streaming_lifecycle._is_cancel_cleanup_exception
+_safe_failed_thread_state = _streaming_lifecycle._safe_failed_thread_state
+_task_outcome_event_payload = _streaming_lifecycle._task_outcome_event_payload
 
 
 @router.post("/threads/{thread_id:path}/runs/stream")
@@ -245,7 +218,6 @@ async def _produce_run_stream(
     kind: str = "chat.turn",
     skip_branch_recommendation: bool = False,
 ) -> None:
-    sequence = 0
     visible_text_buffer = ""
     visible_text_pending = ""
     reasoning_buffer = ""
@@ -280,17 +252,12 @@ async def _produce_run_stream(
         run_name="focus_agent_harness_stream",
     )
 
-    async def publish(event_name: str, source_node_name: str | None = None, **data: Any) -> None:
-        nonlocal sequence
-        sequence = await _publish_run_event(
-            runtime=runtime,
-            run_id=run_id,
-            thread_id=thread_id,
-            sequence=sequence,
-            event_name=event_name,
-            source_node_name=source_node_name,
-            data=data,
-        )
+    publish = _streaming_lifecycle._RunEventPublisher(
+        runtime=runtime,
+        run_id=run_id,
+        thread_id=thread_id,
+        default_source_node_name=None,
+    )
 
     try:
         await runtime.run_manager.set_status(run_id, RunStatus.RUNNING)
@@ -509,17 +476,6 @@ async def _produce_run_stream(
                 source=final_visible_source,
                 **_task_outcome_event_payload(final_task_outcome),
             )
-        else:
-            # Always emit message.completed so clients never hang waiting for
-            # a completion signal.  When the model produced no visible
-            # assistant text (e.g. only tool calls, or was interrupted by
-            # tool approval), send an empty content string.
-            await publish(
-                "message.completed",
-                content="",
-                source="empty_final",
-                **_task_outcome_event_payload(final_task_outcome),
-            )
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
         await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
@@ -561,93 +517,53 @@ async def _produce_run_stream(
             **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:
-        await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-        mark_branch_handoff_decision_outcome(
+        await _streaming_lifecycle._handle_cancelled_stream(
             runtime=runtime,
-            decision=handoff_decision,
-            run_status=RunStatus.INTERRUPTED.value,
-            run_id=run_id,
-            message=message or _message_text_from_graph_payload(payload),
-            error="CancelledError",
-        )
-        record = runtime.run_manager.get(run_id)
-        if record is None or not record.abort_event.is_set():
-            failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
-            failed_thread_state = _safe_failed_thread_state(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=user_id,
-                context=context,
-                branch_meta=branch_meta,
-                trace_correlation=trace_correlation,
-            )
-            await publish(
-                "run.failed",
-                error="CancelledError",
-                message="Run was cancelled.",
-                **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-                **_task_outcome_event_payload(failed_values.get("task_outcome")),
-            )
-    except Exception as exc:  # noqa: BLE001
-        record = runtime.run_manager.get(run_id)
-        if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
-            await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-            mark_branch_handoff_decision_outcome(
-                runtime=runtime,
-                decision=handoff_decision,
-                run_status=RunStatus.INTERRUPTED.value,
-                run_id=run_id,
-                message=message or _message_text_from_graph_payload(payload),
-                error=str(exc),
-            )
-            return
-        mark_branch_handoff_decision_outcome(
-            runtime=runtime,
-            decision=handoff_decision,
-            run_status=RunStatus.ERROR.value,
-            run_id=run_id,
-            message=message or _message_text_from_graph_payload(payload),
-            error=str(exc),
-        )
-        await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
-        failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
-        failed_thread_state = _safe_failed_thread_state(
             chat=chat,
+            run_id=run_id,
             thread_id=thread_id,
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
             trace_correlation=trace_correlation,
+            publish=publish,
+            handoff_decision=handoff_decision,
+            handoff_message=message or _message_text_from_graph_payload(payload),
+            mark_handoff=True,
+            safe_chat_values=_safe_chat_values,
         )
-        _record_harness_turn_and_schedule(
+    except Exception as exc:  # noqa: BLE001
+        interrupted = await _streaming_lifecycle._handle_stream_exception(
+            runtime=runtime,
             chat=chat,
+            run_id=run_id,
             thread_id=thread_id,
             user_id=user_id,
-            root_thread_id=context.root_thread_id,
+            context=context,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+            publish=publish,
+            exc=exc,
             kind=kind,
-            status="failed",
-            final_values=failed_values,
+            final_payload=payload,
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
-            branch_meta=branch_meta,
-            trace_correlation=trace_correlation,
-            payload=payload,
-            error=str(exc),
+            handoff_decision=handoff_decision,
+            handoff_message=message or _message_text_from_graph_payload(payload),
+            mark_handoff=True,
+            safe_chat_values=_safe_chat_values,
+            record_harness_turn=_record_harness_turn_and_schedule,
         )
-        await publish(
-            "run.failed",
-            error=exc.__class__.__name__,
-            message=str(exc),
-            **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-            **_task_outcome_event_payload(failed_values.get("task_outcome")),
-        )
+        if interrupted:
+            return
     finally:
-        await _close_run_stream(
+        await _streaming_lifecycle._close_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
-            sequence=sequence,
+            sequence=publish.sequence,
+            close_run_stream=_close_run_stream,
         )
 
 
@@ -665,22 +581,16 @@ async def _produce_branch_action_run_stream(
     initial_values: dict[str, Any],
     kind: str = "chat.turn",
 ) -> None:
-    sequence = 0
     initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
     input_messages = [HumanMessage(content=message)]
     trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
 
-    async def publish(event_name: str, source_node_name: str = "harness", **data: Any) -> None:
-        nonlocal sequence
-        sequence = await _publish_run_event(
-            runtime=runtime,
-            run_id=run_id,
-            thread_id=thread_id,
-            sequence=sequence,
-            event_name=event_name,
-            source_node_name=source_node_name,
-            data=data,
-        )
+    publish = _streaming_lifecycle._RunEventPublisher(
+        runtime=runtime,
+        run_id=run_id,
+        thread_id=thread_id,
+        default_source_node_name="harness",
+    )
 
     try:
         await runtime.run_manager.set_status(run_id, RunStatus.RUNNING)
@@ -739,67 +649,45 @@ async def _produce_branch_action_run_stream(
             **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:
-        await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-        record = runtime.run_manager.get(run_id)
-        if record is None or not record.abort_event.is_set():
-            failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
-            failed_thread_state = _safe_failed_thread_state(
-                chat=chat,
-                thread_id=thread_id,
-                user_id=user_id,
-                context=context,
-                branch_meta=branch_meta,
-                trace_correlation=trace_correlation,
-            )
-            await publish(
-                "run.failed",
-                error="CancelledError",
-                message="Run was cancelled.",
-                **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-                **_task_outcome_event_payload(failed_values.get("task_outcome")),
-            )
-    except Exception as exc:  # noqa: BLE001
-        record = runtime.run_manager.get(run_id)
-        if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
-            await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-            return
-        await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
-        failed_values = _safe_chat_values(chat=chat, thread_id=thread_id)
-        failed_thread_state = _safe_failed_thread_state(
+        await _streaming_lifecycle._handle_cancelled_stream(
+            runtime=runtime,
             chat=chat,
+            run_id=run_id,
             thread_id=thread_id,
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
             trace_correlation=trace_correlation,
+            publish=publish,
+            safe_chat_values=_safe_chat_values,
         )
-        _record_harness_turn_and_schedule(
+    except Exception as exc:  # noqa: BLE001
+        interrupted = await _streaming_lifecycle._handle_stream_exception(
+            runtime=runtime,
             chat=chat,
+            run_id=run_id,
             thread_id=thread_id,
             user_id=user_id,
-            root_thread_id=context.root_thread_id,
+            context=context,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+            publish=publish,
+            exc=exc,
             kind=kind,
-            status="failed",
-            final_values=failed_values,
+            final_payload={"messages": input_messages},
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
-            branch_meta=branch_meta,
-            trace_correlation=trace_correlation,
-            payload={"messages": input_messages},
-            error=str(exc),
+            safe_chat_values=_safe_chat_values,
+            record_harness_turn=_record_harness_turn_and_schedule,
         )
-        await publish(
-            "run.failed",
-            error=exc.__class__.__name__,
-            message=str(exc),
-            **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-            **_task_outcome_event_payload(failed_values.get("task_outcome")),
-        )
+        if interrupted:
+            return
     finally:
-        await _close_run_stream(
+        await _streaming_lifecycle._close_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
-            sequence=sequence,
+            sequence=publish.sequence,
+            close_run_stream=_close_run_stream,
         )

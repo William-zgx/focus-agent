@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import psycopg
@@ -11,6 +12,44 @@ from .postgres_schema_migrations import (
 
 SCHEMA_VERSION = 18
 _SCHEMA_MIGRATION_LOCK_ID = 7612044473148256129
+_CREATED_TABLE_PATTERN = re.compile(
+    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r'(?:"(?P<quoted>[A-Za-z_][A-Za-z0-9_]*)"|(?P<plain>[A-Za-z_][A-Za-z0-9_]*))\b',
+    re.IGNORECASE,
+)
+
+
+def app_postgres_schema_baseline_statements() -> tuple[str, ...]:
+    statements = [
+        f"SELECT pg_advisory_xact_lock({_SCHEMA_MIGRATION_LOCK_ID})",
+        """
+        CREATE TABLE IF NOT EXISTS focus_schema_migrations (
+            version INT PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+    ]
+    for version, migration in _MIGRATIONS:
+        if version == 10:
+            continue
+        migration(statements.append)
+        statements.append(
+            "INSERT INTO focus_schema_migrations (version) "
+            f"VALUES ({version}) ON CONFLICT (version) DO NOTHING"
+        )
+    return tuple(statements)
+
+
+def app_postgres_schema_baseline_tables() -> tuple[str, ...]:
+    tables: list[str] = []
+    for statement in app_postgres_schema_baseline_statements():
+        match = _CREATED_TABLE_PATTERN.search(statement)
+        if match is None:
+            continue
+        table = match.group("quoted") or match.group("plain")
+        if table not in tables:
+            tables.append(table)
+    return tuple(tables)
 
 
 def ensure_app_postgres_schema(
@@ -128,6 +167,8 @@ __all__ = [
     "SCHEMA_VERSION",
     "_MIGRATIONS",
     "_run_migration_v10",
+    "app_postgres_schema_baseline_statements",
+    "app_postgres_schema_baseline_tables",
     "ensure_app_postgres_schema",
     "ensure_app_postgres_schema_on_connection",
     "rebuild_memory_embedding_index",

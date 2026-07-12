@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +22,10 @@ def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
     monkeypatch.setenv("WEB_APP_DIST_DIR", str(dist_dir))
     monkeypatch.setenv("WEB_APP_DEV_SERVER_URL", "")
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("BRANCH_DB_PATH", str(runtime_dir / "branches.sqlite3"))
+    monkeypatch.setenv("LOCAL_CHECKPOINT_PATH", str(runtime_dir / "langgraph-checkpoints.sqlite3"))
+    monkeypatch.setenv("LOCAL_STORE_PATH", str(runtime_dir / "langgraph-store.sqlite3"))
 
 
 def test_request_id_header_is_echoed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -170,15 +173,17 @@ def test_rate_limit_identity_uses_valid_principal_user_without_tenant() -> None:
     assert _identity_for(settings, f"Bearer {token}") == "principal:user-1"
 
 
-def test_rate_limit_identity_uses_digest_for_invalid_bearer_token() -> None:
+def test_rate_limit_identity_uses_client_host_for_invalid_bearer_token() -> None:
     settings = Settings(auth_jwt_secret="rate-secret", auth_jwt_issuer="focus-agent-test")
-    token = "not-a-valid-token"
-    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
-    identity = _identity_for(settings, f"Bearer {token}")
-
-    assert identity == f"bearer-digest:{digest}"
-    assert token not in identity
+    assert (
+        _identity_for(
+            settings,
+            "Bearer not-a-valid-token",
+            host="198.51.100.7",
+        )
+        == "ip:198.51.100.7"
+    )
 
 
 def test_rate_limit_identity_uses_client_host_without_bearer_token() -> None:
@@ -290,9 +295,39 @@ def test_rate_limit_middleware_uses_runtime_coordination_backend() -> None:
     assert body["stable_code"] == "rate_limited"
     assert body["retryable"] is True
     assert body["details"] == {"retry_after_seconds": 4, "limit_per_minute": 3}
-    assert backend.calls == [
-        {"key": "ip:testclient:/v2/threads/thread-1/runs", "limit": 3, "window_seconds": 60.0}
-    ]
+    assert backend.calls == [{"key": "ip:testclient:chat", "limit": 3, "window_seconds": 60.0}]
+
+
+def test_rate_limit_middleware_shares_chat_bucket_across_thread_ids() -> None:
+    class RecordingBackend:
+        def __init__(self):
+            self.keys: list[str] = []
+
+        def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult:
+            del limit, window_seconds
+            self.keys.append(key)
+            return RateLimitResult(allowed=True, remaining=1, retry_after_seconds=0.0)
+
+    backend = RecordingBackend()
+    settings = Settings(auth_enabled=False)
+    app = FastAPI()
+    app.state.runtime = SimpleNamespace(coordination_backend=SimpleNamespace(rate_limiter=backend))
+
+    @app.get("/v2/threads/{thread_id}/runs")
+    def chat_turns(thread_id: str) -> dict[str, str]:
+        return {"thread_id": thread_id}
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        default_limit=10,
+        chat_limit=3,
+        settings=settings,
+    )
+
+    client = TestClient(app)
+    assert client.get("/v2/threads/thread-1/runs").status_code == 200
+    assert client.get("/v2/threads/thread-2/runs").status_code == 200
+    assert backend.keys == ["ip:testclient:chat", "ip:testclient:chat"]
 
 
 def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

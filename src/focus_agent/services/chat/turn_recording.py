@@ -8,7 +8,7 @@ from ...core.branching import BranchMeta
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import TraceCorrelation
 from ..coordination import background_job_key
-from .threads import record_turn_trajectory_best_effort
+from .trajectory_recording import record_turn_trajectory_best_effort
 
 
 class ChatTurnRecordingMixin:

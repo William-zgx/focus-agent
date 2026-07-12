@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import logging
+import secrets
 import time
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -19,7 +20,11 @@ from focus_agent.security.tokens import AuthError, decode_access_token
 from focus_agent.services.coordination import InMemoryRateLimitBackend, RateLimitBackend
 
 REQUEST_ID_HEADER = "X-Request-ID"
+CSRF_TOKEN_HEADER = "X-CSRF-Token"
+CSRF_TOKEN_COOKIE = "focus_agent_csrf"
 RATE_LIMITED_PATH_PREFIXES = ("/v2/threads",)
+_CSRF_PROTECTED_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_DEVELOPMENT_ENVIRONMENTS = frozenset({"dev", "development", "local", "test", "testing", "ci"})
 logger = logging.getLogger("focus_agent.api")
 
 
@@ -76,11 +81,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 try:
                     principal = decode_access_token(token, settings=self._settings)
                 except AuthError:
-                    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
-                    return f"bearer-digest:{digest}"
-                if principal.tenant_id:
-                    return f"principal:{principal.tenant_id}:{principal.user_id}"
-                return f"principal:{principal.user_id}"
+                    pass
+                else:
+                    if principal.tenant_id:
+                        return f"principal:{principal.tenant_id}:{principal.user_id}"
+                    return f"principal:{principal.user_id}"
         client = request.client
         return f"ip:{client.host}" if client else "anonymous"
 
@@ -103,7 +108,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         limit = self._resolve_limit(request.url.path)
         identity = self._identity(request)
-        bucket_key = f"{identity}:{request.url.path}"
+        bucket_scope = (
+            "chat"
+            if any(request.url.path.startswith(prefix) for prefix in RATE_LIMITED_PATH_PREFIXES)
+            else request.url.path
+        )
+        bucket_key = f"{identity}:{bucket_scope}"
         result = self._rate_limit_backend(request).check(
             key=bucket_key, limit=limit, window_seconds=60.0
         )
@@ -130,8 +140,106 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _normalized_origin(raw_url: str) -> tuple[str, str, int | None] | None:
+    try:
+        parsed = urlsplit(raw_url)
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname
+    if scheme not in {"http", "https"} or not hostname or parsed.username or parsed.password:
+        return None
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return scheme, hostname.lower(), port
+
+
+class CsrfProtectionMiddleware(BaseHTTPMiddleware):
+    """Reject cross-origin mutations that would authenticate with a cookie."""
+
+    def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
+        super().__init__(app)
+        self._settings = settings
+
+    def _uses_cookie_auth(self, request: Request) -> bool:
+        if not self._settings.auth_enabled:
+            return False
+        authorization = (request.headers.get("authorization") or "").strip()
+        if authorization.lower().startswith("bearer "):
+            bearer_token = authorization[7:].strip()
+            if bearer_token:
+                try:
+                    decode_access_token(bearer_token, settings=self._settings)
+                except AuthError:
+                    pass
+                else:
+                    return False
+        return any(
+            request.cookies.get(cookie_name)
+            for cookie_name in (
+                self._settings.auth_access_cookie_name,
+                self._settings.auth_refresh_cookie_name,
+            )
+        )
+
+    @staticmethod
+    def _has_valid_double_submit_token(request: Request) -> bool:
+        cookie_token = request.cookies.get(CSRF_TOKEN_COOKIE) or ""
+        header_token = request.headers.get(CSRF_TOKEN_HEADER) or ""
+        return bool(cookie_token and header_token) and secrets.compare_digest(
+            cookie_token, header_token
+        )
+
+    def _allows_legacy_request_without_browser_metadata(self) -> bool:
+        environment = str(self._settings.app_environment or "").strip().lower()
+        return environment in _DEVELOPMENT_ENVIRONMENTS
+
+    def _is_allowed(self, request: Request) -> bool:
+        fetch_site = (request.headers.get("sec-fetch-site") or "").strip().lower()
+        if fetch_site and fetch_site != "same-origin":
+            return False
+
+        request_origin = _normalized_origin(str(request.base_url))
+        source_headers = tuple(
+            value.strip()
+            for value in (
+                request.headers.get("origin"),
+                request.headers.get("referer"),
+            )
+            if value
+        )
+        if source_headers:
+            return request_origin is not None and all(
+                _normalized_origin(source_header) == request_origin
+                for source_header in source_headers
+            )
+
+        if fetch_site == "same-origin":
+            return True
+        if self._has_valid_double_submit_token(request):
+            return True
+        return self._allows_legacy_request_without_browser_metadata()
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        if request.method not in _CSRF_PROTECTED_METHODS or not self._uses_cookie_auth(request):
+            return await call_next(request)
+        if self._is_allowed(request):
+            return await call_next(request)
+        return JSONResponse(
+            status_code=403,
+            content=_build_envelope(
+                code=403,
+                message="Cross-site cookie-authenticated mutation rejected.",
+                request_id=getattr(request.state, "request_id", None),
+                data={"code": "csrf_validation_failed"},
+                retryable=False,
+            ),
+        )
+
+
 def configure_middleware(app: FastAPI, *, settings: Settings) -> None:
-    """Wire CORS, request id, and rate-limit middleware on the FastAPI app."""
+    """Wire CORS, CSRF protection, request id, and rate limiting."""
     if settings.cors_allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -150,7 +258,13 @@ def configure_middleware(app: FastAPI, *, settings: Settings) -> None:
             settings=settings,
         )
 
+    app.add_middleware(CsrfProtectionMiddleware, settings=settings)
     app.add_middleware(RequestIdMiddleware)
 
 
-__all__ = ["configure_middleware", "REQUEST_ID_HEADER"]
+__all__ = [
+    "configure_middleware",
+    "CSRF_TOKEN_COOKIE",
+    "CSRF_TOKEN_HEADER",
+    "REQUEST_ID_HEADER",
+]

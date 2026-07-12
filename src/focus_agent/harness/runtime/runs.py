@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from .rollback import CheckpointRollbackResult
+from .run_followups import RunFollowupsMixin
 
 logger = logging.getLogger("focus_agent.harness.runtime")
 _ROLLBACK_READY_WAIT_SECONDS = 10.0
@@ -194,7 +195,7 @@ class RunRecord:
         }
 
 
-class RunManager:
+class RunManager(RunFollowupsMixin):
     """In-memory run registry with optional best-effort persistence."""
 
     def __init__(
@@ -210,32 +211,7 @@ class RunManager:
         self._store = store
         self._rollback_handler = rollback_handler
         self._lifecycle_publisher = lifecycle_publisher
-        # Dual-queue model inspired by pi's steeringQueue + followUpQueue.
-        # * steer:    messages injected mid-turn (drained before the next
-        #             LLM call while a turn is running).
-        # * followup: messages queued for processing after the current
-        #             turn completes.
-        self._steer_queues: dict[str, asyncio.Queue[str]] = {}
-        self._followup_queues: dict[str, asyncio.Queue[str]] = {}
-        # P2 wiring: optional coalesced-wakeup drain worker for follow-up
-        # messages. Opt-in (``enable_followup_drain=True``) and must be
-        # started explicitly via :meth:`start_followup_drain`; it is *not*
-        # auto-started in ``__init__`` so existing callers see no behavior
-        # change.
-        self._enable_followup_drain = bool(enable_followup_drain)
-        # Lazy import to avoid a hard dependency when the helper module
-        # hasn't been vendored yet (keep RunManager importable in isolation).
-        try:
-            from .coalesced_wakeup import CoalescedWakeupHelper
-
-            self._coalesced_wakeup: CoalescedWakeupHelper | None = CoalescedWakeupHelper()
-        except Exception:  # noqa: BLE001 - optional dependency
-            self._coalesced_wakeup = None
-        self._drain_worker_task: asyncio.Task[None] | None = None
-        # Optional callback the runtime wires up to actually start a new
-        # turn when a followup arrives. Signature:
-        # ``async (thread_id: str, message: str) -> None``.
-        self._followup_handler: Callable[[str, str], Awaitable[None]] | None = None
+        self._initialize_followup_runtime(enable_followup_drain=enable_followup_drain)
 
     async def create(
         self,
@@ -462,242 +438,6 @@ class RunManager:
         async with self._lock:
             self._runs.pop(run_id, None)
         logger.debug("Harness run record %s cleaned up", run_id)
-
-    # ------------------------------------------------------------------
-    # Dual-queue steering / follow-up support (pi-style queues)
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _get_or_create_queue(
-        thread_id: str,
-        queues_dict: dict[str, asyncio.Queue[str]],
-    ) -> asyncio.Queue[str]:
-        """Return the queue for ``thread_id``, creating it if necessary.
-
-        Queues live in a plain dict; we rely on the RunManager's
-        ``_lock`` for any operation that needs to read/modify the dict
-        atomically, but the queues themselves are safe for ``put_nowait``
-        / ``get_nowait`` across tasks because ``asyncio.Queue`` is
-        task-safe.
-        """
-        queue = queues_dict.get(thread_id)
-        if queue is None:
-            queue = asyncio.Queue()
-            queues_dict[thread_id] = queue
-        return queue
-
-    async def steer(self, thread_id: str, message: str) -> None:
-        """Enqueue a steering message for ``thread_id``.
-
-        Steering messages are injected into the *current* turn: they
-        will be picked up by the driver loop before its next LLM call
-        (typically via :meth:`drain_steer_queue`).  If no turn is
-        running the message will simply wait in the queue until the
-        next turn starts (or until explicitly drained).
-        """
-        if not isinstance(message, str):
-            raise TypeError(f"steer message must be str, got {type(message).__name__}")
-        # put_nowait is safe because asyncio.Queue has no maxsize by default;
-        # we still take the lock briefly to ensure the queue exists.
-        async with self._lock:
-            queue = self._get_or_create_queue(thread_id, self._steer_queues)
-        queue.put_nowait(message)
-        logger.debug("Steer message queued for thread %s (depth=%d)", thread_id, queue.qsize())
-
-    async def follow_up(self, thread_id: str, message: str) -> None:
-        """Enqueue a follow-up message for ``thread_id``.
-
-        Follow-ups are processed *after* the current turn completes. When
-        the coalesced-wakeup drain worker is running (started via
-        :meth:`start_followup_drain`), enqueuing a message also signals
-        the worker so it drains pending followups promptly.
-        """
-        if not isinstance(message, str):
-            raise TypeError(f"follow_up message must be str, got {type(message).__name__}")
-        async with self._lock:
-            queue = self._get_or_create_queue(thread_id, self._followup_queues)
-        queue.put_nowait(message)
-        # Signal the drain worker if available. wake() is synchronous and
-        # coalesces multiple rapid signals into one pass.
-        if self._coalesced_wakeup is not None:
-            self._coalesced_wakeup.wake()
-        logger.debug(
-            "Follow-up message queued for thread %s (depth=%d)",
-            thread_id,
-            queue.qsize(),
-        )
-
-    async def drain_steer_queue(self, thread_id: str) -> list[str]:
-        """Atomically drain and return all steering messages for ``thread_id``.
-
-        Returns a (possibly empty) list in FIFO order.
-        """
-        async with self._lock:
-            queue = self._steer_queues.get(thread_id)
-            if queue is None:
-                return []
-            return _drain_queue_nowait(queue)
-
-    def drain_steer_queue_nowait(self, thread_id: str) -> list[str]:
-        """Synchronous, best-effort drain of the steer queue.
-
-        Does not acquire the async lock (so it is safe to call from
-        synchronous graph nodes). Reads the queue reference directly and
-        drains pending items via ``get_nowait``. A steer message queued
-        concurrently with this call may be missed; it will be picked up
-        on the next LLM invocation.
-        """
-        queue = self._steer_queues.get(thread_id)
-        if queue is None:
-            return []
-        return _drain_queue_nowait(queue)
-
-    async def drain_followup_queue(self, thread_id: str) -> list[str]:
-        """Atomically drain and return all follow-up messages for ``thread_id``.
-
-        Returns a (possibly empty) list in FIFO order.
-        """
-        async with self._lock:
-            queue = self._followup_queues.get(thread_id)
-            if queue is None:
-                return []
-            return _drain_queue_nowait(queue)
-
-    def drain_followup_queue_nowait(self, thread_id: str) -> list[str]:
-        """Synchronous, best-effort drain of the follow-up queue."""
-        queue = self._followup_queues.get(thread_id)
-        if queue is None:
-            return []
-        return _drain_queue_nowait(queue)
-
-    def queue_depth(self, thread_id: str) -> dict[str, int]:
-        """Return pending message counts for ``thread_id``.
-
-        Returns a dict of the form ``{"steer": N, "followup": M}``.
-        Missing queues are reported as depth 0.
-        """
-        steer = self._steer_queues.get(thread_id)
-        followup = self._followup_queues.get(thread_id)
-        return {
-            "steer": steer.qsize() if steer is not None else 0,
-            "followup": followup.qsize() if followup is not None else 0,
-        }
-
-    # ------------------------------------------------------------------
-    # Coalesced-wakeup followup drain worker (P2 wiring, opt-in)
-    # ------------------------------------------------------------------
-
-    def wake(self) -> None:
-        """Signal the drain worker that new follow-up work is available.
-
-        Safe to call even if the drain worker is not running (the signal
-        is simply recorded on the helper; the next ``execute_with_coalescing``
-        caller will pick it up). Synchronous and non-blocking.
-        """
-        if self._coalesced_wakeup is not None:
-            self._coalesced_wakeup.wake()
-
-    def set_followup_handler(
-        self,
-        handler: Callable[[str, str], Awaitable[None]] | None,
-    ) -> None:
-        """Register the callback invoked per follow-up message.
-
-        The handler is called as ``await handler(thread_id, message)`` for
-        each drained message. It is the runtime's responsibility to wire
-        this to a function that starts a new turn on the given thread.
-        Pass ``None`` to clear an existing handler.
-        """
-        self._followup_handler = handler
-
-    def start_followup_drain(self) -> bool:
-        """Start the background followup drain worker.
-
-        Returns ``True`` if a worker was started, ``False`` if the helper
-        is unavailable (e.g. the ``coalesced_wakeup`` module could not be
-        imported) or a worker is already running. The worker runs until
-        :meth:`stop_followup_drain` is called or the event loop closes.
-
-        This is opt-in: construction does not start it automatically.
-        """
-        if self._coalesced_wakeup is None:
-            return False
-        if self._drain_worker_task is not None and not self._drain_worker_task.done():
-            return False
-        self._drain_worker_task = asyncio.create_task(
-            self._drain_worker_loop(),
-            name="focus-runmanager-followup-drain",
-        )
-        return True
-
-    async def stop_followup_drain(self) -> None:
-        """Cancel and await the background followup drain worker if running."""
-        task = self._drain_worker_task
-        if task is None or task.done():
-            self._drain_worker_task = None
-            return
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
-        self._drain_worker_task = None
-
-    async def _drain_worker_loop(self) -> None:
-        """Background worker that drains followup queues using coalesced wakeups.
-
-        The worker waits on :meth:`CoalescedWakeupHelper.execute_with_coalescing`,
-        which blocks until :meth:`wake` is called and coalesces multiple
-        rapid signals into a single drain pass, guaranteeing no event is
-        lost while bounding concurrent invocations.
-        """
-        if self._coalesced_wakeup is None:
-            return
-        logger.info("RunManager follow-up drain worker started")
-        try:
-            while True:
-                # execute_with_coalescing runs _process_all_followups and
-                # re-runs it if a wake arrived mid-flight, until no wakes
-                # are pending. When idle it does NOT block; we yield and
-                # wait for the next explicit wake by sleeping briefly to
-                # avoid a tight loop.
-                await self._coalesced_wakeup.execute_with_coalescing(
-                    self._process_all_followups
-                )
-                await asyncio.sleep(0.05)
-        except asyncio.CancelledError:
-            logger.info("RunManager follow-up drain worker cancelled")
-            raise
-        except Exception:  # noqa: BLE001 - keep the loop alive
-            logger.exception("RunManager follow-up drain worker crashed")
-
-    async def _process_all_followups(self) -> None:
-        """Drain and dispatch pending followups across all threads.
-
-        For each thread with queued followups we drain all queued messages
-        then invoke ``_followup_handler`` for each one. When no handler is
-        registered the messages stay drained (i.e. dropped); callers that
-        care about reliability should install a handler before starting
-        the drain worker.
-        """
-        handler = self._followup_handler
-        if handler is None:
-            return
-        # Snapshot keys under the lock so we don't race queue creation.
-        async with self._lock:
-            thread_ids = list(self._followup_queues.keys())
-        for thread_id in thread_ids:
-            messages = await self.drain_followup_queue(thread_id)
-            for msg in messages:
-                try:
-                    await handler(thread_id, msg)
-                except Exception:  # noqa: BLE001 - never let one bad message kill the worker
-                    logger.warning(
-                        "Followup handler failed for thread %s (msg_len=%d)",
-                        thread_id,
-                        len(msg),
-                        exc_info=True,
-                    )
 
     def _new_record(
         self,
@@ -942,20 +682,6 @@ def _augment_rollback_result(
         partial=partial,
         unreverted_scopes=scopes,
     )
-
-
-def _drain_queue_nowait(queue: asyncio.Queue[str]) -> list[str]:
-    """Drain all items currently in *queue* using ``get_nowait``.
-
-    Safe to call from synchronous code because it does not await.
-    """
-    drained: list[str] = []
-    while not queue.empty():
-        try:
-            drained.append(queue.get_nowait())
-        except asyncio.QueueEmpty:
-            break
-    return drained
 
 
 __all__ = [

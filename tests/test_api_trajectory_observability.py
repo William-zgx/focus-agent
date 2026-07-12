@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 
 import focus_agent.api.main as api_main
 import focus_agent.api.routers.health_metrics as health_metrics_router
+from focus_agent.api.deps import get_current_principal
 from focus_agent.api.main import create_app
 from focus_agent.observability.trajectory import TurnTrajectoryRecord
+from focus_agent.security.tokens import Principal
+from focus_agent.services.users import UserInactiveError
 
 
 def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -207,6 +210,7 @@ def _runtime_stub(
     return SimpleNamespace(
         settings=SimpleNamespace(
             auth_enabled=auth_enabled,
+            auth_bootstrap_admin_user_ids=(),
             database_uri="postgresql://example",
             app_version="1.2.3",
             app_environment="staging",
@@ -637,6 +641,60 @@ def test_trajectory_api_requires_auth_when_enabled(
 
     assert response.status_code == 401
     assert response.json()["message"] == "Missing bearer token."
+
+
+def test_trajectory_api_requires_admin_role_when_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _with_stub_frontend(monkeypatch, tmp_path)
+    app = create_app()
+    app.state.runtime = _runtime_stub(
+        auth_enabled=True,
+        trajectory_recorder=_FakeTrajectoryRepo(),
+    )
+    app.state.runtime.user_service = SimpleNamespace(
+        ensure_user_from_principal=lambda principal, **_kwargs: SimpleNamespace(
+            roles=tuple(principal.claims.get("roles", ()))
+        )
+    )
+    client = TestClient(app)
+
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        user_id="member-1",
+        claims={"roles": ["member"]},
+    )
+    assert client.get("/v1/observability/trajectory").status_code == 403
+
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        user_id="admin-1",
+        claims={"roles": ["admin"]},
+    )
+    assert client.get("/v1/observability/trajectory").status_code == 200
+
+
+def test_trajectory_api_rejects_inactive_admin_without_server_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _with_stub_frontend(monkeypatch, tmp_path)
+    app = create_app()
+    app.state.runtime = _runtime_stub(
+        auth_enabled=True,
+        trajectory_recorder=_FakeTrajectoryRepo(),
+    )
+
+    def _raise_inactive_user(*_args, **_kwargs) -> None:
+        raise UserInactiveError("User disabled-admin is not active.")
+
+    app.state.runtime.user_service = SimpleNamespace(
+        ensure_user_from_principal=_raise_inactive_user
+    )
+    app.dependency_overrides[get_current_principal] = lambda: Principal(user_id="disabled-admin")
+    client = TestClient(app)
+
+    response = client.get("/v1/observability/trajectory")
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "User disabled-admin is not active."
 
 
 def test_trajectory_api_returns_503_without_repository(

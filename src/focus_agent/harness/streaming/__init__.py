@@ -8,8 +8,8 @@ from .bridge import (
     StreamEvent,
 )
 from .protocol import CANONICAL_EVENTS, canonical_event_payload, sse_frame
-from .publisher import AgentEventPublisher
 from .proxy import StreamProxy, StreamProxyConfig, is_dropped
+from .publisher import AgentEventPublisher
 
 __all__ = [
     "CANONICAL_EVENTS",

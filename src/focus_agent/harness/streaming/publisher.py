@@ -18,6 +18,7 @@ fall back to direct publishing if desired.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -50,6 +51,7 @@ class AgentEventPublisher:
     _sequence: int = field(default=0, init=False)
     failed: bool = field(default=False, init=False)
     _closed: bool = field(default=False, init=False)
+    _close_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     # ------------------------------------------------------------------ state
     def _next_sequence(self) -> int:
@@ -114,20 +116,33 @@ class AgentEventPublisher:
         Safe to call multiple times; subsequent calls are no-ops after the first
         successful close.
         """
-        if getattr(self, "_closed", False):
+        if self._closed:
             return
+        close_task = self._close_task
+        if close_task is None:
+            close_task = asyncio.create_task(
+                self._close_once(),
+                name=f"stream-publisher-close:{self.run_id}",
+            )
+            self._close_task = close_task
+        await asyncio.shield(close_task)
+
+    async def _close_once(self) -> None:
         try:
-            await self._emit("run.closed", status="closed")
-        except Exception:  # noqa: BLE001
-            pass
-        publish_end = getattr(self.bridge, "publish_end", None)
-        if callable(publish_end):
             try:
-                await publish_end(self.run_id)
+                await self._emit("run.closed", status="closed")
             except Exception:  # noqa: BLE001
-                self.failed = True
-                logger.debug("publish_end failed for run %s", self.run_id, exc_info=True)
-        self._closed = True
+                pass
+            publish_end = getattr(self.bridge, "publish_end", None)
+            if callable(publish_end):
+                try:
+                    await publish_end(self.run_id)
+                except Exception:  # noqa: BLE001
+                    self.failed = True
+                    logger.debug("publish_end failed for run %s", self.run_id, exc_info=True)
+        finally:
+            self._closed = True
+            self._close_task = None
 
     async def on_run_metadata(self, **extra: Any) -> None:
         await self._emit("run.metadata", **extra)
@@ -278,7 +293,7 @@ class AgentEventPublisher:
         thread_id: str,
         *,
         source_node: str = "harness",
-    ) -> "AgentEventPublisher":
+    ) -> AgentEventPublisher:
         """Build a publisher from a FocusAgentHarness-like object.
 
         Falls back gracefully if the harness does not expose a ``stream_bridge``

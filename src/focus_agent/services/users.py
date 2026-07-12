@@ -16,6 +16,7 @@ from focus_agent.core.users import (
 )
 from focus_agent.repositories.user_repository import (
     AuditEventListFilters,
+    LastActiveAdminError,
     UserListFilters,
     UserRepository,
 )
@@ -111,6 +112,27 @@ class UserService:
         if user.last_seen_at != now:
             user = user.model_copy(update={"last_seen_at": now, "updated_at": now})
             user = self.repository.save_user(user)
+        return user
+
+    def authorize_principal(
+        self,
+        principal: Principal,
+        *,
+        allow_admin_bootstrap: bool = False,
+        bootstrap_admin_user_ids: tuple[str, ...] | set[str] | None = None,
+    ) -> User:
+        user = self.repository.get_user_or_none(principal.user_id)
+        requires_bootstrap_role = self._principal_is_configured_bootstrap_admin(
+            principal,
+            bootstrap_admin_user_ids=bootstrap_admin_user_ids,
+        ) and ADMIN_ROLE not in set(normalize_roles(user.roles if user is not None else ()))
+        if user is None or requires_bootstrap_role:
+            return self.ensure_user_from_principal(
+                principal,
+                allow_admin_bootstrap=allow_admin_bootstrap,
+                bootstrap_admin_user_ids=bootstrap_admin_user_ids,
+            )
+        self._require_active_for_auth(user)
         return user
 
     def get_user(self, user_id: str) -> User:
@@ -240,7 +262,11 @@ class UserService:
     ) -> User:
         user = self.get_user(user_id)
         next_status = UserStatus(_status_value(status))
-        if self._would_remove_active_admin(user, next_status=next_status):
+        try:
+            saved = self.repository.save_user_preserving_last_active_admin(
+                user.model_copy(update={"status": next_status, "updated_at": _now()})
+            )
+        except LastActiveAdminError as exc:
             self._audit_last_admin_denial(
                 actor=actor,
                 action="users.status",
@@ -248,10 +274,9 @@ class UserService:
                 reason="cannot_disable_last_active_admin",
                 request_id=request_id,
             )
-            raise LastAdminError("Cannot disable the last active admin user.")
-        saved = self.repository.save_user(
-            user.model_copy(update={"status": next_status, "updated_at": _now()})
-        )
+            raise LastAdminError("Cannot disable the last active admin user.") from exc
+        if next_status != UserStatus.ACTIVE:
+            self._revoke_user_sessions(user_id=user_id, revoked_at=saved.updated_at)
         self._audit(
             actor=actor,
             action="users.status",
@@ -274,7 +299,11 @@ class UserService:
     ) -> User:
         user = self.get_user(user_id)
         normalized_roles = list(normalize_roles(roles))
-        if self._would_remove_last_admin_role(user, normalized_roles):
+        try:
+            saved = self.repository.save_user_preserving_last_active_admin(
+                user.model_copy(update={"roles": normalized_roles, "updated_at": _now()})
+            )
+        except LastActiveAdminError as exc:
             self._audit_last_admin_denial(
                 actor=actor,
                 action="users.roles",
@@ -282,10 +311,7 @@ class UserService:
                 reason="cannot_remove_last_active_admin_role",
                 request_id=request_id,
             )
-            raise LastAdminError("Cannot remove the last active admin role.")
-        saved = self.repository.save_user(
-            user.model_copy(update={"roles": normalized_roles, "updated_at": _now()})
-        )
+            raise LastAdminError("Cannot remove the last active admin role.") from exc
         self._audit(
             actor=actor,
             action="users.roles",
@@ -366,23 +392,9 @@ class UserService:
         if _status_value(user.status) != UserStatus.ACTIVE.value:
             raise UserInactiveError(f"User {user.user_id} is not active.")
 
-    def _would_remove_active_admin(self, user: User, *, next_status: UserStatus) -> bool:
-        if _status_value(user.status) != UserStatus.ACTIVE.value:
-            return False
-        if ADMIN_ROLE not in set(normalize_roles(user.roles)):
-            return False
-        if next_status == UserStatus.ACTIVE:
-            return False
-        return self.repository.count_active_admins() <= 1
-
-    def _would_remove_last_admin_role(self, user: User, next_roles: list[str]) -> bool:
-        if _status_value(user.status) != UserStatus.ACTIVE.value:
-            return False
-        if ADMIN_ROLE not in set(normalize_roles(user.roles)):
-            return False
-        if ADMIN_ROLE in set(normalize_roles(next_roles)):
-            return False
-        return self.repository.count_active_admins() <= 1
+    def _revoke_user_sessions(self, *, user_id: str, revoked_at: str) -> None:
+        for session in self.repository.list_sessions(user_id=user_id, include_revoked=False):
+            self.repository.revoke_session(session.session_id, revoked_at=revoked_at)
 
     def _audit_last_admin_denial(
         self,

@@ -25,6 +25,10 @@ from ...engine.local_persistence import (
 from ...memory.embedding_service import MemoryEmbeddingService
 from ...repositories.memory_repository import MemoryListQuery
 from ...repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
+from .sqlite_reader import has_sqlite_header, read_checkpoints, read_store_items
+
+_SQLITE_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+_SUPPORTED_LOCAL_BACKENDS = {"pickle", "sqlite"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,10 +285,102 @@ def resolve_source_layout(source_dir: str | Path) -> SourceLayout:
         requested_dir=requested_dir,
         resolved_dir=resolved_dir,
         branch_db_path=resolved_dir / "branches.sqlite3",
-        store_path=resolved_dir / "langgraph-store.pkl",
-        checkpoint_path=resolved_dir / "langgraph-checkpoints.pkl",
+        store_path=_resolve_persistence_source(
+            resolved_dir,
+            explicit_path=os.environ.get("LOCAL_STORE_PATH"),
+            pickle_name="langgraph-store.pkl",
+            sqlite_name="langgraph-store.sqlite3",
+            source_name="store",
+        ),
+        checkpoint_path=_resolve_persistence_source(
+            resolved_dir,
+            explicit_path=os.environ.get("LOCAL_CHECKPOINT_PATH"),
+            pickle_name="langgraph-checkpoints.pkl",
+            sqlite_name="langgraph-checkpoints.sqlite3",
+            source_name="checkpoints",
+        ),
         artifact_dir=resolved_dir / "artifacts",
     )
+
+
+def _resolve_persistence_source(
+    source_dir: Path,
+    *,
+    explicit_path: str | None,
+    pickle_name: str,
+    sqlite_name: str,
+    source_name: str,
+) -> Path:
+    backend = (os.environ.get("FOCUS_AGENT_CHECKPOINT_BACKEND") or "").strip().lower()
+    if backend and backend not in _SUPPORTED_LOCAL_BACKENDS:
+        raise ValueError(
+            f"FOCUS_AGENT_CHECKPOINT_BACKEND must be one of: pickle, sqlite (got {backend!r})."
+        )
+
+    configured_path = (
+        Path(explicit_path).expanduser().resolve()
+        if explicit_path and explicit_path.strip()
+        else None
+    )
+    if configured_path is not None and backend == "pickle":
+        return _require_configured_source(configured_path, source_name=source_name)
+    if configured_path is not None and configured_path.suffix.lower() in _SQLITE_SUFFIXES:
+        return _require_configured_source(configured_path, source_name=source_name)
+
+    pickle_path, sqlite_path = _persistence_source_candidates(
+        source_dir,
+        configured_path=configured_path,
+        pickle_name=pickle_name,
+        sqlite_name=sqlite_name,
+    )
+    if backend == "pickle":
+        if configured_path is None and not pickle_path.exists() and sqlite_path.exists():
+            raise ValueError(
+                f"Configured pickle backend would ignore existing SQLite {source_name} source: "
+                f"{sqlite_path}"
+            )
+        return pickle_path
+    if backend == "sqlite":
+        if configured_path is not None:
+            return _require_configured_source(sqlite_path, source_name=source_name)
+        if not sqlite_path.exists() and pickle_path.exists():
+            raise ValueError(
+                f"Configured SQLite backend would ignore existing pickle {source_name} source: "
+                f"{pickle_path}"
+            )
+        return sqlite_path
+
+    existing = [path for path in (sqlite_path, pickle_path) if path.exists()]
+    if len(existing) > 1:
+        raise ValueError(
+            f"Ambiguous local {source_name} sources: {sqlite_path} and {pickle_path}. "
+            "Set FOCUS_AGENT_CHECKPOINT_BACKEND explicitly before migrating."
+        )
+    if existing:
+        return existing[0]
+    if configured_path is not None:
+        raise FileNotFoundError(
+            f"Configured local {source_name} source does not exist: {configured_path}"
+        )
+    return sqlite_path
+
+
+def _require_configured_source(path: Path, *, source_name: str) -> Path:
+    if not path.is_file():
+        raise FileNotFoundError(f"Configured local {source_name} source does not exist: {path}")
+    return path
+
+
+def _persistence_source_candidates(
+    source_dir: Path,
+    *,
+    configured_path: Path | None,
+    pickle_name: str,
+    sqlite_name: str,
+) -> tuple[Path, Path]:
+    if configured_path is None:
+        return source_dir / pickle_name, source_dir / sqlite_name
+    return configured_path, configured_path.with_suffix(".sqlite3")
 
 
 def _sqlite_connect(db_path: Path) -> sqlite3.Connection:
@@ -401,6 +497,18 @@ def load_local_store_items(store_path: Path) -> list[LocalStoreItemRecord]:
     if not store_path.exists():
         return []
 
+    if _is_sqlite_source(store_path, source_name="store"):
+        return [
+            LocalStoreItemRecord(
+                namespace=record["namespace"],
+                key=record["key"],
+                value=_store_item_value_to_dict(record["value"]),
+                created_at=record["created_at"],
+                updated_at=record["updated_at"],
+            )
+            for record in read_store_items(store_path)
+        ]
+
     store = PersistentInMemoryStore(store_path)
     records: list[LocalStoreItemRecord] = []
     for namespace, items in store._data.items():
@@ -437,9 +545,43 @@ def _store_item_value_to_dict(value: object) -> dict[str, Any]:
     return {"value": str(value)}
 
 
+def _is_sqlite_source(path: Path, *, source_name: str) -> bool:
+    sqlite_header = has_sqlite_header(path)
+    backend = (os.environ.get("FOCUS_AGENT_CHECKPOINT_BACKEND") or "").strip().lower()
+    if backend == "pickle":
+        if sqlite_header:
+            raise ValueError(
+                f"Configured pickle backend does not match SQLite {source_name} file: {path}"
+            )
+        return False
+    if backend == "sqlite":
+        if not sqlite_header:
+            raise ValueError(f"Unrecognized canonical SQLite {source_name} file: {path}")
+        return True
+    if sqlite_header:
+        return True
+    if path.suffix.lower() in _SQLITE_SUFFIXES:
+        raise ValueError(f"Unrecognized canonical SQLite {source_name} file: {path}")
+    return False
+
+
 def load_local_checkpoints(checkpoint_path: Path) -> list[LocalCheckpointRecord]:
     if not checkpoint_path.exists():
         return []
+
+    if _is_sqlite_source(checkpoint_path, source_name="checkpoints"):
+        return [
+            LocalCheckpointRecord(
+                thread_id=record["thread_id"],
+                checkpoint_ns=record["checkpoint_ns"],
+                checkpoint_id=record["checkpoint_id"],
+                checkpoint=record["checkpoint"],
+                metadata=record["metadata"],
+                parent_checkpoint_id=record["parent_checkpoint_id"],
+                pending_write_count=record["pending_write_count"],
+            )
+            for record in read_checkpoints(checkpoint_path)
+        ]
 
     saver = PersistentInMemorySaver(checkpoint_path)
     records: list[LocalCheckpointRecord] = []

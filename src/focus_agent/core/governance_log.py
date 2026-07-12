@@ -42,7 +42,7 @@ class GovernanceLog:
     # Construction helpers
     # ------------------------------------------------------------------
     @classmethod
-    def from_state(cls, state: Mapping[str, Any]) -> "GovernanceLog":
+    def from_state(cls, state: Mapping[str, Any]) -> GovernanceLog:
         """Create a ``GovernanceLog`` view from the current state.
 
         Reads ``state["governance_records"]`` (defaulting to ``[]``) and

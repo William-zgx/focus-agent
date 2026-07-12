@@ -404,7 +404,7 @@ class DurableBackgroundWorker:
 
 
 class BoundedBackgroundQueue:
-    """Small bounded worker queue for best-effort post-turn jobs."""
+    """Small bounded worker queue that drains accepted jobs during shutdown."""
 
     def __init__(
         self,
@@ -422,6 +422,8 @@ class BoundedBackgroundQueue:
         self._job_deduper = job_deduper or InMemoryBackgroundJobDeduperBackend()
         self._job_claims: dict[str, BackgroundJobClaim] = {}
         self._closed = False
+        self._shutdown_complete = threading.Event()
+        self._shutdown_thread: threading.Thread | None = None
         self._active_workers = 0
         self._submitted_total = 0
         self._deduplicated_total = 0
@@ -449,6 +451,7 @@ class BoundedBackgroundQueue:
     ) -> bool:
         task_key = str(key or "background:anonymous")
         claim: BackgroundJobClaim | None = None
+        release_claim = False
         with self._lock:
             if self._closed:
                 self._dropped_total += 1
@@ -463,24 +466,25 @@ class BoundedBackgroundQueue:
                 return False
             if claim is not None:
                 self._job_claims[task_key] = claim
-        task = BackgroundTask(
-            key=task_key,
-            func=func,
-            kwargs=dict(kwargs),
-            run_at=time.monotonic() + max(float(delay_seconds or 0.0), 0.0),
-            claim=claim,
-        )
-        try:
-            self._queue.put_nowait(task)
-        except queue.Full:
-            self._release_job_claim(task_key, claim)
-            with self._lock:
+            task = BackgroundTask(
+                key=task_key,
+                func=func,
+                kwargs=dict(kwargs),
+                run_at=time.monotonic() + max(float(delay_seconds or 0.0), 0.0),
+                claim=claim,
+            )
+            try:
+                self._queue.put_nowait(task)
+            except queue.Full:
                 self._remove_job_claim(task_key, claim)
                 self._dropped_total += 1
-            return False
-        with self._lock:
-            self._submitted_total += 1
-        return True
+                release_claim = True
+            else:
+                self._submitted_total += 1
+                return True
+        if release_claim:
+            self._release_job_claim(task_key, claim)
+        return False
 
     def snapshot(self) -> dict[str, int]:
         job_metrics: dict[str, int] = {}
@@ -507,14 +511,27 @@ class BoundedBackgroundQueue:
                 **job_metrics,
             }
 
-    def close(self) -> None:
+    def close(self, timeout: float = 1.0) -> bool:
+        """Stop accepting jobs and wait up to timeout while accepted jobs drain."""
+
         with self._lock:
             self._closed = True
+            if self._shutdown_thread is None:
+                self._shutdown_thread = threading.Thread(
+                    target=self._shutdown,
+                    name=f"focus-agent-background-{self.name}-shutdown",
+                    daemon=True,
+                )
+                self._shutdown_thread.start()
+        return self._shutdown_complete.wait(timeout=max(float(timeout), 0.0))
+
+    def _shutdown(self) -> None:
         for _worker in self._workers:
-            try:
-                self._queue.put_nowait(None)
-            except queue.Full:
-                break
+            self._queue.put(None)
+        self._queue.join()
+        for worker in self._workers:
+            worker.join()
+        self._shutdown_complete.set()
 
     def release_job_key(self, key: str) -> None:
         task_key = str(key or "background:anonymous")

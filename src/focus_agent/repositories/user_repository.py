@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from threading import RLock
 
 from focus_agent.core.users import (
     AdminAuditEvent,
@@ -29,6 +30,10 @@ class AuditEventListFilters:
     decision: str | None = None
 
 
+class LastActiveAdminError(ValueError):
+    pass
+
+
 class UserRepository(ABC):
     @abstractmethod
     def create_user(self, user: User) -> User:
@@ -36,6 +41,10 @@ class UserRepository(ABC):
 
     @abstractmethod
     def save_user(self, user: User) -> User:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_user_preserving_last_active_admin(self, user: User) -> User:
         raise NotImplementedError
 
     @abstractmethod
@@ -120,26 +129,39 @@ class UserRepository(ABC):
 
 class InMemoryUserRepository(UserRepository):
     def __init__(self) -> None:
+        self._lock = RLock()
         self._users: dict[str, User] = {}
         self._sessions: dict[str, UserSession] = {}
         self._audit_events: list[AdminAuditEvent] = []
 
     def create_user(self, user: User) -> User:
-        if user.user_id in self._users:
-            raise ValueError(f"User already exists: {user.user_id}")
-        if user.username and self.get_user_by_username(user.username) is not None:
-            raise ValueError(f"Username already exists: {user.username}")
-        self._users[user.user_id] = user
-        return user
+        with self._lock:
+            if user.user_id in self._users:
+                raise ValueError(f"User already exists: {user.user_id}")
+            if user.username and self.get_user_by_username(user.username) is not None:
+                raise ValueError(f"Username already exists: {user.username}")
+            self._users[user.user_id] = user
+            return user
 
     def save_user(self, user: User) -> User:
-        if user.user_id not in self._users:
-            raise KeyError(f"Unknown user: {user.user_id}")
-        existing = self.get_user_by_username(user.username or "")
-        if existing is not None and existing.user_id != user.user_id:
-            raise ValueError(f"Username already exists: {user.username}")
-        self._users[user.user_id] = user
-        return user
+        with self._lock:
+            if user.user_id not in self._users:
+                raise KeyError(f"Unknown user: {user.user_id}")
+            existing = self.get_user_by_username(user.username or "")
+            if existing is not None and existing.user_id != user.user_id:
+                raise ValueError(f"Username already exists: {user.username}")
+            self._users[user.user_id] = user
+            return user
+
+    def save_user_preserving_last_active_admin(self, user: User) -> User:
+        with self._lock:
+            current = self.get_user(user.user_id)
+            active_admin_count = sum(
+                1 for stored_user in self._users.values() if _is_active_admin(stored_user)
+            )
+            if _removes_active_admin(current, user) and active_admin_count <= 1:
+                raise LastActiveAdminError("Cannot remove the last active admin.")
+            return self.save_user(user)
 
     def get_user(self, user_id: str) -> User:
         user = self.get_user_or_none(user_id)
@@ -148,18 +170,20 @@ class InMemoryUserRepository(UserRepository):
         return user
 
     def get_user_or_none(self, user_id: str) -> User | None:
-        return self._users.get(user_id)
+        with self._lock:
+            return self._users.get(user_id)
 
     def get_user_by_username(self, username: str) -> User | None:
-        normalized = username.lower()
-        return next(
-            (
-                user
-                for user in self._users.values()
-                if user.username is not None and user.username.lower() == normalized
-            ),
-            None,
-        )
+        with self._lock:
+            normalized = username.lower()
+            return next(
+                (
+                    user
+                    for user in self._users.values()
+                    if user.username is not None and user.username.lower() == normalized
+                ),
+                None,
+            )
 
     def list_users(
         self,
@@ -168,12 +192,13 @@ class InMemoryUserRepository(UserRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> UserListResult:
-        items = list(self._users.values())
-        items = _filter_users(items, filters)
-        items.sort(key=lambda user: (user.created_at, user.user_id), reverse=True)
-        return UserListResult(
-            items=items[offset : offset + limit], count=len(items), limit=limit, offset=offset
-        )
+        with self._lock:
+            items = list(self._users.values())
+            items = _filter_users(items, filters)
+            items.sort(key=lambda user: (user.created_at, user.user_id), reverse=True)
+            return UserListResult(
+                items=items[offset : offset + limit], count=len(items), limit=limit, offset=offset
+            )
 
     def ensure_user_from_principal(self, principal: Principal, *, defaults: User) -> User:
         existing = self.get_user_or_none(principal.user_id)
@@ -182,11 +207,8 @@ class InMemoryUserRepository(UserRepository):
         return self.create_user(defaults)
 
     def count_active_admins(self) -> int:
-        return sum(
-            1
-            for user in self._users.values()
-            if user.status == "active" and "admin" in set(user.roles)
-        )
+        with self._lock:
+            return sum(1 for user in self._users.values() if _is_active_admin(user))
 
     def create_session(self, session: UserSession) -> UserSession:
         if session.session_id in self._sessions:
@@ -288,6 +310,15 @@ def _filter_users(items: list[User], filters: UserListFilters | None) -> list[Us
     return filtered
 
 
+def _is_active_admin(user: User) -> bool:
+    status = user.status.value if hasattr(user.status, "value") else str(user.status)
+    return status == "active" and "admin" in set(user.roles)
+
+
+def _removes_active_admin(current: User, updated: User) -> bool:
+    return _is_active_admin(current) and not _is_active_admin(updated)
+
+
 def _filter_audit_events(
     items: list[AdminAuditEvent], filters: AuditEventListFilters | None
 ) -> list[AdminAuditEvent]:
@@ -308,6 +339,7 @@ def _filter_audit_events(
 __all__ = [
     "AuditEventListFilters",
     "InMemoryUserRepository",
+    "LastActiveAdminError",
     "UserListFilters",
     "UserRepository",
 ]

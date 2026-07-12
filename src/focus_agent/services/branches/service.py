@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 
 from langgraph_sdk import get_sync_client
@@ -57,12 +57,14 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         repo: BranchRepository,
         store=None,
         memory_writer: MemoryWriter | None = None,
+        proposal_generator: Callable[..., MergeProposal] = generate_merge_proposal,
     ):
         self.settings = settings
         self.graph = graph
         self.repo = repo
         self.store = store
         self.memory_writer = memory_writer
+        self.proposal_generator = proposal_generator
         self._coordination_backend: CoordinationBackend | None = None
         self._last_memory_curator_decision: dict[str, object] | None = None
         self.thread_client = (
@@ -556,7 +558,6 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         return self._set_branch_archive_state(
             child_thread_id=child_thread_id, user_id=user_id, is_archived=False
         )
-
 
 
 __all__ = ["BranchService", "create_chat_model"]

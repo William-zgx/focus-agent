@@ -6,13 +6,13 @@ import json
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class PermissionAction(str, Enum):
+class PermissionAction(StrEnum):
     """Possible outcomes for a permission evaluation."""
 
     ALLOW = "allow"
@@ -90,9 +90,7 @@ class PermissionEvaluator:
         command-specific patterns (e.g. ``bash:rm -rf *``) take precedence
         over bare tool patterns (e.g. ``bash:*``).
         """
-        ordered = sorted(
-            enumerate(self._rules), key=lambda item: (item[1].priority, item[0])
-        )
+        ordered = sorted(enumerate(self._rules), key=lambda item: (item[1].priority, item[0]))
 
         matched: PermissionRule | None = None
         tool_candidates = [request.tool_name]
@@ -101,8 +99,7 @@ class PermissionEvaluator:
 
         for _idx, rule in ordered:
             tool_match = any(
-                fnmatch.fnmatch(candidate, rule.tool_pattern)
-                for candidate in tool_candidates
+                fnmatch.fnmatch(candidate, rule.tool_pattern) for candidate in tool_candidates
             )
             if not tool_match:
                 # Also allow the bare pattern to match the tool name when

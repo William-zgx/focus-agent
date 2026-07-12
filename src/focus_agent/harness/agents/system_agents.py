@@ -160,9 +160,7 @@ async def _call_small_model(
     """
     factory = ctx.get("model_factory")
     if factory is None:
-        raise RuntimeError(
-            "system agent ctx is missing 'model_factory'; cannot invoke LLM"
-        )
+        raise RuntimeError("system agent ctx is missing 'model_factory'; cannot invoke LLM")
 
     model_id = (agent.model if agent is not None else None) or FALLBACK_SMALL_MODEL_ID
     thinking_mode = str(ctx.get("thinking_mode") or "")
@@ -190,7 +188,7 @@ async def _call_small_model(
         # Some model wrappers accept (system, human) message objects rather
         # than raw dicts; fall back to langchain imports lazily.
         try:
-            from langchain.messages import SystemMessage, HumanMessage
+            from langchain.messages import HumanMessage, SystemMessage
 
             response = await model.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
@@ -233,9 +231,7 @@ async def generate_title(ctx: dict) -> str:
     )
     user_prompt = f"First user message:\n{first_message[:1200]}\n\nTitle:"
     try:
-        title = await _call_small_model(
-            ctx, system_prompt=system_prompt, user_prompt=user_prompt
-        )
+        title = await _call_small_model(ctx, system_prompt=system_prompt, user_prompt=user_prompt)
     except Exception as exc:  # noqa: BLE001
         logger.warning("generate_title: small-model call failed: %s", exc, exc_info=True)
         # Fallback: first ~60 chars of the first message.
@@ -279,20 +275,14 @@ async def compact_context(ctx: dict) -> str:
         "file paths, names, identifiers when they appear. Do NOT invent "
         "facts not in the conversation."
     )
-    prior = (
-        f"Existing summary to preserve and extend:\n{previous[:1200]}\n\n"
-        if previous
-        else ""
-    )
+    prior = f"Existing summary to preserve and extend:\n{previous[:1200]}\n\n" if previous else ""
     user_prompt = (
         f"{prior}Conversation (context usage at ~{int(threshold * 100)}% of budget):\n"
         f"{rendered}\n\n"
         "Compressed summary:"
     )
     try:
-        summary = await _call_small_model(
-            ctx, system_prompt=system_prompt, user_prompt=user_prompt
-        )
+        summary = await _call_small_model(ctx, system_prompt=system_prompt, user_prompt=user_prompt)
     except Exception as exc:  # noqa: BLE001
         logger.warning("compact_context: small-model call failed: %s", exc, exc_info=True)
         # Fallback: a short note that compaction failed; callers should
@@ -328,9 +318,7 @@ async def summarize_turn(ctx: dict) -> str:
     )
     user_prompt = f"Turn messages:\n{rendered}\n\nTurn summary:"
     try:
-        summary = await _call_small_model(
-            ctx, system_prompt=system_prompt, user_prompt=user_prompt
-        )
+        summary = await _call_small_model(ctx, system_prompt=system_prompt, user_prompt=user_prompt)
     except Exception as exc:  # noqa: BLE001
         logger.warning("summarize_turn: small-model call failed: %s", exc, exc_info=True)
         summary = ""
@@ -376,14 +364,9 @@ async def extract_memories(ctx: dict) -> list[str]:
         "its own line starting with '- '. If there is nothing worth "
         "remembering, return an empty response."
     )
-    user_prompt = (
-        f"{existing_block}Turn messages:\n{rendered}\n\n"
-        "New memories to remember:"
-    )
+    user_prompt = f"{existing_block}Turn messages:\n{rendered}\n\nNew memories to remember:"
     try:
-        raw = await _call_small_model(
-            ctx, system_prompt=system_prompt, user_prompt=user_prompt
-        )
+        raw = await _call_small_model(ctx, system_prompt=system_prompt, user_prompt=user_prompt)
     except Exception as exc:  # noqa: BLE001
         logger.warning("extract_memories: small-model call failed: %s", exc, exc_info=True)
         return []
@@ -508,9 +491,7 @@ class SystemAgentRunner:
         logger.debug("system_agent: waiting on %d in-flight task(s)", len(pending))
         results = await asyncio.gather(*pending, return_exceptions=True)
         for task, result in zip(pending, results):
-            if isinstance(result, Exception) and not isinstance(
-                result, asyncio.CancelledError
-            ):
+            if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                 logger.warning(
                     "system_agent: background task %r raised: %s",
                     task.get_name(),
@@ -518,9 +499,7 @@ class SystemAgentRunner:
                     exc_info=result,
                 )
         # Drop references to finished tasks so they can be GC'd.
-        self._tasks = {
-            key: task for key, task in self._tasks.items() if not task.done()
-        }
+        self._tasks = {key: task for key, task in self._tasks.items() if not task.done()}
 
 
 # ---------------------------------------------------------------------------

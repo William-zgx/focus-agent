@@ -17,7 +17,14 @@ from focus_agent.core.users import (
 from focus_agent.security.tokens import Principal
 
 from .postgres_schema import ensure_app_postgres_schema_on_connection
-from .user_repository import AuditEventListFilters, UserListFilters, UserRepository
+from .user_repository import (
+    AuditEventListFilters,
+    LastActiveAdminError,
+    UserListFilters,
+    UserRepository,
+)
+
+_ADMIN_DEMOTION_LOCK_KEY = 6_716_136_569_760_316_001
 
 
 class PostgresUserRepository(UserRepository):
@@ -149,31 +156,40 @@ class PostgresUserRepository(UserRepository):
     def save_user(self, user: User) -> User:
         with self._connect() as conn:
             with conn.cursor() as cur:
+                self._update_user(cur, user)
+        return user
+
+    def save_user_preserving_last_active_admin(self, user: User) -> User:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (_ADMIN_DEMOTION_LOCK_KEY,))
                 cur.execute(
                     """
-                    UPDATE focus_users SET
-                        username = %(username)s,
-                        display_name = %(display_name)s,
-                        email = %(email)s,
-                        tenant_id = %(tenant_id)s,
-                        status = %(status)s,
-                        roles_json = %(roles_json)s,
-                        password_hash = %(password_hash)s,
-                        auth_provider = %(auth_provider)s,
-                        external_subject = %(external_subject)s,
-                        failed_login_count = %(failed_login_count)s,
-                        locked_until = %(locked_until)s,
-                        updated_at = %(updated_at)s,
-                        last_seen_at = %(last_seen_at)s,
-                        last_login_at = %(last_login_at)s,
-                        password_updated_at = %(password_updated_at)s,
-                        data_json = %(data_json)s
-                    WHERE user_id = %(user_id)s
+                    SELECT data_json
+                    FROM focus_users
+                    WHERE user_id = %s
+                    FOR UPDATE
                     """,
-                    self._user_params(user),
+                    (user.user_id,),
                 )
-                if cur.rowcount == 0:
+                row = cur.fetchone()
+                if row is None:
                     raise KeyError(f"Unknown user: {user.user_id}")
+                current = self._user_from_row(row)
+                if self._removes_active_admin(current, user):
+                    cur.execute(
+                        """
+                        SELECT COUNT(*) AS count
+                        FROM focus_users
+                        WHERE status = %s AND roles_json @> %s
+                        """,
+                        ("active", Jsonb(["admin"])),
+                    )
+                    count_row = cur.fetchone()
+                    active_admin_count = int(count_row["count"] if count_row is not None else 0)
+                    if active_admin_count <= 1:
+                        raise LastActiveAdminError("Cannot remove the last active admin.")
+                self._update_user(cur, user)
         return user
 
     def get_user(self, user_id: str) -> User:
@@ -443,6 +459,42 @@ class PostgresUserRepository(UserRepository):
             """,
             self._user_params(user),
         )
+
+    def _update_user(self, cur: object, user: User) -> None:
+        cur.execute(
+            """
+            UPDATE focus_users SET
+                username = %(username)s,
+                display_name = %(display_name)s,
+                email = %(email)s,
+                tenant_id = %(tenant_id)s,
+                status = %(status)s,
+                roles_json = %(roles_json)s,
+                password_hash = %(password_hash)s,
+                auth_provider = %(auth_provider)s,
+                external_subject = %(external_subject)s,
+                failed_login_count = %(failed_login_count)s,
+                locked_until = %(locked_until)s,
+                updated_at = %(updated_at)s,
+                last_seen_at = %(last_seen_at)s,
+                last_login_at = %(last_login_at)s,
+                password_updated_at = %(password_updated_at)s,
+                data_json = %(data_json)s
+            WHERE user_id = %(user_id)s
+            """,
+            self._user_params(user),
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"Unknown user: {user.user_id}")
+
+    @staticmethod
+    def _is_active_admin(user: User) -> bool:
+        status = user.status.value if hasattr(user.status, "value") else str(user.status)
+        return status == "active" and "admin" in set(user.roles)
+
+    @classmethod
+    def _removes_active_admin(cls, current: User, updated: User) -> bool:
+        return cls._is_active_admin(current) and not cls._is_active_admin(updated)
 
     def _insert_session(self, cur: object, session: UserSession) -> None:
         cur.execute(

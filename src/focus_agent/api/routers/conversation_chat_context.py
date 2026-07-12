@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -50,7 +51,9 @@ def list_agents(
     del principal  # authenticated users may list agents; authorization TBD.
     try:
         harness = getattr(runtime, "harness", None)
-        registry = getattr(harness, "agent_definition_registry", None) if harness is not None else None
+        registry = (
+            getattr(harness, "agent_definition_registry", None) if harness is not None else None
+        )
         agents = list_available_agents(registry)
     except Exception:  # noqa: BLE001
         agents = []

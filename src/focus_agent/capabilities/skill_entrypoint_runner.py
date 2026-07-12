@@ -172,7 +172,9 @@ class _LocalVenvSkillEntrypointBackend:
             status=str(payload.get("status") or "failed"),
             command=list(request.command),
             cwd=request.cwd,
-            exit_code=payload.get("exit_code") if isinstance(payload.get("exit_code"), int) else None,
+            exit_code=payload.get("exit_code")
+            if isinstance(payload.get("exit_code"), int)
+            else None,
             timed_out=bool(payload.get("timed_out", False)),
             timeout_seconds=int(payload.get("timeout_seconds") or request.timeout_seconds),
             stdout=str(payload.get("stdout") or ""),
@@ -192,7 +194,9 @@ class _LocalVenvSkillEntrypointBackend:
             },
             skill_id=self.skill.skill_id,
             entrypoint=self.entrypoint_name,
-            memory_mb=payload.get("memory_mb") if isinstance(payload.get("memory_mb"), int) else None,
+            memory_mb=payload.get("memory_mb")
+            if isinstance(payload.get("memory_mb"), int)
+            else None,
             sandbox_id=request.sandbox_id,
             fallback_used=True,
             workspace_mode="host",
@@ -350,12 +354,14 @@ def _ensure_venv(*, venv_dir: Path, dependencies: tuple[str, ...]) -> Path:
         if venv_dir.exists() or venv_dir.is_symlink():
             _safe_rmtree(venv_dir)
         venv_dir.parent.mkdir(parents=True, exist_ok=True)
-        venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
+        venv.EnvBuilder(
+            with_pip=True,
+            clear=True,
+            symlinks=os.name != "nt",
+        ).create(venv_dir)
         _write_venv_marker(venv_dir)
     if validated_dependencies:
-        deps_hash = hashlib.sha256(
-            "\n".join(validated_dependencies).encode("utf-8")
-        ).hexdigest()
+        deps_hash = hashlib.sha256("\n".join(validated_dependencies).encode("utf-8")).hexdigest()
         marker = venv_dir / f".focus-agent-deps-{deps_hash}"
         if not marker.exists():
             completed = subprocess.run(
@@ -465,9 +471,7 @@ def _arguments_to_argv(
     reserved_flags: tuple[str | None, ...] = (),
 ) -> list[str]:
     reserved = {
-        _normalize_argument_name(flag.removeprefix("--"))
-        for flag in reserved_flags
-        if flag
+        _normalize_argument_name(flag.removeprefix("--")) for flag in reserved_flags if flag
     }
     argv: list[str] = []
     for key, value in arguments.items():
@@ -509,9 +513,7 @@ def _validated_dependencies(dependencies: tuple[str, ...]) -> tuple[str, ...]:
             or "\\" in dependency
             or any(char in dependency for char in "\r\n\t")
         ):
-            raise RuntimeError(
-                f"Unsafe skill dependency declaration: {raw_dependency!r}."
-            )
+            raise RuntimeError(f"Unsafe skill dependency declaration: {raw_dependency!r}.")
         validated.append(dependency)
     return tuple(validated)
 
