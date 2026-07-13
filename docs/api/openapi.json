@@ -19959,6 +19959,32 @@
         "summary": "List Agent Toolsets"
       }
     },
+    "/v1/agents": {
+      "get": {
+        "description": "Return the set of agents currently addressable via @mention.\n\nThe UI uses this to power @mention autocomplete. The endpoint is\nintentionally lightweight and never fails \u2014 if the harness or registry\nis unavailable it returns an empty list.",
+        "operationId": "list_agents_v1_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Agents V1 Agents Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agents"
+      }
+    },
     "/v1/auth/change-password": {
       "post": {
         "operationId": "change_password_v1_auth_change_password_post",
