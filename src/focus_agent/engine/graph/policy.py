@@ -315,6 +315,17 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     if _contains_any(normalized, ("引用来源", "引用数据来源", "cite source", "cite sources")):
         symbol_hits = tuple(hit for hit in symbol_hits if hit not in {"引用", "reference"})
     execution_hits = _matched_markers(normalized, _EXECUTION_INTENT_MARKERS)
+    explicit_temporal_web_contract = (
+        "current_utc_time" in normalized and "web_search" in normalized and bool(web_lookup_hits)
+    )
+    if explicit_temporal_web_contract:
+        execution_hits = tuple(
+            hit for hit in execution_hits if hit not in {"修改", "modify", "文件", "file"}
+        )
+        explicit_workspace_hits = tuple(
+            hit for hit in explicit_workspace_hits if hit not in {"文件", "file"}
+        )
+        workspace_hits = tuple(hit for hit in workspace_hits if hit not in {"文件", "file"})
     creative_hits = _matched_markers(normalized, _CREATIVE_DIRECT_MARKERS)
     strong_explicit_workspace_hits = tuple(
         hit for hit in explicit_workspace_hits if hit not in _WEAK_WORKSPACE_CONTEXT_MARKERS
@@ -395,6 +406,27 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
             reason_codes=tuple(reason_codes),
             preferred_first_tool=preferred_skill_tool or "skills_search",
             allowed_toolsets=("skill",),
+        )
+
+    if explicit_temporal_web_contract:
+        reason_codes = [
+            code
+            for code in reason_codes
+            if code
+            not in {
+                "execution_signal",
+                "local_workspace_context",
+                "mixed_live_web_workspace",
+                "workspace_lookup_signal",
+            }
+        ]
+        reason_codes.append("explicit_temporal_web_contract")
+        reason_codes.append("policy_live_web_research")
+        return _exposure(
+            "live_web_research",
+            confidence=max(0.95, _confidence(live_web_score, workspace_score)),
+            reason_codes=tuple(reason_codes),
+            preferred_first_tool="web_search",
         )
 
     if execution_score and has_strong_workspace_signal and not has_live_web_signal:

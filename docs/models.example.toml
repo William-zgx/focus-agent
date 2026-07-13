@@ -56,7 +56,9 @@ label = "GPT-4.1 Mini"
 id = "moonshot:kimi-k2.6"
 label = "Kimi K2.6"
 supports_thinking = true
-default_thinking_enabled = true
+# Keep extended thinking opt-in until the provider's reasoning stream is
+# suitable for the interaction and latency requirements of this deployment.
+default_thinking_enabled = false
 no_temperature = true
 thinking_disable_extra_body_type = "disabled"
 

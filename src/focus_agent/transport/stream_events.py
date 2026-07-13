@@ -111,6 +111,40 @@ _INTERNAL_ENGLISH_PROCESS_PREFIX_RE = re.compile(
     r"analysis|assistant\s+f|assistant\s+final"
     r")$"
 )
+_CHINESE_PROCESS_OPENINGS = (
+    "现在让我",
+    "接下来我",
+    "我需要",
+    "我必须",
+    "我打算",
+    "我准备",
+    "我想要",
+    "让我",
+    "我来",
+    "我先",
+    "我再",
+    "我会",
+    "我将",
+)
+_CHINESE_PROCESS_MODIFIERS = ("先", "再", "继续", "进一步", "直接", "马上")
+_CHINESE_PROCESS_ACTIONS = (
+    "尝试",
+    "查询",
+    "搜索",
+    "检索",
+    "获取",
+    "访问",
+    "抓取",
+    "浏览",
+    "查看",
+    "打开",
+    "调用",
+    "执行",
+    "读取",
+    "查找",
+    "重试",
+)
+_QUARANTINED_CHINESE_PROCESS_PENDING = "\x00focus-agent:quarantined-chinese-process"
 
 
 def _stringify(value: Any) -> str:
@@ -174,7 +208,34 @@ def looks_like_potential_stream_visible_text_artifact_prefix(text: Any) -> bool:
     return looks_like_potential_textual_tool_call_prefix(value) or bool(
         _INTERNAL_ENGLISH_PROCESS_PREFIX_RE.match(value)
         or _INTERNAL_TOOL_DELIBERATION_PREFIX_RE.match(value)
+        or _chinese_process_prefix_state(value) != "safe"
     )
+
+
+def _chinese_process_prefix_state(text: str) -> str:
+    value = text.strip()
+    if not value:
+        return "safe"
+    for opening in _CHINESE_PROCESS_OPENINGS:
+        if opening.startswith(value):
+            return "pending"
+        if not value.startswith(opening):
+            continue
+        remaining = value[len(opening) :]
+        if not remaining:
+            return "pending"
+        for modifier in _CHINESE_PROCESS_MODIFIERS:
+            if modifier.startswith(remaining):
+                return "pending"
+            if remaining.startswith(modifier):
+                remaining = remaining[len(modifier) :]
+                if not remaining:
+                    return "pending"
+                break
+        for action in _CHINESE_PROCESS_ACTIONS:
+            if action.startswith(remaining) or remaining.startswith(action):
+                return "quarantine"
+    return "safe"
 
 
 def _suffix_after_internal_final_answer_boundary(text: str) -> str:
@@ -221,8 +282,17 @@ def safe_stream_visible_text_transition(
     if not delta:
         return current_text, pending_text
 
+    if pending_text == _QUARANTINED_CHINESE_PROCESS_PENDING:
+        return current_text, pending_text
+
     candidate_pending = f"{pending_text}{delta}"
     candidate_visible = f"{current_text}{candidate_pending}"
+    chinese_process_state = _chinese_process_prefix_state(candidate_pending)
+    if chinese_process_state == "quarantine":
+        return current_text, _QUARANTINED_CHINESE_PROCESS_PENDING
+    if chinese_process_state == "pending":
+        return current_text, candidate_pending
+
     if looks_like_stream_visible_text_artifact(
         candidate_pending
     ) or looks_like_stream_visible_text_artifact(candidate_visible):
@@ -510,9 +580,7 @@ def extract_tool_results_from_updates(data: dict[str, Any]) -> list[dict[str, An
                 for item in list(node_state.get("tool_outcomes") or [])
                 if isinstance(item, dict)
             ]
-        tool_messages = [
-            message for message in messages if getattr(message, "type", "") == "tool"
-        ]
+        tool_messages = [message for message in messages if getattr(message, "type", "") == "tool"]
         if tool_outcomes:
             latest_message_by_call_id = {
                 str(getattr(message, "tool_call_id", None) or ""): message
@@ -543,7 +611,9 @@ def extract_tool_results_from_updates(data: dict[str, Any]) -> list[dict[str, An
             artifact = getattr(message, "artifact", None)
             artifact_payload = dict(artifact or {}) if isinstance(artifact, dict) else {}
             runtime_payload = artifact_payload.get("runtime")
-            runtime_payload = dict(runtime_payload or {}) if isinstance(runtime_payload, dict) else {}
+            runtime_payload = (
+                dict(runtime_payload or {}) if isinstance(runtime_payload, dict) else {}
+            )
             tool_call_id = getattr(message, "tool_call_id", None)
             tool_outcome = _tool_outcome_for_call(tool_outcomes, tool_call_id)
             tool_name = (

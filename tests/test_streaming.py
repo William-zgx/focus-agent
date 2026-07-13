@@ -561,6 +561,37 @@ def test_safe_stream_visible_text_transition_hides_split_chinese_tool_deliberati
     assert pending_text == ""
 
 
+def test_safe_stream_visible_text_transition_quarantines_split_chinese_process_narration():
+    visible_text, pending_text = safe_stream_visible_text_transition("", "让我再搜索")
+    assert visible_text == ""
+    assert pending_text
+
+    for delta in ("更具体的近期信息", "，然后调用 web_search。"):
+        visible_text, pending_text = safe_stream_visible_text_transition(
+            visible_text,
+            delta,
+            pending_text=pending_text,
+        )
+
+    assert visible_text == ""
+    assert pending_text
+
+
+def test_safe_stream_visible_text_transition_keeps_chinese_final_answer_opening():
+    visible_text, pending_text = safe_stream_visible_text_transition("", "根据当前工具结果")
+    assert visible_text == "根据当前工具结果"
+    assert pending_text == ""
+
+    visible_text, pending_text = safe_stream_visible_text_transition(
+        visible_text,
+        "，以下是结论：",
+        pending_text=pending_text,
+    )
+
+    assert visible_text == "根据当前工具结果，以下是结论："
+    assert pending_text == ""
+
+
 def test_safe_stream_visible_text_transition_releases_plain_i_sentence():
     visible_text, pending_text = safe_stream_visible_text_transition("", "I")
     assert visible_text == ""

@@ -10,6 +10,10 @@ from focus_agent.core.context_policy import (
     trim_tool_observation,
 )
 from focus_agent.core.types import ArtifactRef, ContextBudget, FindingItem, PromptMode
+from focus_agent.engine.graph_output_language import (
+    enforce_temporal_anchor,
+    repair_chinese_output,
+)
 
 
 def test_assemble_context_changes_output_by_mode():
@@ -166,6 +170,75 @@ def test_assemble_context_renders_skill_blocks():
     assert "## Active skills" in rendered
     assert "## Available skills" in rendered
     assert "## Skill system" in context_slice.system_instructions
+
+
+def test_assemble_context_requires_chinese_answers_for_chinese_requests():
+    context_slice = assemble_context(
+        {
+            "messages": [
+                HumanMessage(content="请用中文总结这条英文新闻，并保留来源链接。"),
+            ],
+        },
+        PromptMode.EXPLORE,
+    )
+
+    assert "explicit output-language instruction exactly" in context_slice.system_instructions
+    assert (
+        "user writes in Chinese or explicitly requests Chinese" in context_slice.system_instructions
+    )
+    assert "final answer in Chinese" in context_slice.system_instructions
+    assert "English-only answer" in context_slice.system_instructions
+
+
+def test_chinese_output_rewrite_rejects_missing_locked_time_and_source():
+    class RewritingModel:
+        def invoke(self, _messages):
+            return AIMessage(content="月之暗面发布了新的功能说明。")
+
+    rewritten = repair_chinese_output(
+        response=AIMessage(
+            content=(
+                "Moonshot AI announced a new Kimi feature. See https://www.moonshot.cn for details."
+            )
+        ),
+        user_text="请用中文回答今天的 Moonshot AI 新闻。",
+        model=RewritingModel(),
+        observed_at="2026-07-13T06:21:13.595437+00:00",
+        source_urls=("https://www.moonshot.cn",),
+    )
+
+    assert rewritten is None
+
+
+def test_temporal_anchor_guard_replaces_conflicting_chinese_date():
+    repair = enforce_temporal_anchor(
+        response=AIMessage(content=("当前 UTC 时间是 2025年1月9日。Moonshot AI 发布了新的新闻。")),
+        user_text="请用中文总结今天的 Moonshot AI 新闻。",
+        observed_at="2026-07-13T06:21:13.595437+00:00",
+        source_refs=(("Moonshot AI", "https://www.moonshot.cn"),),
+    )
+
+    assert repair is not None
+    assert repair.action == "answer_with_verified_temporal_anchor"
+    assert "2026-07-13T06:21:13.595437+00:00" in repair.response.content
+    assert "https://www.moonshot.cn" in repair.response.content
+    assert "2025年1月9日" not in repair.response.content
+
+
+def test_temporal_anchor_guard_replaces_reversed_date_before_utc_marker():
+    repair = enforce_temporal_anchor(
+        response=AIMessage(
+            content=("本次联网研究基于 2025-01-15 00:00:00 UTC 时间。Moonshot AI 发布了新的新闻。")
+        ),
+        user_text="请用中文总结今天的 Moonshot AI 新闻。",
+        observed_at="2026-07-13T06:21:13.595437+00:00",
+        source_refs=(("Moonshot AI", "https://www.moonshot.cn"),),
+    )
+
+    assert repair is not None
+    assert repair.action == "answer_with_verified_temporal_anchor"
+    assert "2026-07-13T06:21:13.595437+00:00" in repair.response.content
+    assert "2025-01-15" not in repair.response.content
 
 
 def test_prompt_budget_guard_preserves_current_user_and_active_constraints():

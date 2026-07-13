@@ -32,6 +32,7 @@ from ..graph_execution_contract import (
     tool_result_names,
     verify_answer_against_evidence,
 )
+from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
 from ..graph_plan_nodes import _format_plan_block
 from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answer
 from ..graph_turn_helpers import (
@@ -187,6 +188,8 @@ def _agent_loop_update_hooks(
         "evidence_bundle_to_citation_refs": evidence_bundle_to_citation_refs,
         "_new_citation_refs": _new_citation_refs,
         "_latest_turn_has_tool_result": _latest_turn_has_tool_result,
+        "enforce_temporal_anchor": enforce_temporal_anchor,
+        "repair_chinese_output": repair_chinese_output,
         "build_task_outcome": build_task_outcome,
         "_with_focus_agent_turn_metadata": _with_focus_agent_turn_metadata,
         "_next_pending_tool_action": _next_pending_tool_action,
@@ -431,7 +434,11 @@ def make_agent_loop_node(
             thinking_mode=selected_thinking_mode,
             settings=settings,
         )
-        if _should_force_tool_free_answer(state_messages):
+        force_tool_free_answer = _should_force_tool_free_answer(state_messages)
+        terminal_stream_phase = (
+            STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
+        )
+        if force_tool_free_answer:
             forced_prompt = apply_prompt_budget_guard(
                 [
                     prompt_messages[0],
@@ -449,7 +456,7 @@ def make_agent_loop_node(
             response = _invoke_with_tool_result_fallback(
                 _with_stream_phase(
                     model_for(selected_model, selected_thinking_mode),
-                    STREAM_VISIBILITY_VISIBLE,
+                    terminal_stream_phase,
                 ),
                 forced_prompt,
                 fallback_messages=fallback_messages,
@@ -467,6 +474,8 @@ def make_agent_loop_node(
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=quarantined_model_for,
             )
+            if getattr(response, "tool_calls", None):
+                response = AIMessage(content=_fallback_answer_from_tool_results(fallback_messages))
         elif (
             tool_policy == "live_web_research"
             and temporal_anchor_required
@@ -657,7 +666,7 @@ def make_agent_loop_node(
             response = _invoke_with_tool_result_fallback(
                 _with_stream_phase(
                     model_for(selected_model, selected_thinking_mode),
-                    STREAM_VISIBILITY_VISIBLE,
+                    terminal_stream_phase,
                 ),
                 prompt_messages,
                 fallback_messages=fallback_messages,

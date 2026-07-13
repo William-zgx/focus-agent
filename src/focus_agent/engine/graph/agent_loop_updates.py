@@ -70,6 +70,8 @@ def finalize_agent_loop_turn(
     evidence_bundle_to_citation_refs = hooks["evidence_bundle_to_citation_refs"]
     new_citation_refs = hooks["_new_citation_refs"]
     latest_turn_has_tool_result = hooks["_latest_turn_has_tool_result"]
+    enforce_temporal_anchor = hooks["enforce_temporal_anchor"]
+    repair_chinese_output = hooks["repair_chinese_output"]
     build_task_outcome = hooks["build_task_outcome"]
     with_focus_agent_turn_metadata = hooks["_with_focus_agent_turn_metadata"]
     next_pending_tool_action = hooks["_next_pending_tool_action"]
@@ -264,8 +266,45 @@ def finalize_agent_loop_turn(
                     "repair_action_taken": "answer_with_uncertainty",
                 }
                 live_web_repair_taken = "answer_with_uncertainty"
+    evidence_citation_refs = evidence_bundle_to_citation_refs(evidence_bundle)
+    source_urls = tuple(
+        str(item.get("uri") or "").strip()
+        for item in evidence_citation_refs
+        if str(item.get("uri") or "").strip()
+    )
+    language_repair_taken = False
+    language_repair_attempts = 0
+    if not getattr(response, "tool_calls", None):
+        language_repair = repair_chinese_output(
+            response=response,
+            user_text=tool_intent_text,
+            model=quarantined_model_for(selected_model, selected_thinking_mode),
+            observed_at=observed_at,
+            source_urls=source_urls,
+        )
+        if language_repair is not None:
+            response = language_repair.response
+            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            language_repair_taken = True
+            language_repair_attempts = language_repair.attempts
+    temporal_anchor_repair_taken = ""
+    if not getattr(response, "tool_calls", None) and observed_at:
+        temporal_anchor_repair = enforce_temporal_anchor(
+            response=response,
+            user_text=tool_intent_text,
+            observed_at=observed_at,
+            source_refs=tuple(
+                (str(item.get("label") or ""), str(item.get("uri") or ""))
+                for item in evidence_citation_refs
+                if str(item.get("uri") or "").strip()
+            ),
+        )
+        if temporal_anchor_repair is not None:
+            response = temporal_anchor_repair.response
+            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            temporal_anchor_repair_taken = temporal_anchor_repair.action
     citation_refs = new_citation_refs(
-        evidence_bundle_to_citation_refs(evidence_bundle),
+        evidence_citation_refs,
         existing=list(state.get("citations", []) or []),
     )
     web_tool_result_seen = latest_turn_has_tool_result(
@@ -298,14 +337,19 @@ def finalize_agent_loop_turn(
             evidence_ledger=evidence_ledger,
             tool_outcomes=current_tool_outcomes,
             final_answer=message_content_text(response),
-            repair_action_taken=skill_execution_repair_taken or live_web_repair_taken,
+            repair_action_taken=(
+                skill_execution_repair_taken
+                or live_web_repair_taken
+                or ("rewrite_chinese_output" if language_repair_taken else "")
+                or temporal_anchor_repair_taken
+            ),
             current_turn_id=current_turn_id,
             current_human_turn_index=current_human_turn_index or 1,
         )
     )
     updates: dict[str, Any] = {
         "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1,
+        "llm_calls": state.get("llm_calls", 0) + 1 + language_repair_attempts,
         "evidence_bundle": evidence_bundle,
         "evidence_ledger": evidence_ledger,
         "execution_contract": execution_contract,
@@ -330,6 +374,11 @@ def finalize_agent_loop_turn(
         intent_dumped["skill_execution_repair_action_taken"] = skill_execution_repair_taken
         if skill_execution_repair_taken == "retry_skill_primary_tool":
             intent_dumped["skill_execution_answer_repair_count"] = skill_execution_repair_count + 1
+    if language_repair_taken:
+        intent_dumped["output_language_repair_action_taken"] = "rewrite_chinese_output"
+        intent_dumped["output_language_repair_attempts"] = language_repair_attempts
+    if temporal_anchor_repair_taken:
+        intent_dumped["temporal_anchor_repair_action_taken"] = temporal_anchor_repair_taken
     turn_metadata: dict[str, Any] = {}
     if intent_dumped.get("skill_execution_plan"):
         turn_metadata["skill_execution_plan"] = intent_dumped["skill_execution_plan"]
@@ -396,6 +445,11 @@ def finalize_agent_loop_turn(
         updates["plan_meta"]["skill_execution_answer_repair_count"] = (
             skill_execution_repair_count + 1
         )
+    if language_repair_taken:
+        updates["plan_meta"]["output_language_repair_action_taken"] = "rewrite_chinese_output"
+        updates["plan_meta"]["output_language_repair_attempts"] = language_repair_attempts
+    if temporal_anchor_repair_taken:
+        updates["plan_meta"]["temporal_anchor_repair_action_taken"] = temporal_anchor_repair_taken
     if tool_route_plan is not None:
         dumped = tool_route_plan.model_dump(mode="json")
         append_agent_state_record(

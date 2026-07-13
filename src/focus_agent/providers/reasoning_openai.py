@@ -123,8 +123,11 @@ def _augment_reasoning_chunk(
     *,
     reasoning_content: str,
 ) -> AIMessageChunk:
+    content = getattr(message_chunk, "content", "")
+    if isinstance(content, str) and content.strip() == reasoning_content:
+        content = ""
     return AIMessageChunk(
-        content=getattr(message_chunk, "content", ""),
+        content=content,
         additional_kwargs={
             **dict(getattr(message_chunk, "additional_kwargs", {}) or {}),
             "reasoning_content": reasoning_content,

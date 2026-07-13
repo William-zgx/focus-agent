@@ -222,6 +222,12 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     system_instructions = "\n\n".join(
         [
             "You are Focus Agent, a concise research-oriented assistant optimized for long dialogues.",
+            (
+                "Follow the user's explicit output-language instruction exactly. "
+                "When the user writes in Chinese or explicitly requests Chinese, "
+                "write the final answer in Chinese and translate source material "
+                "instead of returning an English-only answer."
+            ),
             _mode_instructions(prompt_mode),
             _skill_system_block(
                 has_available_skills=bool(available_skills_block),

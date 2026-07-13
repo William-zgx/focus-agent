@@ -176,6 +176,7 @@ export function MessageComposerModelSelector({
 												className={`fa-composer-model-option ${
 													model.id === modelId ? "is-selected" : ""
 												}`}
+												data-model-id={model.id}
 												onKeyDown={(event) =>
 													handleModelOptionKeyDown(event, () =>
 														onSelectModel(model.id),

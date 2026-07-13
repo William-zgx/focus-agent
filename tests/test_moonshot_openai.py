@@ -112,6 +112,64 @@ def test_moonshot_stream_chunk_keeps_reasoning_content():
     assert message.content == ""
 
 
+def test_moonshot_stream_chunk_hides_content_that_duplicates_reasoning_content():
+    model = MoonshotChatOpenAI(
+        model="kimi-k2.6",
+        api_key="test-key",
+        base_url="https://api.moonshot.cn/v1",
+    )
+
+    generation_chunk = model._convert_chunk_to_generation_chunk(
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "role": "assistant",
+                        "content": "先分析检索结果，再调用工具。",
+                        "reasoning_content": "先分析检索结果，再调用工具。",
+                    }
+                }
+            ]
+        },
+        default_chunk_class=AIMessage,
+        base_generation_info=None,
+    )
+
+    assert generation_chunk is not None
+    message = generation_chunk.message
+    assert message.additional_kwargs["reasoning_content"] == "先分析检索结果，再调用工具。"
+    assert message.content == ""
+
+
+def test_moonshot_stream_chunk_keeps_visible_content_distinct_from_reasoning_content():
+    model = MoonshotChatOpenAI(
+        model="kimi-k2.6",
+        api_key="test-key",
+        base_url="https://api.moonshot.cn/v1",
+    )
+
+    generation_chunk = model._convert_chunk_to_generation_chunk(
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "role": "assistant",
+                        "content": "根据官方页面，Kimi K2.6 已公开提供。",
+                        "reasoning_content": "先检查官方来源再回答。",
+                    }
+                }
+            ]
+        },
+        default_chunk_class=AIMessage,
+        base_generation_info=None,
+    )
+
+    assert generation_chunk is not None
+    message = generation_chunk.message
+    assert message.additional_kwargs["reasoning_content"] == "先检查官方来源再回答。"
+    assert message.content == "根据官方页面，Kimi K2.6 已公开提供。"
+
+
 def test_moonshot_request_payload_normalizes_langchain_reasoningcontent_blocks():
     model = MoonshotChatOpenAI(
         model="kimi-k2.6",

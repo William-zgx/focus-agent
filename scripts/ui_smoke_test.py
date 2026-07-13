@@ -20,6 +20,8 @@ DEFAULT_APP_URL = "http://127.0.0.1:5173/app/"
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/healthz"
 DEFAULT_MESSAGE = "请简短回复 OK"
 DEFAULT_RESPONSE_TIMEOUT_SECONDS = 180.0
+THINKING_MODES = ("enabled", "disabled")
+DEFAULT_THINKING_MODEL_ID = "moonshot:kimi-k2.6"
 
 
 def _http_get_json(url: str) -> object:
@@ -215,12 +217,22 @@ class CdpWebSocket:
             return result if isinstance(result, dict) else {}
 
 
-def build_smoke_expression(message: str, response_timeout_seconds: float) -> str:
+def build_smoke_expression(
+    message: str,
+    response_timeout_seconds: float,
+    *,
+    thinking_mode: str | None = None,
+    thinking_model_id: str = DEFAULT_THINKING_MODEL_ID,
+) -> str:
     encoded_message = json.dumps(message, ensure_ascii=False)
+    encoded_thinking_mode = json.dumps(thinking_mode)
+    encoded_thinking_model_id = json.dumps(thinking_model_id)
     response_timeout_ms = max(1000, int(response_timeout_seconds * 1000))
     return rf"""
 (async () => {{
   const smokeMessage = {encoded_message};
+  const requestedThinkingMode = {encoded_thinking_mode};
+  const requestedThinkingModelId = {encoded_thinking_model_id};
   const stableAssistantResponseTimeoutMs = {response_timeout_ms};
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitFor = async (predicate, timeout = 20000, label = 'condition') => {{
@@ -301,6 +313,81 @@ def build_smoke_expression(message: str, response_timeout_seconds: float) -> str
     textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
     return textarea;
   }};
+  const configureThinkingMode = async () => {{
+    if (!requestedThinkingMode) return null;
+    const desiredPressed = requestedThinkingMode === 'enabled' ? 'true' : 'false';
+    const modelTrigger = document.querySelector('.fa-composer-model-trigger');
+    if (!modelTrigger) throw new Error('Model selector trigger was not found.');
+    const modelOption = () => document.querySelector(
+      `.fa-composer-model-option[data-model-id="${{CSS.escape(requestedThinkingModelId)}}"]`
+    );
+    const selectedToggle = () => {{
+      const selectedOption = modelOption();
+      if (!selectedOption?.classList.contains('is-selected')) return null;
+      const toggle = selectedOption.querySelector('button.fa-thinking-toggle');
+      return toggle instanceof HTMLButtonElement ? toggle : null;
+    }};
+    const openPanel = async () => {{
+      if (modelTrigger.getAttribute('aria-expanded') !== 'true') {{
+        modelTrigger.click();
+      }}
+      await waitFor(() => modelOption(), 10000, 'requested model option');
+    }};
+    const reopenPanelAfterToggle = async () => {{
+      await waitFor(
+        () => modelTrigger.getAttribute('aria-expanded') !== 'true',
+        10000,
+        'model selector close after thinking toggle'
+      );
+      await openPanel();
+    }};
+    const setThinkingPressedState = async (pressed) => {{
+      const toggle = await waitFor(() => selectedToggle(), 10000, 'requested model thinking toggle');
+      if (toggle.getAttribute('aria-pressed') === pressed) return;
+      toggle.click();
+      await reopenPanelAfterToggle();
+      await waitFor(() => {{
+        const updatedToggle = selectedToggle();
+        return updatedToggle?.getAttribute('aria-pressed') === pressed ? updatedToggle : null;
+      }}, 10000, 'requested thinking toggle transition');
+    }};
+    const selectRequestedModel = async () => {{
+      await openPanel();
+      const option = modelOption();
+      if (!option) throw new Error(`Requested thinking model was not found: ${{requestedThinkingModelId}}`);
+      if (!option.classList.contains('is-selected')) {{
+        option.click();
+        await waitFor(
+          () => modelTrigger.getAttribute('aria-expanded') !== 'true',
+          10000,
+          'model selector close after model selection'
+        );
+        await openPanel();
+      }}
+      await waitFor(() => {{
+        const selected = modelOption();
+        return selected?.classList.contains('is-selected') ? selected : null;
+      }}, 10000, 'requested model selection');
+    }};
+    await selectRequestedModel();
+    await openPanel();
+    const initialToggle = await waitFor(() => selectedToggle(), 10000, 'requested model thinking toggle');
+    if (!initialToggle) throw new Error('Selected model does not support thinking mode.');
+    if (requestedThinkingMode === 'disabled' && initialToggle.getAttribute('aria-pressed') === 'false') {{
+      await setThinkingPressedState('true');
+    }}
+    await setThinkingPressedState(desiredPressed);
+    const verifiedToggle = await waitFor(() => {{
+      const toggle = selectedToggle();
+      return toggle?.getAttribute('aria-pressed') === desiredPressed ? toggle : null;
+    }}, 10000, 'requested thinking mode');
+    const selectedOption = verifiedToggle.closest('.fa-composer-model-option');
+    return {{
+      modelId: selectedOption?.getAttribute('data-model-id') || '',
+      requested: requestedThinkingMode,
+      ariaPressed: verifiedToggle.getAttribute('aria-pressed'),
+    }};
+  }};
   const hasThreadRoute = () => /^\/app\/c\/[^/]+\/t\/[^/]+/.test(location.pathname);
   const result = {{}};
   const newConversationLabels = ['New', 'New conversation', '新建', '新建对话'];
@@ -350,6 +437,8 @@ def build_smoke_expression(message: str, response_timeout_seconds: float) -> str
     20000,
     'thread page ready'
   );
+  const thinkingMode = await configureThinkingMode();
+  if (thinkingMode) result.thinkingMode = thinkingMode;
   setTextareaValue(smokeMessage);
   await waitFor(() => {{
     const button = findButton(...sendLabels);
@@ -450,6 +539,8 @@ def run_ui_smoke_test(
     message: str,
     keep_open: bool,
     response_timeout_seconds: float = DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+    thinking_mode: str | None = None,
+    thinking_model_id: str = DEFAULT_THINKING_MODEL_ID,
 ) -> dict[str, object]:
     ensure_health(health_url)
     demo_access_token = create_demo_access_token(health_url)
@@ -548,7 +639,12 @@ window.addEventListener("unhandledrejection", (event) => {
             response = client.send(
                 "Runtime.evaluate",
                 {
-                    "expression": build_smoke_expression(message, response_timeout_seconds),
+                    "expression": build_smoke_expression(
+                        message,
+                        response_timeout_seconds,
+                        thinking_mode=normalize_thinking_mode(thinking_mode),
+                        thinking_model_id=thinking_model_id,
+                    ),
                     "awaitPromise": True,
                     "returnByValue": True,
                 },
@@ -587,6 +683,16 @@ window.addEventListener("unhandledrejection", (event) => {
             temp_dir.cleanup()
 
 
+def normalize_thinking_mode(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized not in THINKING_MODES:
+        choices = ", ".join(THINKING_MODES)
+        raise ValueError(f"Unsupported thinking mode {value!r}; expected one of: {choices}.")
+    return normalized
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a real-browser UI smoke test against the local Focus Agent app."
@@ -612,6 +718,17 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_RESPONSE_TIMEOUT_SECONDS,
         help="Seconds to wait for a stable assistant response before failing.",
     )
+    parser.add_argument(
+        "--thinking-mode",
+        choices=THINKING_MODES,
+        default=None,
+        help="Set the selected model's thinking mode through the browser UI before sending.",
+    )
+    parser.add_argument(
+        "--thinking-model-id",
+        default=DEFAULT_THINKING_MODEL_ID,
+        help="Model ID to select through the browser UI when --thinking-mode is set.",
+    )
     return parser.parse_args()
 
 
@@ -624,6 +741,8 @@ def main() -> int:
         message=str(args.message),
         keep_open=bool(args.keep_open),
         response_timeout_seconds=float(args.response_timeout_seconds),
+        thinking_mode=normalize_thinking_mode(args.thinking_mode),
+        thinking_model_id=str(args.thinking_model_id),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

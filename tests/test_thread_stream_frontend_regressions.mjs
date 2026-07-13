@@ -2593,6 +2593,15 @@ test("thinking-capable model selection preserves unset backend-default semantics
   assert.equal(thinkingOptionMetaLabel(model, "", false), "Thinking available, toggle manually");
   assert.equal(thinkingModeRequestValueForModel(model, ""), "");
   assert.equal(thinkingModeRequestValueForModel(model, "disabled"), "disabled");
+	assert.equal(
+		nextThinkingModeForModelSelection(
+			{ ...model, id: "moonshot:kimi-k2.6" },
+			"moonshot:kimi-k2.6",
+			"moonshot:kimi-k2.6",
+			"disabled",
+		),
+		"disabled",
+	);
 });
 
 test("model provider labels prefer backend catalog metadata over frontend guesses", () => {

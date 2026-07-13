@@ -22,6 +22,18 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from ...core.tool_protocol import safe_visible_text_transition
+from ...transport.stream_events import (
+    STREAM_VISIBILITY_VISIBLE,
+    extract_reasoning_delta,
+    extract_tool_call_chunks,
+    extract_visible_text_candidate_delta,
+    looks_like_stream_visible_text_artifact,
+    safe_stream_visible_text_transition,
+    sanitize_stream_metadata,
+    sanitize_stream_visible_text,
+    stream_visibility_phase_from_metadata,
+)
 from ..streaming.publisher import AgentEventPublisher
 from .factory import FocusAgentHarness
 from .mention import extract_primary_agent
@@ -143,6 +155,9 @@ class FocusAgent:
         )
 
         visible_text_buffer = ""
+        visible_text_pending = ""
+        reasoning_buffer = ""
+        reasoning_text_pending = ""
         interrupted = False
         success = False
         final_state: dict[str, Any] | None = None
@@ -168,21 +183,66 @@ class FocusAgent:
                 data = chunk.get("data")
 
                 if chunk_type == "messages":
-                    message_chunk, _meta = data
-                    delta_text = _extract_text_delta(message_chunk)
-                    if delta_text:
-                        visible_text_buffer += delta_text
-                        await _safe_publish(
-                            publisher.on_assistant_text_delta(
-                                delta_text,
-                                message_id=str(getattr(message_chunk, "id", "") or run_id),
+                    message_chunk, chunk_metadata = data
+                    safe_metadata = sanitize_stream_metadata(chunk_metadata)
+                    tool_calls = extract_tool_call_chunks(message_chunk)
+                    visible_delta = extract_visible_text_candidate_delta(message_chunk)
+                    safe_visible_delta = sanitize_stream_visible_text(visible_delta)
+                    hide_visible_delta = (
+                        stream_visibility_phase_from_metadata(chunk_metadata)
+                        != STREAM_VISIBILITY_VISIBLE
+                        or bool(tool_calls)
+                        or (
+                            looks_like_stream_visible_text_artifact(visible_delta)
+                            and not safe_visible_delta
+                        )
+                    )
+                    if hide_visible_delta:
+                        visible_text_pending = ""
+                    elif visible_delta:
+                        next_visible_text, visible_text_pending = (
+                            safe_stream_visible_text_transition(
+                                visible_text_buffer,
+                                visible_delta,
+                                pending_text=visible_text_pending,
                             )
                         )
-                    tool_calls = _extract_tool_calls_from_message(message_chunk)
+                        if next_visible_text.startswith(visible_text_buffer):
+                            delta_text = next_visible_text[len(visible_text_buffer) :]
+                        else:
+                            delta_text = next_visible_text
+                        visible_text_buffer = next_visible_text
+                        if delta_text:
+                            await _safe_publish(
+                                publisher.on_assistant_text_delta(
+                                    delta_text,
+                                    message_id=str(getattr(message_chunk, "id", "") or run_id),
+                                    metadata=safe_metadata,
+                                )
+                            )
+                    reasoning_delta = extract_reasoning_delta(message_chunk)
+                    if reasoning_delta:
+                        next_reasoning_text, reasoning_text_pending = safe_visible_text_transition(
+                            reasoning_buffer,
+                            reasoning_delta,
+                            pending_text=reasoning_text_pending,
+                        )
+                        if next_reasoning_text.startswith(reasoning_buffer):
+                            publish_reasoning_delta = next_reasoning_text[len(reasoning_buffer) :]
+                        else:
+                            publish_reasoning_delta = next_reasoning_text
+                        reasoning_buffer = next_reasoning_text
+                        if publish_reasoning_delta:
+                            await _safe_publish(
+                                publisher.on_reasoning_delta(
+                                    publish_reasoning_delta,
+                                    message_id=str(getattr(message_chunk, "id", "") or run_id),
+                                )
+                            )
                     for tc in tool_calls:
                         tc_id = tc.get("id") or tc.get("tool_call_id")
                         tc_name = tc.get("name")
-                        tc_args = tc.get("args")
+                        tc_args = tc.get("args_delta")
                         if tc_id and tc_id not in tool_args_buffers:
                             tool_args_buffers[tc_id] = ""
                             await _safe_publish(
@@ -190,6 +250,7 @@ class FocusAgent:
                                     tool_call_id=tc_id,
                                     tool_name=tc_name or "",
                                     args_preview=(str(tc_args)[:200] if tc_args else None),
+                                    metadata=safe_metadata,
                                 )
                             )
                         if tc_id and tc_args is not None:
@@ -200,6 +261,7 @@ class FocusAgent:
                                     tool_call_id=tc_id,
                                     args_delta=args_str,
                                     tool_name=tc_name,
+                                    metadata=safe_metadata,
                                 )
                             )
 
@@ -292,49 +354,6 @@ async def _safe_publish(coro: Any) -> None:
         await coro
     except Exception:  # noqa: BLE001
         logger.debug("publisher event raised (ignored)", exc_info=True)
-
-
-def _extract_text_delta(message_chunk: Any) -> str:
-    """Best-effort extraction of visible assistant text from a LangGraph chunk."""
-    if message_chunk is None:
-        return ""
-    content = getattr(message_chunk, "content", None)
-    if isinstance(content, str):
-        # AIMessageChunks can also carry tool_calls so skip those.
-        if getattr(message_chunk, "tool_calls", None):
-            return ""
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                text = block.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-            elif isinstance(block, str):
-                parts.append(block)
-        return "".join(parts)
-    return ""
-
-
-def _extract_tool_calls_from_message(message_chunk: Any) -> list[dict[str, Any]]:
-    """Extract tool-call dicts from a message chunk (LangChain shape)."""
-    out: list[dict[str, Any]] = []
-    if message_chunk is None:
-        return out
-    tool_calls = getattr(message_chunk, "tool_calls", None) or []
-    for tc in tool_calls:
-        if isinstance(tc, dict):
-            out.append(tc)
-        else:
-            out.append(
-                {
-                    "id": getattr(tc, "id", None),
-                    "name": getattr(tc, "name", None),
-                    "args": getattr(tc, "args", None),
-                }
-            )
-    return out
 
 
 def _iter_tool_results(updates: Any) -> list[dict[str, Any]]:

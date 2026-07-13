@@ -26,7 +26,7 @@ def test_build_model_catalog_keeps_default_first():
     assert catalog[0].provider == "moonshot"
     assert catalog[0].is_default is True
     assert catalog[0].supports_thinking is True
-    assert catalog[0].default_thinking_enabled is True
+    assert catalog[0].default_thinking_enabled is False
     assert catalog[1].supports_thinking is True
     assert catalog[1].default_thinking_enabled is True
 
@@ -117,6 +117,32 @@ def test_resolve_model_config_disables_kimi_thinking_via_extra_body():
 
     assert resolved.model_name == "kimi-k2.6"
     assert resolved.request_kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_resolve_model_config_disables_kimi_thinking_by_default():
+    resolved = resolve_model_config("moonshot:kimi-k2.6")
+
+    assert resolved.model_name == "kimi-k2.6"
+    assert resolved.request_kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_resolve_model_config_keeps_models_without_disable_profile_unchanged_by_default():
+    settings = Settings(
+        model="openai:custom-reasoning-pro",
+        model_catalog=ModelCatalogConfig(
+            models=(
+                ConfiguredModel(
+                    id="openai:custom-reasoning-pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=False,
+                ),
+            ),
+        ),
+    )
+
+    resolved = resolve_model_config("openai:custom-reasoning-pro", settings=settings)
+
+    assert resolved.request_kwargs == {}
 
 
 def test_resolve_model_config_enables_profile_thinking_body_and_reasoning_effort():

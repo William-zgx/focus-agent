@@ -738,6 +738,118 @@ def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
     )
 
 
+def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_time(
+    monkeypatch,
+):
+    class FakeRunnable:
+        def __init__(self, owner, *, allow_tools: bool):
+            self.owner = owner
+            self.allow_tools = allow_tools
+
+        def with_config(self, config):
+            self.owner.configs.append({"allow_tools": self.allow_tools, "config": config})
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(
+                {
+                    "allow_tools": self.allow_tools,
+                    "messages": list(prompt_messages),
+                }
+            )
+            if not self.allow_tools:
+                return AIMessage(
+                    content="本次研究基于 2025-01-15 UTC。",
+                    tool_calls=[
+                        {
+                            "id": "unexpected-time-call",
+                            "name": "current_utc_time",
+                            "args": {},
+                        }
+                    ],
+                )
+            tool_enabled_count = sum(1 for item in self.owner.invocations if item["allow_tools"])
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"web-fetch-{tool_enabled_count}",
+                        "name": "web_fetch",
+                        "args": {
+                            "url": (
+                                "https://www.moonshot.cn"
+                                if tool_enabled_count == 1
+                                else "https://www.moonshot.ai"
+                            )
+                        },
+                    }
+                ],
+            )
+
+    class FakeModel:
+        def __init__(self):
+            self.configs = []
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self, allow_tools=True)
+
+        def with_config(self, _config):
+            return FakeRunnable(self, allow_tools=False)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def current_utc_time() -> str:
+        """Return the current UTC time."""
+        return "2026-07-13T07:15:49.503263+00:00"
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the web."""
+        return (
+            '{"results":[{"title":"Moonshot AI","url":"https://www.moonshot.cn",'
+            '"content":"Official Kimi update."}]}'
+        )
+
+    @tool
+    def web_fetch(url: str) -> str:
+        """Fetch a web page."""
+        return f'{{"url":"{url}","title":"Moonshot AI","content":""}}'
+
+    graph = build_graph(
+        settings=Settings(),
+        tool_registry=ToolRegistry(tools=(current_utc_time, web_search, web_fetch)),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="请查询今天的 Moonshot AI 官方新闻。")],
+            "selected_model": "moonshot:kimi-k2.6",
+            "selected_thinking_mode": "disabled",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_message = result.value["messages"][-1]
+    assert isinstance(final_message, AIMessage)
+    assert not final_message.tool_calls
+    assert "2026-07-13T07:15:49.503263+00:00" in final_message.content
+    assert "2025-01-15" not in final_message.content
+    forced_configs = [
+        item["config"]
+        for item in fake_model.configs
+        if not item["allow_tools"]
+        and item["config"].get("metadata", {}).get("stream_phase") == "quarantine"
+    ]
+    assert forced_configs
+
+
 def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):
@@ -1261,9 +1373,7 @@ def test_tool_intent_plan_exposes_skill_search_for_skill_discovery_requests():
     assert explicit_view.allowed_toolsets == ["skill"]
     assert english_explicit_view.policy == "workspace_lookup"
     assert english_explicit_view.preferred_first_tool == "skill_view"
-    assert english_explicit_view.preferred_first_args == {
-        "name": "systematic-debugging"
-    }
+    assert english_explicit_view.preferred_first_args == {"name": "systematic-debugging"}
     assert english_explicit_view.allowed_toolsets == ["skill"]
     for active_chain in (active_research_chain, active_review_chain):
         assert active_chain.policy == "workspace_lookup"
@@ -1385,6 +1495,25 @@ def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
     assert plan.preferred_first_tool == "web_search"
     assert "temporal_anchor_required" in plan.reason_codes
     assert plan.temporal_anchor_required is True
+
+
+def test_tool_intent_plan_keeps_explicit_temporal_web_contract_despite_no_write_constraint():
+    prompt = (
+        "请完成一次真实联网研究：先调用 current_utc_time 确认今天的 UTC 日期，再使用 "
+        "web_search 查询 Moonshot AI 官方来源的最新公开信息。最后仅用中文给出三条要点，"
+        "明确写出观察到的 UTC、新闻标题或无法确认的原因、来源链接及一句不确定性说明。"
+        "不要创建或修改任何文件。"
+    )
+
+    plan = build_tool_intent_plan(prompt)
+
+    assert plan.policy == "live_web_research"
+    assert plan.preferred_first_tool == "web_search"
+    assert plan.allowed_toolsets == ["web"]
+    assert plan.temporal_anchor_required is True
+    assert "explicit_temporal_web_contract" in plan.reason_codes
+    assert "execution_signal" not in plan.reason_codes
+    assert "workspace_lookup_signal" not in plan.reason_codes
 
 
 def test_tool_intent_plan_prefers_web_fetch_for_explicit_url_requests():
@@ -1977,7 +2106,7 @@ def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monk
     ]
     assert len(web_calls) == 2
     assert "刷新过期证据" in web_calls[1]
-    assert final_answers[-1].startswith("我不能可靠确认这个实时问题的答案。")
+    assert "我不能可靠确认这个实时问题的答案。" in final_answers[-1]
     assert result.value["answer_verification"]["status"] == "unsupported"
     assert result.value["answer_verification"]["repair_action"] == "refresh_stale_evidence"
     assert result.value["answer_verification"]["repair_action_taken"] == "answer_with_uncertainty"
@@ -2643,9 +2772,7 @@ def test_graph_routes_skill_install_intent_from_search_to_install(monkeypatch):
         limit: int | None = None,
     ) -> str:
         """Search installed and configured skills."""
-        skill_searches.append(
-            {"query": query, "scope": scope, "sources": sources, "limit": limit}
-        )
+        skill_searches.append({"query": query, "scope": scope, "sources": sources, "limit": limit})
         return (
             '{"success":true,"query":"stock-analyzer","scope":"all",'
             '"results":[{"skill_id":"stock-analyzer","source_id":"community",'
@@ -2726,9 +2853,7 @@ def test_graph_does_not_auto_install_ambiguous_skill_search_result(monkeypatch):
         limit: int | None = None,
     ) -> str:
         """Search installed and configured skills."""
-        skill_searches.append(
-            {"query": query, "scope": scope, "sources": sources, "limit": limit}
-        )
+        skill_searches.append({"query": query, "scope": scope, "sources": sources, "limit": limit})
         return (
             '{"success":true,"query":"股票分析","scope":"all",'
             '"results":['
@@ -2864,9 +2989,7 @@ def test_graph_adds_active_skill_recommended_read_tools_to_main_chat(tmp_path, m
     assert captured["bound_tools"] == [["search_code", "git_log"]]
 
 
-def test_graph_adds_active_skill_recommended_command_tools_for_execution(
-    tmp_path, monkeypatch
-):
+def test_graph_adds_active_skill_recommended_command_tools_for_execution(tmp_path, monkeypatch):
     skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
@@ -2931,9 +3054,7 @@ def test_graph_adds_active_skill_recommended_command_tools_for_execution(
 
     result = graph.invoke(
         {
-            "messages": [
-                HumanMessage(content="南网能源在A股近一周表现如何？")
-            ],
+            "messages": [HumanMessage(content="南网能源在A股近一周表现如何？")],
             "active_skill_ids": ["stocks"],
             "selected_model": "openai:fake",
         },
@@ -2958,9 +3079,7 @@ def test_graph_adds_active_skill_recommended_command_tools_for_execution(
     ]
 
 
-def test_graph_adds_active_skill_primary_tools_for_execution_contract(
-    tmp_path, monkeypatch
-):
+def test_graph_adds_active_skill_primary_tools_for_execution_contract(tmp_path, monkeypatch):
     skill_dir = tmp_path / ".focus_agent" / "skills" / "stocks"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
@@ -3200,9 +3319,7 @@ def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, mon
     assert result.value["plan_meta"]["skill_execution_answer_repair_count"] == 1
 
 
-def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(
-    tmp_path, monkeypatch
-):
+def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(tmp_path, monkeypatch):
     skill_dir = tmp_path / ".focus_agent" / "skills" / "china-stock-analysis"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
@@ -3304,6 +3421,7 @@ def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(
             },
             ensure_ascii=False,
         )
+
     graph = build_graph(
         settings=Settings(workspace_root=str(tmp_path)),
         checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
@@ -3359,9 +3477,7 @@ def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(
     assert result.value["task_outcome"]["status"] == "degraded_answer"
 
 
-def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(
-    tmp_path, monkeypatch
-):
+def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(tmp_path, monkeypatch):
     skill_dir = tmp_path / ".focus_agent" / "skills" / "china-stock-analysis"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
@@ -3490,6 +3606,7 @@ def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(
             },
             ensure_ascii=False,
         )
+
     web_search.metadata = {"max_calls_per_turn": 1}
 
     graph = build_graph(
@@ -4387,7 +4504,9 @@ def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monk
 
         def invoke(self, prompt_messages):
             self.owner.invocations.append(list(prompt_messages))
-            if not any(isinstance(message, ToolMessage) for message in prompt_messages):
+            if self.allow_tools and not any(
+                isinstance(message, ToolMessage) for message in prompt_messages
+            ):
                 return AIMessage(
                     content="",
                     tool_calls=[
@@ -4442,6 +4561,115 @@ def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monk
     assert "根据搜索结果" in final_answer
     assert "比亚迪A股上周先涨后跌" in final_answer
     assert "BYD share price" in final_answer
+
+
+def test_graph_rewrites_english_web_answer_for_chinese_request(monkeypatch):
+    class FakeRunnable:
+        def __init__(self, owner, *, allow_tools: bool):
+            self.owner = owner
+            self.allow_tools = allow_tools
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(
+                {"allow_tools": self.allow_tools, "messages": list(prompt_messages)}
+            )
+            if any(
+                isinstance(message, SystemMessage)
+                and "Rewrite the draft into a final Chinese answer." in message.content
+                for message in prompt_messages
+            ):
+                return AIMessage(
+                    content=(
+                        "月之暗面发布了新的 Kimi 功能说明，建议通过官方页面"
+                        " https://www.moonshot.cn 查看完整详情。"
+                    )
+                )
+            if self.allow_tools and not any(
+                isinstance(message, ToolMessage) for message in prompt_messages
+            ):
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "web-search-1",
+                            "name": "web_search",
+                            "args": {"query": "Moonshot AI official news"},
+                        }
+                    ],
+                )
+            return AIMessage(
+                content=(
+                    "Moonshot AI announced a new Kimi feature. See the official source for details."
+                )
+            )
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self, allow_tools=True)
+
+        def with_config(self, _config):
+            return FakeRunnable(self, allow_tools=False)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return (
+            '{"answer":"Moonshot AI announced a new Kimi feature.",'
+            '"results":[{"title":"Moonshot AI","url":"https://www.moonshot.cn",'
+            '"content":"Kimi feature update"}]}'
+        )
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+
+    result = graph.invoke(
+        {
+            "messages": [
+                HumanMessage(content="请查询 Moonshot AI 最新消息，并用中文回答和附上来源链接。")
+            ],
+            "selected_model": "moonshot:kimi-k2.6",
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    final_answer = result.value["messages"][-1].content
+    assert final_answer == (
+        "月之暗面发布了新的 Kimi 功能说明，建议通过官方页面 https://www.moonshot.cn 查看完整详情。"
+    )
+    assert result.value["llm_calls"] == 3
+    assert result.value["plan_meta"]["output_language_repair_action_taken"] == (
+        "rewrite_chinese_output"
+    )
+    assert (
+        sum(
+            1
+            for item in fake_model.invocations
+            if item["allow_tools"]
+            and any(isinstance(message, ToolMessage) for message in item["messages"])
+        )
+        == 1
+    )
+    assert any(
+        not item["allow_tools"]
+        and any(
+            isinstance(message, SystemMessage)
+            and "Rewrite the draft into a final Chinese answer." in message.content
+            for message in item["messages"]
+        )
+        for item in fake_model.invocations
+    )
 
 
 def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):

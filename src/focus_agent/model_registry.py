@@ -162,7 +162,16 @@ def _effective_thinking_mode(configured: ConfiguredModel, thinking_mode: str | N
     normalized = str(thinking_mode or "").strip().lower()
     if normalized in {"enabled", "disabled"}:
         return normalized
-    return "enabled" if configured.default_thinking_enabled else ""
+    if configured.default_thinking_enabled:
+        return "enabled"
+    if configured.supports_thinking and (
+        configured.thinking_disabled_request_kwargs
+        or configured.thinking_disable_extra_body_type
+        or configured.thinking_disabled_model_name
+        or configured.thinking_disable_switch_model
+    ):
+        return "disabled"
+    return ""
 
 
 def _request_kwargs_for_model(
