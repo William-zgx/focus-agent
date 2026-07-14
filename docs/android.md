@@ -1,11 +1,17 @@
 # Android App
 
-Updated: 2026-07-12
+Updated: 2026-07-14
 
-The Android shell is a Capacitor wrapper around the existing Web app. Web builds
-keep the normal `/app` base path and all Web modules enabled. Android-only
-behavior is selected by `pnpm android:web:build`, which sets
-`VITE_FOCUS_AGENT_TARGET=android`.
+The Android shell is a Capacitor wrapper around the existing Web app, plus a
+**device-local single-user runtime** under `apps/web/src/android-local-runtime/`
+that uses the SDK local transport. It is an optional product surface of the
+self-hosted workbench platform—not a thin mirror of every Web module. Platform
+positioning: [project-overview.md](project-overview.md).
+
+Web builds keep the normal `/app` base path and all Web modules enabled.
+Android-only behavior is selected by `pnpm android:web:build`, which sets
+`VITE_FOCUS_AGENT_TARGET=android` (and typically disables Agent Workbench /
+Productivity for the Android bundle).
 
 ## Build
 

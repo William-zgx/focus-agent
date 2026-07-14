@@ -1,6 +1,14 @@
 # Development Guide
 
+Updated: 2026-07-14
+
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
+
+Focus Agent is a platform-scale monorepo. Prefer scoped checks for the surface you touch
+(API/contract, Web, SDK, Agent Team, Android, release), and reserve `make ci` for broad
+changes. Product positioning and module spines: [project-overview.md](project-overview.md).
+Architecture boundaries: [architecture.md](architecture.md). Full acceptance:
+[validation-runbook.md](validation-runbook.md).
 
 ![Validation ladder](assets/diagrams/development-validation-ladder.svg)
 

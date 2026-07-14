@@ -1,5 +1,10 @@
 # Security Policy
 
+Focus Agent is a self-hosted Agent workbench / platform reference (not a hosted SaaS).
+Operators own deployment secrets, IdP integration, and network boundaries. Product
+positioning: [docs/project-overview.md](docs/project-overview.md). Auth detail:
+[docs/auth-access.md](docs/auth-access.md).
+
 ## Supported Versions
 
 Focus Agent is still evolving quickly, so security fixes are most likely to land on the latest development line first.

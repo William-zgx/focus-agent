@@ -1,6 +1,12 @@
 # 快速开始
 
+更新时间：2026-07-14
+
 这份文档承接根目录 README 里的最短启动路径，补充完整的本地运行说明。
+
+在动手之前，建议先读 [project-overview.md](project-overview.md) 确认项目定位：
+Focus Agent 是 **自托管 branch-aware 工作台 / 平台参考实现**，体量超过最小 chat 模板；
+本地路径也会区分「`make` 托管 Postgres」与「直接跑 API 二进制的 SQLite fallback」。
 
 ```mermaid
 flowchart LR

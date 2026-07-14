@@ -2,7 +2,14 @@
 
 Thank you for considering a contribution to Focus Agent.
 
-This repository is intended to stay small, readable, and easy to adapt. The best contributions are usually focused improvements that make the agent runtime clearer, safer, better documented, or easier to integrate.
+Focus Agent is a **medium-sized, self-hosted Agent platform monorepo** (branch-aware
+workbench, streaming APIs, typed SDK, Web app, optional Android target, release/eval
+gates). Read [docs/project-overview.md](docs/project-overview.md) before large changes
+so contributions match the real product shape and platform boundaries.
+
+The best contributions are focused improvements that make the runtime clearer, safer,
+better documented, easier to verify, or easier to adapt—without expanding scope
+across unrelated product surfaces.
 
 ## Ways to Contribute
 
@@ -13,7 +20,8 @@ You can help by contributing:
 - API or SDK improvements
 - documentation and examples
 - developer experience improvements
-- branching, streaming, and persistence enhancements
+- branching, streaming, persistence, security, and observability enhancements
+- measured reduction of compatibility debt (with exit criteria and migration notes)
 
 If you are planning a larger change, opening an issue or starting a short discussion first is strongly recommended.
 

@@ -1,17 +1,23 @@
 # Agent Team v2 灰度与回滚手册
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 本文定义 Agent Team v2 的可验证灰度口径。它只描述已在当前代码中
 受 feature flag 保护的协调能力；不是“v2 已全量上线”的声明。工作台 UI
 可见、Agent Team v1 API 可访问，均不表示 v2 runtime 已启用或真实执行已 ready。
 
+Postgres 应用 schema **v19** 已包含 v2 结构化表（revisions、attempts、jobs、
+leases、evidence 等）；**有表不等于执行路径已打开**。
+
 关联文档：
 
+- [Project Overview](project-overview.md)
 - [Agent Team Workbench](agent-team-workbench.md)
+- [Architecture](architecture.md)
 - [Multi-Agent Runtime Runbook](multi_agent_refactor/runbook.md)
 - [Agent Governance](agent-role-routing.md)
 - [Validation Runbook](validation-runbook.md)
+- [Roadmap](roadmap.md)
 
 ## 1. 默认状态与隔离
 

@@ -2,10 +2,11 @@
 
 The Focus Agent Web SDK is a typed TypeScript client for consuming the Focus Agent HTTP and SSE streaming protocol from browser or Node environments.
 
-It is meant for teams that want a small integration surface instead of re-implementing POST-based SSE parsing, event typing, and stream state accumulation in every frontend.
+It is meant for teams that want a small integration surface instead of re-implementing POST-based SSE parsing, event typing, and stream state accumulation in every frontend. The SDK is part of the larger self-hosted workbench platform; product positioning lives in [`../docs/project-overview.md`](../docs/project-overview.md).
 
 - Main project README: [`../README.md`](../README.md)
 - Chinese README: [`../README.zh-CN.md`](../README.zh-CN.md)
+- Project overview: [`../docs/project-overview.md`](../docs/project-overview.md)
 - Streaming contract: [`../docs/streaming-contract.md`](../docs/streaming-contract.md)
 
 ## Why This SDK Exists

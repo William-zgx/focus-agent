@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 本文记录 Focus Agent 当前的 Agent Team Workbench：用户可在专门入口创建
 Mission，由 Orchestrator 生成动态 Mission DAG，任务按依赖执行并汇总为面向目标的
@@ -8,12 +8,16 @@ Mission，由 Orchestrator 生成动态 Mission DAG，任务按依赖执行并�
 不是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；需要采纳
 代码变更时再进入选择性应用流程。
 
+Agent Team 是平台 **Collaboration** 层能力，不是默认聊天主路径的替代品。
+整体定位见 [project-overview.md](project-overview.md)；与 branch-aware 主聊天的关系见
+[architecture.md](architecture.md)。
+
 当前入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend
-SDK 的 Agent Team client 方法、Postgres primary repository、本地 in-memory fallback、
-模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。Multi-Agent
-v2 协调能力另受默认关闭的 `MULTI_AGENT_*` feature flags 控制；工作台可见或存在
-Agent Team API 不表示 v2 已启用、真实执行已发生或已全量上线。灰度和回滚口径见
-[agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
+SDK 的 Agent Team client 方法、Postgres primary repository（app schema **v19** 含
+v2 运行时表）、本地 in-memory fallback、模型优先 planning service、DAG run service
+和 legacy dispatch 兼容入口。Multi-Agent v2 协调能力另受默认关闭的 `MULTI_AGENT_*`
+feature flags 控制；工作台可见或存在 Agent Team API 不表示 v2 已启用、真实执行已
+发生或已全量上线。灰度和回滚口径见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
 
 `GET /v2/agent-team/readiness` 调用 `build_agent_team_readiness(settings,
 runtime=runtime)`；仅当 assessment 的 `phase=ready` 且 task-run、evidence、revision

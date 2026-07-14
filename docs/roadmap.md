@@ -1,12 +1,13 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-07-12
+更新时间：2026-07-14
 
 这份文档只回答两个问题：
 
 1. 现在仓库已经完成到了哪一步。
 2. 已验证基线之外，还存在哪些真实风险和下一阶段工作。
 
+产品定位与体量见 [project-overview.md](project-overview.md)。
 专题设计、操作命令和验收细节由 [文档索引](README.md) 指向各 canonical
 文档；本文不重复维护平行实施清单。
 
@@ -20,24 +21,31 @@ flowchart LR
     Quality --> Runtime["Browser, Android, load, replay"]
     Quality --> Agent["Memory, retrieval, Agent Team eval"]
     Evolution --> Compat["Measured compatibility retirement"]
+    Evolution --> Spine["Runtime spine convergence"]
 ```
 
 ## 1. 当前基线
 
-截至 2026-07-12，以下能力已经进入维护和回归阶段，不再列为未来建设项。
+截至 2026-07-14，以下能力已经进入维护和回归阶段，不再列为未来建设项。
 
 ### 1.1 产品与 Agent 主路径
 
 - React Web App、typed frontend SDK、branch tree、Branch Action、merge review、
   context compaction、Productivity、Admin、Observability、Agent Governance 和
   Agent Team Mission Runner 已形成可运行产品面。
+- 默认聊天入口为 V2 harness runs（`/v2/threads/.../runs[/stream]`），SSE
+  contract 与 SDK reducer 受 contract / smoke 保护。
 - merged branch 只读、用户确认后才执行的 branch recommendation、thread
   resolution、owner-scoped 数据访问和 audit 语义已有 contract 与回归保护。
 - Plan-Act-Reflect、tool runtime、Memory v2、Context Engineering、Zvec
   retrieval、trajectory replay/promotion、governance feedback 和 eval 基线已
   接入主路径；Zvec 仍是可重建索引，命中必须回查 canonical source。
 - memory forget/tombstone 与 embedding worker 已使用条件更新保护，不允许
-  forgotten/deleted memory 被异步任务复活。
+  forgotten/deleted memory 被异步任务复活；schema v18 增加
+  `embedding_status` 列。
+- Agent Team v2 schema（Postgres **v19**）与 workbench/safeguards 已落地；
+  **真实 v2 执行默认 feature flag 关闭**，灰度口径见
+  [agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
 
 ### 1.2 持久化与迁移
 
@@ -52,8 +60,8 @@ flowchart LR
 - local-state migration 同时支持 canonical SQLite 和 legacy pickle。未知或歧义
   格式、活动 WAL sidecar、pickle owner/HMAC 不匹配会 fail closed；导入
   PostgreSQL 时以事务和 owner guard 防止跨 owner 重绑定。
-- PostgreSQL 仍是生产 canonical store；本地 SQLite fallback 不替代生产迁移、
-  backup/restore 和高可用设计。
+- PostgreSQL 仍是生产 canonical store（app schema **v19**）；本地 SQLite
+  fallback 不替代生产迁移、backup/restore 和高可用设计。
 
 ### 1.3 安全边界
 
@@ -94,7 +102,7 @@ flowchart LR
 - architecture gate 对非生成文件执行 800 行上限，当前
   [baseline](architecture-debt-baseline.json) 没有 grandfathered large file。
 - compatibility gate 按稳定 item ID 而不是模糊计数管理库存。当前
-  [baseline](compat-debt-baseline.json) 为 169 项；1.x public facade、旧路由和
+  [baseline](compat-debt-baseline.json) 为 **169** 项；1.x public facade、旧路由和
   legacy reader 仍按兼容承诺保留，满足 telemetry、迁移说明和 2.0 exit
   criteria 前不得直接删除。
 
@@ -103,13 +111,15 @@ flowchart LR
 | 风险域 | 当前已有基线 | 仍需完成 |
 |---|---|---|
 | 生产发布身份 | schema v2、identity/freshness binding、production environment guard | 对接企业真实 deployment/approval/artifact 系统，保证四个 `RELEASE_*` 值来自部署控制面而不是人工拼装 |
-| PostgreSQL 运维 | migration/ops report、backup/restore evidence、transactional import | 在目标规模数据上演练 RPO/RTO、跨版本 restore、长期 retention 和故障切换 |
+| PostgreSQL 运维 | migration/ops report、backup/restore evidence、transactional import、schema v19 | 在目标规模数据上演练 RPO/RTO、跨版本 restore、长期 retention 和故障切换 |
 | Observability | `/readyz`、`/metrics`、OTel smoke、alert report、真实 Chrome observability smoke | 接真实 collector、trace backend、pager/alert 平台，并增加长时间窗口与多实例验证 |
 | Auth lifecycle | active-user check、session revocation、HS256 active key set、Cookie CSRF | 接企业 IdP/JWKS、refresh/rotation runbook、跨服务 logout/revocation 和安全审计 |
-| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛 |
+| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛；用证据证明 branch 工作流的任务 ROI |
+| Runtime 一致性 | contract tests、stream quarantine、architecture gate | 收敛 Chat / Harness / Agent Team / Android local-runtime 的共享 stream 与 tool 语义，降低并行路径漂移 |
 | Web/stream 可靠性 | real Chrome workflow、reconnect dedupe、incomplete-stream error、bridge cleanup | 增加断网/恢复、代理超时、多实例 replay、长会话和轻量负载阈值 |
 | Android 发布 | debug CI、native HTTP/deep-link hardening、instrumentation coverage | 增加 release signing pipeline、真实设备/Android 版本矩阵、弱网/后台恢复和商店发布检查 |
 | 兼容债务 | 169 个 item-ID baseline 与逐类 exit criteria | 收集 import/route/state telemetry，停止新写入，提供迁移窗口，再在 2.0 中按项退场；不能用批量删除 facade 代替迁移 |
+| 产品面裁剪 | monorepo 全量能力默认可见 | 提供更清晰的 thin-core / feature 剖面文档与构建开关，降低“只要分支能力”采用方的心智负担 |
 
 ## 3. 下一阶段优先级
 
@@ -124,17 +134,22 @@ flowchart LR
 4. **接外部身份与观测平台。** 完成 IdP/JWKS、key rotation、collector、trace
    query 和 alert/pager 的真实环境闭环。
 5. **用证据降低 Agent 与兼容风险。** 扩充失败 trajectory 和 golden cases；
-   同时用 telemetry 驱动 169 项 compatibility inventory 的逐项退场，不在 1.x
-   破坏已有 facade。
+   用 telemetry 驱动 169 项 compatibility inventory 的逐项退场；同时收敛
+   runtime spine，避免新功能继续分叉执行路径。
+6. **校准产品剖面。** 在文档与构建层明确 Core / Platform / Team / Mobile /
+   Release 分层，使采用方可以有意识地启用能力，而不是默认吞下整个 monorepo。
 
 ## 4. 验证与文档入口
 
+- 项目定位：[project-overview.md](project-overview.md)
 - 全面验证：[validation-runbook.md](validation-runbook.md)
 - 架构与持久化：[architecture.md](architecture.md)
 - 本地启动与迁移：[quick-start.md](quick-start.md)
 - 安全与账号：[auth-access.md](auth-access.md) / [../SECURITY.md](../SECURITY.md)
 - SSE 与 SDK：[streaming-contract.md](streaming-contract.md) /
   [../frontend-sdk/README.md](../frontend-sdk/README.md)
+- Agent Team：[agent-team-workbench.md](agent-team-workbench.md) /
+  [agent-team-v2-rollout.md](agent-team-v2-rollout.md)
 - Android：[android.md](android.md)
 - Production evidence：[release-checklist.md](release-checklist.md) /
   [ci/github-actions-release-gate.md](ci/github-actions-release-gate.md)
@@ -146,6 +161,7 @@ flowchart LR
 - `docs/` 同一主题只保留一个 canonical 文档；阶段性拆解放到 issue、PR 或项目
   管理工具。
 - 架构、兼容库存或优先级变化时，同步更新对应 baseline、canonical 文档和本文。
+- schema 版本以代码 `SCHEMA_VERSION` 为准，变更时同步 architecture / overview。
 - 1.x public import surface 仍受支持；只有满足
   [compat baseline](compat-debt-baseline.json) 中的 2.0 exit criteria 后才进入
   移除计划。

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "focus-agent"
 version = "1.0.0"
-description = "A web-first Agent application scaffold with branching conversations, observability, memory, Agent Team workflows, and a typed SDK."
+description = "A self-hosted, branch-aware Agent workbench and platform reference with streaming APIs, observability, memory, Agent Team workflows, and a typed SDK."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

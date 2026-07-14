@@ -1,6 +1,14 @@
 # 开发指南
 
+更新时间：2026-07-14
+
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
+
+Focus Agent 是平台级 monorepo。优先按触达面收敛验证（API/contract、Web、SDK、
+Agent Team、Android、release），只在大范围改动时跑完整 `make ci`。
+产品定位与运行主路径见 [project-overview.md](project-overview.md)；
+架构边界见 [architecture.md](architecture.md)；全面验收见
+[validation-runbook.md](validation-runbook.md)。
 
 ```mermaid
 flowchart TD
@@ -11,18 +19,24 @@ flowchart TD
     Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent Governance"]
     Scope --> Branch["Branch decisions"]
+    Scope --> Team["Agent Team"]
+    Scope --> Mobile["Android"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
     Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
     Branch --> BranchChecks["branch decision + chat/harness tests"]
+    Team --> TeamChecks["agent-team API/service + UI smoke"]
+    Mobile --> AndroidChecks["android sync/build + runtime smoke"]
     CI --> Done["进入 review"]
     WebChecks --> Done
     SDKChecks --> Done
     AdminChecks --> Done
     Eval --> Done
     BranchChecks --> Done
+    TeamChecks --> Done
+    AndroidChecks --> Done
 ```
 
 ## 命令矩阵

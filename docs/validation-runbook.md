@@ -1,11 +1,16 @@
 # Validation Runbook
 
-Updated: 2026-07-12
+Updated: 2026-07-14
 
-This runbook is the local evidence plan for broad Focus Agent changes. Use it
-when changes touch Agent runtime state, sandbox execution, Skill contracts,
-streaming, SDK types, Web UI routes, Agent Team, observability, auth, memory, or
-release-health behavior.
+This runbook is the local evidence plan for broad Focus Agent changes across the
+self-hosted workbench platform. Use it when changes touch Agent runtime state,
+sandbox execution, Skill contracts, streaming, SDK types, Web UI routes, Agent
+Team, observability, auth, memory, Android local runtime, or release-health
+behavior.
+
+Product layers and fit/non-fit: [project-overview.md](project-overview.md).
+Scoped day-to-day commands: [development.md](development.md). Remaining risk
+list: [roadmap.md](roadmap.md).
 
 The goal is to prove three things before claiming readiness:
 

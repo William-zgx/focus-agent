@@ -1,6 +1,13 @@
 # Quick Start
 
+Updated: 2026-07-14
+
 This guide expands on the shortest startup path from the root README.
+
+Before you start, read [project-overview.md](project-overview.md) for product positioning:
+Focus Agent is a **self-hosted branch-aware workbench / platform reference**, larger than a
+minimal chat template. Local startup also differs between **maintained `make` entry points**
+(repo-local PostgreSQL when `DATABASE_URI` is unset) and **raw API binary** (SQLite fallback).
 
 ![Local startup decision path](assets/diagrams/quick-start-path.svg)
 

@@ -11,15 +11,18 @@
 
 ![Focus Agent 展示图](docs/assets/focus-agent-readme-hero.zh-CN.svg)
 
-Focus Agent 是一个 branch-aware、Web-first 的 Agent 应用骨架，面向长任务 AI 工作流。它的核心思想很简单：主线程保持专注，探索过程进入临时分支，结论成熟后再受控合并回主线。
+Focus Agent 是一个 **自托管、branch-aware 的 Agent 工作台与平台参考实现**，面向长任务 AI 工作流。它的核心思想很简单：主线程保持专注，探索过程进入临时分支，结论成熟后再受控合并回主线。
 
-围绕这条分支工作流，项目提供流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆链路、Productivity 工具和 Agent Team 协作流程作为支撑能力。
+围绕这条分支工作流，仓库提供完整产品面：流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆与检索、Productivity 工具、Agent Team 协作、沙箱执行、发布/eval 证据链，以及可选的 Android 壳。
+
+> 定位、体量、适用边界与运行主路径详见：
+> **[docs/project-overview.md](docs/project-overview.md)**
 
 ## 项目状态
 
-Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS 产品。它适合本地开发、产品原型验证，以及改造成团队自有的 branch-aware AI 工作台。
+Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管式 SaaS 产品。它适合本地开发、产品原型验证，以及改造成团队自有的 branch-aware AI 工作台。
 
-分支工作流、后端 API、SSE stream contract、frontend SDK 和已记录的 Web 功能面会通过 contract、build 和 smoke checks 保护。模型 provider、鉴权策略、PostgreSQL 托管方式、observability backend 和发布流程等部署选择，仍然由采用方显式配置。
+请按 **中型 monorepo** 理解本仓库（后端 + typed SDK + React App + 可选 Android target + 较宽 OpenAPI 面），而不是“周末 chat 模板”。当前体量数字与产品分层集中维护在 [project-overview.md](docs/project-overview.md)，避免多处漂移。分支工作流、后端 API、SSE stream contract、frontend SDK 和已记录的 Web 功能面会通过 contract、build 和 smoke checks 保护。模型 provider、鉴权策略、PostgreSQL 托管方式、observability backend 和发布流程等部署选择，仍然由采用方显式配置。
 
 ### 已加固并验证的基线
 
@@ -28,22 +31,34 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 - **生产证据：** schema v2 evidence pack 将报告绑定到 commit、deployment ID、deployment version、environment 和带时区的生成时间；production 模式会校验身份与新鲜度，不接受无关或过期报告。详见[发布检查清单](docs/release-checklist.md)和 [CI Release Gate](docs/ci/github-actions-release-gate.md)。
 - **可执行 UI 与移动端门禁：** 独立 workflow 在真实 Chrome 中验证聊天和 observability 交互；CI 同时构建、lint 并单测 Android debug 项目。Android 还具备有界可取消的原生 HTTP、cold/hot deep link 单次投递、原生安全存储和关闭 Capacitor bridge logging。详见[验证手册](docs/validation-runbook.md)和 [Android](docs/android.md)。
 - **流式韧性：** 已结束的内存 stream 会在 replay 窗口后回收；SDK reconnect 会跨连接按 event ID 去重，若 EOF 前没有 terminal event 则抛出 `FocusAgentIncompleteStreamError`。详见[流式事件契约](docs/streaming-contract.md)和[前端 SDK](frontend-sdk/README.md)。
-- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 170 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
+- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 **169** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
+- **App Postgres schema：** 应用 schema 版本为 **v19**（含 Agent Team v2 表及更早的 productivity / branch-decision / embedding-status 迁移）。详见[架构说明 §14](docs/architecture.md)。
+
+### 适用与不适用
+
+| 更适合 | 通常不适合 |
+|--------|------------|
+| 要自托管 AI 工作台，并在意审计、回放、发布证据 | 只要最小 LangGraph + 单页 chat 的周末项目 |
+| 认同 branch/merge 工作流并愿意投入改造 | 期望“装上即企业 Agent 员工” |
+| 能维护鉴权、Postgres、stream contract 的平台团队 | 无人专职 dig monorepo 的小团队 |
+| 需要 typed SDK + 可观测闭环的准生产路径 | 需要开箱即用的企业 IdP / 多区域高可用 |
+
+诚实边界：**当前平台完备度高于 Agent 结果质量证据。** eval、真实失败 golden、成本/延迟画像、多 Agent 质量门槛仍是开放工作。见 [路线图](docs/roadmap.md)。
 
 ## 为什么是 Focus Agent
 
 很多 Agent Demo 默认只有“一问一答”。而 Focus Agent 的核心假设不同：真实的研究、调试、写作和审查过程并不是线性的。
 
-与其把所有探索过程都塞进一条越来越嘈杂的主线程里，Focus Agent 把主线程当作共享进展，把分支当作临时工作区，用来做探索、验证和对比。
+与其把所有探索过程都塞进一条越来越嘈杂的主线程里，Focus Agent 把主线程当作共享进展，把分支当作临时工作区，用来做探索、验证和对比。分支推荐 **不会静默 fork**，只会生成待用户确认的 Branch Action 卡片。
 
 ## 核心能力
 
 - 支持分支式会话与受控 merge 回主线
 - 支持 AI 辅助的分支决策与发送前分支推荐，并通过用户确认的 Branch Action 卡片执行
-- 提供流式聊天 API 和内置 React Web 界面 `/app`
+- 提供流式聊天 API（默认 harness 路径：`/v2/threads/.../runs[/stream]`）和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
+- 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案（v2 执行受 feature flag 控制，见 [Agent Team v2 灰度](docs/agent-team-v2-rollout.md)）
 - 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
-- 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、管理员控制台、按能力收拢的设置中心、Zvec 检索/RAG、记忆链路、治理反馈趋势和类型完备的前端 SDK
 - 对工具/协议流做隔离，确保 `message.delta` 只承载确认可见的 assistant 正文
@@ -55,9 +70,10 @@ Focus Agent 是一个开源应用骨架和参考实现，不是托管式 SaaS �
 
 | 路径 | 用途 |
 |------|------|
-| `src/focus_agent/` | Python 后端 runtime、API、service、持久化、工具、memory 和 observability 模块 |
-| `apps/web/` | 挂载在 `/app` 下的 React Web App |
+| `src/focus_agent/` | Python 后端：API、`AppRuntime`、harness、LangGraph engine、service、持久化、工具、memory、retrieval、observability |
+| `apps/web/` | 挂载在 `/app` 下的 React Web App（含 Android local-runtime 模块） |
 | `frontend-sdk/` | 覆盖 API、SSE 和 stream reducer 集成的类型化 TypeScript SDK |
+| `android/` | Capacitor Android 壳 |
 | `docs/` | 架构、启动、部署、功能、契约和运维文档 |
 | `migrations/` | 面向 PostgreSQL 部署的 Alembic 迁移 |
 | `scripts/` | 本地启动、验证、发布、截图和维护脚本 |
@@ -83,6 +99,8 @@ pnpm install --registry=https://registry.npmjs.org
 pnpm web:build
 make api
 ```
+
+完成同样的初始化后，若需要 API + Vite 热更新的全栈本地开发，使用 `make serve-dev`。细节见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。
 
 `make setup-local` 会创建 `.focus_agent/local.env`、`.focus_agent/models.toml` 和 `.focus_agent/tools.toml`。
 根目录 `.env.example` 主要供 Compose 或手动 shell export 参考；本地 API 启动路径读取 `.focus_agent/local.env` 和进程环境变量。
@@ -124,7 +142,7 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 
 ## Android App
 
-Android target 使用 Capacitor 打包 React App，并通过 SDK local transport 使用设备内单用户 runtime。Provider key 保存在原生安全存储中；原生 HTTP 有界且可取消，deep link 会经过 allowlist 并对 cold/hot intent 各投递一次，bridge logging 默认关闭。Web target 仍通过 `/v1` 和 `/v2` 连接服务端。能力边界、限制、CI 检查和设备/模拟器验证详见 [Android App](docs/android.md)。
+Android target 使用 Capacitor 打包 React App，并通过 SDK **local transport** 使用设备内单用户 runtime（`apps/web/src/android-local-runtime/`）。Provider key 保存在原生安全存储中；原生 HTTP 有界且可取消，deep link 会经过 allowlist 并对 cold/hot intent 各投递一次，bridge logging 默认关闭。Web target 仍通过 `/v1` 和 `/v2` **连接服务端**。能力边界、限制、CI 检查和设备/模拟器验证详见 [Android App](docs/android.md)。
 
 ```bash
 pnpm android:web:build
@@ -180,29 +198,36 @@ make frontend-qa
 GitHub Actions 还包含真实 Chrome workflow，用于验证聊天、branch/review 和
 observability 交互；Android job 会运行 debug build、lint 和 unit tests。
 本地等价命令及模拟器/真机检查见
-[docs/validation-runbook.md](docs/validation-runbook.md)。
+[docs/validation-runbook.md](docs/validation-runbook.md)。涉及 runtime、沙箱、
+Skill、Agent Team、observability 或 release-readiness 的大范围改动时，请以该
+runbook 作为完整证据路径（源码检查、OpenAPI/SDK 漂移、真实浏览器 smoke、
+`/readyz`）。
 
 ## 贡献与支持
 
-欢迎提交能让 runtime 更清楚、更可验证、更容易适配的贡献。开发环境、PR 预期和 issue 提交流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎提交能让 runtime 更清楚、更可验证、更容易适配的贡献。优先做尊重平台边界与既有契约的聚焦改动。开发环境、PR 预期和 issue 提交流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 Bug、功能请求和文档改进请优先使用 GitHub issue templates。安全漏洞或敏感问题请按 [SECURITY.md](SECURITY.md) 处理，不要先创建公开 issue。
 
 ## 文档导航
 
+- [项目定位与现状](docs/project-overview.md)
 - [文档索引](docs/README.md)
 - [快速开始](docs/quick-start.zh-CN.md)
 - [开发指南](docs/development.zh-CN.md)
 - [验证手册](docs/validation-runbook.md)
 - [架构说明与模块导航](docs/architecture.md)
+- [路线图](docs/roadmap.md)
 - [流式事件契约](docs/streaming-contract.md)
 - [Auth / Access](docs/auth-access.md)
+- [Agent Team 工作台](docs/agent-team-workbench.md)
+- [Agent Team v2 灰度](docs/agent-team-v2-rollout.md)
 - [Android App](docs/android.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 
-## 许可证
+## License
 
-本项目采用 MIT License。详情见根目录 [`LICENSE`](LICENSE)。
+本项目使用 MIT License。详见 [`LICENSE`](LICENSE)。
