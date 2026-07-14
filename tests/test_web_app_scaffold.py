@@ -179,7 +179,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "isDiagnosticsRoute" not in app_shell_text
     assert "const chatNavLabel" in app_shell_text
     assert "const productivityNavLabel" in app_shell_text
-    assert "const agentTeamNavLabel" not in app_shell_text
+    assert "const agentTeamNavLabel" in app_shell_text
     assert "const adminNavLabel" in app_shell_text
     assert "const sidebarToggleLabel" in app_shell_text
     assert "const currentAccountLabel" in app_shell_text
@@ -209,6 +209,12 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     ).read_text()
     assert "{isAdmin ? (" not in global_navigation_text
     assert "AdminAccessGate" not in global_navigation_text
+    assert 'const agentTeamNavLabel = isChineseUi ? "团队" : "Team";' in global_navigation_text
+    assert "appEnv.features.agentTeam ? (" in global_navigation_text
+    assert "aria-label={agentTeamNavLabel}" in global_navigation_text
+    assert "tooltipProps(agentTeamNavLabel)" in global_navigation_text
+    assert "AgentTeamIcon" in global_navigation_text
+    assert 'to="/agent-team"' in global_navigation_text
     sidebar_copy_text = (
         web_root / "src" / "app" / "shell" / "app-shell-sidebar-brand.tsx"
     ).read_text()
@@ -534,9 +540,7 @@ def test_thread_header_allows_double_click_current_branch_rename():
 def test_chat_header_rename_modes_are_mutually_exclusive():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
-    app_shell_text = (
-        web_root / "src" / "app" / "shell" / "app-shell-chat-header.tsx"
-    ).read_text()
+    app_shell_text = (web_root / "src" / "app" / "shell" / "app-shell-chat-header.tsx").read_text()
     conversation_toolbar_text = (
         web_root / "src" / "features" / "conversations" / "conversation-toolbar.tsx"
     ).read_text()
@@ -559,29 +563,35 @@ def test_chat_header_rename_modes_are_mutually_exclusive():
     assert "useState<HeaderRenameScope>(null)" in app_shell_text
     assert (
         "<ConversationToolbar activeRenameScope={activeRenameScope} "
-        "onRenameScopeChange={setActiveRenameScope} />"
-        in compact_shell_text
+        "onRenameScopeChange={setActiveRenameScope} />" in compact_shell_text
     )
     assert (
         "<ThreadHeaderActions activeRenameScope={activeRenameScope} "
         "onRenameScopeChange={setActiveRenameScope} "
-        "onRequestOpenSidebar={onOpenSidebar} />"
-        in compact_shell_text
+        "onRequestOpenSidebar={onOpenSidebar} />" in compact_shell_text
     )
     assert 'onRenameScopeChange?.("conversation");' in conversation_toolbar_text
-    assert "const visibleRenameTarget = canShowConversationRename ? renameTarget : null;" in conversation_toolbar_text
+    assert (
+        "const visibleRenameTarget = canShowConversationRename ? renameTarget : null;"
+        in conversation_toolbar_text
+    )
     assert "renameTarget={visibleRenameTarget}" in conversation_toolbar_text
     assert 'currentScope === "conversation" ? null : currentScope' in conversation_toolbar_text
-    assert 'activeRenameScope !== undefined && activeRenameScope !== "conversation"' in compact_conversation_text
+    assert (
+        'activeRenameScope !== undefined && activeRenameScope !== "conversation"'
+        in compact_conversation_text
+    )
     assert "setRenameTarget(null);" in conversation_toolbar_text
-    assert "setRenameDraft(\"\");" in conversation_toolbar_text
+    assert 'setRenameDraft("");' in conversation_toolbar_text
     assert 'onRenameScopeChange?.("branch");' in thread_header_actions_text
     assert "const isBranchRenameVisible =" in thread_header_actions_text
     assert "isRenamingCurrentBranch={isBranchRenameVisible}" in thread_header_actions_text
     assert 'currentScope === "branch" ? null : currentScope' in thread_header_actions_text
-    assert 'activeRenameScope !== undefined && activeRenameScope !== "branch"' in compact_thread_text
+    assert (
+        'activeRenameScope !== undefined && activeRenameScope !== "branch"' in compact_thread_text
+    )
     assert "setIsRenamingCurrentBranch(false);" in thread_header_actions_text
-    assert "setRenameBranchDraft(\"\");" in thread_header_actions_text
+    assert 'setRenameBranchDraft("");' in thread_header_actions_text
     assert "onCancelRenameCurrentBranch={cancelRenameCurrentBranch}" in thread_header_actions_text
     assert (
         'className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming"'
@@ -589,8 +599,7 @@ def test_chat_header_rename_modes_are_mutually_exclusive():
     )
     assert (
         'className="fa-chat-toolbar-pill fa-focus-branches-button is-renaming" '
-        'data-compact-button="true"'
-        not in _compact(thread_header_buttons_text)
+        'data-compact-button="true"' not in _compact(thread_header_buttons_text)
     )
     assert ".fa-focus-branches-button:not(.is-renaming)" in styles_text
     assert (
@@ -651,9 +660,8 @@ def test_conversation_switcher_only_lists_active_conversations():
 
     assert "const archivedConversations" not in conversation_toolbar_text
     assert "<optgroup" not in conversation_toolbar_text
-    assert (
-        "disabled={ isLoading || isWorking || activeConversations.length === 0 }"
-        in _compact(conversation_toolbar_text)
+    assert "disabled={ isLoading || isWorking || activeConversations.length === 0 }" in _compact(
+        conversation_toolbar_text
     )
     assert "activeConversations.find(" in conversation_toolbar_text
     assert "conversation.root_thread_id === conversationId" in conversation_toolbar_text

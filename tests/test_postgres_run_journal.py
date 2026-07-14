@@ -10,11 +10,14 @@ from focus_agent.repositories.postgres_schema import _MIGRATIONS, SCHEMA_VERSION
 
 def test_postgres_harness_journal_migration_shape():
     executed: list[str] = []
-    migration = dict(_MIGRATIONS)[11]
+    migrations = dict(_MIGRATIONS)
+    migration = migrations[11]
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 18
+    assert SCHEMA_VERSION == 19
+    assert [version for version, _migration in _MIGRATIONS][-2:] == [18, 19]
+    assert migrations[19] is not migration
     combined = " ".join(" ".join(sql.split()) for sql in executed)
     assert "CREATE TABLE IF NOT EXISTS focus_harness_runs" in combined
     assert "CREATE TABLE IF NOT EXISTS focus_harness_run_events" in combined

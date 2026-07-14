@@ -734,11 +734,14 @@ def test_postgres_memory_repository_embedding_payload_aliases(monkeypatch):
 
 def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
     executed: list[str] = []
-    migration = dict(_MIGRATIONS)[9]
+    migrations = dict(_MIGRATIONS)
+    migration = migrations[9]
 
     migration(lambda sql, params=None: executed.append(sql))
 
-    assert SCHEMA_VERSION == 18
+    assert SCHEMA_VERSION == 19
+    assert [version for version, _migration in _MIGRATIONS][-2:] == [18, 19]
+    assert migrations[18] is not migrations[19]
     assert len(executed) == 1
     sql = " ".join(executed[0].split())
     assert sql.startswith("UPDATE focus_memories SET")
@@ -753,10 +756,14 @@ def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
 
 def test_postgres_memory_embedding_status_migration_shape():
     executed: list[str] = []
-    migration = dict(_MIGRATIONS)[18]
+    migrations = dict(_MIGRATIONS)
+    migration = migrations[18]
 
     migration(lambda sql, params=None: executed.append(sql))
 
+    assert SCHEMA_VERSION == 19
+    assert [version for version, _migration in _MIGRATIONS][-2:] == [18, 19]
+    assert migrations[19] is not migration
     assert len(executed) == 4
     combined = " ".join(" ".join(sql.split()) for sql in executed)
     assert "ADD COLUMN IF NOT EXISTS embedding_status" in combined

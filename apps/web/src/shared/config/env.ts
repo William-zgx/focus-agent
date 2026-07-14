@@ -3,6 +3,8 @@ export const LOCAL_RUNTIME_API_BASE_URL = "http://focus-agent.local";
 
 const target = import.meta.env.VITE_FOCUS_AGENT_TARGET || "web";
 const isAndroidTarget = target === "android";
+const isAgentTeamEnabled =
+	import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "true";
 const useLocalRuntime = isAndroidTarget;
 const buildApiBaseUrl =
 	import.meta.env.VITE_FOCUS_AGENT_API_BASE_URL?.trim() || "";
@@ -92,10 +94,7 @@ export const appEnv = {
 	demoTenantId:
 		import.meta.env.VITE_FOCUS_AGENT_DEMO_TENANT_ID || "demo-tenant",
 	features: {
-		agentTeam: envFlag(
-			import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH,
-			!isAndroidTarget,
-		),
+		agentTeam: !isAndroidTarget && isAgentTeamEnabled,
 		agentGovernance: envFlag(
 			import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_GOVERNANCE,
 			true,

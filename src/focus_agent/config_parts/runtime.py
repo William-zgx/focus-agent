@@ -23,6 +23,15 @@ def load_runtime_config(
         "web_search": tool_catalog.web_search,
         "resolved_env": dict(env),
         "temperature": float(env.get("TEMPERATURE", str(defaults.temperature))),
+        "model_request_timeout_seconds": max(
+            1.0,
+            float(
+                env.get(
+                    "MODEL_REQUEST_TIMEOUT_SECONDS",
+                    str(defaults.model_request_timeout_seconds),
+                )
+            ),
+        ),
         "database_uri": env.get("DATABASE_URI") or None,
         "langgraph_api_url": env.get("LANGGRAPH_API_URL") or None,
         "branch_db_path": env.get("BRANCH_DB_PATH", defaults.branch_db_path),

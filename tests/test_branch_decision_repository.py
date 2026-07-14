@@ -9,8 +9,7 @@ from focus_agent.core.governance import (
 )
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.postgres_governance_repository import PostgresGovernanceRepository
-from focus_agent.repositories.postgres_schema import SCHEMA_VERSION
-from focus_agent.repositories.postgres_schema_migrations import _MIGRATIONS
+from focus_agent.repositories.postgres_schema import _MIGRATIONS, SCHEMA_VERSION
 
 
 def test_in_memory_branch_decision_repository_round_trips_and_filters() -> None:
@@ -209,6 +208,7 @@ def test_postgres_branch_decision_update_returns_deduped_existing_event(monkeypa
 
 
 def test_postgres_schema_registers_branch_decision_migration() -> None:
-    assert SCHEMA_VERSION == 18
     versions = [version for version, _migration in _MIGRATIONS]
-    assert versions[-1] == 18
+    assert SCHEMA_VERSION == 19
+    assert versions[-2:] == [18, 19]
+    assert dict(_MIGRATIONS)[18] is not dict(_MIGRATIONS)[19]

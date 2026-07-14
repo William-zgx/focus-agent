@@ -5967,6 +5967,132 @@
     },
     {
       "method": "GET",
+      "operation_id": "get_agent_team_v2_readiness_v2_agent_team_readiness_get",
+      "parameters": [],
+      "path": "/v2/agent-team/readiness",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamReadinessResponse"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_team_session_evidence_v2_v2_agent_team_sessions__session_id__evidence_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/agent-team/sessions/{session_id}/evidence",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamEvidenceListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "execute_agent_team_revision_command_v2_v2_agent_team_sessions__session_id__revisions_commands_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/agent-team/sessions/{session_id}/revisions/commands",
+      "request": {
+        "$ref": "#/components/schemas/AgentTeamRevisionCommandRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamRevisionCommandResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "get_agent_team_task_run_v2_v2_agent_team_task_runs__task_run_id__get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/agent-team/task-runs/{task_run_id}",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskRunResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list_agent_team_task_runs_v2_v2_agent_team_tasks__task_id__runs_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "task_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v2/agent-team/tasks/{task_id}/runs",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AgentTeamTaskRunListResponse"
+        },
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+      }
+    },
+    {
+      "method": "GET",
       "operation_id": "get_harness_run_v2_runs__run_id__get",
       "parameters": [
         {
@@ -9567,6 +9693,186 @@
       ],
       "type": "object"
     },
+    "AgentTeamEvidenceContract": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancel_epoch": {
+          "default": 0,
+          "type": "integer"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "deliverable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_level": {
+          "default": "synthetic",
+          "type": "string"
+        },
+        "evidence_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_verdict": {
+          "default": "unknown",
+          "type": "string"
+        },
+        "execution_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "row_version": {
+          "default": 0,
+          "type": "integer"
+        },
+        "sandbox_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_type": {
+          "default": "execution",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "evidence_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamEvidenceLevel": {
+      "enum": [
+        "synthetic",
+        "model",
+        "worktree",
+        "sandbox",
+        "verified"
+      ],
+      "type": "string"
+    },
+    "AgentTeamEvidenceListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamEvidenceContract"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamEvidenceVerdict": {
+      "enum": [
+        "unknown",
+        "verified",
+        "rejected",
+        "inconclusive"
+      ],
+      "type": "string"
+    },
+    "AgentTeamExecutionClass": {
+      "enum": [
+        "fake",
+        "model_text",
+        "tool_agent",
+        "sandbox_verified"
+      ],
+      "type": "string"
+    },
     "AgentTeamMergeBundleContract": {
       "properties": {
         "accepted_tasks": {
@@ -10200,6 +10506,62 @@
       },
       "type": "object"
     },
+    "AgentTeamReadinessCapabilities": {
+      "properties": {
+        "evidence_queries": {
+          "default": false,
+          "type": "boolean"
+        },
+        "revision_commands": {
+          "default": false,
+          "type": "boolean"
+        },
+        "task_run_queries": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamReadinessResponse": {
+      "properties": {
+        "capabilities": {
+          "$ref": "#/components/schemas/AgentTeamReadinessCapabilities"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "ready": {
+          "default": false,
+          "type": "boolean"
+        },
+        "service_available": {
+          "default": false,
+          "type": "boolean"
+        },
+        "status": {
+          "default": "disabled",
+          "enum": [
+            "ready",
+            "disabled",
+            "degraded"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "AgentTeamRecommendedAction": {
       "enum": [
         "merge",
@@ -10208,6 +10570,80 @@
         "discard"
       ],
       "type": "string"
+    },
+    "AgentTeamRevisionCommandRequest": {
+      "properties": {
+        "command": {
+          "enum": [
+            "create",
+            "activate",
+            "supersede",
+            "cancel",
+            "resume"
+          ],
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parent_revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "AgentTeamRevisionCommandResponse": {
+      "properties": {
+        "command": {
+          "enum": [
+            "create",
+            "activate",
+            "supersede",
+            "cancel",
+            "resume"
+          ],
+          "type": "string"
+        },
+        "outcome": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "session_id"
+      ],
+      "type": "object"
     },
     "AgentTeamRunMetadata": {
       "properties": {
@@ -11037,6 +11473,11 @@
             }
           ]
         },
+        "cancel_epoch": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "changed_files": {
           "items": {
             "type": "string"
@@ -11046,7 +11487,47 @@
         "created_at": {
           "type": "string"
         },
+        "deliverable": {
+          "default": false,
+          "type": "boolean"
+        },
         "diff_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_level": {
+          "$ref": "#/components/schemas/AgentTeamEvidenceLevel"
+        },
+        "evidence_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_verdict": {
+          "$ref": "#/components/schemas/AgentTeamEvidenceVerdict"
+        },
+        "execution_class": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentTeamExecutionClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_profile": {
           "anyOf": [
             {
               "type": "string"
@@ -11066,11 +11547,36 @@
         "output_id": {
           "type": "string"
         },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "risk_notes": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "row_version": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "sandbox_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "summary": {
           "default": "",
@@ -11078,6 +11584,16 @@
         },
         "task_id": {
           "type": "string"
+        },
+        "task_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "test_evidence": {
           "items": {
@@ -11177,6 +11693,176 @@
         "writer"
       ],
       "type": "string"
+    },
+    "AgentTeamTaskRunContract": {
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "type": "integer"
+        },
+        "cancel_epoch": {
+          "default": 0,
+          "type": "integer"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "deliverable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "evidence_level": {
+          "default": "synthetic",
+          "type": "string"
+        },
+        "evidence_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_verdict": {
+          "default": "unknown",
+          "type": "string"
+        },
+        "execution_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "row_version": {
+          "default": 0,
+          "type": "integer"
+        },
+        "sandbox_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentTeamTaskStatus"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "task_run_id": {
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "task_run_id",
+        "task_id",
+        "session_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentTeamTaskRunListResponse": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AgentTeamTaskRunContract"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AgentTeamTaskRunResponse": {
+      "properties": {
+        "task_run": {
+          "$ref": "#/components/schemas/AgentTeamTaskRunContract"
+        }
+      },
+      "required": [
+        "task_run"
+      ],
+      "type": "object"
     },
     "AgentTeamTaskStatus": {
       "enum": [

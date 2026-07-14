@@ -8,19 +8,15 @@ import { tooltipProps } from "@/shared/ui/tooltip";
 
 import { AgentTeamCockpit } from "./agent-team-cockpit";
 import { AgentTeamInspectorDialog } from "./agent-team-inspector-dialog";
-import { AgentTeamAdoptionWorkbench } from "./agent-team-workbench-adoption";
 import { CreateSessionPanel } from "./agent-team-workbench-create";
 import { AdvancedDetailsPanel } from "./agent-team-workbench-merge-handoff";
 import { errorMessage } from "./agent-team-workbench-utils";
 import { useAgentTeamWorkbenchViewModel } from "./agent-team-workbench-view-model";
-import type { AgentTeamToolApproval } from "./types";
 import {
 	useAgentTeamMergeDecision,
 	useAgentTeamMergeProposal,
 	useAgentTeamSession,
-	useAgentTeamToolApprovals,
 	useCancelAgentTeamSession,
-	useDecideAgentTeamToolApproval,
 	usePlanAgentTeamSession,
 	useRunAgentTeamSession,
 } from "./use-agent-team";
@@ -46,8 +42,6 @@ export function AgentTeamWorkbench({
 	const cancelSession = useCancelAgentTeamSession(sessionId);
 	const mergeProposal = useAgentTeamMergeProposal(sessionId);
 	const mergeDecision = useAgentTeamMergeDecision(sessionId);
-	const toolApprovals = useAgentTeamToolApprovals(sessionId);
-	const decideToolApproval = useDecideAgentTeamToolApproval(sessionId);
 	const workbenchVm = useAgentTeamWorkbenchViewModel({
 		isChineseUi,
 		mergeProposalData: mergeProposal.data,
@@ -278,13 +272,6 @@ export function AgentTeamWorkbench({
 					isChineseUi ? "确认最终结果失败。" : "Failed to approve final result."
 				}
 			/>
-			<InlineMutationError
-				error={decideToolApproval.error}
-				fallback={
-					isChineseUi ? "工具审批提交失败。" : "Failed to submit tool approval."
-				}
-			/>
-
 			{fallbackPlan ? (
 				<div className="fa-agent-team-plan-banner">
 					<strong>
@@ -329,21 +316,6 @@ export function AgentTeamWorkbench({
 				}}
 				session={view}
 				viewModel={cockpitViewModel}
-			/>
-
-			<ToolApprovalQueuePanel
-				approvals={
-					toolApprovals.data?.items ?? view.pending_tool_approvals ?? []
-				}
-				busyRequestId={
-					decideToolApproval.isPending
-						? decideToolApproval.variables?.requestId
-						: null
-				}
-				isChineseUi={isChineseUi}
-				onDecision={(requestId, approved) =>
-					decideToolApproval.mutate({ requestId, approved })
-				}
 			/>
 
 			<section className="fa-agent-team-cockpit-secondary-bar">
@@ -429,8 +401,6 @@ export function AgentTeamWorkbench({
 				</details>
 			</section>
 
-			<AgentTeamAdoptionWorkbench isChineseUi={isChineseUi} session={view} />
-
 			<AgentTeamInspectorDialog
 				closeLabel={isChineseUi ? "关闭" : "Close"}
 				id={inspectorId}
@@ -460,74 +430,6 @@ export function AgentTeamWorkbench({
 				/>
 			</AgentTeamInspectorDialog>
 		</div>
-	);
-}
-
-function ToolApprovalQueuePanel({
-	approvals,
-	busyRequestId,
-	isChineseUi,
-	onDecision,
-}: {
-	approvals: AgentTeamToolApproval[];
-	busyRequestId: string | null;
-	isChineseUi: boolean;
-	onDecision: (requestId: string, approved: boolean) => void;
-}) {
-	if (!approvals.length) return null;
-	return (
-		<section className="fa-agent-team-tool-approvals">
-			<div>
-				<span>{isChineseUi ? "待审批工具" : "Pending tools"}</span>
-				<strong>
-					{isChineseUi
-						? `${approvals.length} 个请求`
-						: `${approvals.length} request${approvals.length === 1 ? "" : "s"}`}
-				</strong>
-			</div>
-			<div className="fa-agent-team-tool-approval-list">
-				{approvals.map((approval) => {
-					const busy = busyRequestId === approval.request_id;
-					return (
-						<article
-							className="fa-agent-team-tool-approval"
-							key={approval.request_id}
-						>
-							<div>
-								<span>{approval.risk_level || "low"}</span>
-								<strong>{approval.tool_name || approval.request_id}</strong>
-								<code {...tooltipProps(approval.request_id)}>
-									{approval.request_id}
-								</code>
-							</div>
-							<div className="fa-agent-team-tool-approval-actions">
-								<button
-									disabled={busy}
-									onClick={() => onDecision(approval.request_id, true)}
-									type="button"
-								>
-									{busy
-										? isChineseUi
-											? "提交中"
-											: "Saving"
-										: isChineseUi
-											? "批准"
-											: "Approve"}
-								</button>
-								<button
-									className="is-danger"
-									disabled={busy}
-									onClick={() => onDecision(approval.request_id, false)}
-									type="button"
-								>
-									{isChineseUi ? "拒绝" : "Reject"}
-								</button>
-							</div>
-						</article>
-					);
-				})}
-			</div>
-		</section>
 	);
 }
 

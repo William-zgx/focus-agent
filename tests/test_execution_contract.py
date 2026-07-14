@@ -39,6 +39,32 @@ def test_live_web_contract_requires_search_after_temporal_anchor_only():
     assert evaluated["missing"] == ["web_search"]
 
 
+def test_live_web_contract_requires_explicit_search_and_fetch_tools():
+    contract = build_execution_contract(
+        policy="live_web_research",
+        available_tool_names=["web_search", "web_fetch"],
+        required_web_tools=["web_search", "web_fetch"],
+    )
+
+    only_search = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["web_search"],
+        evidence_ledger=[{"url": "https://example.com"}],
+        available_tool_names=["web_search", "web_fetch"],
+    )
+    both_tools = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["web_search", "web_fetch"],
+        evidence_ledger=[{"url": "https://example.com"}],
+        available_tool_names=["web_search", "web_fetch"],
+    )
+
+    assert contract["required_tools"] == ["web_search", "web_fetch"]
+    assert only_search["status"] == "missing_required_tools"
+    assert only_search["missing"] == ["web_fetch"]
+    assert both_tools["status"] == "satisfied"
+
+
 def test_skill_execution_contract_requires_primary_tool_result():
     messages = [
         AIMessage(
@@ -89,11 +115,14 @@ def test_skill_execution_contract_requires_primary_tool_result():
     assert contract["required_tools"] == ["run_workspace_command"]
     assert missing["status"] == "missing_required_tools"
     assert satisfied["status"] == "satisfied"
-    assert verify_answer_against_evidence(
-        answer="华钰矿业行情来自 stocks Skill，代码 601020.SS。",
-        contract=satisfied,
-        evidence_ledger=[],
-    )["status"] == "verified"
+    assert (
+        verify_answer_against_evidence(
+            answer="华钰矿业行情来自 stocks Skill，代码 601020.SS。",
+            contract=satisfied,
+            evidence_ledger=[],
+        )["status"]
+        == "verified"
+    )
 
 
 def test_skill_execution_contract_prefers_entrypoint_tool_when_declared():
@@ -457,10 +486,13 @@ def test_skill_execution_contract_ignores_workspace_command_stdout_business_erro
     )
 
     assert tool_result_names(messages) == []
-    assert skill_execution_evidence_facts(
-        messages,
-        required_tools=["run_workspace_command"],
-    ) == []
+    assert (
+        skill_execution_evidence_facts(
+            messages,
+            required_tools=["run_workspace_command"],
+        )
+        == []
+    )
     assert evaluated["status"] == "missing_required_tools"
 
 
@@ -562,7 +594,10 @@ def test_skill_execution_answer_must_reference_latest_skill_observation():
     )
 
     assert evaluated["status"] == "satisfied"
-    assert any(fact["key"] == "score" and fact["value"] == "50" for fact in evaluated["skill_evidence_facts"])
+    assert any(
+        fact["key"] == "score" and fact["value"] == "50"
+        for fact in evaluated["skill_evidence_facts"]
+    )
     assert stale["status"] == "unsupported"
     assert stale["repair_action"] == "fallback_to_tool_results"
     assert grounded["status"] == "verified"

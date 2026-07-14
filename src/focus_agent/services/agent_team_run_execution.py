@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from focus_agent.config import Settings
@@ -34,6 +35,11 @@ from focus_agent.multi_agent.failure_handler import FailureHandler
 from focus_agent.services.coordination import BackgroundJobSpec
 
 from .agent_team_helpers import _dedupe, _now
+from .agent_team_real_execution import (
+    execute_real_agent_team_task,
+    is_real_agent_team_execution_enabled,
+    is_real_agent_team_execution_requested,
+)
 from .agent_team_run_helpers import (
     _MAX_MISSION_SCHEDULER_TASKS,
     _MAX_MISSION_SCHEDULER_WAVES,
@@ -87,6 +93,14 @@ def _multi_agent_resource_lock_enabled(settings: Any | None) -> bool:
     )
 
 
+def _agent_team_cross_session_fencing_enabled(settings: Any | None) -> bool:
+    return bool(
+        settings is not None
+        and getattr(settings, "agent_team_fencing_enabled", False)
+        and getattr(settings, "agent_team_cross_session_locks_enabled", False)
+    )
+
+
 def _failure_strategy_for_exception(
     *,
     settings: Any | None,
@@ -135,10 +149,23 @@ def execute_task_body(
         event="started",
         payload={"scheduler_wave": scheduler_wave},
     )
+    real_execution_requested = is_real_agent_team_execution_requested(service.settings)
+    real_execution = is_real_agent_team_execution_enabled(service.settings, service=service)
+    if real_execution_requested and not real_execution:
+        return _TaskExecutionResult(
+            session_id=task.session_id,
+            final_status=AgentTeamTaskStatus.BLOCKED,
+            run_status="blocked",
+            execution_status="readiness_blocked",
+            last_error=(
+                "Real Agent Team execution is blocked because runtime readiness is not ready."
+            ),
+            task_updates={"finished_at": _now()},
+        )
     executor = service._delegated_executor()
     workspace: AgentTeamWorkspace | None = None
     workspace_status: AgentTeamWorkspaceStatus | None = None
-    if _should_use_task_workspace(task, executor):
+    if real_execution or _should_use_task_workspace(task, executor):
         try:
             workspace = service.workspace_service.ensure_workspace(
                 session=service.get_session(task.session_id, user_id=user_id),
@@ -163,6 +190,86 @@ def execute_task_body(
                 last_error=f"Failed to prepare task workspace: {exc}",
                 task_updates={"finished_at": finished_at},
             )
+    if real_execution:
+        if workspace is None:
+            return _TaskExecutionResult(
+                session_id=task.session_id,
+                final_status=AgentTeamTaskStatus.FAILED,
+                run_status="failed",
+                execution_status="workspace_required",
+                last_error="Real Agent Team execution requires an isolated task worktree.",
+                task_updates={"finished_at": _now()},
+            )
+        real_result = execute_real_agent_team_task(
+            service,
+            task=task,
+            user_id=user_id,
+            workspace_metadata=workspace.as_metadata(),
+            scheduler_wave=scheduler_wave,
+        )
+        try:
+            workspace_status = service.workspace_service.collect_status(workspace.workspace_path)
+        except Exception as exc:  # noqa: BLE001
+            workspace_status = AgentTeamWorkspaceStatus(
+                changed_files=[],
+                diff_summary="",
+                workspace_status="status_failed",
+                porcelain=[str(exc)],
+            )
+        workspace_metadata = _workspace_metadata_for_run(
+            type(
+                "_RealWorkspaceRun",
+                (),
+                {
+                    **workspace.as_metadata(),
+                    "workspace_status": workspace_status.workspace_status,
+                    "diff_summary": workspace_status.diff_summary,
+                },
+            )(),
+            workspace_status,
+        )
+        task_updates = {
+            "agent_run_id": real_result.task_updates.get("task_run_id"),
+            "delegated_task_id": task.task_id,
+            "changed_files": _dedupe(
+                [
+                    *list(real_result.task_updates.get("changed_files") or []),
+                    *workspace_status.changed_files,
+                ]
+            ),
+            **workspace_metadata,
+            **real_result.task_updates,
+        }
+        output = dict(real_result.output or {}) if real_result.output is not None else None
+        if output is not None:
+            output["changed_files"] = _dedupe(
+                [
+                    *list(output.get("changed_files") or []),
+                    *workspace_status.changed_files,
+                ]
+            )
+            output.update(workspace_metadata)
+            metadata = dict(output.get("metadata") or {})
+            metadata["workspace"] = workspace_status.as_metadata()
+            output["metadata"] = metadata
+        service._publish_agent_team_progress(
+            task=task,
+            event="finished",
+            payload={
+                "status": real_result.final_status.value,
+                "run_status": real_result.run_status,
+                "execution_profile": "worktree_sandbox",
+            },
+        )
+        return _TaskExecutionResult(
+            session_id=task.session_id,
+            final_status=real_result.final_status,
+            run_status=real_result.run_status,
+            execution_status=real_result.execution_status,
+            last_error=real_result.error,
+            task_updates=task_updates,
+            output=output,
+        )
     delegated = service._to_delegated_task(task, user_id=user_id)
     result = run_delegated_tasks(
         tasks=[delegated],
@@ -194,9 +301,7 @@ def execute_task_body(
                     "workspace_path": workspace.workspace_path,
                     "workspace_branch": workspace.workspace_branch,
                     "base_commit": workspace.base_commit,
-                    "changed_files": _dedupe(
-                        [*run.changed_files, *workspace_status.changed_files]
-                    ),
+                    "changed_files": _dedupe([*run.changed_files, *workspace_status.changed_files]),
                     "diff_summary": workspace_status.diff_summary,
                     "workspace_status": workspace_status.workspace_status,
                 }
@@ -320,19 +425,87 @@ def acquire_task_resource_claims(service: Any, task: AgentTeamTask) -> list[Reso
     acquired: list[ResourceClaim] = []
     ttl = float(getattr(service.settings, "multi_agent_resource_lock_ttl_seconds", 60.0) or 60.0)
     agent_id = f"{task.role.value}:{task.task_id}"
+    cross_session_scope = (
+        _task_cross_session_lock_scope(service, task)
+        if _agent_team_cross_session_fencing_enabled(service.settings)
+        else None
+    )
     for resource_id in task.resource_claims:
+        acquire_kwargs: dict[str, Any] = {
+            "resource_id": resource_id,
+            "agent_id": agent_id,
+            "session_id": task.session_id,
+            "mode": LockMode.EXCLUSIVE,
+            "ttl_seconds": ttl,
+        }
+        if cross_session_scope is not None:
+            acquire_kwargs.update(cross_session_scope)
         claim = lock_backend.try_acquire(
-            resource_id=resource_id,
-            agent_id=agent_id,
-            session_id=task.session_id,
-            mode=LockMode.EXCLUSIVE,
-            ttl_seconds=ttl,
+            **acquire_kwargs,
         )
         if claim is None:
             service._release_task_resource_claims(acquired)
             return []
         acquired.append(claim)
     return acquired
+
+
+def _task_cross_session_lock_scope(service: Any, task: AgentTeamTask) -> dict[str, str]:
+    tenant_id = _first_scope_value(
+        (
+            task,
+            getattr(service, "resource_lock_context", None),
+            getattr(service, "tenant_context", None),
+            getattr(service, "tenant_id", None),
+            getattr(getattr(service, "settings", None), "tenant_id", None),
+            *list(getattr(task, "context_refs", ()) or ()),
+        ),
+        keys=("tenant_id", "tenant"),
+    )
+    if tenant_id is None:
+        tenant_id = "tenant:default"
+
+    resource_namespace = _first_scope_value(
+        (
+            task,
+            getattr(service, "resource_lock_context", None),
+            getattr(service, "resource_namespace", None),
+            *list(getattr(task, "context_refs", ()) or ()),
+        ),
+        keys=("resource_namespace", "repository_id", "repo_id", "repository", "repo"),
+    )
+    if resource_namespace is None:
+        repo_root = getattr(getattr(service, "workspace_service", None), "repo_root", None)
+        resource_namespace = _repo_namespace_from_root(repo_root)
+    return {
+        "tenant_id": tenant_id,
+        "resource_namespace": resource_namespace or f"session:{task.session_id}",
+    }
+
+
+def _first_scope_value(sources: tuple[Any, ...], *, keys: tuple[str, ...]) -> str | None:
+    for source in sources:
+        if isinstance(source, dict):
+            values = (source.get(key) for key in keys)
+        elif isinstance(source, str):
+            values = (source,)
+        else:
+            values = (getattr(source, key, None) for key in keys)
+        for value in values:
+            text = str(value or "").strip()
+            if text:
+                return text
+    return None
+
+
+def _repo_namespace_from_root(repo_root: Any) -> str | None:
+    if repo_root is None:
+        return None
+    try:
+        return f"repo:{Path(repo_root).expanduser().resolve()}"
+    except (OSError, TypeError, ValueError):
+        text = str(repo_root).strip()
+        return f"repo:{text}" if text else None
 
 
 def release_task_resource_claims(service: Any, claims: list[ResourceClaim]) -> None:
@@ -583,6 +756,7 @@ def _tool_approval_payload(request: Any) -> dict[str, Any]:
 __all__ = [
     "_TaskExecutionResult",
     "_failure_strategy_for_exception",
+    "_agent_team_cross_session_fencing_enabled",
     "_multi_agent_dag_scheduler_enabled",
     "_multi_agent_failure_handler_enabled",
     "_multi_agent_resource_lock_enabled",

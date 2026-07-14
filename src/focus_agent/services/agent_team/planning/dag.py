@@ -212,9 +212,7 @@ class AgentTeamPlanningService:
         if not refs:
             return draft
         tasks = [
-            task.model_copy(
-                update={"context_refs": _merge_context_refs(task.context_refs, refs)}
-            )
+            task.model_copy(update={"context_refs": _merge_context_refs(task.context_refs, refs)})
             for task in draft.tasks
         ]
         updated = draft.model_copy(

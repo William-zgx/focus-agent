@@ -106,7 +106,7 @@ large files, so every scanned file above 800 lines is a regression; a file that
 was split below the limit must not be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 170 items.
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 169 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an

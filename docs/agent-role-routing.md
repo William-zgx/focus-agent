@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-06-25
+Updated: 2026-07-13
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -15,6 +15,13 @@ The layer answers five questions:
 - Which model should that role use?
 - Which artifacts are accepted, rejected, retried, or waiting for review?
 - Which evidence should be recorded for trajectory, eval, feedback trend analysis, and Web inspection?
+
+The normal chat path remains isolated from Agent Team v2 coordination. A
+complex prompt, a visible `/app/agent-team` route, or an existing Team session
+does not automatically fan a normal chat turn out into Team tasks, Git
+worktrees, resource locks, or agent-to-agent messages. Those behaviors require
+an explicit Agent Team operation and the separately default-off v2 flags
+described in [agent-team-v2-rollout.md](agent-team-v2-rollout.md).
 
 ```mermaid
 flowchart TD
@@ -98,8 +105,19 @@ This observe-first design lets the project collect trajectory evidence before gi
 | Artifact Synthesis | off | `AGENT_ARTIFACT_SYNTHESIS_ENABLED` | `artifact_synthesis_result` |
 | Critic Gate | off | `AGENT_CRITIC_GATE_ENABLED` | `critic_gate_result` |
 | Critic Gate enforcement | off | `AGENT_CRITIC_GATE_ENFORCE` | blocked synthesis / retry task |
+| Multi-Agent v2 master switch | off | `MULTI_AGENT_V2_ENABLED` | v2 coordination surface |
+| v2 DAG scheduling | off | `MULTI_AGENT_DAG_SCHEDULER_ENABLED` | dependency-aware task waves |
+| v2 resource locks | off | `MULTI_AGENT_RESOURCE_LOCK_ENABLED` | task `resource_claims` |
+| v2 progress messages | off | `MULTI_AGENT_MESSAGE_BUS_ENABLED` | agent message bus |
+| v2 async approvals | off | `MULTI_AGENT_ASYNC_APPROVAL_ENABLED` | pending tool approval queue |
+| v2 failure handler | off | `MULTI_AGENT_FAILURE_HANDLER_ENABLED` | retry/reassign/degrade/escalate decision |
 
 Feature flags move a capability through three practical stages: no-op, observation, and enforcement. This lets the project collect trajectory evidence before a router, curator, or critic is allowed to change execution behavior.
+
+For v2, `MULTI_AGENT_V2_ENABLED` is the master gate. A v2 subflag must not be
+treated as active when the master gate is off. The Agent Team Web visibility
+flag (`VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH`) controls UI build visibility
+only; it is not a runtime enforcement flag or production kill switch.
 
 ```mermaid
 flowchart LR
@@ -134,6 +152,13 @@ These rules are regression-sensitive:
 - Task Ledger converts delegated tasks into traceable task nodes, delegated artifacts, critic verdicts, and optional final synthesis.
 - Critic enforce mode blocks rejected artifacts from synthesis and allows only one local retry task.
 - Web operators can inspect role routing, memory curator, tool route, delegation, model route, self-repair, review queue, context engineering, task ledger, delegated artifact, and critic gate records at `/app/agent/governance`; `/app/agent/roles` remains compatible.
+- A `fake` delegated run is test/process evidence only. It must not be
+  represented as real model execution, a Docker-isolated command, or an
+  adoptable repository change.
+- `inline` or `background` Team execution can create a Git worktree for a
+  writable task, but the worktree is Git isolation rather than a command
+  sandbox. Secure command execution separately requires Docker configured
+  fail-closed.
 
 ## 6. Role Routing
 
@@ -179,6 +204,32 @@ Typical deny reasons:
 - `memory_write_reserved`
 
 Tool routing is layered after coarse turn-level tool policy. For example, a workspace lookup request should not expose web tools even if the Planner role normally can use web search.
+
+### Approval And Resume Boundary
+
+Tools marked `requires_approval` must not run merely because the router includes
+them in `allowed_tools`; the execution runtime still requires an approval
+decision. There are two distinct paths:
+
+- **Synchronous graph interrupt:** a waiting LangGraph execution can be resumed
+  with a matching `Command(resume=...)` payload containing the original
+  `interrupt_id` and `tool_call_id`.
+- **v2 async queue:** when both `MULTI_AGENT_V2_ENABLED` and
+  `MULTI_AGENT_ASYNC_APPROVAL_ENABLED` are enabled, the runtime records a
+  pending request and exposes it through the Agent Team approval endpoints.
+  A decision changes the queue record but does not automatically replay a graph
+  invocation that has already returned.
+
+The codebase also contains an internal Agent Team approval resume-job state
+machine. It protects raw arguments/checkpoints from display DTOs and creates an
+idempotent executor-only job for an approved, non-cancelled task. It is not
+currently wired into a public Agent Team endpoint or runtime executor; do not
+present it as an available automatic resume feature.
+
+For the async path, approval or rejection must be followed by an explicit,
+auditable task/run retry. Record the request id, deciding principal, decision
+time, new run id, execution evidence, and final status. Do not claim
+“approval resume” if only the queue status changed.
 
 ## 8. Memory Curator
 

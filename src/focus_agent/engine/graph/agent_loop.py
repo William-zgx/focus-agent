@@ -36,7 +36,6 @@ from ..graph_output_language import enforce_temporal_anchor, repair_chinese_outp
 from ..graph_plan_nodes import _format_plan_block
 from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answer
 from ..graph_turn_helpers import (
-    _TOOL_EXHAUSTION_NOTE,
     _context_budget_from_state,
     _degraded_answer_from_tool_results,
     _ensure_reasoning_content_for_tool_call_history,
@@ -347,11 +346,17 @@ def make_agent_loop_node(
         if agent_def is not None:
             available_tools = _filter_tools_by_agent_def(available_tools, agent_def)
         known_names = _known_tool_names(available_tools)
+        required_web_tools = (
+            ("web_search", "web_fetch")
+            if "explicit_web_tool_contract" in tool_intent_plan.reason_codes
+            else ()
+        )
         execution_contract = build_execution_contract(
             policy=tool_policy,
             temporal_anchor_required=temporal_anchor_required,
             available_tool_names=known_names,
             preferred_first_tool=tool_intent_plan.preferred_first_tool,
+            required_web_tools=required_web_tools,
             skill_execution_plan=tool_intent_plan.skill_execution_plan.model_dump(mode="json")
             if tool_intent_plan.skill_execution_plan is not None
             else None,
@@ -439,43 +444,22 @@ def make_agent_loop_node(
             STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
         )
         if force_tool_free_answer:
-            forced_prompt = apply_prompt_budget_guard(
-                [
-                    prompt_messages[0],
-                    SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
-                    *prompt_messages[1:],
-                ],
-                budget=context_budget,
-            )
-            forced_prompt = _ensure_reasoning_content_for_tool_call_history(
-                forced_prompt,
-                model_id=selected_model,
-                thinking_mode=selected_thinking_mode,
-                settings=settings,
-            )
-            response = _invoke_with_tool_result_fallback(
-                _with_stream_phase(
-                    model_for(selected_model, selected_thinking_mode),
-                    terminal_stream_phase,
-                ),
-                forced_prompt,
-                fallback_messages=fallback_messages,
-                known_tool_names=known_names,
-            )
-            if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
-                tool_protocol_repair_count += 1
-                tool_protocol_repair_reason = "textual_tool_marker"
-            response = _repair_tool_free_answer_response(
-                response=response,
-                prompt_messages=prompt_messages,
-                fallback_messages=fallback_messages,
-                context_budget=context_budget,
-                selected_model=selected_model,
-                selected_thinking_mode=selected_thinking_mode,
-                model_for=quarantined_model_for,
-            )
-            if getattr(response, "tool_calls", None):
-                response = AIMessage(content=_fallback_answer_from_tool_results(fallback_messages))
+            fallback_answer = _fallback_answer_from_tool_results(fallback_messages)
+            if tool_policy == "live_web_research":
+                if any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text):
+                    fallback_answer = f"以下为工具预算耗尽后的保守证据整理：\n{fallback_answer}"
+                else:
+                    fallback_answer = (
+                        "The following is a conservative evidence summary after the tool budget "
+                        f"was exhausted:\n{fallback_answer}"
+                    )
+            if temporal_anchor_required and current_utc_time_result:
+                is_chinese_request = any(
+                    "\u4e00" <= character <= "\u9fff" for character in tool_intent_text
+                )
+                time_label = "当前 UTC 时间" if is_chinese_request else "Verified current UTC time"
+                fallback_answer = f"{time_label}: {current_utc_time_result}\n\n{fallback_answer}"
+            response = AIMessage(content=fallback_answer)
         elif (
             tool_policy == "live_web_research"
             and temporal_anchor_required
@@ -746,6 +730,7 @@ def make_agent_loop_node(
             temporal_anchor_required=temporal_anchor_required,
             temporal_anchor_forced=temporal_anchor_forced,
             forced_degraded_skill_recovery=forced_degraded_skill_recovery,
+            force_tool_free_answer=force_tool_free_answer,
             tool_protocol_repair_count=tool_protocol_repair_count,
             tool_protocol_repair_reason=tool_protocol_repair_reason,
         )

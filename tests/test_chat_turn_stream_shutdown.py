@@ -176,3 +176,43 @@ def test_consume_graph_stream_skips_close_when_next_chunk_will_not_cancel(monkey
         await asyncio.sleep(0)
 
     asyncio.run(scenario())
+
+
+def test_consume_graph_stream_times_out_after_idle_deadline(monkeypatch):
+    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+
+    class IdleGraphStream:
+        def __init__(self):
+            self.next_started = asyncio.Event()
+            self.close_started = asyncio.Event()
+
+        async def __anext__(self):
+            self.next_started.set()
+            await asyncio.sleep(60)
+
+        async def aclose(self):
+            self.close_started.set()
+
+    async def scenario():
+        stream = IdleGraphStream()
+        chunks = []
+        try:
+            async for chunk in turns._consume_graph_stream(
+                stream_iter=stream,
+                heartbeat_interval=0.005,
+                idle_timeout_seconds=0.02,
+                next_chunk=lambda: turns._next_graph_chunk(stream),
+                close_method="aclose",
+            ):
+                chunks.append(chunk)
+        except TimeoutError as exc:
+            assert "idle for 0.02 seconds" in str(exc)
+        else:  # pragma: no cover - the idle deadline is the behavior under test.
+            raise AssertionError("expected graph stream idle timeout")
+
+        assert chunks
+        assert all(chunk is None for chunk in chunks)
+        assert stream.next_started.is_set()
+        assert stream.close_started.is_set()
+
+    asyncio.run(scenario())

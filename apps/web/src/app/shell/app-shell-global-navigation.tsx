@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import type { ChatNavTarget } from "@/app/shell/app-shell-config";
 import {
 	AdminConsoleIcon,
+	AgentTeamIcon,
 	ChatBubbleIcon,
 	ProductivityIcon,
 } from "@/shared/ui/toolbar-icons";
@@ -14,6 +15,7 @@ type AppShellGlobalNavigationProps = {
 	isChatRoute: boolean;
 	isChineseUi: boolean;
 	isProductivityRoute: boolean;
+	isAgentTeamRoute: boolean;
 };
 
 export function AppShellGlobalNavigation({
@@ -21,9 +23,11 @@ export function AppShellGlobalNavigation({
 	isChatRoute,
 	isChineseUi,
 	isProductivityRoute,
+	isAgentTeamRoute,
 }: AppShellGlobalNavigationProps) {
 	const chatNavLabel = isChineseUi ? "对话" : "Chat";
 	const productivityNavLabel = isChineseUi ? "生产力" : "Productivity";
+	const agentTeamNavLabel = isChineseUi ? "团队" : "Team";
 	const adminNavLabel = appEnv.useLocalRuntime
 		? isChineseUi
 			? "设备本机设置"
@@ -81,6 +85,19 @@ export function AppShellGlobalNavigation({
 						<ProductivityIcon />
 					</span>
 					<span>{productivityNavLabel}</span>
+				</Link>
+			) : null}
+			{appEnv.features.agentTeam ? (
+				<Link
+					aria-label={agentTeamNavLabel}
+					className={`fa-sidebar-nav-link ${isAgentTeamRoute ? "is-active" : ""}`.trim()}
+					{...tooltipProps(agentTeamNavLabel)}
+					to="/agent-team"
+				>
+					<span className="fa-sidebar-nav-icon" aria-hidden="true">
+						<AgentTeamIcon />
+					</span>
+					<span>{agentTeamNavLabel}</span>
 				</Link>
 			) : null}
 			<Link

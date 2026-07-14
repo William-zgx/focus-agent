@@ -6,6 +6,8 @@ def test_policy_reexports_intent_parsing_helpers():
     helper_names = (
         "_HTTP_URL_RE",
         "_SKILL_ID_RE",
+        "_filter_bare_current_hits",
+        "_explicit_web_tool_contract_reason_codes",
         "_preferred_first_args",
         "_skill_view_name_from_text",
         "_skill_install_name_from_text",
@@ -49,3 +51,19 @@ def test_preferred_args_keep_url_and_query_parsing_behavior():
     assert policy._preferred_first_args("web_search", "  latest AI news  ") == {
         "query": "  latest AI news  "
     }
+
+
+def test_preferred_web_search_args_compact_long_prompts_to_quoted_research_terms():
+    prompt = (
+        "请完成一项实时事实核查：先实际调用 web_search 查询"
+        "“Python 3.13 free-threaded mode official documentation”和"
+        "“MDN HTTP 307 Temporary Redirect official”；然后根据官方来源给出结论。" + " 补充说明" * 100
+    )
+
+    args = policy._preferred_first_args("web_search", prompt)
+
+    assert len(args["query"]) <= 400
+    assert args["query"] == (
+        "Python 3.13 free-threaded mode official documentation "
+        "MDN HTTP 307 Temporary Redirect official"
+    )

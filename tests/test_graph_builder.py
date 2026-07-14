@@ -33,6 +33,7 @@ from focus_agent.engine.graph_builder import (
     build_graph,
     build_tool_intent_plan,
 )
+from focus_agent.engine.graph_tool_result_fallback import _invoke_with_tool_result_fallback
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue
@@ -718,24 +719,17 @@ def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
 
     final_messages = result.value["messages"]
     assert isinstance(final_messages[-1], AIMessage)
-    assert final_messages[-1].content == "根据已有搜索结果，北京今天晴，白天大约25℃。"
+    assert "根据搜索结果" in final_messages[-1].content
+    assert "sunny" in final_messages[-1].content
 
     tool_enabled_calls = [item for item in fake_model.invocations if item["allow_tools"]]
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
 
     # The first mandatory search is deterministic; the model then receives
-    # three follow-up tool opportunities before the four-round cap forces
-    # synthesis without tools.
+    # three follow-up tool opportunities before the four-round cap directly
+    # synthesizes the already-recorded tool evidence without another model call.
     assert len(tool_enabled_calls) == 3
-    assert len(tool_free_calls) == 2
-    assert any(
-        isinstance(message, SystemMessage) and "Do not call more tools" in message.content
-        for message in tool_free_calls[0]["messages"]
-    )
-    assert any(
-        isinstance(message, SystemMessage) and "Do not emit tool-call markup" in message.content
-        for message in tool_free_calls[1]["messages"]
-    )
+    assert tool_free_calls == []
 
 
 def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_time(
@@ -840,14 +834,8 @@ def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_t
     assert isinstance(final_message, AIMessage)
     assert not final_message.tool_calls
     assert "2026-07-13T07:15:49.503263+00:00" in final_message.content
-    assert "2025-01-15" not in final_message.content
-    forced_configs = [
-        item["config"]
-        for item in fake_model.configs
-        if not item["allow_tools"]
-        and item["config"].get("metadata", {}).get("stream_phase") == "quarantine"
-    ]
-    assert forced_configs
+    assert result.value["tool_intent_plan"]["tool_budget_exhausted_local_summary"] is True
+    assert not [item for item in fake_model.invocations if not item["allow_tools"]]
 
 
 def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
@@ -923,15 +911,11 @@ def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
 
     final_messages = result.value["messages"]
     assert isinstance(final_messages[-1], AIMessage)
-    assert final_messages[-1].content == "根据已有搜索结果，上海更暖和，北京更晴朗。"
+    assert "根据搜索结果" in final_messages[-1].content
+    assert "sunny" in final_messages[-1].content
 
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
-    assert len(tool_free_calls) == 3
-    assert any(
-        isinstance(message, SystemMessage)
-        and "still contained internal tool-call markup" in message.content
-        for message in tool_free_calls[2]["messages"]
-    )
+    assert tool_free_calls == []
 
 
 def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypatch):
@@ -1514,6 +1498,19 @@ def test_tool_intent_plan_keeps_explicit_temporal_web_contract_despite_no_write_
     assert "explicit_temporal_web_contract" in plan.reason_codes
     assert "execution_signal" not in plan.reason_codes
     assert "workspace_lookup_signal" not in plan.reason_codes
+
+
+def test_tool_intent_plan_keeps_explicit_web_tool_contract_out_of_execution():
+    plan = build_tool_intent_plan(
+        "请实际调用 web_search 和 web_fetch 核对两个官方网页，"
+        "然后用中文给出事实、来源 URL 和工程推论。"
+    )
+
+    assert plan.policy == "live_web_research"
+    assert plan.allowed_toolsets == ["web"]
+    assert "explicit_web_tool_contract" in plan.reason_codes
+    assert "execution_signal" not in plan.reason_codes
+    assert plan.preferred_first_tool == "web_search"
 
 
 def test_tool_intent_plan_prefers_web_fetch_for_explicit_url_requests():
@@ -4356,6 +4353,46 @@ def test_empty_tool_free_repair_synthesizes_plain_answer_before_raw_fallback():
     )
 
     assert repaired.content == "根据工具结果，assemble_context 位于 context_policy.py 第 42 行。"
+
+
+def test_tool_result_fallback_returns_evidence_without_retrying_model_after_timeout():
+    class TimeoutModel:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, _prompt_messages):
+            self.calls += 1
+            raise TimeoutError("upstream model timed out")
+
+    model = TimeoutModel()
+    response = _invoke_with_tool_result_fallback(
+        model,
+        [
+            HumanMessage(content="请用中文总结 Python 3.13 官方文档。"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "python-docs",
+                        "name": "web_fetch",
+                        "args": {"url": "https://docs.python.org/3/whatsnew/3.13.html"},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=(
+                    '{"url":"https://docs.python.org/3/whatsnew/3.13.html",'
+                    '"title":"What’s New In Python 3.13",'
+                    '"content":"Python 3.13 includes experimental free-threaded mode."}'
+                ),
+                tool_call_id="python-docs",
+            ),
+        ],
+    )
+
+    assert model.calls == 1
+    assert "超时" in response.content
+    assert "What’s New In Python 3.13" in response.content
 
 
 def test_fallback_answer_from_tool_results_summarizes_web_search_payload():

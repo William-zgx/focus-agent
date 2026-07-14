@@ -57,7 +57,10 @@ Default mode is `thread_persistent_copy`:
 
 `copy_discard` is kept for compatibility with earlier run-level behavior. Host
 editing still uses explicit patch/write tools; general command execution should
-not directly mutate tracked files.
+not directly mutate tracked files. It always runs in a fresh `docker run --rm`
+container, even when thread-container reuse is enabled, so each command mounts
+its own runner and request files. Only `thread_persistent_copy` reuses a
+long-lived container.
 
 ## Docker Backend
 
@@ -73,14 +76,22 @@ uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
 ```
 
 The image defaults to `node:20-bookworm-slim` instead of the larger devcontainer
-base image. When a local mirror is more reliable, pass:
+base image. When a managed network needs alternate package registries, pass
+only the values supplied by that environment:
 
 ```bash
 uv run python scripts/ensure_sandbox_image.py \
   --image focus-agent-sandbox:latest \
-  --apt-mirror http://mirror.example/debian \
-  --apt-security-mirror http://mirror.example/debian-security
+  --npm-registry "$NPM_REGISTRY" \
+  --pip-index-url "$PIP_INDEX_URL" \
+  --pip-default-timeout 300
 ```
+
+`--npm-registry`, `--pip-index-url`, and `--pip-default-timeout` are optional.
+When omitted, the helper does not pass their Docker build arguments, so the
+Dockerfile defaults continue to apply. The existing `--base-image`,
+`--apt-mirror`, and `--apt-security-mirror` options remain available for base
+image and APT source selection.
 
 The preflight script checks Docker server version and image presence before it
 builds. Docker `18.09.0` is the minimum supported server version for the current
@@ -95,6 +106,13 @@ Docker runs use these defaults:
 - pids limit of 512
 - no Docker socket, host home directory, SSH agent, or provider secrets mounted
 - stdout/stderr truncation and output file enumeration in the structured result
+
+The image preinstalls the generic allowlisted Python checks `pytest`, `ruff`,
+and `mypy`, plus a Corepack-installed `pnpm`, so those commands do not need
+network access merely to locate their executables. Project-specific dependencies
+are intentionally not installed by the generic image; use a project capability
+image or a separately approved, reproducible dependency-preparation step before
+running project tests.
 
 Declaring Skill network access changes the Docker network policy; it does not
 route arbitrary program traffic through the builtin `web_fetch` SSRF guard.

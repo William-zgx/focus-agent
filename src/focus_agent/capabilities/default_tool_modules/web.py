@@ -25,6 +25,15 @@ from .web_transport import request_pinned_fetch_url
 
 _WEB_FETCH_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _WEB_FETCH_MAX_REDIRECTS = 5
+_TAVILY_MAX_QUERY_CHARS = 400
+
+
+def _normalize_web_search_query(query: str) -> tuple[str, bool]:
+    normalized = " ".join(str(query or "").split())
+    if len(normalized) <= _TAVILY_MAX_QUERY_CHARS:
+        return normalized, False
+    truncated = normalized[:_TAVILY_MAX_QUERY_CHARS].rstrip()
+    return truncated, True
 
 
 def build_web_tools(
@@ -540,7 +549,7 @@ def build_web_tools(
         )
 
     def _run_web_search(*, query: str, max_results: int, tool_name: str) -> str:
-        normalized_query = query.strip()
+        normalized_query, query_truncated = _normalize_web_search_query(query)
         try:
             capped_results = max(1, min(int(max_results), 10))
         except (TypeError, ValueError) as exc:
@@ -552,6 +561,7 @@ def build_web_tools(
             stage="start",
             query=normalized_query,
             max_results=capped_results,
+            query_truncated=query_truncated,
         )
         if not normalized_query:
             message = "Query must not be empty."
@@ -604,6 +614,8 @@ def build_web_tools(
                 errors=errors,
                 fallback_used=provider != primary_provider,
             )
+            if query_truncated:
+                payload["query_truncated"] = True
             result = json.dumps(payload, ensure_ascii=False)
             emit_tool_event(
                 tool_name=tool_name,
@@ -633,7 +645,9 @@ def build_web_tools(
         )
 
     def _fallback_web_search(_error: Exception, args: dict[str, Any]) -> str:
-        normalized_query = str(args.get("query") or "").strip()
+        normalized_query, query_truncated = _normalize_web_search_query(
+            str(args.get("query") or "")
+        )
         requested_results = int(args.get("max_results") or 5)
         capped_results = max(1, min(requested_results, 10))
         should_try_duckduckgo = (
@@ -660,6 +674,8 @@ def build_web_tools(
             errors=errors,
             fallback_used=True,
         )
+        if query_truncated:
+            payload["query_truncated"] = True
         result = json.dumps(payload, ensure_ascii=False)
         emit_tool_event(
             tool_name="web_search",
@@ -743,11 +759,13 @@ def build_web_tools(
         {
             "web_fetch": {
                 "parallel_safe": True,
+                "timeout_seconds": 45,
                 "validator": _validate_web_fetch_args,
                 "max_observation_chars": 7000,
             },
             "web_search": {
                 "parallel_safe": True,
+                "timeout_seconds": 45,
                 "validator": _validate_web_search_args,
                 "fallback_group": "web_search",
                 "fallback_handler": _fallback_web_search,

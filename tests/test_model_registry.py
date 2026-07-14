@@ -53,6 +53,17 @@ def test_resolve_model_config_maps_moonshot_to_openai_backend():
     assert resolved.client_kwargs["api_key"] == "secret"
 
 
+def test_create_chat_model_applies_configured_request_timeout(monkeypatch):
+    monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
+    model = create_chat_model(
+        "moonshot:kimi-k2.6",
+        temperature=0.0,
+        settings=Settings(model_request_timeout_seconds=17.5),
+    )
+
+    assert model.request_timeout == 17.5
+
+
 def test_resolve_model_config_maps_mimo_to_openai_backend():
     resolved = resolve_model_config(
         "xiaomi:mimo-v2.5-pro",

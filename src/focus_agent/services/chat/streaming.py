@@ -20,6 +20,10 @@ _DEFAULT_STREAM_SHUTDOWN_TIMEOUT_SECONDS = _STREAM_SHUTDOWN_TIMEOUT_SECONDS
 _TURNS_FACADE_MODULE = "focus_agent.services.chat.turns"
 
 
+class GraphStreamIdleTimeoutError(TimeoutError):
+    """Raised when the graph emits no stream event within the configured deadline."""
+
+
 def _stream_shutdown_timeout_seconds() -> float:
     facade = sys.modules.get(_TURNS_FACADE_MODULE)
     if facade is not None:
@@ -65,6 +69,10 @@ async def stream_graph_chunks(
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: _next_graph_chunk(stream_iter),
         close_method="aclose",
+        idle_timeout_seconds=max(
+            float(getattr(settings, "model_request_timeout_seconds", 0.0) or 0.0),
+            0.0,
+        ),
     ):
         yield chunk
 
@@ -89,6 +97,10 @@ async def stream_graph_chunks_via_sync_stream(
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: _call_in_daemon_thread(next, stream_iter, _STREAM_END),
         close_method="close",
+        idle_timeout_seconds=max(
+            float(getattr(settings, "model_request_timeout_seconds", 0.0) or 0.0),
+            0.0,
+        ),
     ):
         yield chunk
 
@@ -99,19 +111,41 @@ async def _consume_graph_stream(
     heartbeat_interval: float,
     next_chunk: Any,
     close_method: str,
+    idle_timeout_seconds: float = 0.0,
 ) -> AsyncIterator[dict[str, Any] | None]:
     task: asyncio.Task[Any] | None = None
     try:
         task = asyncio.create_task(next_chunk())
+        loop = asyncio.get_running_loop()
+        idle_timeout = max(float(idle_timeout_seconds), 0.0)
+        last_progress_at = loop.time()
         while task is not None:
-            if heartbeat_interval > 0:
-                done, _ = await asyncio.wait({task}, timeout=heartbeat_interval)
+            wait_timeout: float | None = heartbeat_interval if heartbeat_interval > 0 else None
+            if idle_timeout > 0:
+                remaining_idle = idle_timeout - (loop.time() - last_progress_at)
+                if remaining_idle <= 0:
+                    raise GraphStreamIdleTimeoutError(
+                        f"Graph stream was idle for {idle_timeout:g} seconds."
+                    )
+                wait_timeout = (
+                    min(wait_timeout, remaining_idle)
+                    if wait_timeout is not None
+                    else remaining_idle
+                )
+            if wait_timeout is not None:
+                done, _ = await asyncio.wait({task}, timeout=wait_timeout)
                 if not done:
-                    yield None
+                    if idle_timeout > 0 and loop.time() - last_progress_at >= idle_timeout:
+                        raise GraphStreamIdleTimeoutError(
+                            f"Graph stream was idle for {idle_timeout:g} seconds."
+                        )
+                    if heartbeat_interval > 0:
+                        yield None
                     continue
             chunk = await asyncio.shield(task)
             if chunk is _STREAM_END:
                 break
+            last_progress_at = loop.time()
             task = asyncio.create_task(next_chunk())
             yield chunk
     finally:

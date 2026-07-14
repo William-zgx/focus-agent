@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -19,10 +20,14 @@ from focus_agent.core.agent_team import (
 )
 
 from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
+from .postgres_agent_team_execution_repository import (
+    _EXECUTION_RECORD_KEY,
+    PostgresAgentTeamExecutionRepositoryMixin,
+)
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 
 
-class PostgresAgentTeamRepository(AgentTeamRepository):
+class PostgresAgentTeamRepository(PostgresAgentTeamExecutionRepositoryMixin, AgentTeamRepository):
     def __init__(self, database_uri: str):
         self.database_uri = database_uri
 
@@ -70,6 +75,266 @@ class PostgresAgentTeamRepository(AgentTeamRepository):
     @classmethod
     def _merge_review_event_from_row(cls, row: dict[str, object]) -> AgentTeamMergeReviewEvent:
         return AgentTeamMergeReviewEvent.model_validate(cls._decode_payload(row["data_json"]))
+
+    @staticmethod
+    def _row_value(row: Mapping[str, object], key: str) -> object:
+        return row[key]
+
+    def _task_session_id(self, cur: Any, *, task_id: str) -> str:
+        cur.execute(
+            "SELECT session_id FROM focus_agent_team_tasks WHERE task_id = %s",
+            (task_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise KeyError(f"Unknown agent team task: {task_id}")
+        return str(self._row_value(row, "session_id"))
+
+    def _assert_task_owner(self, cur: Any, *, task_id: str, session_id: str) -> None:
+        actual_session_id = self._task_session_id(cur, task_id=task_id)
+        if actual_session_id != session_id:
+            raise ValueError(
+                f"Agent team task {task_id} belongs to session {actual_session_id}, "
+                f"not {session_id}."
+            )
+
+    def _assert_session_exists(self, cur: Any, *, session_id: str) -> None:
+        cur.execute(
+            "SELECT session_id FROM focus_agent_team_sessions WHERE session_id = %s",
+            (session_id,),
+        )
+        if cur.fetchone() is None:
+            raise KeyError(f"Unknown agent team session: {session_id}")
+
+    @staticmethod
+    def _persisted_revision_id(
+        cur: Any,
+        *,
+        session_id: str,
+        revision_id: str | None,
+    ) -> str | None:
+        if revision_id is None:
+            return None
+        cur.execute(
+            """
+            SELECT revision_id FROM focus_agent_team_revisions
+            WHERE revision_id = %s AND session_id = %s
+            """,
+            (revision_id, session_id),
+        )
+        return revision_id if cur.fetchone() is not None else None
+
+    @staticmethod
+    def _owner_from_task_run_row(row: Mapping[str, object]) -> dict[str, str | None]:
+        return {
+            "task_run_id": str(row["attempt_id"]),
+            "session_id": str(row["session_id"]),
+            "task_id": str(row["task_id"]),
+            "revision_id": (
+                str(row["revision_id"]) if row.get("revision_id") is not None else None
+            ),
+        }
+
+    def _task_run_owner(
+        self,
+        cur: Any,
+        *,
+        task_run_id: str,
+        required: bool = True,
+    ) -> dict[str, str | None] | None:
+        cur.execute(
+            """
+            SELECT attempt_id, session_id, task_id, revision_id
+            FROM focus_agent_team_task_attempts
+            WHERE attempt_id = %s AND metadata_json ? %s
+            """,
+            (task_run_id, _EXECUTION_RECORD_KEY),
+        )
+        row = cur.fetchone()
+        if row is None:
+            if required:
+                raise KeyError(f"Unknown agent team task run: {task_run_id}")
+            return None
+        return self._owner_from_task_run_row(row)
+
+    @staticmethod
+    def _assert_execution_owner(
+        owner: Mapping[str, str | None],
+        *,
+        task_run_id: str,
+        task_id: str | None,
+        session_id: str | None,
+    ) -> None:
+        if owner["task_run_id"] != task_run_id:
+            raise ValueError(f"Unexpected task run ownership for {task_run_id}.")
+        if task_id is not None and owner["task_id"] != task_id:
+            raise ValueError(
+                f"Task run {task_run_id} belongs to task {owner['task_id']}, not {task_id}."
+            )
+        if session_id is not None and owner["session_id"] != session_id:
+            raise ValueError(
+                f"Task run {task_run_id} belongs to session {owner['session_id']}, "
+                f"not {session_id}."
+            )
+
+    def _next_checkpoint_sequence(
+        self,
+        cur: Any,
+        *,
+        session_id: str,
+        task_id: str,
+    ) -> int:
+        cur.execute(
+            """
+            SELECT task_id FROM focus_agent_team_tasks
+            WHERE task_id = %s
+            FOR UPDATE
+            """,
+            (task_id,),
+        )
+        if cur.fetchone() is None:
+            raise KeyError(f"Unknown agent team task: {task_id}")
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(checkpoint_sequence), -1) + 1 AS next_sequence
+            FROM focus_agent_team_checkpoints
+            WHERE session_id = %s AND task_id = %s
+            """,
+            (session_id, task_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("Failed to allocate an Agent Team checkpoint sequence.")
+        return int(self._row_value(row, "next_sequence"))
+
+    def _next_event_sequence(self, cur: Any, *, session_id: str) -> int:
+        cur.execute(
+            """
+            SELECT session_id FROM focus_agent_team_sessions
+            WHERE session_id = %s
+            FOR UPDATE
+            """,
+            (session_id,),
+        )
+        if cur.fetchone() is None:
+            raise KeyError(f"Unknown agent team session: {session_id}")
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence
+            FROM focus_agent_team_events
+            WHERE session_id = %s
+            """,
+            (session_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("Failed to allocate an Agent Team event sequence.")
+        return int(self._row_value(row, "next_sequence"))
+
+    def _next_task_attempt_number(self, cur: Any, *, task_id: str) -> int:
+        cur.execute(
+            """
+            SELECT task_id FROM focus_agent_team_tasks
+            WHERE task_id = %s
+            FOR UPDATE
+            """,
+            (task_id,),
+        )
+        if cur.fetchone() is None:
+            raise KeyError(f"Unknown agent team task: {task_id}")
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(attempt_number), 0) + 1 AS next_attempt_number
+            FROM focus_agent_team_task_attempts
+            WHERE task_id = %s
+            """,
+            (task_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("Failed to allocate an Agent Team task attempt number.")
+        return int(self._row_value(row, "next_attempt_number"))
+
+    def _upsert_execution_event(
+        self,
+        cur: Any,
+        *,
+        event_id: str,
+        task_run_id: str,
+        session_id: str,
+        task_id: str,
+        event_type: str,
+        actor_id: str | None,
+        payload: dict[str, Any],
+        created_at: str,
+    ) -> None:
+        cur.execute(
+            """
+            SELECT event_id, session_id, task_id, attempt_id, event_type, sequence, payload_json
+            FROM focus_agent_team_events
+            WHERE event_id = %s
+            FOR UPDATE
+            """,
+            (event_id,),
+        )
+        existing = cur.fetchone()
+        if existing is None:
+            sequence = self._next_event_sequence(cur, session_id=session_id)
+            cur.execute(
+                """
+                INSERT INTO focus_agent_team_events (
+                    event_id, session_id, task_id, attempt_id, job_id,
+                    event_type, sequence, actor_id, payload_json, created_at
+                ) VALUES (
+                    %(event_id)s, %(session_id)s, %(task_id)s, %(attempt_id)s, NULL,
+                    %(event_type)s, %(sequence)s, %(actor_id)s, %(payload_json)s, %(created_at)s
+                )
+                """,
+                {
+                    "event_id": event_id,
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "attempt_id": task_run_id,
+                    "event_type": event_type,
+                    "sequence": sequence,
+                    "actor_id": actor_id,
+                    "payload_json": Jsonb(payload),
+                    "created_at": created_at,
+                },
+            )
+            return
+
+        if not self._is_execution_record_row(existing, field="payload_json"):
+            raise ValueError(
+                f"Agent team event {event_id} is owned by another durable record type."
+            )
+        if self._row_value(existing, "event_type") != event_type:
+            raise ValueError(f"Agent team event {event_id} cannot change its durable record type.")
+        if (
+            self._row_value(existing, "session_id") != session_id
+            or self._row_value(existing, "task_id") != task_id
+            or self._row_value(existing, "attempt_id") != task_run_id
+        ):
+            raise ValueError(
+                f"Agent team event {event_id} cannot be reassigned to a different task run."
+            )
+        cur.execute(
+            """
+            UPDATE focus_agent_team_events
+            SET event_type = %(event_type)s,
+                actor_id = %(actor_id)s,
+                payload_json = %(payload_json)s,
+                created_at = %(created_at)s
+            WHERE event_id = %(event_id)s
+            """,
+            {
+                "event_id": event_id,
+                "event_type": event_type,
+                "actor_id": actor_id,
+                "payload_json": Jsonb(payload),
+                "created_at": created_at,
+            },
+        )
 
     def create_session(self, session: AgentTeamSession) -> None:
         self._upsert_session(session)

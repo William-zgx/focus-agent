@@ -18,6 +18,279 @@ _REVIEW_EVIDENCE_ROLES = {
     "test_engineer",
     "verifier",
 }
+_STRONG_EVIDENCE_ROLES = {
+    "backend_executor",
+    "frontend_executor",
+    "reviewer",
+    "test_engineer",
+    "verifier",
+    "writer",
+}
+_REAL_EXECUTION_CLASSES = {
+    "real_tool_loop",
+    "sandbox_verified",
+    "tool_agent",
+    "worktree_sandbox",
+}
+_UNTRUSTWORTHY_EXECUTION_CLASSES = {
+    "fake",
+    "model_text",
+}
+_WORKTREE_HASH_KEYS = (
+    "worktree_digest",
+    "worktree_hash",
+    "worktree_sha256",
+    "workspace_digest",
+    "workspace_hash",
+    "workspace_sha256",
+)
+_DIFF_HASH_KEYS = (
+    "diff_digest",
+    "diff_hash",
+    "diff_sha256",
+    "patch_digest",
+    "patch_hash",
+    "patch_sha256",
+)
+
+
+def _strong_evidence_gate_violations(
+    *,
+    tasks: list[AgentTeamTask],
+    outputs: list[AgentTeamTaskOutput],
+) -> list[str]:
+    """Return merge-blocking provenance gaps for explicitly tool-backed tasks."""
+    outputs_by_task: dict[str, list[AgentTeamTaskOutput]] = {}
+    for output in outputs:
+        outputs_by_task.setdefault(output.task_id, []).append(output)
+
+    violations: list[str] = []
+    for task in tasks:
+        if task.role.value not in _STRONG_EVIDENCE_ROLES:
+            continue
+        records: list[AgentTeamTask | AgentTeamTaskOutput] = [
+            task,
+            *outputs_by_task.get(task.task_id, []),
+        ]
+        claims = [_evidence_claim(record) for record in records]
+        if not any(claim["declared"] for claim in claims):
+            continue
+
+        label = task.title or task.goal or task.task_id
+        execution_classes = {value for claim in claims for value in claim["execution_classes"]}
+        fallback_values = [value for claim in claims for value in claim["fallback_values"]]
+        if execution_classes & _UNTRUSTWORTHY_EXECUTION_CLASSES:
+            violations.append(
+                "Strong evidence gate rejected "
+                f"{task.role.value} task '{label}': execution_class is "
+                f"{', '.join(sorted(execution_classes & _UNTRUSTWORTHY_EXECUTION_CLASSES))}."
+            )
+        if any(not _is_false(value) for value in fallback_values):
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "fallback_used must be false."
+            )
+
+        if not execution_classes:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "execution_class is required for declared evidence."
+            )
+            continue
+        if not execution_classes & _REAL_EXECUTION_CLASSES:
+            continue
+
+        evidence_levels = {value for claim in claims for value in claim["evidence_levels"]}
+        evidence_verdicts = {value for claim in claims for value in claim["evidence_verdicts"]}
+        sandbox_backends = {value for claim in claims for value in claim["sandbox_backends"]}
+        command_exit_codes = [value for claim in claims for value in claim["command_exit_codes"]]
+        worktree_hashes = [value for claim in claims for value in claim["worktree_hashes"]]
+        diff_hashes = [value for claim in claims for value in claim["diff_hashes"]]
+
+        if "verified" not in evidence_levels:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "verified evidence_level is required."
+            )
+        if "verified" not in evidence_verdicts:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "verified evidence_verdict is required."
+            )
+        if not any(_is_docker_backend(value) for value in sandbox_backends):
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "Docker sandbox evidence is required."
+            )
+        if not fallback_values:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "fallback_used=false evidence is required."
+            )
+        if not command_exit_codes or any(
+            not _is_success_exit_code(value) for value in command_exit_codes
+        ):
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "successful command exit_code=0 evidence is required."
+            )
+        if not worktree_hashes:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "worktree hash evidence is required."
+            )
+        if not diff_hashes:
+            violations.append(
+                f"Strong evidence gate rejected {task.role.value} task '{label}': "
+                "diff hash evidence is required."
+            )
+    return _dedupe(violations)
+
+
+def _evidence_claim(record: AgentTeamTask | AgentTeamTaskOutput) -> dict[str, object]:
+    metadata = getattr(record, "metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    evidence_payloads = _mapping_values(metadata.get("evidence"))
+    declared_contract = _declared_execution_contract(record)
+    metadata_mappings = list(_nested_mappings(metadata))
+    evidence_mappings = list(_nested_mappings(evidence_payloads))
+    contract_mappings = [declared_contract, *evidence_mappings]
+    all_mappings = [*contract_mappings, *metadata_mappings]
+    execution_classes = _normalized_values(
+        _values_from_mappings(
+            all_mappings, "execution_class", "execution_mode", "execution_profile"
+        )
+    )
+    return {
+        "declared": bool(declared_contract or evidence_payloads)
+        or bool(execution_classes & (_REAL_EXECUTION_CLASSES | _UNTRUSTWORTHY_EXECUTION_CLASSES)),
+        "execution_classes": execution_classes,
+        "evidence_levels": _normalized_values(
+            _values_from_mappings(contract_mappings, "evidence_level")
+        ),
+        "evidence_verdicts": _normalized_values(
+            _values_from_mappings(contract_mappings, "evidence_verdict")
+        ),
+        "sandbox_backends": _normalized_values(
+            _values_from_mappings(contract_mappings, "sandbox_backend")
+        ),
+        "fallback_values": _values_from_mappings(contract_mappings, "fallback_used"),
+        "command_exit_codes": _values_from_mappings(contract_mappings, "exit_code"),
+        "worktree_hashes": _hash_values(contract_mappings, _WORKTREE_HASH_KEYS, "worktree"),
+        "diff_hashes": _hash_values(contract_mappings, _DIFF_HASH_KEYS, "diff"),
+    }
+
+
+def _declared_execution_contract(
+    record: AgentTeamTask | AgentTeamTaskOutput,
+) -> dict[str, object]:
+    fields_set = set(getattr(record, "model_fields_set", set()))
+    values: dict[str, object] = {}
+    for field in (
+        "execution_class",
+        "evidence_level",
+        "evidence_verdict",
+        "execution_profile",
+        "sandbox_id",
+    ):
+        if field not in fields_set:
+            continue
+        value = getattr(record, field, None)
+        if value is not None and str(value).strip():
+            values[field] = value
+    if _is_default_legacy_contract(values):
+        return {}
+    return values
+
+
+def _is_default_legacy_contract(values: dict[str, object]) -> bool:
+    return (
+        values.get("execution_class") is None
+        and str(
+            getattr(values.get("evidence_level"), "value", values.get("evidence_level"))
+        ).lower()
+        == "synthetic"
+        and str(
+            getattr(values.get("evidence_verdict"), "value", values.get("evidence_verdict"))
+        ).lower()
+        == "unknown"
+        and not values.get("execution_profile")
+        and not values.get("sandbox_id")
+    )
+
+
+def _mapping_values(value: object) -> list[dict[str, object]]:
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _nested_mappings(value: object) -> list[dict[str, object]]:
+    if isinstance(value, dict):
+        mappings = [value]
+        for child in value.values():
+            mappings.extend(_nested_mappings(child))
+        return mappings
+    if isinstance(value, list):
+        mappings: list[dict[str, object]] = []
+        for child in value:
+            mappings.extend(_nested_mappings(child))
+        return mappings
+    return []
+
+
+def _values_from_mappings(
+    mappings: list[dict[str, object]],
+    *keys: str,
+) -> list[object]:
+    values: list[object] = []
+    for mapping in mappings:
+        for key in keys:
+            if key in mapping and mapping[key] is not None:
+                values.append(mapping[key])
+    return values
+
+
+def _normalized_values(values: list[object]) -> set[str]:
+    return {
+        str(getattr(value, "value", value)).strip().lower()
+        for value in values
+        if str(getattr(value, "value", value)).strip()
+    }
+
+
+def _hash_values(
+    mappings: list[dict[str, object]],
+    keys: tuple[str, ...],
+    nested_key: str,
+) -> list[str]:
+    values = [
+        str(value).strip() for value in _values_from_mappings(mappings, *keys) if str(value).strip()
+    ]
+    for mapping in mappings:
+        nested = mapping.get(nested_key)
+        if not isinstance(nested, dict):
+            continue
+        for key in ("digest", "hash", "sha256"):
+            value = nested.get(key)
+            if value is not None and str(value).strip():
+                values.append(str(value).strip())
+    return _dedupe(values)
+
+
+def _is_docker_backend(value: str) -> bool:
+    return value == "docker" or value.startswith("docker_") or value.startswith("docker-")
+
+
+def _is_false(value: object) -> bool:
+    return value is False or value == 0 or str(value).strip().lower() in {"0", "false", "no"}
+
+
+def _is_success_exit_code(value: object) -> bool:
+    return not isinstance(value, bool) and str(value).strip() == "0"
 
 
 def _execution_evidence(
@@ -456,4 +729,5 @@ __all__ = [
     "_merge_test_evidence",
     "_missing_required_evidence",
     "_planning_risk_notes",
+    "_strong_evidence_gate_violations",
 ]

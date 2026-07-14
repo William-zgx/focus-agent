@@ -83,6 +83,17 @@ common local failure is `background_jobs` reporting old pending work; inspect
 `/v1/admin/background-jobs/summary`, drain or restart the local dev process, and
 recheck `/readyz` before treating the environment as ready.
 
+For Agent Team v2, `/readyz` only reports process/runtime readiness. Separately,
+`GET /v2/agent-team/readiness` calls `build_agent_team_readiness(settings,
+runtime=runtime)` and returns `ready=true` only when its `phase=ready` and all
+three service capabilities (task-run, evidence, revision) are available. When
+real execution is requested, the assessment checks configured provider
+credential references, durable jobs/worker, Postgres/coordination, fencing,
+locks, and Docker fail-closed. The response does not execute a task or expose
+the complete blocker/evidence payload; retain independent provider/Docker
+checks and real-run evidence. Do not use either response alone to claim that a
+real run succeeded or has been released.
+
 `make serve-dev` defaults to API hot reload for daily development. Broad browser
 validation should set `API_RELOAD=0` because codegen, smoke reports, or script
 edits can otherwise trigger a dev reload and leave `/readyz` temporarily
@@ -201,6 +212,108 @@ When Agent Team changed, also exercise the backend API flow:
 - record a task output,
 - fetch `/view`,
 - prepare a merge bundle.
+
+### Agent Team v2 Gray Validation
+
+Agent Team v2 is default-off. A visible Agent Team workbench, an available
+`/v1/agent-team/*` route, a `ready=true` response from
+`/v2/agent-team/readiness`, or a successful fake executor test does not prove
+that a real task has executed, produced deliverable evidence, or been released.
+Before a v2 gray
+change, capture the effective `MULTI_AGENT_*` flags and verify that the
+unmodified normal chat path creates no Team session, task, worktree, resource
+claim, or message.
+
+Run the focused state-machine and configuration gates:
+
+```bash
+uv run pytest \
+  tests/test_multi_agent_config.py \
+  tests/test_agent_team_multi_agent.py \
+  tests/test_agent_team_dynamic_execution.py \
+  tests/test_agent_team_merge_review.py \
+  tests/integration/multi_agent/test_acceptance.py \
+  -q
+```
+
+Then validate each enabled gray stage with an explicit Team session:
+
+1. `/readyz` returns HTTP 200 and `ready=true` before and after the flag
+   change. Save `/v2/agent-team/readiness` too: it is a configuration/runtime
+   prerequisite gate that includes provider/Docker configuration and runtime
+   prerequisites, not proof that a real task execution succeeded.
+2. The task graph shows dependency ordering, bounded parallelism, and—when
+   enabled—resource claims only for declared resources.
+3. The session view preserves task/run/output state, progress messages, and
+   pending approvals scoped to the selected session.
+4. A required approval records a redacted pending request. Its approve/reject
+   decision is followed by an explicit, separately recorded task/run retry.
+   Current async approval queue decisions do **not** automatically replay a
+   graph invocation that already returned. The repository has an internal
+   approval resume-job state machine, but no public API/runtime executor
+   integration currently consumes its jobs; it is not an end-user automatic
+   resume feature.
+5. A real writable run has `execution_mode=inline` or `background`, a real
+   `model_id`, `agent_run_id`, artifact ids, worktree metadata, `git diff
+   --check`, and actual test output. `fake`, `observe`, placeholder output, or
+   summary text alone is not real execution evidence.
+6. A merge review is previewed and explicitly applied or rejected. Do not
+   report it as a commit, push, or merge to `main`.
+
+Before attempting item 5, inspect the full Agent Team readiness assessment. It
+must have no blockers and must confirm `AGENT_TEAM_V2_ENABLED=true`, a non-`off`
+rollout phase, `AGENT_TEAM_KILL_SWITCH_ENABLED=false`,
+`AGENT_TEAM_DURABLE_REQUIRED=true`, Postgres database/repository/coordination,
+`BACKGROUND_JOB_BACKEND=postgres`, `BACKGROUND_JOB_EXECUTION=durable`, a started
+durable worker, fencing, cross-session locks, resource locks, real
+provider/model credentials, and Docker fail-closed. The Postgres Agent Team
+repository persists v2 task-run/checkpoint/tool/evidence/event records; the
+repository without `DATABASE_URI` remains an in-memory fallback. Approval
+resume store/task state are still in-memory, and the public runtime does not
+consume resume jobs; retain an explicit rerun instead of claiming recovery
+across restart.
+
+`make ui-smoke-agent-team-adoption` is a source-level adoption wiring check; it
+does not launch Chrome or invoke a model. `make agent-team-evidence` runs
+deterministic Agent Team worktree/chat tests plus a deterministic UI fixture;
+its `scripts/agent_team_ui_smoke.py --mode real` deliberately returns
+`disabled` until an approved browser/provider adapter exists. Therefore there
+is no dedicated canonical real-browser Agent Team v2 smoke command in the
+current repository. For a user-facing v2 gray, run a controlled Chrome session
+against the target environment and retain screenshots/video plus browser
+console/network logs showing: session creation, task evidence, approval
+decision, explicit rerun, and merge-review result. Record the Chrome version,
+target URL, authenticated principal, exact prompt, start/end time, session id,
+task ids, and pass/fail criteria. Do not describe this manual evidence as a CI
+browser workflow pass.
+
+Likewise, fixture/fake model tests do not validate a real provider. Real-model
+evidence must preserve provider/model identity, redacted request/run metadata,
+artifact ids, actual tool or test output, and failure/timeout behavior. Never
+log provider keys or unredacted sensitive tool arguments.
+
+For worktree-producing tasks, retain:
+
+```bash
+git -C "$WORKSPACE_PATH" status --short
+git -C "$WORKSPACE_PATH" diff --check
+git -C "$WORKSPACE_PATH" diff --stat
+```
+
+For workspace commands and Skill entrypoints in a shared or production-like
+validation, verify Docker fail-closed configuration and result metadata:
+
+```dotenv
+FOCUS_AGENT_SANDBOX_BACKEND=docker
+FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK=0
+```
+
+`fallback_used=true`, `degraded_reason=local_host_execution`,
+`sandbox_backend=local_subprocess`, or `local_venv` is degraded local evidence,
+not Docker-isolation evidence. See
+[Agent Team v2 Gray Validation](agent-team-v2-rollout.md) and the
+[Multi-Agent Runtime Runbook](multi_agent_refactor/runbook.md) for the
+gray/rollback order.
 
 When Skill selection changed, verify all explicit paths:
 

@@ -25,6 +25,18 @@ from typing import Any
 
 logger = logging.getLogger("focus_agent.harness.subagents.process_runner")
 
+_CHILD_ENV_KEYS = (
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "TMPDIR",
+    "TZ",
+)
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -82,9 +94,9 @@ class ProcessSubagentRunner:
         """Execute ``task`` in a child process and return its result.
 
         On timeout the child is sent SIGTERM; if it does not exit within
-        ``config.graceful_shutdown_seconds`` it receives SIGKILL. Stdout is
-        parsed for a JSON result envelope; if parsing fails the raw output
-        is returned verbatim.
+        ``config.graceful_shutdown_seconds`` it receives SIGKILL. The child
+        must emit a JSON result envelope with ``success: true``; protocol and
+        process failures are returned as unsuccessful results.
         """
         command = self._build_command(config, task, thread_id)
         started = time.monotonic()
@@ -101,7 +113,7 @@ class ProcessSubagentRunner:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "FOCUS_AGENT_SUBAGENT": "1"},
+                env=self._child_environment(),
             )
         except FileNotFoundError as exc:
             duration = time.monotonic() - started
@@ -128,13 +140,15 @@ class ProcessSubagentRunner:
             truncated_note = f"\n\n[truncated: output exceeded {config.max_output_chars} chars]"
             stdout_text = stdout_text[: config.max_output_chars] + truncated_note
 
-        output, token_usage, parse_error = self._parse_output(stdout_text)
-        success = return_code == 0 and parse_error is None
+        output, token_usage, envelope_success, parse_error = self._parse_output(stdout_text)
+        success = return_code == 0 and envelope_success and parse_error is None
         error_msg: str | None = None
         if not success:
             parts = []
             if return_code != 0:
                 parts.append(f"process exited with code {return_code}")
+            if envelope_success is False:
+                parts.append(output or "child reported success=false")
             if stderr_text.strip():
                 parts.append(f"stderr: {stderr_text.strip()[-2000:]}")
             if parse_error:
@@ -184,6 +198,15 @@ class ProcessSubagentRunner:
         cmd.append(task)
         return cmd
 
+    @staticmethod
+    def _child_environment() -> dict[str, str]:
+        """Return the minimal environment allowed to reach the child process."""
+        environment = {
+            key: value for key in _CHILD_ENV_KEYS if (value := os.environ.get(key)) is not None
+        }
+        environment["FOCUS_AGENT_SUBAGENT"] = "1"
+        return environment
+
     async def _wait_with_output(
         self,
         proc: asyncio.subprocess.Process,
@@ -200,7 +223,9 @@ class ProcessSubagentRunner:
         comm_task: asyncio.Task[tuple[bytes, bytes]] | None = None
         try:
             comm_task = asyncio.create_task(proc.communicate())
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(comm_task, timeout=timeout)
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                asyncio.shield(comm_task), timeout=timeout
+            )
             return proc.returncode or 0, stdout_bytes, stderr_bytes
         except TimeoutError:
             logger.warning(
@@ -208,8 +233,6 @@ class ProcessSubagentRunner:
                 timeout,
                 proc.pid,
             )
-            if comm_task is not None:
-                comm_task.cancel()
             # Terminate and give it a grace period.
             if proc.returncode is None:
                 try:
@@ -217,9 +240,14 @@ class ProcessSubagentRunner:
                 except ProcessLookupError:
                     return proc.returncode or -signal.SIGTERM, b"", b""
             try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(), timeout=graceful
-                )
+                if comm_task is None:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                        proc.communicate(), timeout=graceful
+                    )
+                else:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                        asyncio.shield(comm_task), timeout=graceful
+                    )
                 return proc.returncode or -signal.SIGTERM, stdout_bytes, stderr_bytes
             except TimeoutError:
                 logger.warning(
@@ -231,7 +259,10 @@ class ProcessSubagentRunner:
                 except ProcessLookupError:
                     return proc.returncode or -signal.SIGKILL, b"", b""
                 try:
-                    stdout_bytes, stderr_bytes = await proc.communicate()
+                    if comm_task is None:
+                        stdout_bytes, stderr_bytes = await proc.communicate()
+                    else:
+                        stdout_bytes, stderr_bytes = await comm_task
                 except Exception:  # noqa: BLE001
                     stdout_bytes, stderr_bytes = b"", b""
                 return -signal.SIGKILL, stdout_bytes, stderr_bytes
@@ -245,36 +276,38 @@ class ProcessSubagentRunner:
             return -1, b"", b""
 
     @staticmethod
-    def _parse_output(raw: str) -> tuple[str, dict[str, Any] | None, str | None]:
-        """Parse child stdout into ``(output_text, token_usage, error)``.
+    def _parse_output(raw: str) -> tuple[str, dict[str, Any] | None, bool, str | None]:
+        """Parse stdout into ``(result, token_usage, success, error)``.
 
-        Supports two output modes:
-        - A trailing JSON line ``{"result": "...", "token_usage": {...}}``
-        - Plain text output (returned verbatim, no token usage)
+        The child protocol requires a trailing JSON object containing boolean
+        ``success`` and a string ``result`` on success. A failed envelope may
+        provide a string ``error``. Any other output is a protocol failure.
         """
         text = raw.strip()
         if not text:
-            return "", None, None
+            return "", None, False, "child produced no JSON result envelope"
         # Try to locate a JSON envelope at the tail of the output.
         # We scan from the last newline to allow log lines above the envelope.
-        candidate = text
-        for sep in ("\n", "\r\n"):
-            if sep in text:
-                candidate = text.rsplit(sep, 1)[-1].strip()
+        candidate = text.splitlines()[-1].strip()
         try:
             parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                output = str(parsed.get("result") or parsed.get("output") or text)
-                usage = (
-                    parsed.get("token_usage")
-                    if isinstance(parsed.get("token_usage"), dict)
-                    else None
-                )
-                return output, usage, None
-        except (json.JSONDecodeError, ValueError):
-            pass
-        # No JSON envelope found; treat entire output as the result.
-        return text, None, None
+        except (json.JSONDecodeError, ValueError) as exc:
+            return text, None, False, f"invalid JSON result envelope: {exc}"
+        if not isinstance(parsed, dict):
+            return text, None, False, "JSON result envelope must be an object"
+        envelope_success = parsed.get("success")
+        if not isinstance(envelope_success, bool):
+            return text, None, False, "JSON result envelope requires boolean success"
+        usage = parsed.get("token_usage") if isinstance(parsed.get("token_usage"), dict) else None
+        if envelope_success:
+            result = parsed.get("result")
+            if not isinstance(result, str):
+                return text, usage, False, "successful JSON result envelope requires string result"
+            return result, usage, True, None
+        error = parsed.get("error")
+        if not isinstance(error, str) or not error.strip():
+            return text, usage, False, "failed JSON result envelope requires string error"
+        return error, usage, False, None
 
 
 __all__ = [
@@ -356,6 +389,8 @@ class ProcessSubagentTaskRunner:
             task=request.instruction,
             thread_id=thread_id,
         )
+        if not result.success:
+            raise RuntimeError(result.error or "process subagent task failed")
         return SubagentTaskResult(
             content=result.output,
             metadata={

@@ -12,6 +12,11 @@ from focus_agent.core.agent_team import (
     AgentTeamTask,
     AgentTeamTaskOutput,
     AgentTeamTaskStatus,
+    EvidenceRecord,
+    TaskCheckpoint,
+    TaskRun,
+    TaskRunEvent,
+    ToolExecution,
 )
 
 
@@ -152,6 +157,131 @@ class AgentTeamRepository(ABC):
             and all(dependency in done_ids for dependency in task.dependencies)
         ]
         return runnable[: max(0, int(limit or 0))]
+
+    # V2 execution records default to per-repository in-memory storage. This keeps
+    # existing durable repositories compatible until they opt into persistence.
+    def create_task_run(self, task_run: TaskRun) -> None:
+        with self._execution_record_lock():
+            self._execution_records()["task_runs"][task_run.task_run_id] = task_run
+
+    def save_task_run(self, task_run: TaskRun) -> None:
+        self.create_task_run(task_run)
+
+    def get_task_run(self, task_run_id: str) -> TaskRun:
+        with self._execution_record_lock():
+            task_run = self._execution_records()["task_runs"].get(task_run_id)
+        if task_run is None:
+            raise KeyError(f"Unknown agent team task run: {task_run_id}")
+        return task_run
+
+    def list_task_runs(
+        self,
+        *,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[TaskRun]:
+        with self._execution_record_lock():
+            task_runs = list(self._execution_records()["task_runs"].values())
+        if task_id is not None:
+            task_runs = [item for item in task_runs if item.task_id == task_id]
+        if session_id is not None:
+            task_runs = [item for item in task_runs if item.session_id == session_id]
+        return sorted(task_runs, key=lambda item: (item.created_at, item.task_run_id))
+
+    def add_task_checkpoint(self, checkpoint: TaskCheckpoint) -> None:
+        self._append_execution_record("task_checkpoints", checkpoint.checkpoint_id, checkpoint)
+
+    def append_task_checkpoint(self, checkpoint: TaskCheckpoint) -> None:
+        self.add_task_checkpoint(checkpoint)
+
+    def list_task_checkpoints(self, *, task_run_id: str) -> list[TaskCheckpoint]:
+        with self._execution_record_lock():
+            checkpoints = list(self._execution_records()["task_checkpoints"].values())
+        return sorted(
+            (item for item in checkpoints if item.task_run_id == task_run_id),
+            key=lambda item: (item.sequence, item.created_at, item.checkpoint_id),
+        )
+
+    def add_tool_execution(self, execution: ToolExecution) -> None:
+        self._append_execution_record(
+            "tool_executions",
+            execution.tool_execution_id,
+            execution,
+        )
+
+    def append_tool_execution(self, execution: ToolExecution) -> None:
+        self.add_tool_execution(execution)
+
+    def list_tool_executions(self, *, task_run_id: str) -> list[ToolExecution]:
+        with self._execution_record_lock():
+            executions = list(self._execution_records()["tool_executions"].values())
+        return sorted(
+            (item for item in executions if item.task_run_id == task_run_id),
+            key=lambda item: (item.created_at, item.tool_execution_id),
+        )
+
+    def add_evidence_record(self, evidence: EvidenceRecord) -> None:
+        self._append_execution_record("evidence_records", evidence.evidence_id, evidence)
+
+    def append_evidence_record(self, evidence: EvidenceRecord) -> None:
+        self.add_evidence_record(evidence)
+
+    def list_evidence_records(
+        self,
+        *,
+        task_run_id: str | None = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[EvidenceRecord]:
+        with self._execution_record_lock():
+            evidence_records = list(self._execution_records()["evidence_records"].values())
+        if task_run_id is not None:
+            evidence_records = [
+                item for item in evidence_records if item.task_run_id == task_run_id
+            ]
+        if task_id is not None:
+            evidence_records = [item for item in evidence_records if item.task_id == task_id]
+        if session_id is not None:
+            evidence_records = [item for item in evidence_records if item.session_id == session_id]
+        return sorted(evidence_records, key=lambda item: (item.created_at, item.evidence_id))
+
+    def add_task_run_event(self, event: TaskRunEvent) -> None:
+        self._append_execution_record("task_run_events", event.event_id, event)
+
+    def append_task_run_event(self, event: TaskRunEvent) -> None:
+        self.add_task_run_event(event)
+
+    def list_task_run_events(self, *, task_run_id: str) -> list[TaskRunEvent]:
+        with self._execution_record_lock():
+            events = list(self._execution_records()["task_run_events"].values())
+        return sorted(
+            (item for item in events if item.task_run_id == task_run_id),
+            key=lambda item: (item.created_at, item.event_id),
+        )
+
+    def _append_execution_record(self, collection: str, record_id: str, record: object) -> None:
+        with self._execution_record_lock():
+            self._execution_records()[collection][record_id] = record
+
+    def _execution_records(self) -> dict[str, dict[str, object]]:
+        records = getattr(self, "_agent_team_execution_records", None)
+        if records is None:
+            records = {
+                "task_runs": {},
+                "task_checkpoints": {},
+                "tool_executions": {},
+                "evidence_records": {},
+                "task_run_events": {},
+            }
+            self._agent_team_execution_records = records
+        return records
+
+    def _execution_record_lock(self) -> RLock:
+        lock = getattr(self, "_agent_team_execution_record_lock", None)
+        if lock is None:
+            lock = RLock()
+            self._agent_team_execution_record_lock = lock
+        return lock
 
     @abstractmethod
     def add_task_output(self, output: AgentTeamTaskOutput) -> None:

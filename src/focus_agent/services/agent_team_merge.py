@@ -27,6 +27,7 @@ from .agent_team_merge_helpers import (
     _merge_test_evidence,
     _missing_required_evidence,
     _planning_risk_notes,
+    _strong_evidence_gate_violations,
 )
 from .agent_team_merge_preview import _build_merge_review_preview
 from .agent_team_merge_review_actions import (
@@ -110,7 +111,11 @@ class AgentTeamMergeMixin:
             + _planning_risk_notes(session=session, outputs=outputs)
         )
         missing_required_evidence = _missing_required_evidence(tasks=tasks, outputs=outputs)
-        risk_items = _dedupe([*risk_items, *missing_required_evidence])
+        strong_evidence_violations = _strong_evidence_gate_violations(
+            tasks=tasks,
+            outputs=outputs,
+        )
+        risk_items = _dedupe([*risk_items, *missing_required_evidence, *strong_evidence_violations])
         test_evidence = _merge_test_evidence(tasks=tasks, outputs=outputs)
         execution_evidence = _execution_evidence(tasks=tasks, outputs=outputs)
         has_review_evidence = _has_review_or_verification_evidence(
@@ -182,13 +187,23 @@ class AgentTeamMergeMixin:
         )
         if final_answer["status"] == AgentTeamFinalAnswerStatus.PLACEHOLDER:
             recommended = AgentTeamRecommendedAction.REQUEST_CHANGES
-        if blocking_conflicts:
+        if blocking_conflicts or strong_evidence_violations:
             recommended = AgentTeamRecommendedAction.REQUEST_CHANGES
-            final_answer["status"] = AgentTeamFinalAnswerStatus.BLOCKED
+            if blocking_conflicts or final_answer["status"] == AgentTeamFinalAnswerStatus.READY:
+                final_answer["status"] = AgentTeamFinalAnswerStatus.BLOCKED
             final_answer["warnings"] = _dedupe(
                 [
                     *list(final_answer["warnings"]),
-                    "Blocking multi-agent merge conflict detected.",
+                    *(
+                        ["Blocking multi-agent merge conflict detected."]
+                        if blocking_conflicts
+                        else []
+                    ),
+                    *(
+                        ["Strong execution evidence gate blocked merge."]
+                        if strong_evidence_violations
+                        else []
+                    ),
                 ]
             )
         bundle = AgentTeamMergeBundle(
@@ -233,11 +248,28 @@ class AgentTeamMergeMixin:
     ) -> AgentTeamMergeDecision:
         session = self.get_session(session_id, user_id=user_id)
         bundle_payload = dict(session.latest_merge_bundle or {})
+        tasks = self.list_tasks(session_id=session_id, user_id=user_id)
+        outputs = [
+            output
+            for task in tasks
+            for output in self.repository.list_task_outputs(task_id=task.task_id)
+        ]
+        strong_evidence_violations = _strong_evidence_gate_violations(
+            tasks=tasks,
+            outputs=outputs,
+        )
         resolved_action = AgentTeamRecommendedAction(
             action
             or bundle_payload.get("recommended_next_action")
             or AgentTeamRecommendedAction.MERGE
         )
+        if strong_evidence_violations:
+            approved = False
+            resolved_action = AgentTeamRecommendedAction.REQUEST_CHANGES
+            rationale = _merge_gate_rationale(
+                rationale=rationale,
+                violations=strong_evidence_violations,
+            )
         decision = AgentTeamMergeDecision(
             decision_id=str(uuid4()),
             session_id=session_id,
@@ -609,6 +641,11 @@ def _normalize_task_selection(
     if unknown:
         raise ValueError(f"Unknown agent team task ids: {', '.join(unknown)}")
     return values
+
+
+def _merge_gate_rationale(*, rationale: str | None, violations: list[str]) -> str:
+    gate_reason = "Strong execution evidence gate blocked merge: " + " ".join(violations)
+    return f"{rationale}\n{gate_reason}" if rationale else gate_reason
 
 
 def _selected_review_tasks(

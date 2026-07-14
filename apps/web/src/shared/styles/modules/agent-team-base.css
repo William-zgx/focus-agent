@@ -1,4 +1,49 @@
 /* Agent Team workspace and collaboration surfaces. */
+.fa-agent-team-tab-shell {
+	display: grid;
+	gap: 12px;
+	min-height: 100%;
+	padding: 16px;
+}
+
+.fa-agent-team-tab-shell > :where(.fa-agent-team-layout) {
+	padding: 0;
+}
+
+.fa-agent-team-tab-content {
+	align-content: start;
+}
+
+.fa-agent-team-route-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+	width: fit-content;
+	max-width: 100%;
+	padding: 4px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-1) 86%, transparent);
+}
+
+.fa-agent-team-route-tab {
+	min-height: 32px;
+	padding: 7px 10px;
+	border-radius: 8px;
+	color: var(--fa-text-muted);
+	font-size: 0.82rem;
+	font-weight: 700;
+	line-height: 1;
+	text-decoration: none;
+}
+
+.fa-agent-team-route-tab:hover,
+.fa-agent-team-route-tab.is-active {
+	background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-2));
+	color: var(--fa-text);
+}
+
 .fa-agent-team-layout {
 	display: grid;
 	gap: 12px;
@@ -7,10 +52,33 @@
 	min-height: 100%;
 }
 
+.fa-chat-main-body.is-agent-workbench-route,
+.fa-chat-main-body.is-agent-team-route {
+	overflow: hidden;
+}
+
+.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
+.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	height: 100%;
+	padding-right: 4px;
+	overflow-x: hidden;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+}
+
 .fa-agent-team-layout.is-create {
 	grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
 	align-items: start;
 	min-height: auto;
+}
+
+.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout.is-create,
+.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout.is-create {
+	flex: 0 0 auto;
+	height: auto;
 }
 
 .fa-agent-team-create-copy,
@@ -602,7 +670,50 @@
 
 @media (max-width: 760px) {
 	.fa-agent-team-layout {
+		min-width: 0;
 		padding: 12px;
+	}
+
+	.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
+	.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout {
+		padding-right: 0;
+		scrollbar-gutter: auto;
+	}
+
+	.fa-agent-team-cockpit-secondary-bar,
+	.fa-agent-team-tool-approval {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-items: stretch;
+	}
+
+	.fa-agent-team-cockpit-button {
+		min-height: 40px;
+		white-space: nowrap;
+	}
+
+	.fa-agent-team-cockpit-grid,
+	.fa-agent-team-simple-main,
+	.fa-agent-team-collab-grid,
+	.fa-agent-team-tool-approval-actions {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.fa-agent-team-collab-card {
+		border-radius: 14px;
+	}
+
+	.fa-agent-team-more-menu-panel {
+		right: auto;
+		left: 0;
+		max-width: calc(100vw - 32px);
+	}
+
+	.fa-agent-team-inspector-drawer {
+		width: 100vw;
+		padding: max(12px, env(safe-area-inset-top)) 12px
+			max(12px, env(safe-area-inset-bottom));
+		border-left: 0;
 	}
 
 	.fa-agent-team-panel-header,

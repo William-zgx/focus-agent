@@ -25,7 +25,6 @@ _FALLBACK_POLICY_ALLOW_DEV_LOCAL = "allow_dev_local"
 _DEFAULT_MEMORY_MB = _runner._DEFAULT_MEMORY_MB
 _DEFAULT_PIDS_LIMIT = _runner._DEFAULT_PIDS_LIMIT
 _DEFAULT_RUN_TTL_SECONDS = _runner._DEFAULT_RUN_TTL_SECONDS
-_MAX_OUTPUT_BYTES = _runner._MAX_OUTPUT_BYTES
 _MAX_OUTPUT_FILES = _runner._MAX_OUTPUT_FILES
 _REQUEST_FILENAME = _runner._REQUEST_FILENAME
 _RESULT_FILENAME = _runner._RESULT_FILENAME
@@ -314,10 +313,7 @@ class DockerSandboxBackend:
         run_id = self._run_id_factory()
         sandbox_id = _sandbox_id_for_request(request, run_id=run_id)
         request = replace(request, sandbox_id=sandbox_id)
-        if (
-            self.reuse_containers
-            or request.workspace_mode == _WORKSPACE_MODE_THREAD_PERSISTENT_COPY
-        ):
+        if request.workspace_mode == _WORKSPACE_MODE_THREAD_PERSISTENT_COPY:
             with _serialized_sandbox_run(sandbox_id):
                 return self._run(request=request, run_id=run_id)
         return self._run(request=request, run_id=run_id)
@@ -347,7 +343,10 @@ class DockerSandboxBackend:
         started = time.monotonic()
         container_name = f"focus-agent-sandbox-{request.sandbox_id[:48]}-{run_id[:12]}"
         try:
-            if self.reuse_containers:
+            if (
+                self.reuse_containers
+                and request.workspace_mode == _WORKSPACE_MODE_THREAD_PERSISTENT_COPY
+            ):
                 container_name = self._thread_container_name(request)
                 completed = self._run_in_reusable_container(
                     request=request,
@@ -657,14 +656,16 @@ class DockerSandboxBackend:
             "memory_mb": int(request.memory_mb or _DEFAULT_MEMORY_MB),
             "pids_limit": _DEFAULT_PIDS_LIMIT,
             "read_only_root": True,
-            "container_reuse": self.reuse_containers,
+            "container_reuse": (
+                self.reuse_containers
+                and request.workspace_mode == _WORKSPACE_MODE_THREAD_PERSISTENT_COPY
+            ),
         }
 
 
 LocalSubprocessSandboxBackend = _backends.LocalSubprocessSandboxBackend
 default_sandbox_execution_service = _backends.default_sandbox_execution_service
 _with_fallback_reason = _backends._with_fallback_reason
-
 
 __all__ = [
     "DockerSandboxBackend",

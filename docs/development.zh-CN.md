@@ -125,7 +125,7 @@ architecture gate 对非生成源码使用规范化的 800 行上限。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-170 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+169 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，

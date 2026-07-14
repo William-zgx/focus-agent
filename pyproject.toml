@@ -40,6 +40,7 @@ dev = [
 ]
 
 [project.scripts]
+focus-agent = "focus_agent.task_cli:main"
 focus-agent-demo = "focus_agent.demo:main"
 focus-agent-api = "focus_agent.api.cli:main"
 focus-agent-migrate-local-state = "focus_agent.migrate_local_state:main"

@@ -236,7 +236,10 @@ async function getLegacySessionView(
 	};
 }
 
-export function useAgentTeamSession(sessionId: string | null) {
+export function useAgentTeamSession(
+	sessionId: string | null,
+	{ enabled = true }: { enabled?: boolean } = {},
+) {
 	const { client, ready } = useFocusAgent();
 	const agentTeam = agentTeamClient(client);
 
@@ -250,7 +253,7 @@ export function useAgentTeamSession(sessionId: string | null) {
 				return agentTeam.getAgentTeamSessionView(sessionId);
 			return getLegacySessionView(agentTeam, sessionId);
 		},
-		enabled: ready && Boolean(sessionId),
+		enabled: enabled && ready && Boolean(sessionId),
 		refetchInterval: (query) =>
 			shouldPollSessionView(query.state.data) ? 1500 : false,
 	});
@@ -308,6 +311,11 @@ export function useCreateAgentTeamSession() {
 		},
 	});
 }
+
+export {
+	useAgentTeamEvidence,
+	useAgentTeamReadiness,
+} from "./use-agent-team-v2";
 
 export function useCreateAgentTeamTask(sessionId: string | null) {
 	const { client } = useFocusAgent();
@@ -545,7 +553,10 @@ export function useAgentTeamMergeReviews(sessionId: string | null) {
 	});
 }
 
-export function useAgentTeamToolApprovals(sessionId: string | null) {
+export function useAgentTeamToolApprovals(
+	sessionId: string | null,
+	{ enabled = true }: { enabled?: boolean } = {},
+) {
 	const { client, ready } = useFocusAgent();
 	const agentTeam = agentTeamClient(client);
 
@@ -561,7 +572,7 @@ export function useAgentTeamToolApprovals(sessionId: string | null) {
 			const items = response.items ?? response.approvals ?? [];
 			return { items, count: response.count ?? items.length };
 		},
-		enabled: ready && Boolean(sessionId),
+		enabled: enabled && ready && Boolean(sessionId),
 		refetchInterval: (query) =>
 			(query.state.data?.items.length ?? 0) > 0 ? 1500 : false,
 		retry: false,

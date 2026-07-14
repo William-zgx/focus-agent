@@ -34,6 +34,9 @@ def build_sandbox_image_command(
     apt_mirror: str | None,
     apt_security_mirror: str | None,
     pull: bool,
+    npm_registry: str | None = None,
+    pip_index_url: str | None = None,
+    pip_default_timeout: int | None = None,
 ) -> list[str]:
     command = [
         docker_binary,
@@ -45,6 +48,12 @@ def build_sandbox_image_command(
         command.extend(["--build-arg", f"APT_MIRROR={apt_mirror}"])
     if apt_security_mirror:
         command.extend(["--build-arg", f"APT_SECURITY_MIRROR={apt_security_mirror}"])
+    if npm_registry is not None:
+        command.extend(["--build-arg", f"NPM_REGISTRY={npm_registry}"])
+    if pip_index_url is not None:
+        command.extend(["--build-arg", f"PIP_INDEX_URL={pip_index_url}"])
+    if pip_default_timeout is not None:
+        command.extend(["--build-arg", f"PIP_DEFAULT_TIMEOUT={pip_default_timeout}"])
     if pull:
         command.append("--pull")
     command.extend(["-f", str(dockerfile), "-t", image, str(context)])
@@ -96,6 +105,9 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
         apt_mirror=args.apt_mirror,
         apt_security_mirror=args.apt_security_mirror,
         pull=args.pull,
+        npm_registry=args.npm_registry,
+        pip_index_url=args.pip_index_url,
+        pip_default_timeout=args.pip_default_timeout,
     )
     friendly_command = " ".join(build_command)
     script_command = f"python scripts/ensure_sandbox_image.py --image {args.image}"
@@ -145,12 +157,25 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--base-image", default=None)
     parser.add_argument("--apt-mirror", default=None)
     parser.add_argument("--apt-security-mirror", default=None)
+    parser.add_argument("--npm-registry", default=None)
+    parser.add_argument("--pip-index-url", default=None)
+    parser.add_argument("--pip-default-timeout", type=_positive_int, default=None)
     parser.add_argument("--docker-binary", default="docker")
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     parser.add_argument("--pull", action="store_true")
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--no-build", action="store_true")
     return parser.parse_args(argv)
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def _run_command(command: list[str], *, timeout: int) -> CommandResult:

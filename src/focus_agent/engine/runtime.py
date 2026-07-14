@@ -347,6 +347,11 @@ def _attach_new_runtime_components(
 ) -> None:
     """Wire up the facade/registries/pipeline onto the runtime."""
 
+    try:
+        runtime.agent_team_service._agent_team_runtime = runtime
+    except Exception:  # noqa: BLE001
+        logger.debug("Agent Team runtime readiness context unavailable", exc_info=True)
+
     # a) FocusAgent facade
     try:
         from ..harness.agents.facade import FocusAgent

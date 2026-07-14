@@ -601,6 +601,34 @@ def _tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
     return AIMessage(content=_degraded_answer_from_tool_results(prompt_messages))
 
 
+def _timeout_tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
+    answer = _degraded_answer_from_tool_results(prompt_messages)
+    latest_user = _latest_human_message_text(_latest_turn_messages(prompt_messages))
+    if re.search(r"[\u4e00-\u9fff]", latest_user):
+        content = (
+            "上游模型在整合工具结果时超时。以下仅根据已经获得的工具证据做保守整理，"
+            "没有补充未验证的推断：\n"
+            f"{answer}"
+        )
+    else:
+        content = (
+            "The upstream model timed out while synthesizing the tool results. "
+            "The following is a conservative summary of the evidence already gathered; "
+            "it does not add unverified inferences:\n"
+            f"{answer}"
+        )
+    return AIMessage(content=content)
+
+
+def _is_model_timeout_exception(exc: Exception) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    name = exc.__class__.__name__.lower()
+    if name in {"apitimeouterror", "connecttimeout", "readtimeout", "timeoutexception"}:
+        return True
+    return "timed out" in str(exc).lower()
+
+
 def _invoke_tool_result_synthesis(
     model: Any,
     source_messages: list[Any],
@@ -633,9 +661,11 @@ def _invoke_with_tool_result_fallback(
 ) -> Any:
     try:
         return model.invoke(prompt_messages)
-    except Exception:
+    except Exception as exc:
         source_messages = fallback_messages or prompt_messages
         if _has_tool_result_messages(source_messages):
+            if _is_model_timeout_exception(exc):
+                return _timeout_tool_result_fallback_message(source_messages)
             synthesized = _invoke_tool_result_synthesis(
                 model,
                 source_messages,
@@ -681,6 +711,8 @@ __all__ = [
     "_should_replace_unfound_workspace_answer",
     "_has_tool_result_messages",
     "_tool_result_fallback_message",
+    "_timeout_tool_result_fallback_message",
+    "_is_model_timeout_exception",
     "_invoke_tool_result_synthesis",
     "_invoke_with_tool_result_fallback",
 ]

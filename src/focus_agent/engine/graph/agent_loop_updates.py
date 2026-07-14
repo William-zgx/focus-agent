@@ -30,6 +30,7 @@ def finalize_agent_loop_turn(
     temporal_anchor_required: bool,
     temporal_anchor_forced: bool,
     forced_degraded_skill_recovery: bool,
+    force_tool_free_answer: bool,
     tool_protocol_repair_count: int,
     tool_protocol_repair_reason: str,
 ) -> dict[str, Any]:
@@ -274,7 +275,7 @@ def finalize_agent_loop_turn(
     )
     language_repair_taken = False
     language_repair_attempts = 0
-    if not getattr(response, "tool_calls", None):
+    if not force_tool_free_answer and not getattr(response, "tool_calls", None):
         language_repair = repair_chinese_output(
             response=response,
             user_text=tool_intent_text,
@@ -288,7 +289,7 @@ def finalize_agent_loop_turn(
             language_repair_taken = True
             language_repair_attempts = language_repair.attempts
     temporal_anchor_repair_taken = ""
-    if not getattr(response, "tool_calls", None) and observed_at:
+    if not force_tool_free_answer and not getattr(response, "tool_calls", None) and observed_at:
         temporal_anchor_repair = enforce_temporal_anchor(
             response=response,
             user_text=tool_intent_text,
@@ -379,6 +380,8 @@ def finalize_agent_loop_turn(
         intent_dumped["output_language_repair_attempts"] = language_repair_attempts
     if temporal_anchor_repair_taken:
         intent_dumped["temporal_anchor_repair_action_taken"] = temporal_anchor_repair_taken
+    if force_tool_free_answer:
+        intent_dumped["tool_budget_exhausted_local_summary"] = True
     turn_metadata: dict[str, Any] = {}
     if intent_dumped.get("skill_execution_plan"):
         turn_metadata["skill_execution_plan"] = intent_dumped["skill_execution_plan"]

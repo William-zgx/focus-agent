@@ -41,6 +41,7 @@ def build_execution_contract(
     available_tool_names: Sequence[str] = (),
     preferred_first_tool: str | None = None,
     required_evidence: bool | None = None,
+    required_web_tools: Sequence[str] = (),
     skill_execution_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a small per-turn execution contract from the current tool policy."""
@@ -89,9 +90,17 @@ def build_execution_contract(
 
     required_tools: list[str] = []
     available = {str(name) for name in available_tool_names if str(name)}
+    explicit_required_web_tools = False
+    for tool_name in required_web_tools:
+        normalized_tool_name = str(tool_name).strip()
+        if normalized_tool_name in available and normalized_tool_name not in required_tools:
+            required_tools.append(normalized_tool_name)
+            explicit_required_web_tools = True
     if temporal_anchor_required and "current_utc_time" in available:
         required_tools.append("current_utc_time")
-    if preferred_first_tool == "web_fetch" and "web_fetch" in available:
+    if explicit_required_web_tools:
+        pass
+    elif preferred_first_tool == "web_fetch" and "web_fetch" in available:
         required_tools.append("web_fetch")
     elif "web_search" in available:
         required_tools.append("web_search")

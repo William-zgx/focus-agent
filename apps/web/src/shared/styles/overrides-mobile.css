@@ -269,7 +269,6 @@
 
 @media (max-width: 760px) {
 	.fa-productivity-layout,
-	.fa-agent-team-layout,
 	.fa-observability-layout,
 	.fa-admin-layout {
 		min-width: 0;
@@ -278,8 +277,6 @@
 	.fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout,
 	.fa-chat-main-body.is-agent-workbench-route > .fa-trajectory-workbench,
 	.fa-chat-main-body.is-agent-workbench-route > .fa-productivity-layout,
-	.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
-	.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout,
 	.fa-chat-main-body.is-admin-route > .fa-admin-layout {
 		padding-right: 0;
 		scrollbar-gutter: auto;
@@ -290,8 +287,6 @@
 	.fa-trajectory-overview-list-item,
 	.fa-trajectory-overview-handoff,
 	.fa-observability-panel-header,
-	.fa-agent-team-cockpit-secondary-bar,
-	.fa-agent-team-tool-approval,
 	.fa-productivity-header,
 	.fa-admin-page-bar {
 		display: grid;
@@ -320,8 +315,7 @@
 	.fa-trajectory-workbench-tab,
 	.fa-observability-preset,
 	.fa-productivity-tab,
-	.fa-productivity-source-filter,
-	.fa-agent-team-cockpit-button {
+	.fa-productivity-source-filter {
 		min-height: 40px;
 		white-space: nowrap;
 	}
@@ -344,32 +338,11 @@
 		flex-wrap: nowrap;
 	}
 
-	.fa-agent-team-cockpit-grid,
-	.fa-agent-team-simple-main,
 	.fa-productivity-grid.is-notes,
 	.fa-productivity-grid.is-tasks,
-	.fa-agent-team-collab-grid,
-	.fa-agent-team-tool-approval-actions,
 	.fa-productivity-stat-grid,
 	.fa-productivity-detail-grid {
 		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.fa-agent-team-collab-card {
-		border-radius: 14px;
-	}
-
-	.fa-agent-team-more-menu-panel {
-		right: auto;
-		left: 0;
-		max-width: calc(100vw - 32px);
-	}
-
-	.fa-agent-team-inspector-drawer {
-		width: 100vw;
-		padding: max(12px, env(safe-area-inset-top)) 12px
-			max(12px, env(safe-area-inset-bottom));
-		border-left: 0;
 	}
 
 	.fa-productivity-header p,

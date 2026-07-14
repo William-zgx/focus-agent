@@ -472,6 +472,41 @@ def test_web_search_default_path_uses_shared_http_client(monkeypatch):
     assert payload["results"][0]["url"] == "https://example.com/shared"
 
 
+def test_web_search_truncates_provider_query_to_tavily_limit(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    _prepare_fake_ddgs(monkeypatch)
+    query = "x" * 450
+
+    def fake_post(url, *, json=None, headers=None, timeout=0):
+        del headers, timeout
+        assert url == "https://api.tavily.com/search"
+        assert json["query"] == "x" * 400
+        return _http_json_response(
+            "POST",
+            url,
+            {
+                "answer": "Truncated query answer",
+                "results": [
+                    {
+                        "title": "Official docs",
+                        "url": "https://example.com/docs",
+                        "content": "result",
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(post=fake_post),
+    )
+
+    payload = json.loads(_tool_map(Settings())["web_search"].invoke({"query": query}))
+
+    assert payload["query"] == "x" * 400
+    assert payload["query_truncated"] is True
+
+
 def test_web_search_uses_configured_api_key_env_from_settings(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _install_fake_ddgs(monkeypatch)
@@ -537,6 +572,8 @@ def test_tool_runtime_metadata_marks_parallel_cacheable_and_fallback_capabilitie
     assert tools["search_code"].metadata["cacheable"] is True
     assert tools["search_code"].metadata["cache_scope"] == "thread"
     assert tools["web_search"].metadata["fallback_group"] == "web_search"
+    assert tools["web_search"].metadata["timeout_seconds"] == 45
+    assert tools["web_fetch"].metadata["timeout_seconds"] == 45
     assert tools["write_text_artifact"].metadata["side_effect"] is True
     assert tools["apply_patch"].metadata["requires_approval"] is True
     assert tools["apply_patch"].metadata["requires_workspace_write"] is True
@@ -927,8 +964,7 @@ def test_artifact_search_filters_stale_index_chunks_after_update(tmp_path):
 
         def embed(self, texts):
             return [
-                [1.0, 0.0] if "obsolete-marker" in text.lower() else [0.0, 1.0]
-                for text in texts
+                [1.0, 0.0] if "obsolete-marker" in text.lower() else [0.0, 1.0] for text in texts
             ]
 
     class _KeywordEmbeddingService:
@@ -970,7 +1006,9 @@ def test_workspace_search_uses_retrieval_index_and_filters_stale_files(tmp_path)
     project.mkdir()
     source = project / "src" / "retrieval.py"
     source.parent.mkdir()
-    source.write_text("def zvec_workspace_search():\n    return 'workspace code'\n", encoding="utf-8")
+    source.write_text(
+        "def zvec_workspace_search():\n    return 'workspace code'\n", encoding="utf-8"
+    )
     retrieval_index = InMemoryRetrievalIndex()
     embedding_service = _FakeMemoryEmbeddingService()
     index_workspace(
@@ -1071,6 +1109,38 @@ def test_web_fetch_extracts_html_text_and_blocks_localhost(monkeypatch):
 
     with pytest.raises(ValueError, match="localhost"):
         tools["web_fetch"].invoke({"url": "http://localhost:8000/healthz"})
+
+
+def test_web_fetch_prefers_main_article_text_over_navigation(monkeypatch):
+    def fake_get(url, *, headers=None, timeout=0):
+        del headers, timeout
+        return _http_text_response(
+            "GET",
+            url,
+            (
+                "<html><head><title>307 Temporary Redirect</title></head>"
+                "<body><nav>Skip to main content Navigation item</nav>"
+                "<main><article><h1>307 Temporary Redirect</h1>"
+                "<p>The client must keep the same request method and body.</p>"
+                "</article></main></body></html>"
+            ),
+            content_type="text/html; charset=utf-8",
+        )
+
+    monkeypatch.setattr(
+        "focus_agent.capabilities.default_tool_modules.web.shared_sync_http_client",
+        lambda: _FakeWebHttpClient(get=fake_get),
+    )
+
+    payload = json.loads(
+        _tool_map(Settings())["web_fetch"].invoke(
+            {"url": "https://example.com/http-status-307", "max_chars": 500}
+        )
+    )
+
+    assert payload["title"] == "307 Temporary Redirect"
+    assert "same request method and body" in payload["content"]
+    assert "Navigation item" not in payload["content"]
 
 
 def test_web_fetch_respects_configured_domain_policy(monkeypatch):

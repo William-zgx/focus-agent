@@ -5,7 +5,6 @@
 }
 
 .fa-chat-main-body.is-agent-workbench-route,
-.fa-chat-main-body.is-agent-team-route,
 .fa-chat-main-body.is-admin-route {
 	overflow: hidden;
 }
@@ -13,8 +12,6 @@
 .fa-chat-main-body.is-agent-workbench-route > .fa-observability-layout,
 .fa-chat-main-body.is-agent-workbench-route > .fa-trajectory-workbench,
 .fa-chat-main-body.is-agent-workbench-route > .fa-productivity-layout,
-.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout,
-.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout,
 .fa-chat-main-body.is-admin-route > .fa-admin-layout {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -24,12 +21,6 @@
 	overflow-x: hidden;
 	overflow-y: auto;
 	scrollbar-gutter: stable;
-}
-
-.fa-chat-main-body.is-agent-workbench-route > .fa-agent-team-layout.is-create,
-.fa-chat-main-body.is-agent-team-route > .fa-agent-team-layout.is-create {
-	flex: 0 0 auto;
-	height: auto;
 }
 
 .fa-thread-layout {

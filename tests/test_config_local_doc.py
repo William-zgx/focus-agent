@@ -370,6 +370,15 @@ def test_settings_from_env_prefers_explicit_model_env_over_catalog_default(tmp_p
     assert settings.helper_model == "anthropic:claude-3-5-sonnet-latest"
 
 
+def test_settings_from_env_reads_model_request_timeout(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_LOCAL_ENV_FILE", "/missing/focus-agent-local.env")
+    monkeypatch.setenv("MODEL_REQUEST_TIMEOUT_SECONDS", "17.5")
+
+    settings = Settings.from_env()
+
+    assert settings.model_request_timeout_seconds == 17.5
+
+
 def test_settings_from_env_reads_local_env_file_override(tmp_path, monkeypatch):
     local_env = tmp_path / "focus-agent.local.env"
     local_env.write_text(

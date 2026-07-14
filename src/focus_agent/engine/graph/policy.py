@@ -25,12 +25,14 @@ from .policy_intent_parsing import (
     _SKILL_ID_RE as _SKILL_ID_RE,
 )
 from .policy_intent_parsing import (
-    _first_http_url as _first_http_url,
-)
-from .policy_intent_parsing import (
+    _explicit_web_tool_contract_reason_codes,
+    _filter_bare_current_hits,
     _preferred_first_args,
     _should_prefer_web_fetch,
     _workspace_search_query,
+)
+from .policy_intent_parsing import (
+    _first_http_url as _first_http_url,
 )
 from .policy_intent_parsing import (
     _skill_install_name_from_text as _skill_install_name_from_text,
@@ -298,7 +300,11 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
     web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
     if not web_lookup_hits:
-        live_hits, fresh_external_hits = _filter_bare_current_hits(live_hits, fresh_external_hits)
+        live_hits, fresh_external_hits = _filter_bare_current_hits(
+            live_hits,
+            fresh_external_hits,
+            bare_current_markers=_BARE_CURRENT_MARKERS,
+        )
     contextual_current_hits = set(_contextual_current_hits(normalized))
     if contextual_current_hits:
         live_hits = tuple(hit for hit in live_hits if hit not in contextual_current_hits)
@@ -429,6 +435,29 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
             preferred_first_tool="web_search",
         )
 
+    explicit_web_tool_reason_codes = _explicit_web_tool_contract_reason_codes(
+        normalized,
+        has_live_web_signal=has_live_web_signal,
+        has_local_workspace_context=bool(local_context_hits),
+        has_explicit_workspace_context=bool(strong_explicit_workspace_hits),
+        has_file_browse=bool(file_browse_hits),
+        reason_codes=reason_codes,
+    )
+    if explicit_web_tool_reason_codes is not None:
+        return _exposure(
+            "live_web_research",
+            confidence=max(0.95, _confidence(live_web_score, execution_score)),
+            reason_codes=explicit_web_tool_reason_codes,
+            preferred_first_tool=_preferred_first_tool(
+                normalized,
+                policy="live_web_research",
+                symbol_hits=symbol_hits,
+                file_browse_hits=file_browse_hits,
+                web_lookup_hits=web_lookup_hits,
+                fresh_external_hits=fresh_external_hits,
+            ),
+        )
+
     if execution_score and has_strong_workspace_signal and not has_live_web_signal:
         reason_codes.append("policy_execution")
         return _exposure(
@@ -524,19 +553,6 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     )
 
 
-def _filter_bare_current_hits(
-    live_hits: tuple[str, ...],
-    fresh_external_hits: tuple[str, ...],
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    live_non_current = tuple(hit for hit in live_hits if hit not in _BARE_CURRENT_MARKERS)
-    fresh_non_current = tuple(
-        hit for hit in fresh_external_hits if hit not in _BARE_CURRENT_MARKERS
-    )
-    if live_non_current or fresh_non_current:
-        return live_hits, fresh_external_hits
-    return live_non_current, fresh_non_current
-
-
 def _exposure(
     policy: _ToolPolicy,
     *,
@@ -589,6 +605,9 @@ def _preferred_first_tool(
     web_lookup_hits: tuple[str, ...],
     fresh_external_hits: tuple[str, ...],
 ) -> str | None:
+    normalized = text.lower()
+    if policy == "live_web_research" and "web_search" in normalized and "web_fetch" in normalized:
+        return "web_search"
     if policy in {"live_web_research", "execution"} and _should_prefer_web_fetch(text):
         return "web_fetch"
     if policy == "workspace_lookup":

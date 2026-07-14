@@ -192,9 +192,7 @@ def _retrieval_zvec_check(runtime: Any) -> RuntimeComponentStatusResponse:
             ready=True,
             detail=detail,
         )
-    fallback = str(
-        getattr(settings, "agent_retrieval_fallback_backend", "postgres") or ""
-    ).strip()
+    fallback = str(getattr(settings, "agent_retrieval_fallback_backend", "postgres") or "").strip()
     error = getattr(runtime, "retrieval_index_error", None) or "zvec unavailable"
     return RuntimeComponentStatusResponse(
         name="retrieval_zvec",
@@ -234,11 +232,14 @@ def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
 
 def _background_jobs_check(runtime: Any) -> RuntimeComponentStatusResponse:
     settings = getattr(runtime, "settings", None)
+    durable_execution = (
+        str(getattr(settings, "background_job_execution", "best_effort") or "").strip().lower()
+        == "durable"
+    )
+    durable_worker = getattr(runtime, "durable_background_worker", None)
     metrics = {
         **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(
-            getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
-        ),
+        **_snapshot_metrics(durable_worker, "durable_worker_snapshot_error"),
     }
     errors = [
         key
@@ -258,6 +259,13 @@ def _background_jobs_check(runtime: Any) -> RuntimeComponentStatusResponse:
         problems.append(f"dead_lettered={dead_lettered}")
     if old_pending_threshold > 0 and oldest_pending_seconds > old_pending_threshold:
         problems.append(f"oldest_pending_seconds={oldest_pending_seconds}")
+    if durable_execution:
+        if durable_worker is None:
+            problems.append("durable_worker_missing")
+        elif int(metrics.get("durable_worker_thread_alive") or 0) <= 0:
+            problems.append("durable_worker_dead")
+        elif int(metrics.get("durable_worker_heartbeat_fresh") or 0) <= 0:
+            problems.append("durable_worker_heartbeat_stale")
     if problems:
         return RuntimeComponentStatusResponse(
             name="background_jobs",

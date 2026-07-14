@@ -38,11 +38,27 @@ def test_containerization_artifacts_exist_and_wire_prod_runtime():
     assert "ARG BASE_IMAGE=node:20-bookworm-slim" in sandbox_dockerfile_text
     assert "mcr.microsoft.com/devcontainers" not in sandbox_dockerfile_text
     assert "ARG APT_MIRROR=" in sandbox_dockerfile_text
+    apt_mirror_arg = "ARG APT_MIRROR=\nARG APT_SECURITY_MIRROR="
+    from_index = sandbox_dockerfile_text.index("FROM ${BASE_IMAGE}")
+    assert (
+        from_index
+        < sandbox_dockerfile_text.index(apt_mirror_arg, from_index)
+        < (sandbox_dockerfile_text.index('RUN if [ -n "${APT_MIRROR}" ]; then'))
+    )
     assert "Acquire::Retries=3" in sandbox_dockerfile_text
     assert "python3-venv" in sandbox_dockerfile_text
     assert "golang-go" in sandbox_dockerfile_text
     assert "rustc" in sandbox_dockerfile_text
     assert "pnpm@9.15.9" in sandbox_dockerfile_text
+    assert "COREPACK_NPM_REGISTRY=${NPM_REGISTRY}" in sandbox_dockerfile_text
+    assert "COREPACK_HOME=/pnpm/corepack" in sandbox_dockerfile_text
+    assert "corepack install --global pnpm@9.15.9" in sandbox_dockerfile_text
+    assert 'grep -q -- "--break-system-packages"' in sandbox_dockerfile_text
+    assert "python3 -m pip install --no-cache-dir ${pip_flags}" in sandbox_dockerfile_text
+    assert "--upgrade pip setuptools wheel" in sandbox_dockerfile_text
+    assert '"pytest==8.3.2"' in sandbox_dockerfile_text
+    assert '"ruff==0.15.10"' in sandbox_dockerfile_text
+    assert '"mypy==1.13.0"' in sandbox_dockerfile_text
     assert "WORKDIR /workspace" in sandbox_dockerfile_text
 
     makefile_text = (root / "Makefile").read_text(encoding="utf-8")

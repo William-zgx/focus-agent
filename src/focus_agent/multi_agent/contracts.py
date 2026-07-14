@@ -40,6 +40,14 @@ class ResourceClaim:
     session_id: str
     mode: LockMode
     expires_at: float
+    tenant_id: str | None = None
+    resource_namespace: str | None = None
+    fence_token: int | None = None
+    canonical_resource_key: str | None = None
+
+    @property
+    def is_cross_session(self) -> bool:
+        return self.canonical_resource_key is not None
 
 
 class ResourceLockPort(Protocol):
@@ -51,6 +59,9 @@ class ResourceLockPort(Protocol):
         session_id: str,
         mode: LockMode,
         ttl_seconds: float,
+        tenant_id: str | None = None,
+        resource_namespace: str | None = None,
+        fence_token: int | None = None,
     ) -> ResourceClaim | None: ...
 
     def heartbeat(self, claim: ResourceClaim, *, ttl_seconds: float) -> bool: ...

@@ -106,6 +106,7 @@ class Settings:
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     resolved_env: dict[str, str] = field(default_factory=dict, repr=False)
     temperature: float = 0.0
+    model_request_timeout_seconds: float = 120.0
     database_uri: str | None = None
     langgraph_api_url: str | None = None
     langsmith_project: str = "focus-agent"
@@ -191,6 +192,18 @@ class Settings:
     workspace_root: str = "."
     agent_team_merge_apply_enabled: bool = True
     agent_team_merge_review_max_diff_bytes: int = 1_048_576
+    agent_team_v2_enabled: bool = False
+    agent_team_rollout_phase: str = "off"
+    agent_team_execution_mode: str = "disabled"
+    agent_team_real_provider_enabled: bool = False
+    agent_team_durable_required: bool = False
+    agent_team_fencing_enabled: bool = False
+    agent_team_approval_resume_enabled: bool = False
+    agent_team_cross_session_locks_enabled: bool = False
+    agent_team_kill_switch_enabled: bool = True
+    agent_team_legacy_write_enabled: bool = False
+    agent_team_global_tab_enabled: bool = False
+    agent_team_adoption_enabled: bool = False
     feedback_capture_enabled: bool = True
     context_memory_evidence_enabled: bool = True
     plan_act_reflect_enabled: bool = True

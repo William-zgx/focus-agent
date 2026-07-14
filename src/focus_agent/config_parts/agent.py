@@ -61,6 +61,26 @@ def _normalize_branch_recommendation_mode(value: object) -> str:
     raise ValueError("AGENT_BRANCH_RECOMMENDATION_MODE must be one of: shadow, suggest")
 
 
+def _normalize_agent_team_rollout_phase(value: object) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {"", "off", "disabled"}:
+        return "off"
+    if normalized in {"shadow", "canary", "enabled"}:
+        return normalized
+    raise ValueError("AGENT_TEAM_ROLLOUT_PHASE must be one of: off, shadow, canary, enabled")
+
+
+def _normalize_agent_team_execution_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {"", "disabled", "observe", "fake"}:
+        return "disabled"
+    if normalized in {"inline", "background", "worktree_sandbox"}:
+        return normalized
+    raise ValueError(
+        "AGENT_TEAM_EXECUTION_MODE must be one of: disabled, inline, background, worktree_sandbox"
+    )
+
+
 def _pgvector_extension_mode_env(env: MutableMapping[str, str], defaults: Any) -> str:
     value = env.get("AGENT_MEMORY_PGVECTOR_EXTENSION_MODE")
     if value is not None:
@@ -155,6 +175,62 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         )
         .strip()
         .lower(),
+        "agent_team_v2_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_V2_ENABLED",
+            default=defaults.agent_team_v2_enabled,
+        ),
+        "agent_team_rollout_phase": _normalize_agent_team_rollout_phase(
+            env.get("AGENT_TEAM_ROLLOUT_PHASE", defaults.agent_team_rollout_phase)
+        ),
+        "agent_team_execution_mode": _normalize_agent_team_execution_mode(
+            env.get("AGENT_TEAM_EXECUTION_MODE", defaults.agent_team_execution_mode)
+        ),
+        "agent_team_real_provider_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_REAL_PROVIDER_ENABLED",
+            default=defaults.agent_team_real_provider_enabled,
+        ),
+        "agent_team_durable_required": _env_bool(
+            env,
+            "AGENT_TEAM_DURABLE_REQUIRED",
+            default=defaults.agent_team_durable_required,
+        ),
+        "agent_team_fencing_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_FENCING_ENABLED",
+            default=defaults.agent_team_fencing_enabled,
+        ),
+        "agent_team_approval_resume_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_APPROVAL_RESUME_ENABLED",
+            default=defaults.agent_team_approval_resume_enabled,
+        ),
+        "agent_team_cross_session_locks_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_CROSS_SESSION_LOCKS_ENABLED",
+            default=defaults.agent_team_cross_session_locks_enabled,
+        ),
+        "agent_team_kill_switch_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_KILL_SWITCH_ENABLED",
+            default=defaults.agent_team_kill_switch_enabled,
+        ),
+        "agent_team_legacy_write_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_LEGACY_WRITE_ENABLED",
+            default=defaults.agent_team_legacy_write_enabled,
+        ),
+        "agent_team_global_tab_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_GLOBAL_TAB_ENABLED",
+            default=defaults.agent_team_global_tab_enabled,
+        ),
+        "agent_team_adoption_enabled": _env_bool(
+            env,
+            "AGENT_TEAM_ADOPTION_ENABLED",
+            default=defaults.agent_team_adoption_enabled,
+        ),
         "agent_branch_decision_enabled": _env_bool(
             env,
             "AGENT_BRANCH_DECISION_ENABLED",
@@ -343,8 +419,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         .strip()
         .lower(),
         "agent_retrieval_fallback_backend": str(
-            env.get("AGENT_RETRIEVAL_FALLBACK_BACKEND")
-            or defaults.agent_retrieval_fallback_backend
+            env.get("AGENT_RETRIEVAL_FALLBACK_BACKEND") or defaults.agent_retrieval_fallback_backend
         )
         .strip()
         .lower(),

@@ -1,10 +1,27 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-06-25
+更新时间：2026-07-13
 
-本文记录 Focus Agent 当前的 Multi-Agent Development Mode：用户输入一个目标后，由 Orchestrator 生成动态 Mission DAG，多 Agent 按依赖执行任务、回传证据与风险，最终汇总成面向用户目标的 `final_answer`。Mission 可以独立创建，也可以选择来源对话作为上下文；来源对话不再是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；默认用户体验以“目标 -> 自动任务 DAG -> Agent Team 最终答案”为主，需要采纳代码变更时再进入选择性应用流程。
+本文记录 Focus Agent 当前的 Agent Team Workbench：用户可在专门入口创建
+Mission，由 Orchestrator 生成动态 Mission DAG，任务按依赖执行并汇总为面向目标的
+`final_answer`。Mission 可以独立创建，也可以选择来源对话作为可选上下文；来源对话
+不是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；需要采纳
+代码变更时再进入选择性应用流程。
 
-当前已落地的入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend SDK 的 Agent Team client 方法、Postgres primary repository、本地 in-memory fallback、模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。本文不再作为历史方案草稿保存；新改动应把这里当作当前操作和验证手册维护。
+当前入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend
+SDK 的 Agent Team client 方法、Postgres primary repository、本地 in-memory fallback、
+模型优先 planning service、DAG run service 和 legacy dispatch 兼容入口。Multi-Agent
+v2 协调能力另受默认关闭的 `MULTI_AGENT_*` feature flags 控制；工作台可见或存在
+Agent Team API 不表示 v2 已启用、真实执行已发生或已全量上线。灰度和回滚口径见
+[agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
+
+`GET /v2/agent-team/readiness` 调用 `build_agent_team_readiness(settings,
+runtime=runtime)`；仅当 assessment 的 `phase=ready` 且 task-run、evidence、revision
+三项 service capability 都可用时才返回 `ready=true`。真实执行被请求时 assessment
+会检查 provider 凭据引用、durable worker、Postgres/coordination、fencing、locks 和
+Docker fail-closed。该响应不执行任务，也不返回完整 blockers/evidence；即使返回
+`ready=true`，仍需独立的 provider/Docker 实测和真实 run 证据，不能将 API 或
+real mode 宣称为已上线或真实 run 已成功。
 
 ## 1. 产品目标
 
@@ -17,7 +34,8 @@ Focus Agent 当前已经具备分支对话、merge review、memory、trajectory 
 - 每个任务携带输入/输出契约、证据要求、能力要求、风险等级和写入范围，便于后续执行与汇总。
 - 每个 Agent 在自己的 conversation branch 中工作，避免污染主线。
 - 需要写入仓库的真实执行任务会额外分配 git worktree：`.focus_agent/worktrees/{session_id}/{task_id}`，
-  分支名为 `codex/agent-team/{session_short}/{task_slug}`；fake mode 只验证流程，不创建真实执行 worktree。
+  分支名为 `codex/agent-team/{session_short}/{task_slug}-{task_short}`；fake mode 只验证流程，
+  不创建真实执行 worktree。
 - 每个 Agent 的产出以 artifact、branch-local findings、trajectory 和 task ledger 记录下来。
 - 主控 Agent 汇总各分支产物，生成用户可读的 Agent Team 最终答案。
 - 需要采纳真实 worktree 变更时，用户通过 merge review 选择任务、预览 diff/test evidence、执行冲突预检，再显式 apply；系统不会自动 commit、push 或合并 main。
@@ -319,7 +337,8 @@ ready tasks。委派执行时，每个 subagent 都会收到 session 目标、ta
 
 调度状态机要求：
 
-- `/run` 先在 session scheduler lock 内把 runnable task 原子地置为 `queued`，再提交 durable/background job。
+- `/run` 先在 session scheduler lock 内把 runnable task 原子地置为 `queued`，再提交 background job；
+  只有已配置且运行中的 durable backend 才可称为 durable job。
 - 如果 job enqueue 失败，task 必须回滚为 `pending`，清空 `queued_at` 和 claim 字段，并写入 `execution_status="enqueue_failed"`；不能留下无人执行的 `queued`。
 - worker claim task 后，长任务执行期间会周期性 heartbeat task claim；启用 resource lock 时也 heartbeat 每个 `ResourceClaim`。
 - Postgres resource lock 在检查/写入同一 `session_id + resource_id` 前使用事务级 advisory lock，避免多进程同时看到空锁后双占。
@@ -366,11 +385,11 @@ POST  /v1/agent-team/sessions/{session_id}/merge-proposal   # use /merge-bundle
 POST  /v1/agent-team/sessions/{session_id}/merge            # use /merge-decision
 ```
 
-### 5.1 持久化仓储
+### 5.1 持久化仓储与当前边界
 
-Agent Team Workbench 已接入 runtime 的主持久化选择：
+Agent Team Workbench 的 session/task/output/merge-review 使用 runtime 的主持久化选择：
 
-- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；当前 schema v17 覆盖 merge review / review event、feedback event、context/memory evidence、skill selection event、multi-agent coordination、Postgres-backed rate-limit buckets 和 branch decision events，用于采纳审查、治理解释、nightly feedback regression 和多副本部署治理。
+- 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；当前 schema v19 还包含 Agent Team v2 的 task attempts、checkpoints、evidence、events 等 additive execution-record 表，用于采纳审查、治理解释、nightly feedback regression 和多副本部署治理。
 - 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `InMemoryAgentTeamRepository`，作为本地 fallback；harness run journal 仍使用 SQLite 文件保存 run/event 快照。
 - 通过 `make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod` 启动时，如果没有显式 `DATABASE_URI`，启动脚本会托管 repo-local PostgreSQL 并注入 `DATABASE_URI`，因此 Agent Team 也走 Postgres primary persistence。
 
@@ -387,6 +406,15 @@ focus_agent_team_merge_review_events
 Agent Team 主表保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完整 round-trip 来源；其他列只做查询、排序和索引辅助。schema migration 会在已有数据库上继续创建新表和补齐列，不依赖全新数据库。
 
 当前不会自动把已有 local fallback 数据迁移到 Postgres。需要跨后端迁移时，应通过显式迁移流程处理。
+
+这不等同于 v2 execution/recovery 已完整 durable：`PostgresAgentTeamRepository` 会将
+v2 task run、checkpoint、tool execution、evidence 和 event 持久化；未配置
+`DATABASE_URI` 的本地 repository 仍使用 per-repository in-memory fallback。
+approval resume service 的默认 store 和 task state 仍是 in-memory adapter，公开 runtime
+也不消费 resume job。真实执行前还必须满足
+`AGENT_TEAM_DURABLE_REQUIRED=true`、Postgres background jobs/worker、Postgres
+repository/coordination runtime 检查、fencing 与 cross-session locks；任一缺失均应
+视为 blocked，而不是以已有 session/task 表或 `/v2/agent-team/readiness` 代替。
 
 ## 6. Frontend / SDK 设计
 
@@ -469,36 +497,53 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
 
 ## 8. 当前能力与边界
 
-当前支持：
+当前支持（是否实际执行仍取决于配置和 executor）：
 
 1. 创建 standalone team session，或选择来源对话作为可选上下文。
 2. 通过 `/plan` 基于目标生成动态任务 DAG；`replace_existing=true` 可重拆未运行任务。
 3. 模型规划不可用时自动降级到保守 fallback，并在 UI 中提示。
 4. 通过 `/run` 或 task-level `/run` 按依赖推进 ready tasks。
-5. 真实执行任务可创建 per-task git worktree，并在 task/output 中记录 `workspace_path`、`workspace_branch`、changed files、diff summary、test evidence 和 workspace status。
-6. task claim、resource lock 和 enqueue 失败均进入明确状态，避免长期卡在无主 `queued` / `running`。
+5. 当 delegated executor 为 `inline` 或 `background` 且任务属于可写 task 时，可创建
+   per-task git worktree，并在 task/output 中记录 `workspace_path`、
+   `workspace_branch`、changed files、diff summary、test evidence 和 workspace status。
+   `fake` / `observe` 不创建真实执行 worktree。
+6. task claim 和 enqueue 失败会进入明确状态。资源 lock、消息、异步审批和 failure
+   handler 仅在启用 `MULTI_AGENT_V2_ENABLED` 及相应子开关时参与执行。
 7. task 可记录 output、artifact、changed files、verification summary、risk notes 和 execution metadata。
 8. UI 默认展示 Cockpit、Mission header、执行图、紧凑任务进度、选中任务摘要、阻塞引导、outputs 和 Agent Team 最终答案。
 9. 生成带 `final_answer`、`final_answer_status`、warnings、source output ids 和缺失证据风险提示的 merge bundle。
 10. 用户记录 accepted / rejected tasks 的 merge decision。
 11. Legacy `/dispatch` 继续兼容旧客户端，但不再是 Web 主流程。
 
-当前仍不支持：
+当前仍不支持或不应被当作已交付能力：
 
 - 自动冲突解决。
 - 自动提交代码。
 - Agent 无限递归 spawn。
-- fake mode 生成真实交付内容。fake 只能证明流程走通，最终答案必须标记为 `placeholder`。
+- `fake` mode 生成真实交付内容。fake 只能证明流程走通，最终答案必须标记为
+  `placeholder`。
+- 异步审批决定后自动重放已结束的图执行。当前队列 API 只记录/决定请求；虽然代码中
+  有内部 approval resume-job 状态机可保存脱敏展示信息与 executor-only checkpoint，
+  但当前公开 Agent Team API/运行时尚未消费该 job 来自动恢复执行。操作员必须显式
+  重新发起受控 task/run；默认 resume store/task state 也不提供重启恢复保证。
+  LangGraph interrupt 的 `Command(resume=...)` 是单独的同步
+  恢复路径，不能与该队列 API 混用。
+- worktree 自动提供 Docker 隔离。worktree 仅隔离 Git 工作目录；Docker sandbox
+  的 fail-closed 配置是另一层要求。
 
 ## 9. 验收标准
 
+- 默认关闭 v2 时，普通聊天不自动创建 Team session、task、worktree、资源锁或消息；
+  Web workbench 的可见性不是 v2 runtime 开关。
 - 后端可以创建 session / task，并为 task 关联 branch。
 - `/plan` 能生成动态 DAG，重复调用默认幂等，`replace_existing=true` 可重拆。
 - `/run` 只推进依赖满足的 ready tasks，并把 output / artifact / evidence 回写到 session view。
 - enqueue 失败不会留下无主 `queued`；长任务执行会 heartbeat claim/resource lock。
 - session 完成、取消或 discard 后，AgentTeam worktree 清理会移除正常 worktree、orphan 目录并 prune git worktree metadata。
-- fake output 会生成 `placeholder` final answer，不能显示为可交付。
-- fixture/真实 output 能生成 `ready` final answer，并包含用户目标相关内容。
+- fake output 会生成 `placeholder` final answer，不能显示为可交付或可采纳代码变更。
+- `ready` final answer 只表示汇总结果可展示，不等于真实代码已执行或可采纳。真实
+  写入需要 `inline` / `background` 的 run metadata、真实 `model_id`、artifact、
+  worktree diff、测试原始输出和显式 merge-review 决定。
 - SDK 暴露完整 AgentTeam 类型和 client 方法。
 - Web 可以展示 Mission header、任务 DAG、依赖状态、选中任务摘要、Agent Team 最终答案和高级详情。
 - branch tree 能看到 Agent task 分支，且角色标签合理。
@@ -523,6 +568,7 @@ Agent Team focused regression：
 
 ```bash
 .venv/bin/python -m pytest tests/test_agent_team_* -q
+uv run pytest tests/integration/multi_agent/test_acceptance.py tests/test_multi_agent_config.py -q
 uv run pytest tests/test_agent_team_cockpit_frontend.py tests/test_agent_team_frontend_dynamic_planning.py
 pnpm --filter @focus-agent/web-app check
 pnpm --filter @focus-agent/web-sdk check
@@ -534,6 +580,12 @@ pnpm --filter @focus-agent/web-sdk build
 ```bash
 .venv/bin/python -m pytest tests/test_agent_team_multi_agent.py tests/test_agent_team_service.py -q
 ```
+
+对 v2 真实执行或用户可见流程，以上源码/fixture 回归仍不足。还要完成
+`/readyz`、真实 provider/model、真实 Docker fail-closed sandbox、真实 worktree、
+审批决定后的显式重新运行、以及真实 Chrome 操作工作台的证据链。完整命令、证据字段
+和禁止宣称的情况见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md) 与
+[validation-runbook.md](validation-runbook.md)。
 
 新增 eval 后补充：
 

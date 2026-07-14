@@ -60,3 +60,63 @@ def test_graph_web_result_fallback_synthesizes_weather_with_source() -> None:
     assert answer.startswith("根据搜索结果，今天白天：晴转多云")
     assert "最低气温18℃" in answer
     assert "北京天气预报（weather.example）" in answer
+
+
+def test_graph_web_result_fallback_prefers_fetched_official_pages() -> None:
+    answer = graph_web_result_fallback._fallback_web_answer_from_tool_results(
+        [
+            HumanMessage(content="请核对 Python 3.13 和 HTTP 307 的官方文档。"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "search",
+                        "name": "web_search",
+                        "args": {"query": "Python 3.13 free-threaded mode"},
+                    },
+                    {
+                        "id": "python-docs",
+                        "name": "web_fetch",
+                        "args": {"url": "https://docs.python.org/3/whatsnew/3.13.html"},
+                    },
+                    {
+                        "id": "mdn-307",
+                        "name": "web_fetch",
+                        "args": {
+                            "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/307"
+                        },
+                    },
+                ],
+            ),
+            ToolMessage(
+                content=(
+                    '{"query":"Python 3.13 free-threaded mode","results":['
+                    '{"title":"Python - Wikipedia","url":"https://en.wikipedia.org/wiki/Python"}]}'
+                ),
+                tool_call_id="search",
+            ),
+            ToolMessage(
+                content=(
+                    '{"url":"https://docs.python.org/3/whatsnew/3.13.html",'
+                    '"title":"What’s New In Python 3.13",'
+                    '"content":"Python 3.13 includes experimental support for running in a free-threaded mode."}'
+                ),
+                tool_call_id="python-docs",
+            ),
+            ToolMessage(
+                content=(
+                    '{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/307",'
+                    '"title":"307 Temporary Redirect - HTTP",'
+                    '"content":"The HTTP 307 Temporary Redirect response status code indicates that the requested resource has temporarily moved."}'
+                ),
+                tool_call_id="mdn-307",
+            ),
+        ]
+    )
+
+    assert answer.startswith("根据已抓取页面")
+    assert "experimental support" in answer
+    assert "Temporary Redirect" in answer
+    assert "https://docs.python.org/3/whatsnew/3.13.html" in answer
+    assert "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/307" in answer
+    assert "Wikipedia" not in answer

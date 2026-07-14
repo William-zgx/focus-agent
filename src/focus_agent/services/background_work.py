@@ -216,6 +216,10 @@ class DurableBackgroundWorker:
         self._completed_total = 0
         self._failed_total = 0
         self._heartbeat_lost_total = 0
+        self._claim_error_total = 0
+        self._consecutive_claim_errors = 0
+        self._started_at: float | None = None
+        self._last_heartbeat_at: float | None = None
         self._thread = threading.Thread(
             target=self._loop,
             name=f"focus-agent-durable-background-{name}",
@@ -223,7 +227,12 @@ class DurableBackgroundWorker:
         )
 
     def start(self) -> None:
-        if not self._thread.is_alive():
+        with self._lock:
+            if self._started_at is not None:
+                return
+            now = time.monotonic()
+            self._started_at = now
+            self._last_heartbeat_at = now
             self._thread.start()
 
     def close(self) -> None:
@@ -289,18 +298,83 @@ class DurableBackgroundWorker:
 
     def snapshot(self) -> dict[str, int]:
         with self._lock:
-            return {
+            snapshot = {
                 "durable_worker_active": self._active,
                 "durable_worker_claimed_total": self._claimed_total,
                 "durable_worker_completed_total": self._completed_total,
                 "durable_worker_failed_total": self._failed_total,
                 "durable_worker_heartbeat_lost_total": self._heartbeat_lost_total,
+                "durable_worker_claim_error_total": self._claim_error_total,
+                "durable_worker_consecutive_claim_errors": self._consecutive_claim_errors,
             }
+        health = self._health_snapshot()
+        snapshot.update(
+            {
+                "durable_worker_started": int(health["started"]),
+                "durable_worker_thread_alive": int(health["thread_alive"]),
+                "durable_worker_heartbeat_age_seconds": int(health["heartbeat_age_seconds"]),
+                "durable_worker_heartbeat_fresh": int(health["heartbeat_fresh"]),
+            }
+        )
+        return snapshot
 
     def _loop(self) -> None:
         while not self._closed.is_set():
-            if not self.run_once():
+            self._record_heartbeat()
+            try:
+                processed = self.run_once()
+            except Exception:  # noqa: BLE001 - claim failures must not kill the worker thread
+                delay = self._record_claim_error()
+                logger.warning("durable background job claim failed", exc_info=True)
+                self._closed.wait(delay)
+                continue
+            self._clear_claim_errors()
+            if not processed:
                 self._closed.wait(self._poll_interval_seconds)
+
+    def _record_heartbeat(self) -> None:
+        with self._lock:
+            self._last_heartbeat_at = time.monotonic()
+
+    def _record_claim_error(self) -> float:
+        with self._lock:
+            self._claim_error_total += 1
+            self._consecutive_claim_errors += 1
+            self._last_heartbeat_at = time.monotonic()
+            return min(
+                self._poll_interval_seconds * (2 ** min(self._consecutive_claim_errors - 1, 6)),
+                5.0,
+            )
+
+    def _clear_claim_errors(self) -> None:
+        with self._lock:
+            self._consecutive_claim_errors = 0
+
+    def _health_snapshot(self) -> dict[str, bool | float]:
+        with self._lock:
+            started_at = self._started_at
+            heartbeat_at = self._last_heartbeat_at
+        if started_at is None or heartbeat_at is None:
+            return {
+                "started": False,
+                "thread_alive": False,
+                "heartbeat_age_seconds": 0.0,
+                "heartbeat_fresh": False,
+                "healthy": False,
+            }
+        heartbeat_age_seconds = max(time.monotonic() - heartbeat_at, 0.0)
+        heartbeat_fresh = heartbeat_age_seconds <= self._heartbeat_stale_after_seconds()
+        thread_alive = self._thread.is_alive()
+        return {
+            "started": True,
+            "thread_alive": thread_alive,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "heartbeat_fresh": heartbeat_fresh,
+            "healthy": thread_alive and heartbeat_fresh,
+        }
+
+    def _heartbeat_stale_after_seconds(self) -> float:
+        return max(self._poll_interval_seconds * 3.0, 10.0)
 
     def _mark_job_running(self, key: str, claim: BackgroundJobClaim) -> None:
         _invoke_job_backend_hook(
@@ -343,11 +417,14 @@ class DurableBackgroundWorker:
         if not has_repo_method(self._job_backend, "heartbeat_job_claim"):
             return True
         try:
-            return bool(
+            alive = bool(
                 self._job_backend.heartbeat_job_claim(
                     key, claim, self._claim_heartbeat_ttl_seconds()
                 )
             )
+            if alive:
+                self._record_heartbeat()
+            return alive
         except Exception:  # noqa: BLE001 - heartbeat failures must not mark success
             logger.warning(
                 "durable background job heartbeat failed", extra={"job_key": key}, exc_info=True

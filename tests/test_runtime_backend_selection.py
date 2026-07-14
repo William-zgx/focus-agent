@@ -252,6 +252,7 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
         assert runtime.artifact_metadata_repository is artifact_repo
         assert runtime.trajectory_recorder is trajectory_repo
         assert runtime.agent_team_service.repository is agent_team_repo
+        assert runtime.agent_team_service._agent_team_runtime is runtime
         assert runtime.user_service.repository is user_repo
         assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
         assert isinstance(

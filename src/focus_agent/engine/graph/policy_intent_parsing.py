@@ -7,11 +7,12 @@ from .policy_markers import _contains_any, _skill_install_hits
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
 _SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
+_WEB_SEARCH_QUERY_MAX_CHARS = 400
 
 
 def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
     if tool_name == "web_search":
-        return {"query": text}
+        return {"query": _compact_web_search_query(text)}
     if tool_name == "web_fetch":
         url = _first_http_url(text)
         return {"url": url} if url else {}
@@ -63,6 +64,75 @@ def _skill_view_name_from_text(text: str) -> str:
         if name and name.lower() not in ignored:
             return name
     return ""
+
+
+def _compact_web_search_query(text: str) -> str:
+    raw = str(text or "")
+    if len(raw) <= _WEB_SEARCH_QUERY_MAX_CHARS:
+        return raw
+    normalized = " ".join(raw.strip().split())
+    quoted_terms = [
+        " ".join(match.strip().split())
+        for match in re.findall(r"[“\"]([^”\"]+)[”\"]", normalized)
+        if match.strip()
+    ]
+    if quoted_terms:
+        compact = " ".join(dict.fromkeys(quoted_terms))
+        if compact:
+            return compact[:_WEB_SEARCH_QUERY_MAX_CHARS].rstrip()
+    return normalized[:_WEB_SEARCH_QUERY_MAX_CHARS].rstrip()
+
+
+def _filter_bare_current_hits(
+    live_hits: tuple[str, ...],
+    fresh_external_hits: tuple[str, ...],
+    *,
+    bare_current_markers: tuple[str, ...] | frozenset[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    live_non_current = tuple(hit for hit in live_hits if hit not in bare_current_markers)
+    fresh_non_current = tuple(hit for hit in fresh_external_hits if hit not in bare_current_markers)
+    if live_non_current or fresh_non_current:
+        return live_hits, fresh_external_hits
+    return live_non_current, fresh_non_current
+
+
+def _explicit_web_tool_contract_reason_codes(
+    text: str,
+    *,
+    has_live_web_signal: bool,
+    has_local_workspace_context: bool,
+    has_explicit_workspace_context: bool,
+    has_file_browse: bool,
+    reason_codes: list[str],
+) -> tuple[str, ...] | None:
+    normalized = str(text or "").lower()
+    explicit_web_tool_names = "web_search" in normalized or "web_fetch" in normalized
+    text_without_explicit_web_tools = re.sub(
+        r"(?<![a-z0-9_])web_(?:search|fetch)(?![a-z0-9_])",
+        " ",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if not (
+        has_live_web_signal
+        and explicit_web_tool_names
+        and not has_local_workspace_context
+        and not has_explicit_workspace_context
+        and not has_file_browse
+    ):
+        return None
+    if re.search(
+        r"(?<![a-z0-9_])[a-z][a-z0-9]+_[a-z0-9_]+(?![a-z0-9_])", text_without_explicit_web_tools
+    ):
+        return None
+    return tuple(
+        [
+            code
+            for code in reason_codes
+            if code not in {"execution_signal", "workspace_lookup_signal"}
+        ]
+        + ["explicit_web_tool_contract", "policy_live_web_research"]
+    )
 
 
 def _skill_install_name_from_text(text: str) -> str:

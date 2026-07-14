@@ -1,0 +1,107 @@
+name: Agent Team Evidence
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  schedule:
+    - cron: "23 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-team-evidence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-fixtures:
+    name: Deterministic worktree, chat, and UI evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Run deterministic Agent Team evidence
+        run: make agent-team-evidence
+
+      - name: Upload deterministic Agent Team evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-team-evidence-deterministic-${{ github.run_id }}
+          path: reports/agent-team-evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  real-provider-evidence:
+    name: Protected or nightly real-provider evidence
+    needs: deterministic-fixtures
+    if: ${{ github.event_name == 'schedule' || github.ref_protected }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND: ${{ vars.AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Run configured real-provider evidence or record disabled state
+        run: |
+          set -euo pipefail
+          mkdir -p reports/agent-team-evidence
+          if [ -z "${AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND:-}" ]; then
+            cat > reports/agent-team-evidence/real-provider.json <<'JSON'
+            {
+              "status": "disabled",
+              "reason": "Set the protected repository variable AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND to an approved real-provider evidence command. No provider result was claimed."
+            }
+            JSON
+            echo "::warning title=Agent Team real-provider evidence disabled::No approved provider command is configured; no provider result was claimed."
+            exit 0
+          fi
+          uv run python scripts/eval_provider_gate.py \
+            --key-env OPENAI_API_KEY \
+            --missing-policy fail \
+            --gate-report-json reports/agent-team-evidence/real-provider.json \
+            --annotation-title "Agent Team real-provider evidence disabled" \
+            -- \
+            bash -lc "$AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND"
+
+      - name: Upload real-provider evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-team-evidence-real-provider-${{ github.run_id }}
+          path: reports/agent-team-evidence/real-provider.json
+          retention-days: 30
+          if-no-files-found: warn

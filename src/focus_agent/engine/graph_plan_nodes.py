@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.runtime import Runtime
 
 from focus_agent.prompts import get_registry
@@ -173,10 +173,11 @@ def _read_only_skill_tool_request_satisfied(
 ) -> bool:
     if not str(last_ai or "").strip():
         return False
-    task_text = str(state.get("task_brief") or _latest_human_message_text(state.get("messages", [])))
+    task_text = str(
+        state.get("task_brief") or _latest_human_message_text(state.get("messages", []))
+    )
     requested = {
-        match.group(1).lower()
-        for match in _READ_ONLY_SKILL_TOOL_RE.finditer(task_text.lower())
+        match.group(1).lower() for match in _READ_ONLY_SKILL_TOOL_RE.finditer(task_text.lower())
     }
     if not requested:
         return False
@@ -188,14 +189,26 @@ def _read_only_skill_tool_request_satisfied(
     if not isinstance(tool_plan, dict):
         return False
     allowed_toolsets = {
-        str(item)
-        for item in list(tool_plan.get("allowed_toolsets") or [])
-        if str(item).strip()
+        str(item) for item in list(tool_plan.get("allowed_toolsets") or []) if str(item).strip()
     }
-    return (
-        str(tool_plan.get("policy") or "") == "workspace_lookup"
-        and "skill" in allowed_toolsets
-    )
+    return str(tool_plan.get("policy") or "") == "workspace_lookup" and "skill" in allowed_toolsets
+
+
+def _final_answer_is_ready_for_completion(state: AgentState, *, last_ai: str) -> bool:
+    if not str(last_ai or "").strip() or state.get("pending_tool_action"):
+        return False
+    outcome = state.get("task_outcome")
+    if not isinstance(outcome, dict):
+        return False
+    if str(outcome.get("status") or "").strip().lower() not in {"answered", "completed"}:
+        return False
+    messages = list(state.get("messages", []) or [])
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, ToolMessage):
+            return True
+    return False
 
 
 def make_plan_node(
@@ -310,6 +323,19 @@ def make_reflect_node(
         trajectory_tools = _collect_tool_names_since_latest_human(
             list(state.get("messages", []) or [])
         )
+        if _final_answer_is_ready_for_completion(state, last_ai=last_ai):
+            meta = {
+                **(state.get("plan_meta") or {}),
+                "reflect_skipped": "final_answer_ready",
+                "replan_requested": False,
+            }
+            return {
+                "reflection": ReflectionVerdict(
+                    status="done",
+                    reasoning="final answer is ready for completion",
+                ),
+                "plan_meta": meta,
+            }
         if _read_only_skill_tool_request_satisfied(
             state,
             trajectory_tools=trajectory_tools,
@@ -385,6 +411,7 @@ __all__ = [
     "_parse_plan_json",
     "_parse_reflection_json",
     "_should_plan",
+    "_final_answer_is_ready_for_completion",
     "make_plan_node",
     "make_reflect_node",
     "make_should_continue_after_reflect",

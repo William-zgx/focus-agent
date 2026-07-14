@@ -94,7 +94,7 @@ flowchart LR
 - architecture gate 对非生成文件执行 800 行上限，当前
   [baseline](architecture-debt-baseline.json) 没有 grandfathered large file。
 - compatibility gate 按稳定 item ID 而不是模糊计数管理库存。当前
-  [baseline](compat-debt-baseline.json) 为 170 项；1.x public facade、旧路由和
+  [baseline](compat-debt-baseline.json) 为 169 项；1.x public facade、旧路由和
   legacy reader 仍按兼容承诺保留，满足 telemetry、迁移说明和 2.0 exit
   criteria 前不得直接删除。
 
@@ -109,7 +109,7 @@ flowchart LR
 | Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛 |
 | Web/stream 可靠性 | real Chrome workflow、reconnect dedupe、incomplete-stream error、bridge cleanup | 增加断网/恢复、代理超时、多实例 replay、长会话和轻量负载阈值 |
 | Android 发布 | debug CI、native HTTP/deep-link hardening、instrumentation coverage | 增加 release signing pipeline、真实设备/Android 版本矩阵、弱网/后台恢复和商店发布检查 |
-| 兼容债务 | 170 个 item-ID baseline 与逐类 exit criteria | 收集 import/route/state telemetry，停止新写入，提供迁移窗口，再在 2.0 中按项退场；不能用批量删除 facade 代替迁移 |
+| 兼容债务 | 169 个 item-ID baseline 与逐类 exit criteria | 收集 import/route/state telemetry，停止新写入，提供迁移窗口，再在 2.0 中按项退场；不能用批量删除 facade 代替迁移 |
 
 ## 3. 下一阶段优先级
 
@@ -124,7 +124,7 @@ flowchart LR
 4. **接外部身份与观测平台。** 完成 IdP/JWKS、key rotation、collector、trace
    query 和 alert/pager 的真实环境闭环。
 5. **用证据降低 Agent 与兼容风险。** 扩充失败 trajectory 和 golden cases；
-   同时用 telemetry 驱动 170 项 compatibility inventory 的逐项退场，不在 1.x
+   同时用 telemetry 驱动 169 项 compatibility inventory 的逐项退场，不在 1.x
    破坏已有 facade。
 
 ## 4. 验证与文档入口

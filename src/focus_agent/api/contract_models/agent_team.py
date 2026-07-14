@@ -28,6 +28,13 @@ AgentTeamPlanFocus = Literal[
     "writing",
 ]
 AgentTeamFinalAnswerStatus = Literal["ready", "placeholder", "blocked", "error"] | str
+AgentTeamRevisionCommand = Literal[
+    "create",
+    "activate",
+    "supersede",
+    "cancel",
+    "resume",
+]
 
 
 class AgentTeamPlanningMetadata(BaseModel):
@@ -45,6 +52,101 @@ class AgentTeamRunMetadata(BaseModel):
     scheduled_task_ids: list[str] = Field(default_factory=list)
     running_task_ids: list[str] = Field(default_factory=list)
     max_parallel_runs: int = 1
+
+
+class AgentTeamReadinessCapabilities(BaseModel):
+    task_run_queries: bool = False
+    evidence_queries: bool = False
+    revision_commands: bool = False
+
+
+class AgentTeamReadinessResponse(BaseModel):
+    status: Literal["ready", "disabled", "degraded"] = "disabled"
+    ready: bool = False
+    enabled: bool = False
+    service_available: bool = False
+    capabilities: AgentTeamReadinessCapabilities = Field(
+        default_factory=AgentTeamReadinessCapabilities
+    )
+    detail: str | None = None
+
+
+class AgentTeamTaskRunContract(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task_run_id: str
+    task_id: str
+    session_id: str
+    status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
+    attempt: int = 0
+    started_at: str | None = None
+    finished_at: str | None = None
+    last_error: str | None = None
+    execution_profile: str | None = None
+    execution_class: str | None = None
+    evidence_level: str = "synthetic"
+    evidence_verdict: str = "unknown"
+    evidence_summary: str | None = None
+    sandbox_id: str | None = None
+    revision_id: str | None = None
+    row_version: int = 0
+    cancel_epoch: int = 0
+    deliverable: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str | None = None
+
+
+class AgentTeamTaskRunResponse(BaseModel):
+    task_run: AgentTeamTaskRunContract
+
+
+class AgentTeamTaskRunListResponse(BaseModel):
+    items: list[AgentTeamTaskRunContract] = Field(default_factory=list)
+    count: int = 0
+
+
+class AgentTeamEvidenceContract(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    evidence_id: str
+    task_run_id: str | None = None
+    task_id: str | None = None
+    session_id: str | None = None
+    source_type: str = "execution"
+    summary: str = ""
+    artifact_id: str | None = None
+    execution_profile: str | None = None
+    execution_class: str | None = None
+    evidence_level: str = "synthetic"
+    evidence_verdict: str = "unknown"
+    evidence_summary: str | None = None
+    sandbox_id: str | None = None
+    revision_id: str | None = None
+    row_version: int = 0
+    cancel_epoch: int = 0
+    deliverable: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class AgentTeamEvidenceListResponse(BaseModel):
+    items: list[AgentTeamEvidenceContract] = Field(default_factory=list)
+    count: int = 0
+
+
+class AgentTeamRevisionCommandRequest(BaseModel):
+    command: AgentTeamRevisionCommand
+    revision_id: str | None = None
+    parent_revision_id: str | None = None
+    task_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentTeamRevisionCommandResponse(BaseModel):
+    command: AgentTeamRevisionCommand
+    session_id: str
+    outcome: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentTeamSchedulerMetadata(BaseModel):
@@ -413,6 +515,16 @@ __all__ = [
     "AgentTeamPlanFocus",
     "AgentTeamPlanningMetadata",
     "AgentTeamRunMetadata",
+    "AgentTeamReadinessCapabilities",
+    "AgentTeamReadinessResponse",
+    "AgentTeamTaskRunContract",
+    "AgentTeamTaskRunResponse",
+    "AgentTeamTaskRunListResponse",
+    "AgentTeamEvidenceContract",
+    "AgentTeamEvidenceListResponse",
+    "AgentTeamRevisionCommand",
+    "AgentTeamRevisionCommandRequest",
+    "AgentTeamRevisionCommandResponse",
     "AgentTeamToolApprovalContract",
     "RunAgentTeamSessionRequest",
     "AgentTeamFinalAnswerStatus",

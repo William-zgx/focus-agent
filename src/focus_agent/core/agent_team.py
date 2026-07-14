@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from focus_agent.delegation.roles import AgentRole
 
@@ -56,6 +56,55 @@ class AgentTeamTaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class AgentTeamExecutionClass(StrEnum):
+    FAKE = "fake"
+    MODEL_TEXT = "model_text"
+    TOOL_AGENT = "tool_agent"
+    SANDBOX_VERIFIED = "sandbox_verified"
+
+
+class AgentTeamEvidenceLevel(StrEnum):
+    SYNTHETIC = "synthetic"
+    MODEL = "model"
+    WORKTREE = "worktree"
+    SANDBOX = "sandbox"
+    VERIFIED = "verified"
+
+
+class AgentTeamEvidenceVerdict(StrEnum):
+    UNKNOWN = "unknown"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+    INCONCLUSIVE = "inconclusive"
+
+
+def is_verified_execution(
+    execution_class: AgentTeamExecutionClass | str | None,
+    evidence_level: AgentTeamEvidenceLevel | str,
+    evidence_verdict: AgentTeamEvidenceVerdict | str,
+) -> bool:
+    """Return whether the execution contract represents verified evidence."""
+    return (
+        execution_class is not None
+        and AgentTeamExecutionClass(execution_class) != AgentTeamExecutionClass.FAKE
+        and AgentTeamEvidenceLevel(evidence_level) == AgentTeamEvidenceLevel.VERIFIED
+        and AgentTeamEvidenceVerdict(evidence_verdict) == AgentTeamEvidenceVerdict.VERIFIED
+    )
+
+
+def is_execution_deliverable(
+    execution_class: AgentTeamExecutionClass | str | None,
+    evidence_level: AgentTeamEvidenceLevel | str,
+    evidence_verdict: AgentTeamEvidenceVerdict | str,
+) -> bool:
+    """Return whether evidence is safe to represent as a user deliverable."""
+    return AgentTeamExecutionClass(
+        execution_class
+    ) == AgentTeamExecutionClass.SANDBOX_VERIFIED and is_verified_execution(
+        execution_class, evidence_level, evidence_verdict
+    )
+
+
 class AgentTeamArtifactKind(StrEnum):
     PLAN = "plan"
     PATCH_SUMMARY = "patch_summary"
@@ -90,7 +139,55 @@ class AgentTeamMergeReviewStatus(StrEnum):
     ERROR = "error"
 
 
-class AgentTeamSession(BaseModel):
+class AgentTeamExecutionContract(BaseModel):
+    """Shared, conservative provenance fields for Agent Team execution records."""
+
+    task_run_id: str | None = None
+    sandbox_id: str | None = None
+    execution_profile: str | None = None
+    execution_class: AgentTeamExecutionClass | None = None
+    evidence_level: AgentTeamEvidenceLevel = AgentTeamEvidenceLevel.SYNTHETIC
+    evidence_verdict: AgentTeamEvidenceVerdict = AgentTeamEvidenceVerdict.UNKNOWN
+    evidence_summary: str | None = None
+    revision_id: str | None = None
+    row_version: int = Field(default=0, ge=0)
+    cancel_epoch: int = Field(default=0, ge=0)
+    deliverable: bool = False
+
+    @model_validator(mode="after")
+    def validate_execution_contract(self) -> AgentTeamExecutionContract:
+        if self.execution_class == AgentTeamExecutionClass.FAKE:
+            if self.evidence_level == AgentTeamEvidenceLevel.VERIFIED:
+                raise ValueError("Fake execution cannot claim verified evidence.")
+            if self.evidence_verdict == AgentTeamEvidenceVerdict.VERIFIED:
+                raise ValueError("Fake execution cannot claim a verified verdict.")
+            if self.deliverable:
+                raise ValueError("Fake execution cannot be marked deliverable.")
+        if self.execution_class == AgentTeamExecutionClass.SANDBOX_VERIFIED:
+            if not self.sandbox_id:
+                raise ValueError("Sandbox-verified execution requires a sandbox_id.")
+            if not is_verified_execution(
+                self.execution_class,
+                self.evidence_level,
+                self.evidence_verdict,
+            ):
+                raise ValueError("Sandbox-verified execution requires verified evidence.")
+        if self.evidence_verdict == AgentTeamEvidenceVerdict.VERIFIED and not is_verified_execution(
+            self.execution_class,
+            self.evidence_level,
+            self.evidence_verdict,
+        ):
+            raise ValueError("A verified verdict requires non-fake verified evidence.")
+        if self.deliverable and not is_execution_deliverable(
+            self.execution_class,
+            self.evidence_level,
+            self.evidence_verdict,
+        ):
+            raise ValueError("Deliverables require sandbox-verified execution evidence.")
+        return self
+
+
+class AgentTeamSession(AgentTeamExecutionContract):
     session_id: str
     root_thread_id: str
     user_id: str
@@ -110,7 +207,7 @@ class AgentTeamSession(BaseModel):
     skill_plan: dict[str, Any] = Field(default_factory=dict)
 
 
-class AgentTeamTask(BaseModel):
+class AgentTeamTask(AgentTeamExecutionContract):
     task_id: str
     session_id: str
     branch_id: str | None = None
@@ -170,7 +267,7 @@ class AgentTeamTask(BaseModel):
     updated_at: str
 
 
-class AgentTeamTaskOutput(BaseModel):
+class AgentTeamTaskOutput(AgentTeamExecutionContract):
     output_id: str
     task_id: str
     kind: AgentTeamArtifactKind = AgentTeamArtifactKind.HANDOFF
@@ -185,6 +282,73 @@ class AgentTeamTaskOutput(BaseModel):
     diff_summary: str | None = None
     workspace_status: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class TaskRun(AgentTeamExecutionContract):
+    task_run_id: str
+    task_id: str
+    session_id: str
+    status: AgentTeamTaskStatus = AgentTeamTaskStatus.PENDING
+    attempt: int = Field(default=0, ge=0)
+    started_at: str | None = None
+    finished_at: str | None = None
+    last_error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str | None = None
+
+
+class TaskCheckpoint(AgentTeamExecutionContract):
+    checkpoint_id: str
+    task_run_id: str
+    task_id: str | None = None
+    session_id: str | None = None
+    sequence: int = Field(default=0, ge=0)
+    checkpoint_type: str = "state"
+    summary: str | None = None
+    state: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class ToolExecution(AgentTeamExecutionContract):
+    tool_execution_id: str
+    task_run_id: str
+    task_id: str | None = None
+    session_id: str | None = None
+    tool_name: str
+    status: str = "pending"
+    request: dict[str, Any] = Field(default_factory=dict)
+    response: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    started_at: str | None = None
+    finished_at: str | None = None
+    created_at: str
+
+
+class EvidenceRecord(AgentTeamExecutionContract):
+    evidence_id: str
+    task_run_id: str | None = None
+    task_id: str | None = None
+    session_id: str | None = None
+    source_type: str = "execution"
+    summary: str = ""
+    artifact_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class TaskRunEvent(AgentTeamExecutionContract):
+    event_id: str
+    task_run_id: str
+    task_id: str | None = None
+    session_id: str | None = None
+    event_type: str
+    status: str | None = None
+    summary: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str
 
@@ -256,6 +420,10 @@ class AgentTeamMergeReviewEvent(BaseModel):
 
 __all__ = [
     "AgentTeamArtifactKind",
+    "AgentTeamEvidenceLevel",
+    "AgentTeamEvidenceVerdict",
+    "AgentTeamExecutionClass",
+    "AgentTeamExecutionContract",
     "AgentTeamFinalAnswerStatus",
     "AgentTeamMergeBundle",
     "AgentTeamMergeDecision",
@@ -269,5 +437,12 @@ __all__ = [
     "AgentTeamTaskOutput",
     "AgentTeamTaskRole",
     "AgentTeamTaskStatus",
+    "EvidenceRecord",
+    "TaskCheckpoint",
+    "TaskRun",
+    "TaskRunEvent",
+    "ToolExecution",
     "agent_role_for_team_task_role",
+    "is_execution_deliverable",
+    "is_verified_execution",
 ]

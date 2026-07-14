@@ -418,6 +418,12 @@ def create_chat_model(
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
+    request_timeout_seconds = (
+        settings.model_request_timeout_seconds
+        if settings is not None
+        else Settings().model_request_timeout_seconds
+    )
+    init_kwargs["timeout"] = max(float(request_timeout_seconds), 1.0)
     if resolved.backend_provider == "openai" and (
         resolved.provider == "moonshot"
         or _needs_openai_reasoning_passthrough(model_id, settings=settings)

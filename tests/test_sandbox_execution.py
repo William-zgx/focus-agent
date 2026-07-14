@@ -162,7 +162,13 @@ def test_docker_backend_reuses_thread_container_when_enabled(tmp_path):
             return subprocess.CompletedProcess(command, 0, "container-id\n", "")
         if command[1] == "exec":
             assert sandbox_mount is not None
+            runner_container_path = command[-1]
+            request_container_path = _docker_exec_env_value(command, "SANDBOX_REQUEST")
             output_container_path = _docker_exec_env_value(command, "SANDBOX_OUTPUT")
+            assert runner_container_path.startswith("/sandbox/runs/")
+            assert runner_container_path.endswith("/sandbox_runner.py")
+            assert (sandbox_mount / runner_container_path.removeprefix("/sandbox/")).is_file()
+            assert (sandbox_mount / request_container_path.removeprefix("/sandbox/")).is_file()
             assert output_container_path.startswith("/sandbox/")
             output_path = sandbox_mount / output_container_path.removeprefix("/sandbox/")
             output_path.mkdir(parents=True, exist_ok=True)
@@ -211,6 +217,84 @@ def test_docker_backend_reuses_thread_container_when_enabled(tmp_path):
     assert first.sandbox_id == second.sandbox_id
     assert first.policy["container_reuse"] is True
     assert second.policy["container_reuse"] is True
+
+
+def test_copy_discard_uses_fresh_container_runner_for_each_run_with_same_sandbox_id(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tracked_file = workspace / "tracked.txt"
+    tracked_file.write_text("original\n", encoding="utf-8")
+    run_ids = iter(["copy-discard-1", "copy-discard-2"])
+    commands: list[list[str]] = []
+
+    def fake_docker_run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        del timeout
+        commands.append(command)
+        if command[1] == "run":
+            runner_path = _volume_host_path(command, "/sandbox_runner.py")
+            request_path = _volume_host_path(command, "/sandbox_request.json")
+            sandbox_workspace = _volume_host_path(command, "/workspace")
+            sandbox_output = _volume_host_path(command, "/sandbox_output")
+            assert runner_path.is_file()
+            assert request_path.is_file()
+            assert json.loads(request_path.read_text(encoding="utf-8"))["sandbox_id"] == "shared"
+            sandbox_workspace.joinpath("tracked.txt").write_text(
+                "sandbox mutation\n",
+                encoding="utf-8",
+            )
+            sandbox_output.joinpath("result.json").write_text(
+                json.dumps(
+                    {
+                        "exit_code": 0,
+                        "stdout": f"{request_path.parent.name}\n",
+                        "stderr": "",
+                        "timed_out": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(f"unexpected docker command: {command}")
+
+    backend = DockerSandboxBackend(
+        image="focus-agent-test:latest",
+        docker_runner=fake_docker_run,
+        run_id_factory=lambda: next(run_ids),
+        reuse_containers=True,
+    )
+    request = SandboxExecutionRequest(
+        workspace_root=workspace,
+        command=["python", "--version"],
+        timeout_seconds=30,
+        sandbox_id="shared",
+        workspace_mode="copy_discard",
+    )
+    first = backend.run(request)
+    second = backend.run(request)
+
+    run_commands = [command for command in commands if command[1] == "run"]
+    assert len(run_commands) == 2
+    assert not any(command[1] == "exec" for command in commands)
+    assert all("--rm" in command for command in run_commands)
+    assert all("--read-only" in command for command in run_commands)
+    assert [command[-2:] for command in run_commands] == [
+        ["python", "/sandbox_runner.py"],
+        ["python", "/sandbox_runner.py"],
+    ]
+    assert first.stdout == "copy-discard-1\n"
+    assert second.stdout == "copy-discard-2\n"
+    assert first.policy["container_reuse"] is False
+    assert second.policy["container_reuse"] is False
+    assert first.workspace_mode == second.workspace_mode == "copy_discard"
+    assert tracked_file.read_text(encoding="utf-8") == "original\n"
+
+
+def test_reuse_containers_environment_flag_disables_thread_container_reuse(monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS", "0")
+
+    backend = DockerSandboxBackend()
+
+    assert backend.reuse_containers is False
 
 
 def test_docker_backend_rebuilds_reusable_container_when_exec_finds_stopped_container(

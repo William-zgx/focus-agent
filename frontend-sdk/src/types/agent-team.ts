@@ -81,6 +81,102 @@ export interface FocusAgentAgentTeamRunMetadata {
   max_parallel_runs?: number;
 }
 
+export interface FocusAgentAgentTeamReadinessCapabilities {
+  task_run_queries: boolean;
+  evidence_queries: boolean;
+  revision_commands: boolean;
+}
+
+export interface FocusAgentAgentTeamReadiness {
+  status: "ready" | "disabled" | "degraded";
+  ready: boolean;
+  enabled: boolean;
+  service_available: boolean;
+  capabilities: FocusAgentAgentTeamReadinessCapabilities;
+  detail?: string | null;
+}
+
+export interface FocusAgentAgentTeamTaskRun {
+  task_run_id: string;
+  task_id: string;
+  session_id: string;
+  status: FocusAgentAgentTeamTaskStatus;
+  attempt: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+  last_error?: string | null;
+  execution_profile?: string | null;
+  execution_class: string;
+  evidence_level: string;
+  evidence_verdict: string;
+  evidence_summary?: string | null;
+  sandbox_id?: string | null;
+  revision_id?: string | null;
+  row_version: number;
+  cancel_epoch: number;
+  deliverable: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface FocusAgentAgentTeamTaskRunResponse {
+  task_run: FocusAgentAgentTeamTaskRun;
+}
+
+export interface FocusAgentAgentTeamTaskRunListResponse {
+  items: FocusAgentAgentTeamTaskRun[];
+  count: number;
+}
+
+export interface FocusAgentAgentTeamEvidence {
+  evidence_id: string;
+  task_run_id?: string | null;
+  task_id?: string | null;
+  session_id?: string | null;
+  source_type: string;
+  summary: string;
+  artifact_id?: string | null;
+  execution_profile?: string | null;
+  execution_class: string;
+  evidence_level: string;
+  evidence_verdict: string;
+  evidence_summary?: string | null;
+  sandbox_id?: string | null;
+  revision_id?: string | null;
+  row_version: number;
+  cancel_epoch: number;
+  deliverable: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface FocusAgentAgentTeamEvidenceListResponse {
+  items: FocusAgentAgentTeamEvidence[];
+  count: number;
+}
+
+export type FocusAgentAgentTeamRevisionCommand =
+  | "create"
+  | "activate"
+  | "supersede"
+  | "cancel"
+  | "resume";
+
+export interface FocusAgentAgentTeamRevisionCommandRequest {
+  command: FocusAgentAgentTeamRevisionCommand;
+  revision_id?: string | null;
+  parent_revision_id?: string | null;
+  task_ids?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface FocusAgentAgentTeamRevisionCommandResponse {
+  command: FocusAgentAgentTeamRevisionCommand;
+  session_id: string;
+  outcome: Record<string, unknown>;
+}
+
 export interface FocusAgentAgentTeamSession {
   session_id: string;
   root_thread_id: string;

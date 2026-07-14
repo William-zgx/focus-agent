@@ -97,3 +97,60 @@ def test_lifecycle_helpers_report_failures_and_close_the_stream():
         ]
 
     asyncio.run(scenario())
+
+
+def test_lifecycle_helpers_mark_timeout_runs_with_timeout_status():
+    class _Manager:
+        def __init__(self):
+            self.record = SimpleNamespace(abort_event=asyncio.Event())
+            self.statuses = []
+
+        def get(self, run_id):
+            assert run_id == "run-timeout"
+            return self.record
+
+        async def set_status(self, run_id, status, **kwargs):
+            self.statuses.append((run_id, status, kwargs))
+
+    async def scenario():
+        manager = _Manager()
+        published = []
+        recorded = []
+
+        async def publish(event_name, **data):
+            published.append((event_name, data))
+
+        interrupted = await lifecycle._handle_stream_exception(
+            runtime=SimpleNamespace(run_manager=manager),
+            chat=SimpleNamespace(),
+            run_id="run-timeout",
+            thread_id="thread-timeout",
+            user_id="user-1",
+            context=SimpleNamespace(root_thread_id="root-timeout"),
+            branch_meta={"branch": "main"},
+            trace_correlation=None,
+            publish=publish,
+            exc=TimeoutError("Graph stream was idle for 45 seconds."),
+            kind="chat.turn",
+            final_payload={"messages": []},
+            initial_message_count=0,
+            initial_llm_calls=0,
+            started_at=0,
+            safe_chat_values=lambda **kwargs: {},
+            safe_failed_thread_state=lambda **kwargs: {"thread_id": "thread-timeout"},
+            record_harness_turn=lambda **kwargs: recorded.append(kwargs),
+        )
+
+        assert interrupted is False
+        assert manager.statuses == [
+            (
+                "run-timeout",
+                RunStatus.TIMEOUT,
+                {"error": "Graph stream was idle for 45 seconds."},
+            )
+        ]
+        assert recorded[0]["status"] == "timeout"
+        assert published[0][0] == "run.failed"
+        assert published[0][1]["error"] == "TimeoutError"
+
+    asyncio.run(scenario())

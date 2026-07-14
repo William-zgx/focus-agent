@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain.messages import AIMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool as langchain_tool
 
 from focus_agent.config import Settings
@@ -19,7 +19,11 @@ from focus_agent.engine.graph_builder import (
     _parse_reflection_json,
     _should_plan,
 )
-from focus_agent.engine.graph_plan_nodes import _read_only_skill_tool_request_satisfied
+from focus_agent.engine.graph_plan_nodes import (
+    _final_answer_is_ready_for_completion,
+    _read_only_skill_tool_request_satisfied,
+    make_reflect_node,
+)
 
 from .runner import run_case
 from .schema import EvalCase
@@ -176,6 +180,50 @@ def test_reflect_skips_replan_when_read_only_skill_tools_are_satisfied():
         trajectory_tools=["skills_search", "skill_view"],
         last_ai="systematic-debugging summary",
     )
+
+
+def test_reflect_skips_model_when_final_answer_is_ready():
+    state = {
+        "plan": Plan(steps=[PlanStep(id="s1", goal="核对官方来源")]),
+        "plan_meta": {},
+        "pending_tool_action": None,
+        "task_outcome": {"status": "answered"},
+        "messages": [
+            HumanMessage(content="请核对官方来源。"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "official-source",
+                        "name": "web_fetch",
+                        "args": {"url": "https://docs.python.org/3/whatsnew/3.13.html"},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content='{"title":"What’s New In Python 3.13"}',
+                tool_call_id="official-source",
+            ),
+            AIMessage(content="已基于官方来源完成核对。"),
+        ],
+    }
+
+    assert _final_answer_is_ready_for_completion(
+        state,
+        last_ai="已基于官方来源完成核对。",
+    )
+
+    def fail_model_for(*_args):
+        raise AssertionError("ready final answers must not trigger another reflection model call")
+
+    result = make_reflect_node(
+        settings=Settings(),
+        model_for=fail_model_for,
+    )(state, runtime=object())
+
+    assert result["reflection"].status == "done"
+    assert result["plan_meta"]["reflect_skipped"] == "final_answer_ready"
+    assert result["plan_meta"]["replan_requested"] is False
 
 
 # ---- e2e with scripted model ----------------------------------------------

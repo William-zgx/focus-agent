@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
+    AgentTeamEvidenceLevel,
+    AgentTeamEvidenceVerdict,
     AgentTeamRecommendedAction,
     AgentTeamSession,
     AgentTeamSessionStatus,
@@ -434,6 +436,17 @@ class AgentTeamSessionTaskMixin:
         started_at: str | None = None,
         finished_at: str | None = None,
         last_error: str | None = None,
+        task_run_id: str | None = None,
+        sandbox_id: str | None = None,
+        execution_profile: str | None = None,
+        execution_class: object | None = None,
+        evidence_level: object | None = None,
+        evidence_verdict: object | None = None,
+        evidence_summary: str | None = None,
+        revision_id: str | None = None,
+        row_version: int | None = None,
+        cancel_epoch: int | None = None,
+        deliverable: bool | None = None,
     ) -> AgentTeamTask:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -508,6 +521,28 @@ class AgentTeamSessionTaskMixin:
                 updates["finished_at"] = finished_at
             if last_error is not None:
                 updates["last_error"] = last_error
+            if task_run_id is not None:
+                updates["task_run_id"] = task_run_id
+            if sandbox_id is not None:
+                updates["sandbox_id"] = sandbox_id
+            if execution_profile is not None:
+                updates["execution_profile"] = execution_profile
+            if execution_class is not None:
+                updates["execution_class"] = execution_class
+            if evidence_level is not None:
+                updates["evidence_level"] = evidence_level
+            if evidence_verdict is not None:
+                updates["evidence_verdict"] = evidence_verdict
+            if evidence_summary is not None:
+                updates["evidence_summary"] = evidence_summary
+            if revision_id is not None:
+                updates["revision_id"] = revision_id
+            if row_version is not None:
+                updates["row_version"] = max(0, int(row_version))
+            if cancel_epoch is not None:
+                updates["cancel_epoch"] = max(0, int(cancel_epoch))
+            if deliverable is not None:
+                updates["deliverable"] = bool(deliverable)
             updated = task.model_copy(update=updates)
             self.repository.save_task(updated)
             self._refresh_session_status(updated.session_id)
@@ -532,6 +567,17 @@ class AgentTeamSessionTaskMixin:
         workspace_status: str | None = None,
         risk_notes: list[str] | None = None,
         metadata: dict | None = None,
+        task_run_id: str | None = None,
+        sandbox_id: str | None = None,
+        execution_profile: str | None = None,
+        execution_class: object | None = None,
+        evidence_level: object | None = None,
+        evidence_verdict: object | None = None,
+        evidence_summary: str | None = None,
+        revision_id: str | None = None,
+        row_version: int | None = None,
+        cancel_epoch: int | None = None,
+        deliverable: bool | None = None,
     ) -> AgentTeamTaskOutput:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -551,6 +597,25 @@ class AgentTeamSessionTaskMixin:
                 workspace_status=workspace_status,
                 risk_notes=list(risk_notes or []),
                 metadata=dict(metadata or {}),
+                task_run_id=task_run_id,
+                sandbox_id=sandbox_id,
+                execution_profile=execution_profile,
+                execution_class=execution_class,
+                evidence_level=(
+                    evidence_level
+                    if evidence_level is not None
+                    else AgentTeamEvidenceLevel.SYNTHETIC
+                ),
+                evidence_verdict=(
+                    evidence_verdict
+                    if evidence_verdict is not None
+                    else AgentTeamEvidenceVerdict.UNKNOWN
+                ),
+                evidence_summary=evidence_summary,
+                revision_id=revision_id,
+                row_version=max(0, int(row_version)) if row_version is not None else 0,
+                cancel_epoch=max(0, int(cancel_epoch)) if cancel_epoch is not None else 0,
+                deliverable=bool(deliverable) if deliverable is not None else False,
                 created_at=_now(),
             )
             self.repository.add_task_output(output)
@@ -655,7 +720,9 @@ class AgentTeamService(
         self.executor = executor
         self.coordination_backend = coordination_backend or create_in_memory_coordination_backend()
         self.background_work = background_work
-        self.workspace_service = workspace_service or AgentTeamWorkspaceService()
+        self.workspace_service = workspace_service or AgentTeamWorkspaceService(
+            repo_root=getattr(settings, "workspace_root", None)
+        )
         self.retrieval_index = retrieval_index
         self.memory_embedding_provider = memory_embedding_provider
         self._lock = RLock()

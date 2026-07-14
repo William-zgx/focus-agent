@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption clean
+.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption agent-team-evidence clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -79,6 +79,7 @@ help:
 		'  make ui-smoke-observability Run the real-browser observability UI smoke test' \
 		'  make ui-smoke-productivity Run the productivity source-level UI smoke test' \
 		'  make ui-smoke-agent-team-adoption Run the Agent Team adoption UI smoke test' \
+		'  make agent-team-evidence Run deterministic Agent Team worktree/chat/UI evidence' \
 		'  make clean             Remove Python/pytest caches'
 
 .venv/bin/python:
@@ -299,6 +300,10 @@ ui-smoke-productivity: node_modules
 
 ui-smoke-agent-team-adoption: node_modules
 	$(PNPM) --dir $(WEB_DIR) smoke:agent-team-adoption
+
+agent-team-evidence: .venv/bin/python
+	$(PYTEST) -q tests/integration/agent_team/test_real_worktree_sandbox.py tests/integration/agent_team/test_chat_isolation.py tests/test_agent_team_evidence_workflow.py
+	$(PYTHON) scripts/agent_team_ui_smoke.py --mode deterministic
 
 clean:
 	rm -rf .pytest_cache

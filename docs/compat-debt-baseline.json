@@ -7,13 +7,13 @@
     "legacy_template": "Keep the wire value while old sessions exist; stop new writes before schema removal."
   },
   "max_by_kind": {
-    "compatibility_shim": 142,
+    "compatibility_shim": 141,
     "deprecated_route": 7,
     "legacy_override_or_monkeypatch": 11,
     "legacy_state_or_mirror": 3,
     "legacy_template": 7
   },
-  "max_total": 170,
+  "max_total": 169,
   "schema_version": 2,
   "item_ids": [
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/agent_context_engineering.py:focus_agent.delegation.context_engineering",
@@ -38,7 +38,6 @@
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/engine/graph_tool_executor_node.py:.graph.tool_execution",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/engine/graph_tool_policy.py:.graph.policy",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/engine/graph_tool_policy_intent.py:.graph.policy_intent",
-    "structure:compatibility_shim:python_import_star_facade:src/focus_agent/services/agent_team/run.py:focus_agent.services.agent_team_merge,focus_agent.services.agent_team_run",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/services/agent_team_planning.py:focus_agent.services.agent_team.planning",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/services/branch_lifecycle.py:focus_agent.services.branches.service",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/services/branch_memory_promotion.py:focus_agent.services.branches.merge",

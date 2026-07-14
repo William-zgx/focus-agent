@@ -43,12 +43,15 @@ def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
     if not main:
         return ""
     sources = _web_payload_sources(payloads)
+    fetched_pages = _fetched_page_payloads(payloads)
     if chinese:
-        answer = f"根据搜索结果，{main}"
+        answer = f"{'根据已抓取页面' if fetched_pages else '根据搜索结果'}，{main}"
         if sources:
             answer += "\n\n来源：\n" + "\n".join(f"- {source}" for source in sources[:4])
         return answer
-    answer = f"Based on the search results, {main}"
+    answer = (
+        f"{'Based on fetched pages' if fetched_pages else 'Based on the search results'}, {main}"
+    )
     if sources:
         answer += "\n\nSources:\n" + "\n".join(f"- {source}" for source in sources[:4])
     return answer
@@ -117,6 +120,9 @@ def _web_payload_main_answer(
         weather = _chinese_weather_summary_from_payloads(payloads)
         if weather:
             return weather
+    fetched_page_summary = _fetched_page_summary(_fetched_page_payloads(payloads), chinese=chinese)
+    if fetched_page_summary:
+        return fetched_page_summary
     for payload in payloads:
         answer = str(payload.get("answer") or "").strip()
         if answer:
@@ -145,6 +151,66 @@ def _looks_like_internal_web_summary(value: str) -> bool:
             or "prompt reference" in normalized
         )
     )
+
+
+def _fetched_page_payloads(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        payload
+        for payload in payloads
+        if str(payload.get("final_url") or "").strip()
+        or (
+            str(payload.get("url") or "").strip()
+            and "content" in payload
+            and not isinstance(payload.get("results"), list)
+        )
+    ]
+
+
+def _fetched_page_summary(payloads: list[dict[str, Any]], *, chinese: bool) -> str:
+    if not payloads:
+        return ""
+    lines: list[str] = []
+    for payload in payloads[:3]:
+        title = str(payload.get("title") or "").strip()
+        url = str(payload.get("final_url") or payload.get("url") or "").strip()
+        label = title or url or "抓取页面"
+        excerpt = _representative_fetch_excerpt(str(payload.get("content") or ""))
+        if excerpt:
+            if chinese:
+                lines.append(f"{label} 的可用正文摘录：{excerpt}")
+            else:
+                lines.append(f"Usable excerpt from {label}: {excerpt}")
+            continue
+        if chinese:
+            lines.append(f"{label} 已抓取，但提取文本未包含可安全复述的正文。")
+        else:
+            lines.append(f"{label} was fetched, but the extracted text lacks a safe body excerpt.")
+    return "\n".join(lines)
+
+
+def _representative_fetch_excerpt(content: str) -> str:
+    text = " ".join(str(content or "").split())
+    if not text:
+        return ""
+    lowered = text.lower()
+    for keyword in (
+        "experimental support",
+        "free-threaded",
+        "temporary redirect",
+        "must not",
+        "must use",
+        "same request method",
+        "same method",
+    ):
+        index = lowered.find(keyword)
+        if index < 0:
+            continue
+        start = max(
+            0,
+            max(text.rfind(marker, 0, index) for marker in (".", "。", "¶")) + 1,
+        )
+        return _truncate_inline(text[start : index + 360], max_chars=420)
+    return ""
 
 
 def _looks_like_weather_query(user_query: str, payloads: list[dict[str, Any]]) -> bool:
@@ -208,7 +274,19 @@ def _first_result_text(payload: dict[str, Any], *, prefer_chinese: bool) -> str:
 
 def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
     sources: list[str] = []
-    for payload in payloads:
+    fetched_pages = _fetched_page_payloads(payloads)
+    source_payloads = fetched_pages or payloads
+    for payload in source_payloads:
+        title = _truncate_inline(str(payload.get("title") or "").strip(), max_chars=80)
+        url = str(payload.get("final_url") or payload.get("url") or "").strip()
+        domain = _source_domain(url)
+        if title and domain and url:
+            sources.append(f"{title}（{domain}）: {url}")
+        elif url:
+            sources.append(url)
+        elif title:
+            sources.append(title)
+    for payload in source_payloads:
         reference = str(payload.get("reference") or "").strip()
         if reference:
             sources.extend(_reference_sources(reference))
@@ -221,8 +299,8 @@ def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
             if not title and not url:
                 continue
             domain = _source_domain(url)
-            if title and domain:
-                sources.append(f"{title}（{domain}）")
+            if title and domain and url:
+                sources.append(f"{title}（{domain}）: {url}")
             else:
                 sources.append(title or url)
     return list(dict.fromkeys(sources))
@@ -282,6 +360,9 @@ __all__ = [
     "_looks_like_live_web_fallback_payload",
     "_web_payload_main_answer",
     "_looks_like_internal_web_summary",
+    "_fetched_page_payloads",
+    "_fetched_page_summary",
+    "_representative_fetch_excerpt",
     "_looks_like_weather_query",
     "_contains_weather_marker",
     "_chinese_weather_summary_from_payloads",

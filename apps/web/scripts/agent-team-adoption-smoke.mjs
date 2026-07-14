@@ -23,6 +23,10 @@ const files = {
     resolve(appRoot, "src/features/agent-team/agent-team-workbench.tsx"),
     "utf8",
   ),
+  evidenceTab: readFileSync(
+    resolve(appRoot, "src/features/agent-team/agent-team-evidence-tab.tsx"),
+    "utf8",
+  ),
   adoption: readFileSync(
     resolve(appRoot, "src/features/agent-team/agent-team-workbench-adoption.tsx"),
     "utf8",
@@ -47,9 +51,9 @@ const files = {
 
 const expectations = [
   {
-    name: "agent team workbench renders adoption surface",
+    name: "agent team evidence tab renders adoption surface",
     pass:
-      files.agentTeamWorkbench.includes("AgentTeamAdoptionWorkbench") &&
+      files.evidenceTab.includes("AgentTeamAdoptionWorkbench") &&
       files.adoption.includes('data-smoke="agent-team-adoption"'),
   },
   {

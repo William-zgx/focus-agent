@@ -181,12 +181,15 @@ async def _handle_stream_exception(
         mark_handoff_outcome(
             runtime=runtime,
             decision=handoff_decision,
-            run_status=RunStatus.ERROR.value,
+            run_status=(
+                RunStatus.TIMEOUT.value if isinstance(exc, TimeoutError) else RunStatus.ERROR.value
+            ),
             run_id=run_id,
             message=handoff_message,
             error=str(exc),
         )
-    await runtime.run_manager.set_status(run_id, RunStatus.ERROR, error=str(exc))
+    run_status = RunStatus.TIMEOUT if isinstance(exc, TimeoutError) else RunStatus.ERROR
+    await runtime.run_manager.set_status(run_id, run_status, error=str(exc))
     failed_values = safe_chat_values(chat=chat, thread_id=thread_id)
     failed_thread_state = safe_failed_thread_state(
         chat=chat,
@@ -202,7 +205,7 @@ async def _handle_stream_exception(
         user_id=user_id,
         root_thread_id=context.root_thread_id,
         kind=kind,
-        status="failed",
+        status="timeout" if run_status is RunStatus.TIMEOUT else "failed",
         final_values=failed_values,
         initial_message_count=initial_message_count,
         initial_llm_calls=initial_llm_calls,

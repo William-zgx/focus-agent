@@ -501,7 +501,28 @@ const agentTeamRoutes =
 					path: "/agent-team/$sessionId",
 					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
 				});
-				return [agentTeamRoute, agentTeamSessionRoute];
+				const agentTeamTasksRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/agent-team/$sessionId/tasks",
+					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+				});
+				const agentTeamApprovalsRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/agent-team/$sessionId/approvals",
+					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+				});
+				const agentTeamEvidenceRoute = createRoute({
+					getParentRoute: () => rootRoute,
+					path: "/agent-team/$sessionId/evidence",
+					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+				});
+				return [
+					agentTeamRoute,
+					agentTeamSessionRoute,
+					agentTeamTasksRoute,
+					agentTeamApprovalsRoute,
+					agentTeamEvidenceRoute,
+				];
 			})();
 
 const productivityRoutes =

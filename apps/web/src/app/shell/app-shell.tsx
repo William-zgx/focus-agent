@@ -310,6 +310,7 @@ export function AppShell({ children }: PropsWithChildren) {
 					<div className="fa-sidebar-dock">
 						<AppShellGlobalNavigation
 							chatNavTarget={chatNavTarget}
+							isAgentTeamRoute={isAgentTeamRoute}
 							isChatRoute={isChatRoute}
 							isChineseUi={isChineseUi}
 							isProductivityRoute={isProductivityRoute}

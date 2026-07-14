@@ -15,6 +15,12 @@ import type {
   FocusAgentAgentTeamRunTaskResponse,
   FocusAgentAgentTeamTaskRunRequest,
   FocusAgentAgentTeamRunMetadata,
+  FocusAgentAgentTeamReadiness,
+  FocusAgentAgentTeamTaskRun,
+  FocusAgentAgentTeamTaskRunListResponse,
+  FocusAgentAgentTeamEvidenceListResponse,
+  FocusAgentAgentTeamRevisionCommandRequest,
+  FocusAgentAgentTeamRevisionCommandResponse,
   FocusAgentAgentTeamMergeBundle,
   FocusAgentAgentTeamCreateMergeReviewRequest,
   FocusAgentAgentTeamMergeReviewApplyRequest,
@@ -61,6 +67,78 @@ type AgentTeamTaskActionResponse = Omit<AgentTeamSessionActionResponse, "session
   session?: FocusAgentAgentTeamSession | null;
   task?: FocusAgentAgentTeamTask | null;
 };
+
+async function getAgentTeamReadiness(
+  this: FocusAgentEndpointContext,
+): Promise<FocusAgentAgentTeamReadiness> {
+  return this.requestJson<FocusAgentAgentTeamReadiness>(
+    "/v2/agent-team/readiness",
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function getAgentTeamTaskRun(
+  this: FocusAgentEndpointContext,
+  taskRunId: string,
+): Promise<FocusAgentAgentTeamTaskRun> {
+  const response = await this.requestJson<{ task_run: FocusAgentAgentTeamTaskRun }>(
+    `/v2/agent-team/task-runs/${encodeURIComponent(taskRunId)}`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+  return response.task_run;
+}
+
+async function listAgentTeamTaskRuns(
+  this: FocusAgentEndpointContext,
+  taskId: string,
+): Promise<FocusAgentAgentTeamTaskRunListResponse> {
+  return this.requestJson<FocusAgentAgentTeamTaskRunListResponse>(
+    `/v2/agent-team/tasks/${encodeURIComponent(taskId)}/runs`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function listAgentTeamEvidence(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+): Promise<FocusAgentAgentTeamEvidenceListResponse> {
+  return this.requestJson<FocusAgentAgentTeamEvidenceListResponse>(
+    `/v2/agent-team/sessions/${encodeURIComponent(sessionId)}/evidence`,
+    {
+      method: "GET",
+      headers: {},
+    },
+    true,
+  );
+}
+
+async function executeAgentTeamRevisionCommand(
+  this: FocusAgentEndpointContext,
+  sessionId: string,
+  request: FocusAgentAgentTeamRevisionCommandRequest,
+): Promise<FocusAgentAgentTeamRevisionCommandResponse> {
+  return this.requestJson<FocusAgentAgentTeamRevisionCommandResponse>(
+    `/v2/agent-team/sessions/${encodeURIComponent(sessionId)}/revisions/commands`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    true,
+  );
+}
 
 function normalizeAgentTeamSessionActionResponse<T extends AgentTeamSessionActionResponse>(
   response: T,
@@ -594,6 +672,11 @@ async function captureAgentTeamMergeReview(
 }
 
 export interface AgentTeamEndpoints {
+  getAgentTeamReadiness: OmitThisParameter<typeof getAgentTeamReadiness>;
+  getAgentTeamTaskRun: OmitThisParameter<typeof getAgentTeamTaskRun>;
+  listAgentTeamTaskRuns: OmitThisParameter<typeof listAgentTeamTaskRuns>;
+  listAgentTeamEvidence: OmitThisParameter<typeof listAgentTeamEvidence>;
+  executeAgentTeamRevisionCommand: OmitThisParameter<typeof executeAgentTeamRevisionCommand>;
   createAgentTeamSession: OmitThisParameter<typeof createAgentTeamSession>;
   listAgentTeamSessions: OmitThisParameter<typeof listAgentTeamSessions>;
   getAgentTeamSession: OmitThisParameter<typeof getAgentTeamSession>;
@@ -626,6 +709,11 @@ export interface AgentTeamEndpoints {
 }
 
 const agentTeamEndpoints: FocusAgentEndpointMethodMap<AgentTeamEndpoints> = {
+  getAgentTeamReadiness,
+  getAgentTeamTaskRun,
+  listAgentTeamTaskRuns,
+  listAgentTeamEvidence,
+  executeAgentTeamRevisionCommand,
   createAgentTeamSession,
   listAgentTeamSessions,
   getAgentTeamSession,

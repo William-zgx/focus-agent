@@ -61,7 +61,7 @@ flowchart LR
 - [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 - [frontend-visual-system.md](frontend-visual-system.md)：Web App token、primitive、CSS module ownership、style governance、bundle budget、截图/a11y 验证口径。
 - [architecture-debt-baseline.json](architecture-debt-baseline.json)：architecture gate 的 800 行阈值；当前没有 grandfathered large-file debt。
-- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与 2.0 exit criteria；当前总量为 170，1.x public facade 仍保留。
+- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与 2.0 exit criteria；当前总量为 169，1.x public facade 仍保留。
 
 ## Core Topics / 核心专题
 

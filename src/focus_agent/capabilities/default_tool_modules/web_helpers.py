@@ -58,9 +58,11 @@ class _ReadableHTMLExtractor(HTMLParser):
     def __init__(self):
         super().__init__()
         self.title_parts: list[str] = []
-        self.text_parts: list[str] = []
+        self._content_text_parts: list[str] = []
+        self._fallback_text_parts: list[str] = []
         self._skip_depth = 0
         self._in_title = False
+        self._content_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         del attrs
@@ -69,8 +71,12 @@ class _ReadableHTMLExtractor(HTMLParser):
             self._skip_depth += 1
         elif lowered == "title":
             self._in_title = True
-        elif lowered in {"p", "div", "br", "li", "section", "article", "h1", "h2", "h3"}:
-            self.text_parts.append("\n")
+        elif lowered in {"main", "article"}:
+            self._content_depth += 1
+        if lowered in {"p", "div", "br", "li", "section", "article", "h1", "h2", "h3"}:
+            self._fallback_text_parts.append("\n")
+            if self._content_depth:
+                self._content_text_parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         lowered = tag.lower()
@@ -78,6 +84,8 @@ class _ReadableHTMLExtractor(HTMLParser):
             self._skip_depth -= 1
         elif lowered == "title":
             self._in_title = False
+        elif lowered in {"main", "article"} and self._content_depth:
+            self._content_depth -= 1
 
     def handle_data(self, data: str) -> None:
         text = data.strip()
@@ -86,7 +94,9 @@ class _ReadableHTMLExtractor(HTMLParser):
         if self._in_title:
             self.title_parts.append(text)
         if self._skip_depth == 0 and not self._in_title:
-            self.text_parts.append(text)
+            self._fallback_text_parts.append(text)
+            if self._content_depth:
+                self._content_text_parts.append(text)
 
     @property
     def title(self) -> str:
@@ -94,7 +104,10 @@ class _ReadableHTMLExtractor(HTMLParser):
 
     @property
     def text(self) -> str:
-        return _collapse_whitespace("\n".join(self.text_parts))
+        content = _collapse_whitespace("\n".join(self._content_text_parts))
+        if content:
+            return content
+        return _collapse_whitespace("\n".join(self._fallback_text_parts))
 
 
 def _is_blocked_fetch_host(host: str | None) -> bool:

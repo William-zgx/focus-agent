@@ -423,13 +423,8 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in android_build_script
 
     env_text = (web_root / "src" / "shared" / "config" / "env.ts").read_text()
-    assert re.search(
-        r"agentTeam:\s*envFlag\(\s*"
-        r"import\.meta\.env\.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH,\s*"
-        r"!isAndroidTarget,\s*\)",
-        env_text,
-        re.S,
-    )
+    assert 'import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "true"' in env_text
+    assert "agentTeam: !isAndroidTarget && isAgentTeamEnabled" in env_text
     assert re.search(
         r"agentGovernance:\s*envFlag\(\s*"
         r"import\.meta\.env\.VITE_FOCUS_AGENT_ENABLE_AGENT_GOVERNANCE,\s*"

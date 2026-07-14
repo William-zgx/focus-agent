@@ -2469,6 +2469,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/agent-team/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Team V2 Readiness */
+        get: operations["get_agent_team_v2_readiness_v2_agent_team_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agent-team/sessions/{session_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agent Team Session Evidence V2 */
+        get: operations["list_agent_team_session_evidence_v2_v2_agent_team_sessions__session_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agent-team/sessions/{session_id}/revisions/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Agent Team Revision Command V2 */
+        post: operations["execute_agent_team_revision_command_v2_v2_agent_team_sessions__session_id__revisions_commands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agent-team/task-runs/{task_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Team Task Run V2 */
+        get: operations["get_agent_team_task_run_v2_v2_agent_team_task_runs__task_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agent-team/tasks/{task_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agent Team Task Runs V2 */
+        get: operations["list_agent_team_task_runs_v2_v2_agent_team_tasks__task_id__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -4270,6 +4355,95 @@ export interface components {
             /** Tasks */
             tasks?: components["schemas"]["AgentTeamTaskContract"][];
         };
+        /** AgentTeamEvidenceContract */
+        AgentTeamEvidenceContract: {
+            /** Artifact Id */
+            artifact_id?: string | null;
+            /**
+             * Cancel Epoch
+             * @default 0
+             */
+            cancel_epoch: number;
+            /** Created At */
+            created_at: string;
+            /**
+             * Deliverable
+             * @default false
+             */
+            deliverable: boolean;
+            /** Evidence Id */
+            evidence_id: string;
+            /**
+             * Evidence Level
+             * @default synthetic
+             */
+            evidence_level: string;
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /**
+             * Evidence Verdict
+             * @default unknown
+             */
+            evidence_verdict: string;
+            /** Execution Class */
+            execution_class?: string | null;
+            /** Execution Profile */
+            execution_profile?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Revision Id */
+            revision_id?: string | null;
+            /**
+             * Row Version
+             * @default 0
+             */
+            row_version: number;
+            /** Sandbox Id */
+            sandbox_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * Source Type
+             * @default execution
+             */
+            source_type: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Task Run Id */
+            task_run_id?: string | null;
+        };
+        /**
+         * AgentTeamEvidenceLevel
+         * @enum {string}
+         */
+        AgentTeamEvidenceLevel: "synthetic" | "model" | "worktree" | "sandbox" | "verified";
+        /** AgentTeamEvidenceListResponse */
+        AgentTeamEvidenceListResponse: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["AgentTeamEvidenceContract"][];
+        };
+        /**
+         * AgentTeamEvidenceVerdict
+         * @enum {string}
+         */
+        AgentTeamEvidenceVerdict: "unknown" | "verified" | "rejected" | "inconclusive";
+        /**
+         * AgentTeamExecutionClass
+         * @enum {string}
+         */
+        AgentTeamExecutionClass: "fake" | "model_text" | "tool_agent" | "sandbox_verified";
         /** AgentTeamMergeBundleContract */
         AgentTeamMergeBundleContract: {
             /** Accepted Tasks */
@@ -4484,11 +4658,88 @@ export interface components {
              */
             task_count: number;
         };
+        /** AgentTeamReadinessCapabilities */
+        AgentTeamReadinessCapabilities: {
+            /**
+             * Evidence Queries
+             * @default false
+             */
+            evidence_queries: boolean;
+            /**
+             * Revision Commands
+             * @default false
+             */
+            revision_commands: boolean;
+            /**
+             * Task Run Queries
+             * @default false
+             */
+            task_run_queries: boolean;
+        };
+        /** AgentTeamReadinessResponse */
+        AgentTeamReadinessResponse: {
+            capabilities?: components["schemas"]["AgentTeamReadinessCapabilities"];
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /**
+             * Service Available
+             * @default false
+             */
+            service_available: boolean;
+            /**
+             * Status
+             * @default disabled
+             * @enum {string}
+             */
+            status: "ready" | "disabled" | "degraded";
+        };
         /**
          * AgentTeamRecommendedAction
          * @enum {string}
          */
         AgentTeamRecommendedAction: "merge" | "request_changes" | "split_followup" | "discard";
+        /** AgentTeamRevisionCommandRequest */
+        AgentTeamRevisionCommandRequest: {
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "create" | "activate" | "supersede" | "cancel" | "resume";
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Parent Revision Id */
+            parent_revision_id?: string | null;
+            /** Revision Id */
+            revision_id?: string | null;
+            /** Task Ids */
+            task_ids?: string[];
+        };
+        /** AgentTeamRevisionCommandResponse */
+        AgentTeamRevisionCommandResponse: {
+            /**
+             * Command
+             * @enum {string}
+             */
+            command: "create" | "activate" | "supersede" | "cancel" | "resume";
+            /** Outcome */
+            outcome?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+        };
         /** AgentTeamRunMetadata */
         AgentTeamRunMetadata: {
             /** Execution Mode */
@@ -4758,12 +5009,31 @@ export interface components {
             artifact_id?: string | null;
             /** Base Commit */
             base_commit?: string | null;
+            /**
+             * Cancel Epoch
+             * @default 0
+             */
+            cancel_epoch: number;
             /** Changed Files */
             changed_files?: string[];
             /** Created At */
             created_at: string;
+            /**
+             * Deliverable
+             * @default false
+             */
+            deliverable: boolean;
             /** Diff Summary */
             diff_summary?: string | null;
+            /** @default synthetic */
+            evidence_level: components["schemas"]["AgentTeamEvidenceLevel"];
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /** @default unknown */
+            evidence_verdict: components["schemas"]["AgentTeamEvidenceVerdict"];
+            execution_class?: components["schemas"]["AgentTeamExecutionClass"] | null;
+            /** Execution Profile */
+            execution_profile?: string | null;
             /** @default handoff */
             kind: components["schemas"]["AgentTeamArtifactKind"];
             /** Metadata */
@@ -4772,8 +5042,17 @@ export interface components {
             };
             /** Output Id */
             output_id: string;
+            /** Revision Id */
+            revision_id?: string | null;
             /** Risk Notes */
             risk_notes?: string[];
+            /**
+             * Row Version
+             * @default 0
+             */
+            row_version: number;
+            /** Sandbox Id */
+            sandbox_id?: string | null;
             /**
              * Summary
              * @default
@@ -4781,6 +5060,8 @@ export interface components {
             summary: string;
             /** Task Id */
             task_id: string;
+            /** Task Run Id */
+            task_run_id?: string | null;
             /** Test Evidence */
             test_evidence?: string[];
             /** Workspace Branch */
@@ -4806,6 +5087,85 @@ export interface components {
          * @enum {string}
          */
         AgentTeamTaskRole: "planner" | "architect" | "backend_executor" | "frontend_executor" | "test_engineer" | "reviewer" | "verifier" | "writer";
+        /** AgentTeamTaskRunContract */
+        AgentTeamTaskRunContract: {
+            /**
+             * Attempt
+             * @default 0
+             */
+            attempt: number;
+            /**
+             * Cancel Epoch
+             * @default 0
+             */
+            cancel_epoch: number;
+            /** Created At */
+            created_at: string;
+            /**
+             * Deliverable
+             * @default false
+             */
+            deliverable: boolean;
+            /**
+             * Evidence Level
+             * @default synthetic
+             */
+            evidence_level: string;
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /**
+             * Evidence Verdict
+             * @default unknown
+             */
+            evidence_verdict: string;
+            /** Execution Class */
+            execution_class?: string | null;
+            /** Execution Profile */
+            execution_profile?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Revision Id */
+            revision_id?: string | null;
+            /**
+             * Row Version
+             * @default 0
+             */
+            row_version: number;
+            /** Sandbox Id */
+            sandbox_id?: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /** @default pending */
+            status: components["schemas"]["AgentTeamTaskStatus"];
+            /** Task Id */
+            task_id: string;
+            /** Task Run Id */
+            task_run_id: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** AgentTeamTaskRunListResponse */
+        AgentTeamTaskRunListResponse: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Items */
+            items?: components["schemas"]["AgentTeamTaskRunContract"][];
+        };
+        /** AgentTeamTaskRunResponse */
+        AgentTeamTaskRunResponse: {
+            task_run: components["schemas"]["AgentTeamTaskRunContract"];
+        };
         /**
          * AgentTeamTaskStatus
          * @enum {string}
@@ -13182,6 +13542,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreadResolutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_team_v2_readiness_v2_agent_team_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamReadinessResponse"];
+                };
+            };
+        };
+    };
+    list_agent_team_session_evidence_v2_v2_agent_team_sessions__session_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamEvidenceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_agent_team_revision_command_v2_v2_agent_team_sessions__session_id__revisions_commands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTeamRevisionCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamRevisionCommandResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_team_task_run_v2_v2_agent_team_task_runs__task_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamTaskRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_team_task_runs_v2_v2_agent_team_tasks__task_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamTaskRunListResponse"];
                 };
             };
             /** @description Validation Error */

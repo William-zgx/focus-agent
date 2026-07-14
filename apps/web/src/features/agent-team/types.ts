@@ -177,6 +177,46 @@ export interface AgentTeamRunMetadata {
 	max_parallel_runs?: number;
 }
 
+export interface AgentTeamReadiness {
+	status: "ready" | "disabled" | "degraded" | string;
+	ready: boolean;
+	enabled: boolean;
+	service_available: boolean;
+	capabilities: {
+		task_run_queries: boolean;
+		evidence_queries: boolean;
+		revision_commands: boolean;
+	};
+	detail?: string | null;
+}
+
+export interface AgentTeamEvidence {
+	evidence_id: string;
+	task_run_id?: string | null;
+	task_id?: string | null;
+	session_id?: string | null;
+	source_type: string;
+	summary: string;
+	artifact_id?: string | null;
+	execution_profile?: string | null;
+	execution_class: string;
+	evidence_level: string;
+	evidence_verdict: string;
+	evidence_summary?: string | null;
+	sandbox_id?: string | null;
+	revision_id?: string | null;
+	row_version: number;
+	cancel_epoch: number;
+	deliverable: boolean;
+	metadata: Record<string, unknown>;
+	created_at: string;
+}
+
+export interface AgentTeamEvidenceListResponse {
+	items: AgentTeamEvidence[];
+	count: number;
+}
+
 export interface AgentTeamArtifact {
 	artifact_id: string;
 	task_id?: string | null;
@@ -465,6 +505,10 @@ export interface AgentTeamClientContract {
 	getAgentTeamSessionView?: (
 		sessionId: string,
 	) => Promise<AgentTeamSessionView>;
+	getAgentTeamReadiness?: () => Promise<AgentTeamReadiness>;
+	listAgentTeamEvidence?: (
+		sessionId: string,
+	) => Promise<AgentTeamEvidenceListResponse>;
 	dispatchAgentTeamSession?: (
 		sessionId: string,
 		request?: AgentTeamDispatchRequest,
