@@ -58,6 +58,7 @@ from .replay_helpers import (
     _safe_chat_values,
     _safe_completed_visible_text,
     _source_node,
+    _task_stream_event_payload,
     _tool_result_is_error,
     _trace_correlation,
     _turn_recording_baseline,
@@ -429,12 +430,12 @@ async def _produce_run_stream(
                 )
                 continue
             if chunk_type == "tasks":
-                task_payload = data if isinstance(data, dict) else {"value": data}
+                task_payload, task_metadata = _task_stream_event_payload(data, chunk_metadata)
                 await publish(
                     "task.update",
                     source_node,
                     **task_payload,
-                    metadata=chunk_metadata,
+                    metadata=task_metadata,
                     namespace=namespace,
                 )
 

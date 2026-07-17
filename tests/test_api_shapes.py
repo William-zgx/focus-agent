@@ -878,7 +878,9 @@ def test_trajectory_contract_shapes():
 def test_public_api_no_longer_exposes_skill_catalog_routes():
     app = create_app()
 
-    route_paths = {route.path for route in app.routes}
+    route_paths = {
+        path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
+    }
 
     assert "/v1/conversations" in route_paths
     assert "/v1/conversations/{root_thread_id:path}" in route_paths
@@ -944,7 +946,9 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
 
 def test_v1_chat_routes_are_removed_after_v2_harness_cutover():
     app = create_app()
-    route_paths = {route.path for route in app.routes}
+    route_paths = {
+        path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
+    }
 
     for path in (
         "/v1/chat/turns",

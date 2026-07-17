@@ -97,9 +97,7 @@ def test_ask_user_question_response_validation_and_parse():
     assert parsed[0]["selected_labels"] == ["OAuth"]
     assert parsed[1]["selected_other"] is True
     assert parsed[1]["other_text"] == "CLI too"
-    result = json.loads(
-        format_ask_user_question_tool_result(questions=questions, answers=parsed)
-    )
+    result = json.loads(format_ask_user_question_tool_result(questions=questions, answers=parsed))
     assert result["status"] == "answered"
     assert result["answers"][1]["other_text"] == "CLI too"
 
@@ -128,9 +126,7 @@ def test_ask_user_question_tool_rejects_direct_invoke():
         get_current_thread_id=lambda: None,
     )
     with pytest.raises(RuntimeError, match="cannot be executed automatically"):
-        tools[ASK_USER_QUESTION_TOOL_NAME].invoke(
-            {"questions": _sample_questions()}
-        )
+        tools[ASK_USER_QUESTION_TOOL_NAME].invoke({"questions": _sample_questions()})
 
 
 class _Runtime:
@@ -215,8 +211,7 @@ def test_tool_executor_resumes_ask_user_question_with_answers(monkeypatch):
     tool_messages = [
         message
         for message in result["messages"]
-        if getattr(message, "type", "") == "tool"
-        or message.__class__.__name__ == "ToolMessage"
+        if getattr(message, "type", "") == "tool" or message.__class__.__name__ == "ToolMessage"
     ]
     assert tool_messages
     content = json.loads(str(tool_messages[-1].content))

@@ -439,7 +439,25 @@ def test_production_evidence_rejects_stale_required_input(tmp_path: Path) -> Non
     assert stale[0]["max_age_seconds"] == 300
 
 
-def test_production_evidence_requires_all_explicit_binding_fields(tmp_path: Path) -> None:
+def test_production_evidence_requires_all_explicit_binding_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "RELEASE_COMMIT_SHA",
+        "GITHUB_SHA",
+        "BUILDKITE_COMMIT",
+        "CI_COMMIT_SHA",
+        "RELEASE_DEPLOYMENT_ID",
+        "DEPLOYMENT_ID",
+        "DEPLOYMENT_NAME",
+        "RELEASE_DEPLOYMENT_VERSION",
+        "DEPLOYMENT_VERSION",
+        "APP_VERSION",
+        "RELEASE_ENVIRONMENT",
+        "ENVIRONMENT_NAME",
+    ):
+        monkeypatch.delenv(name, raising=False)
     binding = _binding(_head(Path.cwd()))
     manifest = release_evidence.run_release_evidence(
         release_id="missing-production-binding",

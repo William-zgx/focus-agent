@@ -118,17 +118,32 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v8.1.0
 
       - name: Install Python dependencies
         run: make install-openai
+
+      - name: Install frontend dependencies
+        run: make web-install
 
       - name: Run Ruff
         run: make lint

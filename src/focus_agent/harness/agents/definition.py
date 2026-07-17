@@ -129,8 +129,10 @@ def _parse_frontmatter_fallback(frontmatter: str) -> dict[str, Any]:
             continue
         # List continuation: "  - item"
         list_marker = line.lstrip()
-        if list_marker.startswith("-") and current_list_key is not None and (
-            line.startswith("-") or line.startswith("  -") or line.startswith("\t-")
+        if (
+            list_marker.startswith("-")
+            and current_list_key is not None
+            and (line.startswith("-") or line.startswith("  -") or line.startswith("\t-"))
         ):
             item = list_marker[1:].strip()
             current_list.append(_parse_scalar(item))

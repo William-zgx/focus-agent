@@ -63,9 +63,7 @@ def _skill_system_block(*, has_available_skills: bool, has_active_skills: bool) 
     if has_active_skills:
         lines.append("- Active skills are attached below and should shape the current turn.")
     if has_available_skills:
-        lines.append(
-            "- Available skills below are a short catalog (name, description, triggers)."
-        )
+        lines.append("- Available skills below are a short catalog (name, description, triggers).")
         lines.append(
             "- Progressive loading: when a user task matches a catalog skill, call "
             "`skill_view` to load its full instructions before following that workflow."

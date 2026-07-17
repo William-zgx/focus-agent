@@ -238,9 +238,7 @@ class ToolCatalogConfig:
     workspace_tree: WorkspaceTreeToolConfig = field(default_factory=WorkspaceTreeToolConfig)
     read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
     search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
-    workspace_search: WorkspaceSearchToolConfig = field(
-        default_factory=WorkspaceSearchToolConfig
-    )
+    workspace_search: WorkspaceSearchToolConfig = field(default_factory=WorkspaceSearchToolConfig)
     codebase_stats: CodebaseStatsToolConfig = field(default_factory=CodebaseStatsToolConfig)
     apply_patch: ApplyPatchToolConfig = field(default_factory=ApplyPatchToolConfig)
     run_workspace_command: RunWorkspaceCommandToolConfig = field(
@@ -256,9 +254,7 @@ class ToolCatalogConfig:
     conversation_summary: ConversationSummaryToolConfig = field(
         default_factory=ConversationSummaryToolConfig
     )
-    ask_user_question: AskUserQuestionToolConfig = field(
-        default_factory=AskUserQuestionToolConfig
-    )
+    ask_user_question: AskUserQuestionToolConfig = field(default_factory=AskUserQuestionToolConfig)
     skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
     skill_sources: SkillSourcesToolConfig = field(default_factory=SkillSourcesToolConfig)

@@ -35,6 +35,7 @@ from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
+from focus_agent.transport.stream_events import sanitize_stream_metadata
 
 from ...route_utils.harness_run_helpers import (
     _canonical_custom_event,
@@ -70,6 +71,19 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
+
+
+def _task_stream_event_payload(
+    data: Any,
+    chunk_metadata: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload = dict(data) if isinstance(data, dict) else {"value": data}
+    payload_metadata = payload.pop("metadata", None)
+    metadata = sanitize_stream_metadata(
+        payload_metadata if isinstance(payload_metadata, dict) else None
+    )
+    metadata.update(chunk_metadata)
+    return payload, metadata
 
 
 async def _create_run_record(

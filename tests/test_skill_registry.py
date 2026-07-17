@@ -47,6 +47,7 @@ class _FailingRetrievalIndex:
     def search(self, **kwargs):  # noqa: ANN003
         raise RuntimeError("index unavailable")
 
+
 MIGRATED_BUILTIN_SKILL_PREFIX_MESSAGES = {
     "python-debugpy": "debug-python: inspect failing pytest locals",
     "node-inspect-debugger": "node-inspect: attach to a TypeScript test",
@@ -211,9 +212,7 @@ def test_skill_registry_parses_declared_entrypoints(tmp_path):
     assert viewed["entrypoints"][0]["memory_mb"] == 4096
 
 
-def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
-    tmp_path, monkeypatch
-):
+def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(tmp_path, monkeypatch):
     skill_root = tmp_path / "skills"
     skill_file = _write_skill(
         skill_root,
@@ -259,15 +258,7 @@ def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
         ),
         encoding="utf-8",
     )
-    fake_python = (
-        tmp_path
-        / ".focus_agent"
-        / "sandboxes"
-        / "demo-skill"
-        / "venv"
-        / "bin"
-        / "python"
-    )
+    fake_python = tmp_path / ".focus_agent" / "sandboxes" / "demo-skill" / "venv" / "bin" / "python"
     fake_python.parent.mkdir(parents=True)
     fake_python.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
     monkeypatch.setenv("SECRET_TOKEN", "sk-test-secret")
@@ -300,12 +291,7 @@ def test_run_skill_entrypoint_runs_declared_script_in_sanitized_sandbox(
     stdout_payload = json.loads(payload["stdout"])
     assert ".focus_agent/sandboxes/demo-skill/runs/" in stdout_payload["output_dir"]
     assert (
-        tmp_path
-        / ".focus_agent"
-        / "sandboxes"
-        / "demo-skill"
-        / "venv"
-        / ".focus-agent-venv.json"
+        tmp_path / ".focus_agent" / "sandboxes" / "demo-skill" / "venv" / ".focus-agent-venv.json"
     ).exists()
     output_paths = {item["path"] for item in payload["outputs"]}
     assert any(path.endswith("/result.txt") for path in output_paths)
@@ -911,9 +897,7 @@ def test_skill_registry_semantic_selection_uses_cjk_aliases(tmp_path):
     )
 
     registry = SkillRegistry([tmp_path], semantic_match_threshold=0.2)
-    selection = registry.select_for_message(
-        "使用股票相关的Skill看一下本周南网能源的活动情况。"
-    )
+    selection = registry.select_for_message("使用股票相关的Skill看一下本周南网能源的活动情况。")
 
     assert selection.skill_ids == ("stocks",)
     assert selection.selection_source == "semantic"
@@ -1767,7 +1751,9 @@ def test_optional_project_local_skills_use_project_ready_metadata():
         return
 
     registry = SkillRegistry([local_root])
-    found_migrated = {skill.skill_id for skill in registry.all_skills()} & MIGRATED_PROJECT_LOCAL_SKILLS
+    found_migrated = {
+        skill.skill_id for skill in registry.all_skills()
+    } & MIGRATED_PROJECT_LOCAL_SKILLS
     for skill in registry.all_skills():
         assert skill.triggers, skill.skill_id
         assert skill.when_to_use, skill.skill_id

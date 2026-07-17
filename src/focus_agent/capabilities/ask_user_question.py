@@ -48,9 +48,7 @@ def normalize_ask_user_questions(raw_questions: Any) -> list[dict[str, Any]]:
                 raise ValueError(f"questions[{index}].options[{option_index}] must be an object.")
             label = str(option.get("label") or "").strip()
             if not label:
-                raise ValueError(
-                    f"questions[{index}].options[{option_index}].label is required."
-                )
+                raise ValueError(f"questions[{index}].options[{option_index}].label is required.")
             label_key = label.casefold()
             if label_key in seen_labels:
                 raise ValueError(f"questions[{index}].options has duplicate label {label!r}.")
@@ -197,13 +195,10 @@ def parse_ask_user_question_answers(
         if question is None:
             continue
         selected = [
-            str(item).strip()
-            for item in (answer.get("selected_labels") or [])
-            if str(item).strip()
+            str(item).strip() for item in (answer.get("selected_labels") or []) if str(item).strip()
         ]
         option_labels_cf = {
-            str(option["label"]).casefold(): str(option["label"])
-            for option in question["options"]
+            str(option["label"]).casefold(): str(option["label"]) for option in question["options"]
         }
         resolved_labels: list[str] = []
         selected_other = False

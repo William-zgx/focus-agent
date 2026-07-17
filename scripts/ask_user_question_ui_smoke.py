@@ -443,7 +443,9 @@ def main() -> int:
     )
     report_path = Path(str(args.report_path))
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     print(f"\nWrote report: {report_path}", file=sys.stderr)
     return 0 if result.get("ok") else 1

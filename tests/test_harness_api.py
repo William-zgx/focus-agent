@@ -91,7 +91,9 @@ def test_stream_harness_resume_skips_pre_turn_branch_recommendation(monkeypatch)
     monkeypatch.setattr(harness_runs, "_capture_run_rollback_target", lambda **kwargs: None)
     monkeypatch.setattr(harness_runs, "_create_run_record", fake_create_run_record)
     monkeypatch.setattr(harness_runs, "_produce_run_stream", fake_produce_run_stream)
-    monkeypatch.setattr(harness_runs, "_run_event_streaming_response", fake_run_event_streaming_response)
+    monkeypatch.setattr(
+        harness_runs, "_run_event_streaming_response", fake_run_event_streaming_response
+    )
 
     async def scenario():
         response = await harness_runs.stream_harness_resume(
@@ -1106,6 +1108,27 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monk
         assert manager.statuses[-1][1] is RunStatus.SUCCESS
 
     asyncio.run(scenario())
+
+
+def test_task_stream_event_payload_merges_sanitized_metadata_without_duplicate_keyword():
+    payload, metadata = harness_runs._task_stream_event_payload(
+        {
+            "id": "task-1",
+            "metadata": {
+                "langgraph_node": "payload-node",
+                "run_id": "payload-run",
+                "secret": "hidden",
+            },
+        },
+        {"langgraph_node": "chunk-node", "langgraph_step": 3},
+    )
+
+    assert payload == {"id": "task-1"}
+    assert metadata == {
+        "langgraph_node": "chunk-node",
+        "langgraph_step": 3,
+        "run_id": "payload-run",
+    }
 
 
 def test_record_harness_turn_and_schedule_can_skip_side_effect_hooks(monkeypatch):
