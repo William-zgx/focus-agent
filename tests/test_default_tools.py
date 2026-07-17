@@ -871,7 +871,9 @@ def test_write_text_artifact_defaults_to_local_focus_agent_directory(tmp_path):
     result = str(tools["write_text_artifact"].invoke({"title": "AI Notes", "body": "Local only"}))
 
     expected_path = project / ".focus_agent" / "artifacts" / "ai-notes.md"
-    assert result == "artifact_saved:.focus_agent/artifacts/ai-notes.md"
+    assert result.startswith("artifact_saved:.focus_agent/artifacts/ai-notes.md")
+    assert "artifact_id=ai-notes.md" in result
+    assert "present this path/id" in result
     assert expected_path.read_text(encoding="utf-8") == "# AI Notes\n\nLocal only\n"
 
 
@@ -895,7 +897,8 @@ def test_write_text_artifact_keeps_readable_unicode_title_slug(tmp_path):
     )
 
     expected_path = project / ".focus_agent" / "artifacts" / "小猫人类最温柔的陪伴者.md"
-    assert result == "artifact_saved:.focus_agent/artifacts/小猫人类最温柔的陪伴者.md"
+    assert result.startswith("artifact_saved:.focus_agent/artifacts/小猫人类最温柔的陪伴者.md")
+    assert "artifact_id=小猫人类最温柔的陪伴者.md" in result
     assert expected_path.read_text(encoding="utf-8") == "# 小猫：人类最温柔的陪伴者\n\n正文\n"
 
 
@@ -1704,6 +1707,29 @@ def test_list_files_and_codebase_stats_filter_common_dependency_dirs(tmp_path):
     assert list_payload["results"] == ["src/main.py"]
     assert stats_payload["files_scanned"] == 1
     assert stats_payload["language_breakdown"][0]["language"] == "Python"
+
+
+def test_workspace_tree_renders_layout_and_skips_noise_dirs(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "src" / "pkg").mkdir(parents=True)
+    (project / "src" / "pkg" / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    (project / "README.md").write_text("# demo\n", encoding="utf-8")
+    (project / "node_modules").mkdir()
+    (project / "node_modules" / "leftpad.js").write_text("module.exports = 1;\n", encoding="utf-8")
+    (project / ".git").mkdir()
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    payload = json.loads(tools["workspace_tree"].invoke({"path": ".", "max_depth": 4}))
+
+    tree = payload["tree"]
+    assert "src/" in tree
+    assert "pkg/" in tree
+    assert "main.py" in tree
+    assert "README.md" in tree
+    assert "node_modules" not in tree
+    assert ".git" not in tree
+    assert payload["truncated"] is False
 
 
 def test_list_files_default_glob_includes_workspace_root_files(tmp_path):

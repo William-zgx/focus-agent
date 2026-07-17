@@ -475,7 +475,9 @@ def planner_builtin() -> AgentDefinition:
             "search_code",
             "read_file",
             "list_files",
+            "workspace_tree",
             "conversation_summary",
+            "ask_user_question",
             "skills_list",
             "skill_view",
             "skill_sources",
@@ -506,6 +508,7 @@ def executor_builtin() -> AgentDefinition:
         mode="subagent",
         tools_allowed=[
             "list_files",
+            "workspace_tree",
             "read_file",
             "search_code",
             "codebase_stats",
@@ -518,6 +521,7 @@ def executor_builtin() -> AgentDefinition:
             "artifact_read",
             "artifact_update",
             "write_text_artifact",
+            "ask_user_question",
         ],
         temperature=0.0,
         max_steps=75,
@@ -541,6 +545,7 @@ def critic_builtin() -> AgentDefinition:
         mode="subagent",
         tools_allowed=[
             "list_files",
+            "workspace_tree",
             "read_file",
             "search_code",
             "git_status",

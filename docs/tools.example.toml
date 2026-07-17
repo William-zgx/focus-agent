@@ -6,7 +6,7 @@ description = "Return the current UTC timestamp in ISO-8601 format."
 [write_text_artifact]
 enabled = true
 label = "Write Text Artifact"
-description = "Write a text artifact to disk and return its location."
+description = "Write a text artifact to disk and return its location. After saving, surface the artifact id/path in the user-facing reply."
 
 [artifact_list]
 enabled = true
@@ -39,6 +39,15 @@ label = "List Files"
 description = "List workspace files under a directory using a glob-like pattern."
 default_max_results = 200
 max_results_cap = 500
+
+[workspace_tree]
+enabled = true
+label = "Workspace Tree"
+description = "Print a directory as an indented tree up to a maximum depth. Common noise directories are skipped."
+default_max_depth = 5
+max_depth_cap = 12
+default_max_entries = 400
+max_entries_cap = 1000
 
 [read_file]
 enabled = true
@@ -142,6 +151,11 @@ label = "Conversation Summary"
 description = "Return the latest saved rolling summary and recent messages for a thread."
 default_recent_messages = 8
 max_recent_messages = 30
+
+[ask_user_question]
+enabled = true
+label = "Ask User Question"
+description = "Collect structured multiple-choice answers from the user and pause until they reply."
 
 [skills_list]
 enabled = true

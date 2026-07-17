@@ -14,6 +14,7 @@ from .catalog_config_types import (
     ArtifactReadToolConfig,
     ArtifactSearchToolConfig,
     ArtifactUpdateToolConfig,
+    AskUserQuestionToolConfig,
     CodebaseStatsToolConfig,
     ConfiguredModel,
     ConversationSummaryToolConfig,
@@ -40,6 +41,7 @@ from .catalog_config_types import (
     WebFetchToolConfig,
     WebSearchConfig,
     WorkspaceSearchToolConfig,
+    WorkspaceTreeToolConfig,
     WriteTextArtifactToolConfig,
 )
 from .common import _coerce_bool, _normalize_optional_string, _split_csv
@@ -233,6 +235,7 @@ class ToolCatalogConfig:
     artifact_update: ArtifactUpdateToolConfig = field(default_factory=ArtifactUpdateToolConfig)
     artifact_search: ArtifactSearchToolConfig = field(default_factory=ArtifactSearchToolConfig)
     list_files: ListFilesToolConfig = field(default_factory=ListFilesToolConfig)
+    workspace_tree: WorkspaceTreeToolConfig = field(default_factory=WorkspaceTreeToolConfig)
     read_file: ReadFileToolConfig = field(default_factory=ReadFileToolConfig)
     search_code: SearchCodeToolConfig = field(default_factory=SearchCodeToolConfig)
     workspace_search: WorkspaceSearchToolConfig = field(
@@ -252,6 +255,9 @@ class ToolCatalogConfig:
     memory_forget: MemoryForgetToolConfig = field(default_factory=MemoryForgetToolConfig)
     conversation_summary: ConversationSummaryToolConfig = field(
         default_factory=ConversationSummaryToolConfig
+    )
+    ask_user_question: AskUserQuestionToolConfig = field(
+        default_factory=AskUserQuestionToolConfig
     )
     skills_list: SkillsListToolConfig = field(default_factory=SkillsListToolConfig)
     skill_view: SkillViewToolConfig = field(default_factory=SkillViewToolConfig)
@@ -384,6 +390,15 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
         ListFilesToolConfig,
         int_fields=("default_max_results", "max_results_cap"),
     ),
+    "workspace_tree": ToolCatalogSectionSpec(
+        WorkspaceTreeToolConfig,
+        int_fields=(
+            "default_max_depth",
+            "max_depth_cap",
+            "default_max_entries",
+            "max_entries_cap",
+        ),
+    ),
     "read_file": ToolCatalogSectionSpec(
         ReadFileToolConfig,
         int_fields=("default_end_line", "max_lines", "max_chars"),
@@ -433,6 +448,7 @@ _TOOL_CATALOG_SPECS: dict[str, ToolCatalogSectionSpec] = {
         ConversationSummaryToolConfig,
         int_fields=("default_recent_messages", "max_recent_messages"),
     ),
+    "ask_user_question": ToolCatalogSectionSpec(AskUserQuestionToolConfig),
     "skills_list": ToolCatalogSectionSpec(SkillsListToolConfig),
     "skill_view": ToolCatalogSectionSpec(SkillViewToolConfig),
     "skill_sources": ToolCatalogSectionSpec(SkillSourcesToolConfig),

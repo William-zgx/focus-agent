@@ -54,6 +54,7 @@ from .workspace_paths import (
 from .workspace_paths import (
     _workspace_skill_root_for_path as _workspace_skill_root_for_path,
 )
+from .workspace_tree import build_workspace_tree_tool
 
 _SKIP_DIR_NAMES = {
     ".git",
@@ -304,6 +305,12 @@ def build_workspace_tools(
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)
             raise
+
+    workspace_tree = build_workspace_tree_tool(
+        workspace_root=workspace_root,
+        tree_config=tool_catalog.workspace_tree,
+        emit_tool_event=emit_tool_event,
+    )
 
     @tool
     def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
@@ -675,6 +682,7 @@ def build_workspace_tools(
     return (
         {
             "list_files": list_files,
+            "workspace_tree": workspace_tree,
             "read_file": read_file,
             "search_code": search_code,
             "workspace_search": workspace_search,
@@ -688,6 +696,12 @@ def build_workspace_tools(
                 "cacheable": True,
                 "cache_scope": "thread",
                 "max_observation_chars": 6000,
+            },
+            "workspace_tree": {
+                "parallel_safe": True,
+                "cacheable": True,
+                "cache_scope": "thread",
+                "max_observation_chars": 8000,
             },
             "read_file": {
                 "parallel_safe": True,

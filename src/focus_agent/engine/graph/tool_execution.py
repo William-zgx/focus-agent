@@ -9,7 +9,15 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from ...capabilities.ask_user_question import (
+    ASK_USER_QUESTION_TOOL_NAME,
+    ask_user_question_response_error,
+    build_ask_user_question_interrupt_payload,
+    format_ask_user_question_tool_result,
+    parse_ask_user_question_answers,
+)
 from ...capabilities.default_tool_modules.memory import authorize_memory_tool_args
+from ...capabilities.tool_messages import build_tool_message
 from ...capabilities.tool_runtime import (
     ToolExecutionInput,
     ToolResultCacheStore,
@@ -466,6 +474,74 @@ def make_tool_executor_node(
                 tool=tool,
                 runtime=runtime_meta,
             )
+            if tool_name == ASK_USER_QUESTION_TOOL_NAME:
+                try:
+                    question_payload = build_ask_user_question_interrupt_payload(
+                        tool_call_id=tool_call_id,
+                        questions=tool_args.get("questions"),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    messages_by_index[index] = build_tool_error_message(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args=tool_args,
+                        error=f"Invalid ask_user_question parameters: {exc}",
+                        runtime_info={"parameter_validation_error": True},
+                    )
+                    continue
+                answer_response = interrupt(question_payload)
+                answer_error = ask_user_question_response_error(
+                    answer_response,
+                    interrupt_id=str(question_payload.get("interrupt_id") or ""),
+                    tool_call_id=tool_call_id,
+                    questions=list(question_payload.get("questions") or []),
+                )
+                append_agent_state_record(
+                    updates,
+                    "ask_user_question_decision",
+                    {
+                        **question_payload,
+                        "answered": answer_error is None,
+                        "answer_error": answer_error,
+                    },
+                    source=f"tool_executor:{tool_call_id}",
+                    metadata={
+                        "interrupt_id": str(question_payload.get("interrupt_id") or ""),
+                        "tool_call_id": tool_call_id,
+                    },
+                )
+                if answer_error is not None:
+                    messages_by_index[index] = build_tool_error_message(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args=tool_args,
+                        error=answer_error,
+                        runtime_info={
+                            "ask_user_question_invalid": True,
+                            "requires_human_input": True,
+                        },
+                    )
+                    continue
+                parsed_answers = parse_ask_user_question_answers(
+                    answer_response,
+                    questions=list(question_payload.get("questions") or []),
+                )
+                result_content = format_ask_user_question_tool_result(
+                    questions=list(question_payload.get("questions") or []),
+                    answers=parsed_answers,
+                )
+                messages_by_index[index] = build_tool_message(
+                    content=result_content,
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    status="success",
+                    runtime_info={
+                        "ask_user_question_answered": True,
+                        "requires_human_input": True,
+                        "answer_count": len(parsed_answers),
+                    },
+                )
+                continue
             if runtime_meta.requires_approval and not permission_allowed:
                 approval_payload = build_tool_approval_interrupt_payload(execution_input)
                 if multi_agent_async_approval_enabled:

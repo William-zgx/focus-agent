@@ -126,6 +126,14 @@ const TOOL_CONFIG_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 		label: "列出文件",
 		description: "按类似 glob 的模式列出工作区目录下的文件。",
 	},
+	workspace_tree: {
+		label: "工作区树",
+		description: "以缩进树形式展示工作区目录结构，默认跳过常见噪声目录。",
+	},
+	ask_user_question: {
+		label: "向用户提问",
+		description: "收集结构化多选答案；运行会暂停直到用户提交。",
+	},
 	memory_forget: {
 		label: "删除记忆",
 		description: "从指定或默认命名空间删除一条持久记忆。",

@@ -378,6 +378,12 @@ export function defaultAdminConfig(): FocusAgentAdminConfig {
 					"workspace",
 				),
 				localAdminTool(
+					"workspace_tree",
+					"工作区树",
+					"以缩进树形式展示 Android App 内虚拟工作区目录结构。",
+					"workspace",
+				),
+				localAdminTool(
 					"read_file",
 					"读取文件",
 					"读取 Android App 内虚拟工作区文件。",
@@ -607,6 +613,7 @@ export function normalizeStoredState(
 	}
 	const appLocalWorkspaceTools = new Set([
 		"list_files",
+		"workspace_tree",
 		"read_file",
 		"search_code",
 		"codebase_stats",

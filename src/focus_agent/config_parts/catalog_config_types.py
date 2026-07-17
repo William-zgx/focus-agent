@@ -58,7 +58,11 @@ class CurrentUtcTimeToolConfig:
 class WriteTextArtifactToolConfig:
     enabled: bool = True
     label: str = "Write Text Artifact"
-    description: str = "Write a text artifact to disk and return its location."
+    description: str = (
+        "Write a text artifact to disk and return its location. "
+        "After saving, always surface the artifact id/path in the user-facing reply "
+        "so the deliverable is visible without digging through tool logs."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +105,21 @@ class ListFilesToolConfig:
     description: str = "List workspace files under a directory using a glob-like pattern."
     default_max_results: int = 200
     max_results_cap: int = 500
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceTreeToolConfig:
+    enabled: bool = True
+    label: str = "Workspace Tree"
+    description: str = (
+        "Print a directory as an indented tree up to a maximum depth. "
+        "Common noise directories are skipped. Prefer this to understand layout "
+        "before reading individual files."
+    )
+    default_max_depth: int = 5
+    max_depth_cap: int = 12
+    default_max_entries: int = 400
+    max_entries_cap: int = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,17 +261,35 @@ class ConversationSummaryToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AskUserQuestionToolConfig:
+    enabled: bool = True
+    label: str = "Ask User Question"
+    description: str = (
+        "Collect structured multiple-choice answers from the user when blocked on a "
+        "genuine product or preference decision. Pauses the run until the user replies. "
+        "Always includes an Other option for free text. Prefer this over guessing."
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class SkillsListToolConfig:
     enabled: bool = True
     label: str = "Skills List"
-    description: str = "List bundled and local skills with their descriptions and trigger prefixes."
+    description: str = (
+        "List bundled and local skills with short descriptions and trigger prefixes. "
+        "Use this as a catalog; call skill_view to load full workflow instructions."
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class SkillViewToolConfig:
     enabled: bool = True
     label: str = "Skill View"
-    description: str = "Load the full instructions for a named skill."
+    description: str = (
+        "Load the full instructions for a named skill (progressive skill loading). "
+        "When the user task matches an available skill, call this before following "
+        "that workflow instead of guessing from the short catalog blurb alone."
+    )
 
 
 @dataclass(frozen=True, slots=True)

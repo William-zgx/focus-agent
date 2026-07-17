@@ -76,6 +76,15 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_tags": ("file_browse",),
         "allowed_roles": ("executor", "critic"),
     },
+    "workspace_tree": {
+        "toolset": "workspace",
+        "parallel_safe": True,
+        "cacheable": True,
+        "cache_scope": "thread",
+        "intent_policies": ("workspace_lookup", "execution"),
+        "intent_tags": ("file_browse", "layout"),
+        "allowed_roles": ("planner", "executor", "critic"),
+    },
     "read_file": {
         "toolset": "workspace",
         "parallel_safe": True,
@@ -210,6 +219,17 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "cache_scope": "turn",
         "intent_policies": ("workspace_lookup", "execution"),
         "allowed_roles": ("orchestrator", "planner", "memory_curator", "skill_scout"),
+    },
+    "ask_user_question": {
+        "toolset": "conversation",
+        "side_effect": True,
+        "side_effect_kind": "human_input",
+        "risk_level": "low",
+        "parallel_safe": False,
+        "max_calls_per_turn": 1,
+        "intent_policies": ("planning", "execution"),
+        "intent_tags": ("human_input", "clarification"),
+        "allowed_roles": ("orchestrator", "planner", "executor"),
     },
     "skills_list": {
         "toolset": "skill",

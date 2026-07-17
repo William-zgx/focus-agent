@@ -203,6 +203,17 @@ export function localAppToolPlan(
 		push("list_files", { path: ".", pattern: "**/*" });
 	}
 	if (
+		containsAny(normalized, [
+			"workspace_tree",
+			"workspace tree",
+			"directory tree",
+			"目录树",
+			"工作区树",
+		])
+	) {
+		push("workspace_tree", { path: ".", max_depth: 5 });
+	}
+	if (
 		containsAny(normalized, ["read_file", "read file", "读取文件", "查看文件"])
 	) {
 		push("read_file", {

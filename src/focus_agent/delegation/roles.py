@@ -111,6 +111,7 @@ _SKILL_MARKERS = (
 _ROLE_GOVERNANCE: Mapping[AgentRole, tuple[str, ...]] = {
     AgentRole.ORCHESTRATOR: (
         "conversation_summary",
+        "ask_user_question",
         "skills_list",
         "skill_view",
         "skill_sources",
@@ -122,7 +123,10 @@ _ROLE_GOVERNANCE: Mapping[AgentRole, tuple[str, ...]] = {
         "current_utc_time",
         "search_code",
         "read_file",
+        "list_files",
+        "workspace_tree",
         "conversation_summary",
+        "ask_user_question",
         "skills_list",
         "skill_view",
         "skill_sources",
@@ -131,6 +135,7 @@ _ROLE_GOVERNANCE: Mapping[AgentRole, tuple[str, ...]] = {
     ),
     AgentRole.EXECUTOR: (
         "list_files",
+        "workspace_tree",
         "read_file",
         "search_code",
         "codebase_stats",
@@ -142,9 +147,11 @@ _ROLE_GOVERNANCE: Mapping[AgentRole, tuple[str, ...]] = {
         "artifact_read",
         "artifact_update",
         "write_text_artifact",
+        "ask_user_question",
     ),
     AgentRole.CRITIC: (
         "list_files",
+        "workspace_tree",
         "read_file",
         "search_code",
         "git_status",

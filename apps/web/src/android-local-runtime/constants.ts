@@ -33,6 +33,7 @@ export const ANDROID_LOCAL_TOOL_NAMES = [
 	"web_search",
 	"current_utc_time",
 	"list_files",
+	"workspace_tree",
 	"read_file",
 	"search_code",
 	"codebase_stats",

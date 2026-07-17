@@ -211,7 +211,7 @@ def build_artifact_tools(
 
     @tool
     def write_text_artifact(title: str, body: str) -> str:
-        """Write a text artifact to disk and return its location."""
+        """Write a text artifact to disk and return its location for user presentation."""
         tool_name = "write_text_artifact"
         emit_tool_event(tool_name=tool_name, stage="start", title=title)
         try:
@@ -238,7 +238,11 @@ def build_artifact_tools(
                 path=path,
                 title=_artifact_title_from_id(filename),
             )
-            result = f"artifact_saved:{display_path}"
+            result = (
+                f"artifact_saved:{display_path}; "
+                f"artifact_id={filename}; "
+                "present this path/id to the user so they can open the deliverable"
+            )
             emit_tool_event(tool_name=tool_name, stage="end", output=result)
             return result
         except Exception as exc:  # noqa: BLE001

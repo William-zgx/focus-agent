@@ -6,6 +6,8 @@ from typing import Any
 
 from langchain.tools import tool
 
+from ..ask_user_question import ASK_USER_QUESTION_TOOL_NAME
+
 
 def _extract_checkpoint_state(checkpoint: dict[str, Any] | None) -> dict[str, Any]:
     if not checkpoint:
@@ -94,14 +96,40 @@ def build_conversation_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), thread_id=thread_id)
             raise
 
+    @tool
+    def ask_user_question(questions: list[dict[str, Any]]) -> str:
+        """Collect structured multiple-choice answers from the user and pause until they reply."""
+        # Runtime path: graph tool_executor interrupts for human input and never
+        # auto-executes this function. Direct invoke is rejected.
+        _ = questions
+        raise RuntimeError(
+            "ask_user_question requires a human answer and cannot be executed automatically."
+        )
+
     return (
-        {"conversation_summary": conversation_summary},
+        {
+            "conversation_summary": conversation_summary,
+            ASK_USER_QUESTION_TOOL_NAME: ask_user_question,
+        },
         {
             "conversation_summary": {
                 "parallel_safe": True,
                 "cacheable": True,
                 "cache_scope": "thread",
                 "max_observation_chars": 4000,
+            },
+            ASK_USER_QUESTION_TOOL_NAME: {
+                "parallel_safe": False,
+                "cacheable": False,
+                "side_effect": True,
+                "side_effect_kind": "human_input",
+                "requires_approval": False,
+                "risk_level": "low",
+                "max_calls_per_turn": 1,
+                "max_observation_chars": 8000,
+                "toolset": "conversation",
+                "intent_policies": ("planning", "execution"),
+                "intent_tags": ("human_input", "clarification"),
             },
         },
     )

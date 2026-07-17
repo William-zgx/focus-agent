@@ -388,6 +388,49 @@ export function executeLocalAppTool(
 			root: "app-local://workspace",
 		};
 		message = `${results.length} workspace files.`;
+	} else if (name === "workspace_tree") {
+		const maxDepth = Math.min(Math.max(Number(args.max_depth ?? 5), 1), 12);
+		const maxEntries = Math.min(Math.max(Number(args.max_entries ?? 400), 1), 1000);
+		const rootPath = stringValue(args.path) || ".";
+		const paths = ctx
+			.workspaceFileEntries(args.path)
+			.map(([path]) => path)
+			.sort((left, right) => left.localeCompare(right));
+		const lines = [rootPath === "." ? "workspace" : rootPath];
+		const seenDirs = new Set<string>();
+		let truncated = false;
+		for (const filePath of paths) {
+			const parts = filePath.split("/").filter(Boolean);
+			if (parts.length === 0) continue;
+			const depth = Math.min(parts.length, maxDepth);
+			for (let index = 0; index < depth; index += 1) {
+				const isFile = index === parts.length - 1;
+				if (!isFile && index + 1 >= maxDepth) continue;
+				const segmentPath = parts.slice(0, index + 1).join("/");
+				if (!isFile) {
+					if (seenDirs.has(segmentPath)) continue;
+					seenDirs.add(segmentPath);
+				}
+				if (lines.length - 1 >= maxEntries) {
+					truncated = true;
+					break;
+				}
+				const prefix = `${"│   ".repeat(index)}├── `;
+				lines.push(`${prefix}${parts[index]}${isFile ? "" : "/"}`);
+			}
+			if (truncated) break;
+		}
+		const treeOutput = {
+			path: rootPath,
+			max_depth: maxDepth,
+			max_entries: maxEntries,
+			tree: lines.join("\n"),
+			entry_count: Math.max(0, lines.length - 1),
+			truncated,
+			root: "app-local://workspace",
+		};
+		output = treeOutput;
+		message = `${treeOutput.entry_count} workspace tree entries.`;
 	} else if (name === "read_file") {
 		const path = ctx.normalizeWorkspacePath(args.path);
 		const content = path ? ctx.workspaceFiles()[path] : undefined;
