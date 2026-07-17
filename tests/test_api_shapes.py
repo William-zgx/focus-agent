@@ -878,19 +878,17 @@ def test_trajectory_contract_shapes():
 def test_public_api_no_longer_exposes_skill_catalog_routes():
     app = create_app()
 
-    route_paths = {
-        path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
-    }
+    route_paths = set(app.openapi()["paths"])
 
     assert "/v1/conversations" in route_paths
-    assert "/v1/conversations/{root_thread_id:path}" in route_paths
-    assert "/v1/conversations/{root_thread_id:path}/archive" in route_paths
-    assert "/v1/conversations/{root_thread_id:path}/activate" in route_paths
+    assert "/v1/conversations/{root_thread_id}" in route_paths
+    assert "/v1/conversations/{root_thread_id}/archive" in route_paths
+    assert "/v1/conversations/{root_thread_id}/activate" in route_paths
     assert "/readyz" in route_paths
     assert "/metrics" in route_paths
     assert "/v1/admin/background-jobs/summary" in route_paths
     assert "/v1/admin/background-jobs/dead-letter" in route_paths
-    assert "/v1/admin/background-jobs/dead-letter/{job_key:path}/replay" in route_paths
+    assert "/v1/admin/background-jobs/dead-letter/{job_key}/replay" in route_paths
     assert "/v1/agent/roles/policy" in route_paths
     assert "/v1/agent/roles/dry-run" in route_paths
     assert "/v1/agent/roles/decisions" in route_paths
@@ -921,15 +919,15 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/{turn_id}/promote" in route_paths
     assert "/v1/observability/trajectory/batch/promote-preview" in route_paths
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
-    assert "/v1/threads/{thread_id:path}/resolution" in route_paths
+    assert "/v1/threads/{thread_id}/resolution" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve" in route_paths
     assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject" in route_paths
-    assert "/v2/threads/{thread_id:path}/runs" in route_paths
-    assert "/v2/threads/{thread_id:path}/runs/cancel" in route_paths
-    assert "/v2/threads/{thread_id:path}/runs/stream" in route_paths
-    assert "/v2/threads/{thread_id:path}/runs/resume/stream" in route_paths
+    assert "/v2/threads/{thread_id}/runs" in route_paths
+    assert "/v2/threads/{thread_id}/runs/cancel" in route_paths
+    assert "/v2/threads/{thread_id}/runs/stream" in route_paths
+    assert "/v2/threads/{thread_id}/runs/resume/stream" in route_paths
     assert "/v2/runs/{run_id}" in route_paths
     assert "/v2/runs/{run_id}/stream" in route_paths
     assert "/v2/runs/{run_id}/events" in route_paths
@@ -946,9 +944,7 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
 
 def test_v1_chat_routes_are_removed_after_v2_harness_cutover():
     app = create_app()
-    route_paths = {
-        path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
-    }
+    route_paths = set(app.openapi()["paths"])
 
     for path in (
         "/v1/chat/turns",
