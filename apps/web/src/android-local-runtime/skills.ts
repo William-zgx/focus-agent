@@ -188,7 +188,7 @@ export const ANDROID_LOCAL_SKILLS: LocalSkill[] = [
 		recommended_tools: ["current_utc_time", "web_search", "web_fetch"],
 		prompt_mode: "execute",
 		content:
-			"Use current_utc_time for temporal queries, web_search for open lookup, and web_fetch for a specific URL.",
+			"Use current_utc_time for temporal queries so search phrases match real recency. Prefer multi-angle web_search plus web_fetch of key URLs over a single shallow search. Surface saved artifact paths clearly after write_text_artifact.",
 		source_id: "android-local",
 	},
 ];

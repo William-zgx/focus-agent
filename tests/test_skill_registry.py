@@ -1734,6 +1734,20 @@ def test_bundled_registry_contains_copied_practical_skills():
     assert "code-documentation" in names
     assert "research" in names
     assert "security-review" in names
+    assert "grill-me" in names
+    assert "frontend-design" in names
+
+
+def test_research_skill_documents_deep_research_methodology():
+    registry = SkillRegistry([bundled_skills_dir()])
+    skill = registry.resolve("research")
+    assert skill is not None
+    body = skill.body.lower()
+    assert "web_fetch" in body
+    assert "phase" in body
+    assert "temporal" in body or "current_utc_time" in body
+    assert "web_search" in skill.recommended_tools
+    assert "web_fetch" in skill.recommended_tools
 
 
 def test_bundled_skills_use_project_ready_metadata_and_content():
@@ -1777,6 +1791,9 @@ def test_execution_skills_publish_recommended_focus_agent_native_tools():
         "autopilot": ("list_files", "search_code", "git_diff"),
         "ralph": ("git_status", "search_code", "git_log"),
         "ultrawork": ("list_files", "search_code", "git_diff"),
+        "writing-plans": ("list_files", "workspace_tree", "write_text_artifact"),
+        "grill-me": ("search_code", "read_file"),
+        "frontend-design": ("apply_patch", "write_text_artifact"),
     }
 
     for skill_id, markers in required_tools.items():

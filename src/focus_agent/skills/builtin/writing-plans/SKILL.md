@@ -3,7 +3,7 @@ name: writing-plans
 description: Turn a feature request or spec into an implementation plan with exact files, ordered tasks, validation steps, and explicit risks.
 triggers: write-plan:, implementation-plan:
 when_to_use: The work is multi-step, A design or execution plan is needed before coding, The task should be decomposed into precise implementation steps
-recommended_tools: list_files, search_code, read_file, write_text_artifact, artifact_list, artifact_read, artifact_update
+recommended_tools: list_files, workspace_tree, search_code, read_file, write_text_artifact, artifact_list, artifact_read, artifact_update
 prompt_mode: explore
 ---
 
@@ -11,16 +11,16 @@ prompt_mode: explore
 
 Write plans that another engineer could execute without guessing.
 
-Use this when the plan itself is a durable implementation artifact with exact files, commands, and validation steps. For lightweight sequencing that should stay in the conversation, use `plan`.
+Use this when the plan itself is a durable implementation artifact with exact files, commands, and validation steps. For lightweight sequencing that should stay in the conversation, use `plan`. Use `grill-me` when product decisions still need stress-testing before planning.
 
 ## Workflow
 
 1. Restate the objective, assumptions, and constraints.
-2. Inspect the current repository structure with `list_files`, `search_code`, and `read_file` before proposing file changes.
+2. Inspect the current repository structure with `workspace_tree` or `list_files`, then `search_code` and `read_file` before proposing file changes.
 3. Break the work into ordered tasks with clear success criteria.
 4. Name the exact files, commands, and tests involved.
 5. Call out risks, decision points, and dependencies early.
-6. When a plan should persist across turns, save it with `write_text_artifact`; for follow-up planning, use `artifact_list`, `artifact_read`, and `artifact_update` instead of creating disconnected duplicate plans.
+6. When a plan should persist across turns, save it with `write_text_artifact` and surface the artifact id/path in the reply; for follow-up planning, use `artifact_list`, `artifact_read`, and `artifact_update` instead of creating disconnected duplicate plans.
 
 ## Good Plan Shape
 

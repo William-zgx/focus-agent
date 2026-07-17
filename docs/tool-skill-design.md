@@ -198,6 +198,8 @@ Current bundled skills:
 - `codebase-inspection`
 - `code-documentation`
 - `eco`
+- `frontend-design`
+- `grill-me`
 - `node-inspect-debugger`
 - `one-three-one-rule`
 - `plan`
@@ -215,6 +217,14 @@ Current bundled skills:
 - `writing-plans`
 
 These skills intentionally steer behavior that the current runtime can already support. For example, `ultrawork` encourages workstream decomposition, but it does not claim hidden sub-agent execution.
+
+Borrowings from LLM Space / DeerFlow-style harness practice that stay inside Focus Agent boundaries:
+
+- `research` uses multi-phase deep research (orientation, breadth, depth, diversity check, temporal query precision) while remaining a skill, not a mega-tool.
+- `grill-me` stress-tests plans with one-question-at-a-time interviews.
+- `frontend-design` steers distinctive UI work away from generic AI template aesthetics.
+- Progressive skill loading is reinforced in the skill-system prompt: the available-skills catalog stays short; `skill_view` loads full instructions when a skill matches.
+- Artifact delivery guidance (present path/id after `write_text_artifact`) mirrors `present_files`-style "user must see the deliverable" without unrestricted host shell.
 
 ### Admin configuration surface
 
@@ -284,6 +294,7 @@ Focus Agent already has these default tools:
 - `artifact_read`
 - `artifact_update`
 - `list_files`
+- `workspace_tree`
 - `read_file`
 - `search_code`
 - `codebase_stats`
@@ -297,6 +308,7 @@ Focus Agent already has these default tools:
 - `memory_search`
 - `memory_forget`
 - `conversation_summary`
+- `ask_user_question`
 - `web_search`
 - `skills_list`
 - `skill_view`
@@ -322,6 +334,7 @@ The runtime also exposes a grouped view of those primitives:
 - `web`: live search and URL retrieval tools
 - `artifact`: generated document and draft iteration tools
 - `memory`: durable memory and conversation recovery tools
+- `conversation`: human-input clarification (`ask_user_question`) and related turn helpers
 - `productivity`: owner-scoped notes/tasks/capture tools
 - `skill`: bundled and local workflow inspection tools
 

@@ -650,6 +650,7 @@ class SkillRegistry(SkillRegistryManagementMixin, SkillRegistryDiscoveryMixin):
 
         lines = [
             "## Available skills",
+            "Catalog only: short descriptions. Use `skill_view` to load full workflow instructions when a skill matches.",
             "If a user message starts with one of these prefixes, activate the matching skill for that turn.",
         ]
         for skill in active_skills:
