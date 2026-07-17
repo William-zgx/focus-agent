@@ -1,4 +1,7 @@
 import type {
+  FocusAgentAskUserQuestionAnswer,
+  FocusAgentAskUserQuestionDecision,
+  FocusAgentAskUserQuestionInterrupt,
   FocusAgentEvent,
   FocusAgentToolApprovalDecision,
   FocusAgentToolApprovalInterrupt,
@@ -59,6 +62,54 @@ export function createToolApprovalDecision(
     tool_call_id: interrupt.tool_call_id,
     approved,
     reason: reason ?? null,
+  };
+}
+
+export function isAskUserQuestionInterrupt(
+  interrupt: unknown,
+): interrupt is FocusAgentAskUserQuestionInterrupt {
+  if (!interrupt || typeof interrupt !== "object") {
+    return false;
+  }
+  const payload = interrupt as Record<string, unknown>;
+  if (
+    payload.kind !== "ask_user_question" ||
+    typeof payload.interrupt_id !== "string" ||
+    typeof payload.tool_name !== "string" ||
+    typeof payload.tool_call_id !== "string" ||
+    typeof payload.policy_version !== "string" ||
+    typeof payload.created_at !== "string" ||
+    !Array.isArray(payload.questions)
+  ) {
+    return false;
+  }
+  return payload.questions.every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const question = item as Record<string, unknown>;
+    return (
+      typeof question.id === "string" &&
+      typeof question.question === "string" &&
+      typeof question.header === "string" &&
+      typeof question.multi_select === "boolean" &&
+      Array.isArray(question.options) &&
+      question.options.every((option) => {
+        if (!option || typeof option !== "object") return false;
+        const row = option as Record<string, unknown>;
+        return typeof row.label === "string" && typeof row.description === "string";
+      })
+    );
+  });
+}
+
+export function createAskUserQuestionDecision(
+  interrupt: FocusAgentAskUserQuestionInterrupt,
+  answers: FocusAgentAskUserQuestionAnswer[],
+): FocusAgentAskUserQuestionDecision {
+  return {
+    kind: "ask_user_question",
+    interrupt_id: interrupt.interrupt_id,
+    tool_call_id: interrupt.tool_call_id,
+    answers,
   };
 }
 

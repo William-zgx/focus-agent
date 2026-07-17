@@ -1,7 +1,10 @@
 import {
+	createAskUserQuestionDecision,
 	createToolApprovalDecision,
 	createInitialStreamState,
 	reduceStreamEvent,
+	type FocusAgentAskUserQuestionAnswer,
+	type FocusAgentAskUserQuestionInterrupt,
 	type FocusAgentBranchActionNavigation,
 	type FocusAgentBranchActionProposal,
 	type FocusAgentEvent,
@@ -396,6 +399,29 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		});
 	}
 
+	async function resumeAskUserQuestion(
+		interrupt: FocusAgentAskUserQuestionInterrupt,
+		answers: FocusAgentAskUserQuestionAnswer[],
+	): Promise<SendMessageResult> {
+		const requestThreadId = options.threadId;
+		const { requestId, controller } =
+			requestRegistry.beginStreamRequest(requestThreadId);
+
+		return runStreamRequest({
+			requestThreadId,
+			requestId,
+			controller,
+			streamFactory: () =>
+				client.streamResume(
+					{
+						thread_id: requestThreadId,
+						resume: createAskUserQuestionDecision(interrupt, answers),
+					},
+					{ signal: controller.signal },
+				),
+		});
+	}
+
 	function stopStreaming() {
 		const activeRunId = activeRunIdsRef.current.get(options.threadId);
 		if (activeRunId) {
@@ -434,6 +460,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		sendMessageToThread,
 		runCarriedMessageInThread,
 		resumeToolApproval,
+		resumeAskUserQuestion,
 		stopStreaming,
 	};
 }

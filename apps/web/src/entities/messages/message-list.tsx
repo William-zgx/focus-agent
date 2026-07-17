@@ -1,5 +1,7 @@
 import {
 	safeVisibleText,
+	type FocusAgentAskUserQuestionAnswer,
+	type FocusAgentAskUserQuestionInterrupt,
 	type FocusAgentBranchActionProposal,
 	type FocusAgentBranchDecisionSummary,
 	type FocusAgentStreamStep,
@@ -8,6 +10,7 @@ import {
 } from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
+import { AskUserQuestionCard } from "./message-list-ask-user-question-card";
 import { BranchActionCard } from "./message-list-branch-action-card";
 import {
 	MessageRow,
@@ -46,6 +49,10 @@ interface MessageListProps {
 	toolApprovalError?: string;
 	toolApprovalErrorId?: string | null;
 	toolApprovalInFlightId?: string | null;
+	askUserQuestionInterrupts?: FocusAgentAskUserQuestionInterrupt[];
+	askUserQuestionError?: string;
+	askUserQuestionErrorId?: string | null;
+	askUserQuestionInFlightId?: string | null;
 	isChineseUi?: boolean;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
@@ -56,6 +63,10 @@ interface MessageListProps {
 	onDecideToolApproval?: (
 		interrupt: FocusAgentToolApprovalInterrupt,
 		approved: boolean,
+	) => void;
+	onSubmitAskUserQuestion?: (
+		interrupt: FocusAgentAskUserQuestionInterrupt,
+		answers: FocusAgentAskUserQuestionAnswer[],
 	) => void;
 }
 
@@ -76,12 +87,17 @@ export function MessageList({
 	toolApprovalError = "",
 	toolApprovalErrorId = null,
 	toolApprovalInFlightId = null,
+	askUserQuestionInterrupts = [],
+	askUserQuestionError = "",
+	askUserQuestionErrorId = null,
+	askUserQuestionInFlightId = null,
 	isChineseUi = false,
 	onEditMessage,
 	onExecuteBranchAction,
 	onContinueCurrentBranchAction,
 	onDismissBranchAction,
 	onDecideToolApproval,
+	onSubmitAskUserQuestion,
 }: MessageListProps) {
 	const transcriptItems = useMemo(
 		() => buildTranscriptItems(messages, assistantMessage),
@@ -160,6 +176,22 @@ export function MessageList({
 							: ""
 					}
 					onDecide={onDecideToolApproval}
+				/>
+			))}
+
+			{askUserQuestionInterrupts.map((interrupt) => (
+				<AskUserQuestionCard
+					key={interrupt.tool_call_id}
+					interrupt={interrupt}
+					isBusy={askUserQuestionInFlightId === interrupt.tool_call_id}
+					isChineseUi={isChineseUi}
+					isReadOnly={isReadOnly}
+					errorMessage={
+						askUserQuestionErrorId === interrupt.tool_call_id
+							? askUserQuestionError
+							: ""
+					}
+					onSubmit={onSubmitAskUserQuestion}
 				/>
 			))}
 

@@ -1,5 +1,7 @@
 import type {
 	ContextUsageResponse,
+	FocusAgentAskUserQuestionAnswer,
+	FocusAgentAskUserQuestionInterrupt,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchDecisionSummary,
 	FocusAgentStreamState,
@@ -17,6 +19,10 @@ import { ConversationViewport } from "./conversation-viewport";
 
 interface ThreadPageContentProps {
 	assistantMessage?: string | null;
+	askUserQuestionError?: string;
+	askUserQuestionErrorId?: string | null;
+	askUserQuestionInFlightId?: string | null;
+	askUserQuestionInterrupts: FocusAgentAskUserQuestionInterrupt[];
 	branchActionErrors: Record<string, string>;
 	branchActionInFlightId: string | null;
 	branchActions: FocusAgentBranchActionProposal[];
@@ -41,6 +47,10 @@ interface ThreadPageContentProps {
 	onDecideToolApproval: (
 		interrupt: FocusAgentToolApprovalInterrupt,
 		approved: boolean,
+	) => void;
+	onSubmitAskUserQuestion: (
+		interrupt: FocusAgentAskUserQuestionInterrupt,
+		answers: FocusAgentAskUserQuestionAnswer[],
 	) => void;
 	onEditMessage: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction: (action: FocusAgentBranchActionProposal) => void;
@@ -75,6 +85,10 @@ interface ThreadPageContentProps {
 
 export function ThreadPageContent({
 	assistantMessage,
+	askUserQuestionError = "",
+	askUserQuestionErrorId = null,
+	askUserQuestionInFlightId = null,
+	askUserQuestionInterrupts,
 	branchActionErrors,
 	branchActionInFlightId,
 	branchActions,
@@ -95,6 +109,7 @@ export function ThreadPageContent({
 	onContinueCurrentBranchAction,
 	onDismissBranchAction,
 	onDecideToolApproval,
+	onSubmitAskUserQuestion,
 	onEditMessage,
 	onExecuteBranchAction,
 	onPreviewContextUsage,
@@ -132,12 +147,17 @@ export function ThreadPageContent({
 		toolApprovalError,
 		toolApprovalErrorId,
 		toolApprovalInFlightId,
+		askUserQuestionInterrupts,
+		askUserQuestionError,
+		askUserQuestionErrorId,
+		askUserQuestionInFlightId,
 		isChineseUi,
 		onEditMessage,
 		onContinueCurrentBranchAction,
 		onExecuteBranchAction,
 		onDismissBranchAction,
 		onDecideToolApproval,
+		onSubmitAskUserQuestion,
 		streamFailed: streamState?.failed,
 		streamVisibleText: streamState?.visibleText,
 		streamReasoningText: streamState?.reasoningText,

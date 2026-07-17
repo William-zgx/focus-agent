@@ -393,11 +393,19 @@ export function reduceStreamEvent(
       return upsertTaskStep(state, event);
     case "run.status":
       return { ...state, activePhase: event.data.phase };
-	case "run.completed":
+	case "run.completed": {
+		const completedThreadState = event.data.thread_state as
+			| { interrupts?: unknown[] }
+			| undefined
+			| null;
+		const completedInterrupts = Array.isArray(completedThreadState?.interrupts)
+			? completedThreadState.interrupts
+			: state.interrupts;
 		return {
 			...state,
 			activePhase: event.data.status,
 			latestTurnState: event.data.thread_state ?? state.latestTurnState,
+			interrupts: completedInterrupts,
 			taskOutcome:
 				terminalTaskOutcome(event.data) ??
 				state.taskOutcome,
@@ -406,6 +414,7 @@ export function reduceStreamEvent(
 				state.runtimeOutcome,
 			isClosed: true,
 		};
+	}
     case "run.interrupt":
       return { ...state, activePhase: event.data.action };
 	case "run.failed":

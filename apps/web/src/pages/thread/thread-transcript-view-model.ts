@@ -1,10 +1,14 @@
 import type {
+	FocusAgentAskUserQuestionInterrupt,
 	FocusAgentBranchActionProposal,
 	FocusAgentStreamState,
 	FocusAgentToolApprovalInterrupt,
 	ThreadStateResponse,
 } from "@focus-agent/web-sdk";
-import { isToolApprovalInterrupt } from "@focus-agent/web-sdk";
+import {
+	isAskUserQuestionInterrupt,
+	isToolApprovalInterrupt,
+} from "@focus-agent/web-sdk";
 import { useMemo } from "react";
 
 import type { PendingUserMessage } from "@/features/thread-stream/use-thread-stream";
@@ -72,10 +76,26 @@ export function useThreadTranscriptViewModel({
 		return [...byId.values()];
 	}, [threadState?.interrupts, streamState?.interrupts]);
 
+	const askUserQuestionInterrupts = useMemo(() => {
+		const byId = new Map<string, FocusAgentAskUserQuestionInterrupt>();
+		for (const interrupt of threadState?.interrupts ?? []) {
+			if (isAskUserQuestionInterrupt(interrupt)) {
+				byId.set(interrupt.tool_call_id, interrupt);
+			}
+		}
+		for (const interrupt of streamState?.interrupts ?? []) {
+			if (isAskUserQuestionInterrupt(interrupt)) {
+				byId.set(interrupt.tool_call_id, interrupt);
+			}
+		}
+		return [...byId.values()];
+	}, [threadState?.interrupts, streamState?.interrupts]);
+
 	const hasTranscriptContent = Boolean(
 		transcriptMessages.length ||
 			branchActions.length ||
 			toolApprovalInterrupts.length ||
+			askUserQuestionInterrupts.length ||
 			isStreaming ||
 			streamState?.visibleText ||
 			streamState?.reasoningText ||
@@ -89,6 +109,7 @@ export function useThreadTranscriptViewModel({
 	const streamToolEventCount = streamState?.toolEvents?.length ?? 0;
 
 	return {
+		askUserQuestionInterrupts,
 		branchActions,
 		hasTranscriptContent,
 		lastTranscriptMessage,

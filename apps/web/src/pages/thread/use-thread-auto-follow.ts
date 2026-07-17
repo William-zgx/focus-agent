@@ -13,6 +13,7 @@ interface UseThreadAutoFollowOptions {
 	streamToolCallCount: number;
 	streamToolEventCount: number;
 	toolApprovalInterruptCount: number;
+	askUserQuestionInterruptCount?: number;
 	streamVisibleText?: string;
 	threadId: string;
 	transcriptMessageCount: number;

@@ -1,0 +1,176 @@
+.fa-ask-user-question-card {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent-cyan) 36%, var(--fa-border));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-accent-cyan) 8%, var(--fa-panel));
+	box-shadow: var(--fa-message-shadow);
+	padding: 14px;
+}
+
+.fa-ask-user-question-card-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.fa-ask-user-question-card-title {
+	color: var(--fa-text);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.fa-ask-user-question-card-subtitle {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.45;
+	margin-top: 4px;
+}
+
+.fa-ask-user-question-card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.fa-ask-user-question-card-meta span,
+.fa-ask-user-question-card-meta code {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-ask-user-question-card-badge {
+	border: 1px solid
+		color-mix(in srgb, var(--fa-accent-cyan) 45%, var(--fa-border));
+	border-radius: 999px;
+	color: var(--fa-text);
+	font-size: 11px;
+	padding: 3px 8px;
+	white-space: nowrap;
+}
+
+.fa-ask-user-question-card-body {
+	display: grid;
+	gap: 14px;
+}
+
+.fa-ask-user-question-item {
+	display: grid;
+	gap: 8px;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-bg) 70%, transparent);
+	padding: 12px;
+}
+
+.fa-ask-user-question-item-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.fa-ask-user-question-item-tag {
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--fa-accent-cyan) 16%, transparent);
+	color: var(--fa-text);
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+}
+
+.fa-ask-user-question-item-mode {
+	color: var(--fa-text-muted);
+	font-size: 11px;
+}
+
+.fa-ask-user-question-item-question {
+	color: var(--fa-text);
+	font-size: 13px;
+	line-height: 1.45;
+	margin: 0;
+}
+
+.fa-ask-user-question-options {
+	display: grid;
+	gap: 8px;
+	min-inline-size: 0;
+	margin: 0;
+	border: 0;
+	padding: 0;
+}
+
+.fa-ask-user-question-option {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 10px;
+	align-items: start;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	cursor: pointer;
+	padding: 10px;
+}
+
+.fa-ask-user-question-option.is-selected {
+	border-color: color-mix(in srgb, var(--fa-accent-cyan) 55%, var(--fa-border));
+	background: color-mix(in srgb, var(--fa-accent-cyan) 10%, transparent);
+}
+
+.fa-ask-user-question-option input {
+	margin-top: 2px;
+}
+
+.fa-ask-user-question-option-copy {
+	display: grid;
+	gap: 2px;
+}
+
+.fa-ask-user-question-option-label {
+	color: var(--fa-text);
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.fa-ask-user-question-option-description,
+.fa-ask-user-question-option-preview {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.fa-ask-user-question-option-preview {
+	font-family: var(
+		--fa-font-mono,
+		ui-monospace,
+		SFMono-Regular,
+		Menlo,
+		monospace
+	);
+	white-space: pre-wrap;
+}
+
+.fa-ask-user-question-other-input {
+	width: 100%;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-bg) 80%, transparent);
+	color: var(--fa-text);
+	font-size: 13px;
+	padding: 8px 10px;
+}
+
+.fa-ask-user-question-card-error {
+	color: var(--fa-danger);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.fa-ask-user-question-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}

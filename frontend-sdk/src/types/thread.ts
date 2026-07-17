@@ -75,6 +75,43 @@ export interface FocusAgentToolApprovalDecision {
 	reason?: string | null;
 }
 
+export interface FocusAgentAskUserQuestionOption {
+	label: string;
+	description: string;
+	preview?: string;
+}
+
+export interface FocusAgentAskUserQuestionItem {
+	id: string;
+	question: string;
+	header: string;
+	options: FocusAgentAskUserQuestionOption[];
+	multi_select: boolean;
+}
+
+export interface FocusAgentAskUserQuestionInterrupt {
+	kind: "ask_user_question";
+	interrupt_id: string;
+	tool_name: string;
+	tool_call_id: string;
+	questions: FocusAgentAskUserQuestionItem[];
+	policy_version: string;
+	created_at: string;
+}
+
+export interface FocusAgentAskUserQuestionAnswer {
+	question_id: string;
+	selected_labels: string[];
+	other_text?: string | null;
+}
+
+export interface FocusAgentAskUserQuestionDecision {
+	kind: "ask_user_question";
+	interrupt_id: string;
+	tool_call_id: string;
+	answers: FocusAgentAskUserQuestionAnswer[];
+}
+
 export type ThreadContextCompactTrigger =
 	| "manual"
 	| "auto_pre_send"

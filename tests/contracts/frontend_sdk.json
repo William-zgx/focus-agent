@@ -414,6 +414,11 @@
     "FocusAgentArtifactListResponse": "export interface FocusAgentArtifactListResponse { items: Array<Record<string, unknown>>; count: number; trajectory_available: boolean; trajectory_error?: string | null; }",
     "FocusAgentArtifactSynthesisRequest": "export interface FocusAgentArtifactSynthesisRequest { artifacts?: Array<Record<string, unknown>>; critic_gate_result?: Record<string, unknown> | null; }",
     "FocusAgentArtifactSynthesisResponse": "export interface FocusAgentArtifactSynthesisResponse { result: Record<string, unknown>; }",
+    "FocusAgentAskUserQuestionAnswer": "export interface FocusAgentAskUserQuestionAnswer { question_id: string; selected_labels: string[]; other_text?: string | null; }",
+    "FocusAgentAskUserQuestionDecision": "export interface FocusAgentAskUserQuestionDecision { kind: \"ask_user_question\"; interrupt_id: string; tool_call_id: string; answers: FocusAgentAskUserQuestionAnswer[]; }",
+    "FocusAgentAskUserQuestionInterrupt": "export interface FocusAgentAskUserQuestionInterrupt { kind: \"ask_user_question\"; interrupt_id: string; tool_name: string; tool_call_id: string; questions: FocusAgentAskUserQuestionItem[]; policy_version: string; created_at: string; }",
+    "FocusAgentAskUserQuestionItem": "export interface FocusAgentAskUserQuestionItem { id: string; question: string; header: string; options: FocusAgentAskUserQuestionOption[]; multi_select: boolean; }",
+    "FocusAgentAskUserQuestionOption": "export interface FocusAgentAskUserQuestionOption { label: string; description: string; preview?: string; }",
     "FocusAgentAuditEvent": "export interface FocusAgentAuditEvent { event_id: string; actor_user_id?: string | null; tenant_id?: string | null; action: string; resource_type: string; resource_id?: string | null; decision: string; reason?: string | null; metadata: Record<string, unknown>; request_id?: string | null; created_at?: string | null; }",
     "FocusAgentAuditEventListRequest": "export interface FocusAgentAuditEventListRequest { actor_user_id?: string | null; resource_type?: string | null; resource_id?: string | null; decision?: string | null; limit?: number; offset?: number; }",
     "FocusAgentAuditEventListResponse": "export interface FocusAgentAuditEventListResponse { items: FocusAgentAuditEvent[]; count: number; limit: number; offset: number; }",
@@ -751,6 +756,11 @@
     "FocusAgentArtifactListResponse",
     "FocusAgentArtifactSynthesisRequest",
     "FocusAgentArtifactSynthesisResponse",
+    "FocusAgentAskUserQuestionAnswer",
+    "FocusAgentAskUserQuestionDecision",
+    "FocusAgentAskUserQuestionInterrupt",
+    "FocusAgentAskUserQuestionItem",
+    "FocusAgentAskUserQuestionOption",
     "FocusAgentAuditEvent",
     "FocusAgentAuditEventListRequest",
     "FocusAgentAuditEventListResponse",
@@ -1150,6 +1160,10 @@
     "apps/web/src/app/shell/merge-review-modal-host.tsx": [
       "ThreadStateResponse"
     ],
+    "apps/web/src/entities/messages/message-list-ask-user-question-card.tsx": [
+      "FocusAgentAskUserQuestionAnswer",
+      "FocusAgentAskUserQuestionInterrupt"
+    ],
     "apps/web/src/entities/messages/message-list-branch-action-card.tsx": [
       "FocusAgentBranchActionProposal",
       "FocusAgentBranchDecisionEvent"
@@ -1169,6 +1183,8 @@
       "FocusAgentToolApprovalInterrupt"
     ],
     "apps/web/src/entities/messages/message-list.tsx": [
+      "FocusAgentAskUserQuestionAnswer",
+      "FocusAgentAskUserQuestionInterrupt",
       "FocusAgentBranchActionProposal",
       "FocusAgentBranchDecisionSummary",
       "FocusAgentStreamStep",
@@ -1302,10 +1318,13 @@
       "createInitialStreamState"
     ],
     "apps/web/src/features/thread-stream/use-thread-stream.ts": [
+      "FocusAgentAskUserQuestionAnswer",
+      "FocusAgentAskUserQuestionInterrupt",
       "FocusAgentBranchActionNavigation",
       "FocusAgentBranchActionProposal",
       "FocusAgentEvent",
       "FocusAgentToolApprovalInterrupt",
+      "createAskUserQuestionDecision",
       "createInitialStreamState",
       "createToolApprovalDecision",
       "reduceStreamEvent"
@@ -1520,19 +1539,25 @@
     ],
     "apps/web/src/pages/thread/thread-page-content.tsx": [
       "ContextUsageResponse",
+      "FocusAgentAskUserQuestionAnswer",
+      "FocusAgentAskUserQuestionInterrupt",
       "FocusAgentBranchActionProposal",
       "FocusAgentBranchDecisionSummary",
       "FocusAgentStreamState",
       "FocusAgentToolApprovalInterrupt"
     ],
     "apps/web/src/pages/thread/thread-page.tsx": [
+      "FocusAgentAskUserQuestionAnswer",
+      "FocusAgentAskUserQuestionInterrupt",
       "FocusAgentToolApprovalInterrupt"
     ],
     "apps/web/src/pages/thread/thread-transcript-view-model.ts": [
+      "FocusAgentAskUserQuestionInterrupt",
       "FocusAgentBranchActionProposal",
       "FocusAgentStreamState",
       "FocusAgentToolApprovalInterrupt",
       "ThreadStateResponse",
+      "isAskUserQuestionInterrupt",
       "isToolApprovalInterrupt"
     ],
     "apps/web/src/pages/thread/use-thread-branch-actions.ts": [

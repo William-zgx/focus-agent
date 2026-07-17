@@ -390,7 +390,10 @@ export function executeLocalAppTool(
 		message = `${results.length} workspace files.`;
 	} else if (name === "workspace_tree") {
 		const maxDepth = Math.min(Math.max(Number(args.max_depth ?? 5), 1), 12);
-		const maxEntries = Math.min(Math.max(Number(args.max_entries ?? 400), 1), 1000);
+		const maxEntries = Math.min(
+			Math.max(Number(args.max_entries ?? 400), 1),
+			1000,
+		);
 		const rootPath = stringValue(args.path) || ".";
 		const paths = ctx
 			.workspaceFileEntries(args.path)

@@ -1,6 +1,10 @@
 import { useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FocusAgentToolApprovalInterrupt } from "@focus-agent/web-sdk";
+import type {
+	FocusAgentAskUserQuestionAnswer,
+	FocusAgentAskUserQuestionInterrupt,
+	FocusAgentToolApprovalInterrupt,
+} from "@focus-agent/web-sdk";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
@@ -51,6 +55,7 @@ export function ThreadPage() {
 		streamState,
 		pendingUserMessage,
 		isStreaming,
+		resumeAskUserQuestion,
 		resumeToolApproval,
 		runCarriedMessageInThread,
 		sendMessage,
@@ -89,6 +94,7 @@ export function ThreadPage() {
 		[],
 	);
 	const {
+		askUserQuestionInterrupts,
 		branchActions,
 		hasTranscriptContent,
 		lastTranscriptMessage,
@@ -141,6 +147,7 @@ export function ThreadPage() {
 		streamToolCallCount,
 		streamToolEventCount,
 		toolApprovalInterruptCount: toolApprovalInterrupts.length,
+		askUserQuestionInterruptCount: askUserQuestionInterrupts.length,
 		streamVisibleText: streamState?.visibleText,
 		threadId,
 		transcriptMessageCount: transcriptMessages.length,
@@ -152,6 +159,13 @@ export function ThreadPage() {
 		null,
 	);
 	const [toolApprovalError, setToolApprovalError] = useState("");
+	const [askUserQuestionInFlightId, setAskUserQuestionInFlightId] = useState<
+		string | null
+	>(null);
+	const [askUserQuestionErrorId, setAskUserQuestionErrorId] = useState<
+		string | null
+	>(null);
+	const [askUserQuestionError, setAskUserQuestionError] = useState("");
 
 	async function handleSendMessage(
 		message: string,
@@ -212,9 +226,34 @@ export function ThreadPage() {
 		setToolApprovalInFlightId(null);
 	}
 
+	async function handleSubmitAskUserQuestion(
+		interrupt: FocusAgentAskUserQuestionInterrupt,
+		answers: FocusAgentAskUserQuestionAnswer[],
+	) {
+		if (isMergedReadOnlyThread) return;
+		setAskUserQuestionInFlightId(interrupt.tool_call_id);
+		setAskUserQuestionErrorId(null);
+		setAskUserQuestionError("");
+		followAndScrollToBottom();
+		const result = await resumeAskUserQuestion(interrupt, answers);
+		if (!result.ok) {
+			setAskUserQuestionErrorId(interrupt.tool_call_id);
+			setAskUserQuestionError(
+				isChineseUi
+					? "提交回答失败。"
+					: "Failed to submit the question answers.",
+			);
+		}
+		setAskUserQuestionInFlightId(null);
+	}
+
 	return (
 		<ThreadPageContent
 			assistantMessage={data?.assistant_message}
+			askUserQuestionError={askUserQuestionError}
+			askUserQuestionErrorId={askUserQuestionErrorId}
+			askUserQuestionInFlightId={askUserQuestionInFlightId}
+			askUserQuestionInterrupts={askUserQuestionInterrupts}
 			branchActionErrors={branchActionErrors}
 			branchActionInFlightId={branchActionInFlightId}
 			branchActions={branchActions}
@@ -235,6 +274,9 @@ export function ThreadPage() {
 			onComposerSelectionChange={handleComposerSelectionChange}
 			onDecideToolApproval={(interrupt, approved) =>
 				void handleDecideToolApproval(interrupt, approved)
+			}
+			onSubmitAskUserQuestion={(interrupt, answers) =>
+				void handleSubmitAskUserQuestion(interrupt, answers)
 			}
 			onContinueCurrentBranchAction={(action) =>
 				void continueCurrentBranchAction(action)
