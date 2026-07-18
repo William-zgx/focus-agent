@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,32 @@ def test_agent_team_evidence_workflow_limits_real_provider_to_protected_or_night
     assert '"status": "disabled"' in source
     assert "No provider result was claimed." in source
     assert "bash -lc" in source
+
+
+def test_agent_team_evidence_disabled_provider_script_writes_valid_report(
+    tmp_path: Path,
+) -> None:
+    workflow = _load_workflow()
+    provider = workflow["jobs"]["real-provider-evidence"]
+    step = next(
+        step
+        for step in provider["steps"]
+        if step["name"] == "Run configured real-provider evidence or record disabled state"
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", step["run"]],
+        cwd=tmp_path,
+        env={"AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND": ""},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    report_path = tmp_path / "reports" / "agent-team-evidence" / "real-provider.json"
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(report_path.read_text(encoding="utf-8"))["status"] == "disabled"
+    assert "real-provider evidence disabled" in result.stdout
 
 
 def test_agent_team_evidence_make_target_only_runs_agent_team_evidence() -> None:
