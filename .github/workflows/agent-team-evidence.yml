@@ -80,12 +80,11 @@ jobs:
           set -euo pipefail
           mkdir -p reports/agent-team-evidence
           if [ -z "${AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND:-}" ]; then
-            cat > reports/agent-team-evidence/real-provider.json <<'JSON'
-            {
-              "status": "disabled",
-              "reason": "Set the protected repository variable AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND to an approved real-provider evidence command. No provider result was claimed."
-            }
-            JSON
+            printf '%s\n' \
+              '{' \
+              '  "status": "disabled",' \
+              '  "reason": "Set the protected repository variable AGENT_TEAM_REAL_PROVIDER_EVIDENCE_COMMAND to an approved real-provider evidence command. No provider result was claimed."' \
+              '}' > reports/agent-team-evidence/real-provider.json
             echo "::warning title=Agent Team real-provider evidence disabled::No approved provider command is configured; no provider result was claimed."
             exit 0
           fi
