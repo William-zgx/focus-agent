@@ -487,11 +487,19 @@ class ChatThreadAccessMixin:
             )
             return None
 
-    def _safe_get_values(self, thread_id: str, *, strict: bool = False) -> dict[str, Any]:
+    def _safe_get_values(
+        self,
+        thread_id: str,
+        *,
+        strict: bool = False,
+        backfill: bool = False,
+    ) -> dict[str, Any]:
         snapshot = self._safe_snapshot(thread_id, strict=strict)
         values = normalize_agent_state(
             dict(getattr(snapshot, "values", {}) or {}) if snapshot else normalize_agent_state()
         )
+        if not backfill:
+            return values
         return self._backfill_import_records(thread_id=thread_id, values=values)
 
     def _safe_get_interrupts(self, thread_id: str, *, strict: bool = False) -> list[Any]:
@@ -544,6 +552,7 @@ class ChatThreadAccessMixin:
         if not merge_queue:
             return values
 
+        original_values = values
         messages = list(values.get("messages", []))
         existing_contents = {
             self._message_content_to_text(
@@ -571,15 +580,30 @@ class ChatThreadAccessMixin:
             payload["rolling_summary"] = updated_summary
             values = {**values, "rolling_summary": updated_summary}
 
-        if payload and hasattr(self.runtime.graph, "update_state"):
-            try:
-                self.runtime.graph.update_state(
-                    {"configurable": {"thread_id": thread_id}},
-                    payload,
-                    as_node="bootstrap_turn",
-                )
-            except Exception:
-                pass
+        if not payload:
+            return values
+
+        update_state = getattr(self.runtime.graph, "update_state", None)
+        if not callable(update_state):
+            logger.warning(
+                "cannot persist imported thread records; returning persisted state",
+                extra={"thread_id": thread_id},
+            )
+            return original_values
+
+        try:
+            update_state(
+                {"configurable": {"thread_id": thread_id}},
+                payload,
+                as_node="bootstrap_turn",
+            )
+        except Exception:
+            logger.warning(
+                "failed to persist imported thread records; re-reading persisted state",
+                extra={"thread_id": thread_id},
+                exc_info=True,
+            )
+            return self._safe_get_values(thread_id, strict=True)
 
         return values
 
@@ -638,8 +662,9 @@ class ChatThreadAccessMixin:
         thread_id: str,
         user_id: str,
         explicit_skill_hints: tuple[str, ...] | None = None,
+        backfill: bool = True,
     ) -> tuple[RequestContext, BranchMeta | None, dict[str, Any]]:
-        values = self._safe_get_values(thread_id)
+        values = self._safe_get_values(thread_id, backfill=False)
         resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
         branch_meta = self._branch_meta(thread_id=thread_id, values=values)
         if (
@@ -660,6 +685,9 @@ class ChatThreadAccessMixin:
             if explicit_skill_hints is not None
             else stored_skill_hints,
         )
+        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        if backfill:
+            values = self._backfill_import_records(thread_id=thread_id, values=values)
         return context, branch_meta, values
 
     def _preflight_thread_access(
@@ -674,10 +702,11 @@ class ChatThreadAccessMixin:
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=explicit_skill_hints,
+            backfill=False,
         )
-        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         if require_writable:
             self._ensure_thread_writable(branch_meta)
+        values = self._backfill_import_records(thread_id=thread_id, values=values)
         return context, branch_meta, values
 
     def _ensure_access(self, *, thread_id: str, user_id: str, context: RequestContext) -> None:

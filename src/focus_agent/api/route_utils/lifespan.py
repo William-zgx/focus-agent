@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,7 +10,6 @@ from focus_agent.engine.runtime import create_runtime
 from focus_agent.runtime.http_client import aclose as close_async_http_client
 from focus_agent.runtime.http_client import close as close_sync_http_client
 from focus_agent.runtime.lifecycle import (
-    install_signal_handlers,
     register_shutdown_hook,
     reset_shutdown_state,
     trigger_shutdown,
@@ -26,7 +24,6 @@ async def app_lifespan(app: FastAPI):
     settings = Settings.from_env()
     validate_jwt_secret_for_environment(settings)
     reset_shutdown_state()
-    install_signal_handlers(asyncio.get_running_loop())
     runtime = create_runtime(settings)
     app.state.runtime = runtime
     app.state.chat_service = ChatService(runtime)
