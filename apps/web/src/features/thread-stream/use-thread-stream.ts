@@ -12,7 +12,7 @@ import {
 } from "@focus-agent/web-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
 
@@ -107,6 +107,22 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		Record<string, ThreadStreamEntry>
 	>({});
 	const activeRunIdsRef = useRef<Map<string, string>>(new Map());
+	const previousThreadIdRef = useRef(options.threadId);
+
+	function beginOptimisticMessageRequest(
+		requestThreadId: string,
+		message: string,
+	) {
+		const request = requestRegistry.beginStreamRequest(requestThreadId);
+		setThreadEntries((current) =>
+			nextThreadEntryMap(
+				current,
+				requestThreadId,
+				createOptimisticThreadStreamEntry(requestThreadId, message),
+			),
+		);
+		return request;
+	}
 
 	async function runStreamRequest({
 		requestThreadId,
@@ -317,14 +333,9 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 		message: string,
 		overrides?: SendMessageOverrides,
 	): Promise<SendMessageResult> {
-		const { requestId, controller } =
-			requestRegistry.beginStreamRequest(requestThreadId);
-		setThreadEntries((current) =>
-			nextThreadEntryMap(
-				current,
-				requestThreadId,
-				createOptimisticThreadStreamEntry(requestThreadId, message),
-			),
+		const { requestId, controller } = beginOptimisticMessageRequest(
+			requestThreadId,
+			message,
 		);
 
 		const requestPayload = {
@@ -353,8 +364,10 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 	): Promise<SendMessageResult> {
 		const cleanMessage = message.trim();
 		if (!cleanMessage) return { ok: false };
-		const { requestId, controller } =
-			requestRegistry.beginStreamRequest(requestThreadId);
+		const { requestId, controller } = beginOptimisticMessageRequest(
+			requestThreadId,
+			cleanMessage,
+		);
 		return runStreamRequest({
 			requestThreadId,
 			requestId,
@@ -375,6 +388,54 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 				),
 		});
 	}
+
+	const stopStreamingForThread = useCallback(
+		(requestThreadId: string) => {
+			if (!requestThreadId) return;
+			const activeRunId = activeRunIdsRef.current.get(requestThreadId);
+			if (activeRunId) {
+				void client
+					.cancelHarnessRun(activeRunId, { action: "interrupt" })
+					.catch(() => undefined);
+			}
+			void client
+				.cancelThreadHarnessRuns(requestThreadId, { action: "interrupt" })
+				.catch(() => undefined);
+			requestRegistry.stopStreamRequest(requestThreadId);
+			activeRunIdsRef.current.delete(requestThreadId);
+			const cleanup = resolveStreamRequestCleanup(false, true);
+			setThreadEntries((current) =>
+				patchThreadEntry(current, requestThreadId, {
+					isStreaming: false,
+					pendingUserMessage: cleanup.clearPendingUserMessage
+						? null
+						: (current[requestThreadId]?.pendingUserMessage ?? null),
+					streamState: cleanup.clearStreamState
+						? null
+						: (current[requestThreadId]?.streamState ?? null),
+				}),
+			);
+			void invalidateThreadStreamSurfaces(queryClient, requestThreadId);
+		},
+		[client, queryClient, requestRegistry],
+	);
+
+	useEffect(() => {
+		const previousThreadId = previousThreadIdRef.current;
+		previousThreadIdRef.current = options.threadId;
+		if (
+			previousThreadId &&
+			previousThreadId !== options.threadId &&
+			(requestRegistry.hasStreamRequest(previousThreadId) ||
+				activeRunIdsRef.current.has(previousThreadId))
+		) {
+			stopStreamingForThread(previousThreadId);
+		}
+	}, [
+		options.threadId,
+		requestRegistry.hasStreamRequest,
+		stopStreamingForThread,
+	]);
 
 	async function resumeToolApproval(
 		interrupt: FocusAgentToolApprovalInterrupt,
@@ -423,30 +484,7 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 	}
 
 	function stopStreaming() {
-		const activeRunId = activeRunIdsRef.current.get(options.threadId);
-		if (activeRunId) {
-			void client
-				.cancelHarnessRun(activeRunId, { action: "interrupt" })
-				.catch(() => undefined);
-		}
-		void client
-			.cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })
-			.catch(() => undefined);
-		requestRegistry.stopStreamRequest(options.threadId);
-		activeRunIdsRef.current.delete(options.threadId);
-		const cleanup = resolveStreamRequestCleanup(false, true);
-		setThreadEntries((current) =>
-			patchThreadEntry(current, options.threadId, {
-				isStreaming: false,
-				pendingUserMessage: cleanup.clearPendingUserMessage
-					? null
-					: (current[options.threadId]?.pendingUserMessage ?? null),
-				streamState: cleanup.clearStreamState
-					? null
-					: (current[options.threadId]?.streamState ?? null),
-			}),
-		);
-		void invalidateThreadStreamSurfaces(queryClient, options.threadId);
+		stopStreamingForThread(options.threadId);
 	}
 
 	const currentEntry =

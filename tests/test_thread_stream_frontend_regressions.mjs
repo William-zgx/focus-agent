@@ -1941,7 +1941,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      "const activeRunId = activeRunIdsRef.current.get(options.threadId); if (activeRunId)",
+      "const activeRunId = activeRunIdsRef.current.get(requestThreadId); if (activeRunId)",
     ),
     true,
   );
@@ -1953,7 +1953,15 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      'client .cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })',
+      'client .cancelThreadHarnessRuns(requestThreadId, { action: "interrupt" })',
+    ),
+    true,
+  );
+  assert.equal(streamHookSource.includes("previousThreadIdRef"), true);
+  assert.equal(streamHookSource.includes("requestRegistry.hasStreamRequest"), true);
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      "stopStreamingForThread(previousThreadId)",
     ),
     true,
   );
@@ -1972,7 +1980,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      "requestRegistry.stopStreamRequest(options.threadId); activeRunIdsRef.current.delete(options.threadId);",
+      "requestRegistry.stopStreamRequest(requestThreadId); activeRunIdsRef.current.delete(requestThreadId);",
     ),
     true,
   );
@@ -2776,6 +2784,10 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
     path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
     "utf8",
   );
+  const branchActionCardSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-branch-action-card.tsx"),
+    "utf8",
+  );
   const streamSource = readFileSync(
     path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
     "utf8",
@@ -2785,6 +2797,7 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
     "utf8",
   );
   const compactBranchAction = compactSource(branchActionSource);
+  const compactBranchActionCard = compactSource(branchActionCardSource);
   const compactStream = compactSource(streamSource);
 
   assert.equal(compactBranchAction.includes("result.branch_action.handoff_message"), true);
@@ -2807,8 +2820,20 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
   assert.equal(threadPageSource.includes("onComposerSelectionChange={handleComposerSelectionChange}"), true);
   assert.equal(compactStream.includes("client.streamHarnessRun( requestThreadId,"), true);
   assert.equal(compactStream.includes("message: cleanMessage"), true);
+  assert.equal(
+    compactStream.includes(
+      "beginOptimisticMessageRequest( requestThreadId, cleanMessage, )",
+    ),
+    true,
+  );
   assert.equal(compactStream.includes("input: { messages: [] }"), false);
   assert.equal(compactStream.includes("branch_handoff_auto_run: true"), true);
+  assert.equal(
+    compactBranchActionCard.includes(
+      "const disabled = isReadOnly || auditOnly || Boolean(isBusy);",
+    ),
+    true,
+  );
 });
 
 test("thread busy retry helper waits through transient previous-turn conflicts", async () => {
