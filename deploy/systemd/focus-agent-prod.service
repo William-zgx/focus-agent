@@ -1,0 +1,20 @@
+[Unit]
+Description=Focus Agent production service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/focus-agent/service.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=WEB_APP_DEV_SERVER_URL=
+Environment=AGENT_MEMORY_EMBEDDING_AUTO_PULL=0
+ExecStartPre=/usr/bin/test -f ${FOCUS_AGENT_ROOT}/apps/web/dist/index.html
+ExecStart=/usr/bin/make -C ${FOCUS_AGENT_ROOT} api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
