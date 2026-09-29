@@ -85,6 +85,19 @@ def _metric_mean(results: Iterable[EvalResult], key: str) -> float:
     return mean(_metric_number(_result_metrics(result), key) for result in results)
 
 
+def _known_metric_values(results: Iterable[EvalResult], key: str) -> list[float]:
+    values: list[float] = []
+    for result in results:
+        value = _result_metrics(result).get(key)
+        if value in (None, ""):
+            continue
+        try:
+            values.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
 def _metric_hit_rate(results: list[EvalResult], key: str) -> float:
     if not results:
         return 0.0
@@ -249,7 +262,11 @@ def _model_matrix(results: Iterable[EvalResult]) -> dict[str, dict[str, Any]]:
         entry["total"] += 1
         entry["passed"] += 1 if passed else 0
         entry["latencies"].append(_metric_number(metrics, "latency_ms"))
-        entry["costs"].append(_metric_number(metrics, "cost_usd"))
+        if (
+            metrics.get("cost_usd") is not None
+            and metrics.get("cost_status", "measured") == "measured"
+        ):
+            entry["costs"].append(float(metrics["cost_usd"]))
 
         cases = entry["cases"]
         case_entry = cases.setdefault(
@@ -295,7 +312,7 @@ def _model_matrix(results: Iterable[EvalResult]) -> dict[str, dict[str, Any]]:
             "failed": total - passed,
             "task_success": passed / total if total else 0.0,
             "avg_latency_ms": mean(entry["latencies"]) if entry["latencies"] else 0.0,
-            "avg_cost_usd": mean(entry["costs"]) if entry["costs"] else 0.0,
+            "avg_cost_usd": mean(entry["costs"]) if entry["costs"] else None,
             "cases": case_matrix,
         }
     return matrix
@@ -323,11 +340,21 @@ class MetricSummary:
     fallback_use_rate: float = 0.0
     parallel_tool_call_rate: float = 0.0
     environment_assertion_failure_rate: float = 0.0
-    avg_input_tokens: float = 0.0
-    avg_output_tokens: float = 0.0
+    avg_input_tokens: float | None = None
+    avg_output_tokens: float | None = None
+    input_tokens_known_count: int = 0
+    input_tokens_unknown_count: int = 0
+    output_tokens_known_count: int = 0
+    output_tokens_unknown_count: int = 0
     p50_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
-    avg_cost_usd: float = 0.0
+    avg_cost_usd: float | None = None
+    cost_known_count: int = 0
+    cost_unknown_count: int = 0
+    cost_known_rate: float = 0.0
+    fake_runtime_cases: int = 0
+    provider_evaluation_cases: int = 0
+    model_quality_evidence_cases: int = 0
     forbidden_tool_violation_rate: float = 0.0
     per_tag_success: dict[str, float] = field(default_factory=dict)
     per_capability_success: dict[str, float] = field(default_factory=dict)
@@ -365,11 +392,27 @@ class MetricSummary:
                 self.environment_assertion_failure_rate,
                 4,
             ),
-            "avg_input_tokens": round(self.avg_input_tokens, 1),
-            "avg_output_tokens": round(self.avg_output_tokens, 1),
+            "avg_input_tokens": (
+                round(self.avg_input_tokens, 1) if self.avg_input_tokens is not None else None
+            ),
+            "avg_output_tokens": (
+                round(self.avg_output_tokens, 1) if self.avg_output_tokens is not None else None
+            ),
+            "input_tokens_known_count": self.input_tokens_known_count,
+            "input_tokens_unknown_count": self.input_tokens_unknown_count,
+            "output_tokens_known_count": self.output_tokens_known_count,
+            "output_tokens_unknown_count": self.output_tokens_unknown_count,
             "p50_latency_ms": round(self.p50_latency_ms, 1),
             "p95_latency_ms": round(self.p95_latency_ms, 1),
-            "avg_cost_usd": round(self.avg_cost_usd, 5),
+            "avg_cost_usd": (
+                round(self.avg_cost_usd, 5) if self.avg_cost_usd is not None else None
+            ),
+            "cost_known_count": self.cost_known_count,
+            "cost_unknown_count": self.cost_unknown_count,
+            "cost_known_rate": round(self.cost_known_rate, 4),
+            "fake_runtime_cases": self.fake_runtime_cases,
+            "provider_evaluation_cases": self.provider_evaluation_cases,
+            "model_quality_evidence_cases": self.model_quality_evidence_cases,
             "forbidden_tool_violation_rate": round(self.forbidden_tool_violation_rate, 4),
             "per_tag_success": {k: round(v, 4) for k, v in self.per_tag_success.items()},
             "per_capability_success": {
@@ -411,9 +454,33 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
         results,
         "environment_assertions_failed",
     )
-    summary.avg_input_tokens = _metric_mean(results, "input_tokens")
-    summary.avg_output_tokens = _metric_mean(results, "output_tokens")
-    summary.avg_cost_usd = _metric_mean(results, "cost_usd")
+    input_tokens = _known_metric_values(results, "input_tokens")
+    output_tokens = _known_metric_values(results, "output_tokens")
+    summary.avg_input_tokens = mean(input_tokens) if input_tokens else None
+    summary.avg_output_tokens = mean(output_tokens) if output_tokens else None
+    summary.input_tokens_known_count = len(input_tokens)
+    summary.input_tokens_unknown_count = summary.total - len(input_tokens)
+    summary.output_tokens_known_count = len(output_tokens)
+    summary.output_tokens_unknown_count = summary.total - len(output_tokens)
+    known_costs = [
+        float(_result_metrics(result)["cost_usd"])
+        for result in results
+        if _result_metrics(result).get("cost_usd") is not None
+        and _result_metrics(result).get("cost_status", "measured") == "measured"
+    ]
+    summary.avg_cost_usd = mean(known_costs) if known_costs else None
+    summary.cost_known_count = len(known_costs)
+    summary.cost_unknown_count = summary.total - summary.cost_known_count
+    summary.cost_known_rate = summary.cost_known_count / summary.total if summary.total else 0.0
+    summary.fake_runtime_cases = sum(
+        1 for result in results if _result_metrics(result).get("runtime_kind") == "fake"
+    )
+    summary.provider_evaluation_cases = sum(
+        1 for result in results if _result_metrics(result).get("runtime_kind") == "provider"
+    )
+    summary.model_quality_evidence_cases = sum(
+        1 for result in results if _result_metrics(result).get("model_quality_evidence") is True
+    )
 
     summary.delegation_role_hit_rate = _metric_hit_rate(results, "delegation_role_hits")
     summary.handoff_hit_rate = _metric_hit_rate(results, "handoff_hits")
@@ -472,10 +539,10 @@ def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary)
     for name, higher_better in fields:
         cur = getattr(current, name)
         base = getattr(baseline, name) if baseline else None
-        diff = (cur - base) if base is not None else None
+        diff = (cur - base) if base is not None and cur is not None else None
         delta[name] = {"baseline": base, "current": cur, "delta": diff}
 
-        if base is None:
+        if base is None or cur is None:
             continue
         if name == "task_success" and (cur - base) < -0.02:
             regressions.append(f"task_success dropped {(cur - base) * 100:.1f}pp")

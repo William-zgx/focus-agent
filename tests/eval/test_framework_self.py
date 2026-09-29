@@ -10,8 +10,11 @@ import json
 import time
 from pathlib import Path
 
-from langchain.messages import AIMessage
+from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool as langchain_tool
+
+from focus_agent.config import Settings
+from focus_agent.engine.graph_governance_nodes import make_delegation_governance_node
 
 from .cli import _case_model_variants, _load_model_matrix, _write_failed_cases_dataset
 from .judges import EnvironmentJudge, RuleJudge, TrajectoryJudge
@@ -23,6 +26,7 @@ from .reporting import (
     write_jsonl_results,
 )
 from .runner import build_harness_stability_runtime, load_dataset, run_case, run_suite
+from .runner.harness import _build_metrics
 from .schema import EvalCase, TrajectoryStep
 
 
@@ -202,7 +206,7 @@ def test_eval_case_parses_extended_schema_without_migrating_old_cases():
     assert "capability" in case.to_dict()
 
 
-def test_environment_judge_checks_final_state_and_initial_state_fallback():
+def test_environment_judge_requires_final_state_and_allows_explicit_input_checks():
     case = EvalCase.from_dict(
         {
             "id": "unit_env",
@@ -213,7 +217,11 @@ def test_environment_judge_checks_final_state_and_initial_state_fallback():
             "expected": {},
             "environment": {
                 "assertions": [
-                    {"path": "model_route_decision.effective_model", "equals": "openai:fast"},
+                    {
+                        "path": "model_route_decision.effective_model",
+                        "equals": "openai:fast",
+                        "source": "input",
+                    },
                     {"path": "agent_team_tasks", "min_len": 2},
                     {"path": "answer_quality", "contains": "approved"},
                 ]
@@ -233,6 +241,100 @@ def test_environment_judge_checks_final_state_and_initial_state_fallback():
 
     assert verdict.passed, verdict.reasoning
     assert "environment_assertions" in verdict.details["checks_run"]
+
+    final_state_only_case = EvalCase.from_dict(
+        {
+            "id": "unit_env_final_only",
+            "input": {"user_message": "x", "initial_state": {"seed": "must-not-pass"}},
+            "expected": {},
+            "environment": {"assertions": [{"path": "seed", "equals": "must-not-pass"}]},
+        }
+    )
+    final_state_verdict = EnvironmentJudge().evaluate(
+        case=final_state_only_case,
+        answer="",
+        trajectory=[],
+        state={},
+    )
+    assert not final_state_verdict.passed
+    assert final_state_verdict.details["assertions"][0]["source"] is None
+    persisted_state_verdict = EnvironmentJudge().evaluate(
+        case=final_state_only_case,
+        answer="",
+        trajectory=[],
+        state={"seed": "must-not-pass"},
+    )
+    assert persisted_state_verdict.passed
+
+
+def test_environment_judge_can_assert_actual_trajectory():
+    case = EvalCase.from_dict(
+        {
+            "id": "unit_env_trajectory",
+            "input": {"user_message": "x", "initial_state": {"roles": ["critic"]}},
+            "expected": {},
+            "environment": {
+                "assertions": [
+                    {"source": "trajectory", "path": "roles", "contains": "critic"},
+                    {"source": "trajectory", "path": "handoffs", "contains": "planner->critic"},
+                ],
+            },
+        }
+    )
+    steps = [
+        TrajectoryStep(
+            tool="agent_run",
+            args={"role": "planner"},
+            observation="",
+            runtime={"handoff_to": "critic"},
+        )
+    ]
+    verdict = EnvironmentJudge().evaluate(case=case, answer="", trajectory=steps, state={})
+    assert verdict.passed, verdict.reasoning
+
+
+def test_golden_multi_agent_environment_checks_need_actual_behavior():
+    cases = load_dataset(Path(__file__).parent / "datasets" / "golden_multi_agent.jsonl")
+    verdicts = [
+        EnvironmentJudge().evaluate(
+            case=case,
+            answer="",
+            trajectory=[],
+            state={},
+        )
+        for case in cases
+    ]
+
+    assert len(verdicts) == 4
+    assert all(not verdict.passed for verdict in verdicts)
+
+
+def test_golden_multi_agent_assertions_follow_actual_governance():
+    cases = load_dataset(Path(__file__).parent / "datasets" / "golden_multi_agent.jsonl")
+
+    def no_provider(*args, **kwargs):
+        raise AssertionError("Offline governance validation must not call a provider")
+
+    for mode in ("fake", "observe"):
+        settings = Settings(
+            agent_role_routing_enabled=True,
+            agent_role_max_parallel_runs=3,
+            agent_delegation_enabled=True,
+            agent_delegation_execution_mode=mode,
+            agent_task_ledger_enabled=True,
+            agent_critic_gate_enabled=True,
+        )
+        node = make_delegation_governance_node(
+            settings=settings, tools=[], chat_model_factory=no_provider
+        )
+        for case in cases[:2]:
+            state = {
+                **case.input.get("initial_state", {}),
+                "messages": [HumanMessage(content=case.input["user_message"])],
+            }
+            state.update(node(state))
+            verdict = EnvironmentJudge().evaluate(case=case, answer="", trajectory=[], state=state)
+            assert verdict.passed is (mode == "fake"), (case.id, mode, verdict.reasoning)
 
 
 def test_trajectory_judge_enforces_multi_agent_role_expectations():
@@ -293,6 +395,124 @@ def test_run_case_direct_answer(eval_runtime_factory):
     assert result.metrics["tool_calls"] == 0
     assert result.metrics["llm_calls"] >= 1
     assert "ReAct" in result.answer or "reasoning" in result.answer
+
+
+def test_acceptance_marks_missing_cost_evidence_unknown_and_labels_fake_runtime(
+    eval_runtime_factory,
+):
+    case = EvalCase.from_dict(
+        {
+            "id": "acceptance_unknown_cost",
+            "input": {"user_message": "hi"},
+            "expected": {"answer_contains_any": ["reasoning", "act"]},
+            "acceptance": {"max_cost_usd": 0.01},
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+    result = run_case(case, runtime=eval_runtime_factory(script=_direct_answer_script))
+
+    assert not result.passed
+    assert result.metrics["runtime_kind"] == "fake"
+    assert result.metrics["provider_evaluation"] is False
+    assert result.metrics["eval_layer"] == "fake_runtime"
+    assert result.metrics["cost_usd"] is None
+    assert result.metrics["cost_status"] == "unknown"
+    acceptance = [verdict for verdict in result.verdicts if verdict.kind == "acceptance"]
+    assert acceptance and not acceptance[0].passed
+    assert acceptance[0].details["checks"]["max_cost_usd"]["status"] == "unknown"
+
+
+def test_cost_is_measured_when_prices_and_split_provider_usage_are_present(eval_runtime_factory):
+    def _metered_answer_script(messages, allow_tools):  # noqa: ARG001
+        return AIMessage(
+            content="metered answer",
+            response_metadata={"prompt_tokens": 100},
+            additional_kwargs={"completion_tokens": 20},
+        )
+
+    case = EvalCase.from_dict(
+        {
+            "id": "measured_cost",
+            "input": {"user_message": "hi"},
+            "expected": {"answer_contains_any": ["metered"]},
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+    result = run_case(
+        case,
+        runtime=eval_runtime_factory(
+            script=_metered_answer_script,
+            cost_per_1k_input=0.5,
+            cost_per_1k_output=1.0,
+        ),
+    )
+
+    assert result.passed, result.verdicts
+    assert result.metrics["runtime_kind"] == "fake"
+    assert result.metrics["cost_status"] == "measured"
+    assert result.metrics["cost_usd"] == 0.07
+
+
+def test_cost_is_unknown_when_one_model_call_lacks_usage(eval_runtime_factory):
+    case = EvalCase.from_dict({"id": "partial_usage", "input": {}, "expected": {}})
+    runtime = eval_runtime_factory(
+        script=_direct_answer_script,
+        cost_per_1k_input=0.5,
+        cost_per_1k_output=1.0,
+    )
+
+    metrics = _build_metrics(
+        case=case,
+        state={
+            "llm_calls": 2,
+            "messages": [
+                AIMessage(
+                    content="metered",
+                    usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+                ),
+                AIMessage(content="unmetered"),
+            ],
+        },
+        trajectory=[],
+        latency_ms=1.0,
+        runtime=runtime,
+        verdicts=[],
+        model_label=None,
+        model_name="fake",
+        base_case_id=case.id,
+        attempt=1,
+        attempts=1,
+    )
+
+    assert metrics["cost_usd"] is None
+    assert metrics["cost_unknown_reason"] == "usage_metadata_incomplete"
+    assert metrics["input_tokens"] is None
+
+
+def test_acceptance_enforces_latency_and_success_rate_per_case(eval_runtime_factory):
+    case = EvalCase.from_dict(
+        {
+            "id": "acceptance_suite_thresholds",
+            "input": {"user_message": "hi"},
+            "expected": {"answer_contains_any": ["reasoning", "act"]},
+            "acceptance": {"max_p95_latency_ms": 0, "min_success_rate": 1.1},
+            "judge": {"rule": True, "llm": {"enabled": False}},
+        }
+    )
+    results = run_suite(
+        [case],
+        runtime=eval_runtime_factory(script=_direct_answer_script),
+        concurrency=1,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert not result.passed
+    acceptance = [verdict for verdict in result.verdicts if verdict.kind == "acceptance"]
+    assert acceptance and not acceptance[-1].passed
+    checks = acceptance[-1].details["checks"]
+    assert checks["max_p95_latency_ms"]["status"] == "fail"
+    assert checks["min_success_rate"]["status"] == "fail"
 
 
 def test_run_case_with_tool_call(eval_runtime_factory):
@@ -399,6 +619,7 @@ def test_run_case_timeout_returns_failed_result(eval_runtime_factory):
             "id": "timeout_case",
             "input": {"user_message": "hi"},
             "expected": {"answer_contains_any": ["too late"]},
+            "acceptance": {"max_cost_usd": 0.01, "max_p95_latency_ms": 1000},
             "judge": {"rule": True, "llm": {"enabled": False}},
         }
     )
@@ -408,6 +629,8 @@ def test_run_case_timeout_returns_failed_result(eval_runtime_factory):
     assert "timed out" in (result.error or "")
     assert result.verdicts[0].kind == "harness"
     assert result.metrics["timeout_s"] == 0.01
+    assert result.metrics["acceptance_policy"]["max_cost_usd"] == 0.01
+    assert result.metrics["acceptance"]["max_cost_usd"]["status"] == "unknown"
     time.sleep(0.25)
 
 

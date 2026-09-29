@@ -91,7 +91,7 @@ class EvalCase:
 
 @dataclass(slots=True)
 class JudgeVerdict:
-    kind: str  # "rule" | "llm" | "trajectory"
+    kind: str  # "rule" | "llm" | "trajectory" | "environment" | "acceptance"
     passed: bool
     reasoning: str = ""
     confidence: float = 1.0

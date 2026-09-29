@@ -64,12 +64,18 @@ def eval_runtime_factory(scripted_model_factory):
         script: Callable[[list[Any], bool], AIMessage],
         tools: list[Any] | None = None,
         settings: Settings | None = None,
+        runtime_kind: str | None = None,
+        cost_per_1k_input: float | None = None,
+        cost_per_1k_output: float | None = None,
     ) -> EvalRuntime:
         tools = tools or [_noop_tool()]
         return EvalRuntime(
             settings=settings or Settings(),
             tool_registry=ToolRegistry(tools=tuple(tools)),
             model_factory=scripted_model_factory(script),
+            runtime_kind=runtime_kind,
+            cost_per_1k_input=cost_per_1k_input,
+            cost_per_1k_output=cost_per_1k_output,
         )
 
     return _build

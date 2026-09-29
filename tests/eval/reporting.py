@@ -66,7 +66,7 @@ def write_html_report(
         "model_matrix",
     }
     summary_rows = "\n".join(
-        f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>"
+        f"<tr><th>{escape(key)}</th><td>{escape(_display_value(value))}</td></tr>"
         for key, value in summary_dict.items()
         if key not in structured_summary_keys
     )
@@ -297,9 +297,13 @@ def _render_mapping_rows(mapping: Any, empty_message: str) -> str:
     if not isinstance(mapping, dict) or not mapping:
         return f'<tr><td colspan="2">{escape(empty_message)}</td></tr>'
     return "\n".join(
-        f"<tr><th>{escape(str(key))}</th><td>{escape(str(value))}</td></tr>"
+        f"<tr><th>{escape(str(key))}</th><td>{escape(_display_value(value))}</td></tr>"
         for key, value in sorted(mapping.items())
     )
+
+
+def _display_value(value: Any) -> str:
+    return "unknown" if value is None else str(value)
 
 
 def _render_model_matrix_rows(model_matrix: Any) -> str:
@@ -321,7 +325,7 @@ def _render_model_matrix_rows(model_matrix: Any) -> str:
             f" / {escape(str(row.get('total', 0)))}</td>"
             f'<td class="nowrap">{escape(str(row.get("task_success", 0.0)))}</td>'
             f'<td class="nowrap">{escape(str(row.get("avg_latency_ms", 0.0)))}</td>'
-            f'<td class="nowrap">{escape(str(row.get("avg_cost_usd", 0.0)))}</td>'
+            f'<td class="nowrap">{escape(_display_value(row.get("avg_cost_usd")))}</td>'
             "</tr>"
         )
     return "\n".join(rows) or '<tr><td colspan="7">No model matrix available.</td></tr>'
