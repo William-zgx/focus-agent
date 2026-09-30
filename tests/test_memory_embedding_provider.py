@@ -441,6 +441,9 @@ def test_openai_compatible_factory_reports_missing_configured_api_key_env() -> N
 
 def test_readiness_reports_memory_embedding_backend_ready_and_keeps_trajectory_last() -> None:
     class _Repository:
+        def search(self, **_kwargs):
+            return []
+
         def inspect_pgvector_support(
             self, *, dimensions: int, vector_index: bool
         ) -> dict[str, object]:

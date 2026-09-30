@@ -350,7 +350,7 @@ def test_readyz_and_metrics_payloads(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         branch_service=object(),
         tool_registry=object(),
         skill_registry=object(),
-        memory_repository=object(),
+        memory_repository=SimpleNamespace(search=lambda **_kwargs: []),
         otel_runtime=SimpleNamespace(
             ready=True,
             detail="exporting spans via otlp",
