@@ -27,7 +27,7 @@ from .reporting import (
 )
 from .runner import build_harness_stability_runtime, load_dataset, run_case, run_suite
 from .runner.harness import _build_metrics
-from .schema import EvalCase, TrajectoryStep
+from .schema import EvalCase, EvalResult, TrajectoryStep
 
 
 def _direct_answer_script(messages, allow_tools):  # noqa: ARG001
@@ -691,6 +691,61 @@ def test_compare_baselines_flags_regression():
     cur.avg_cost_usd = 0.01
     diff = compare_baselines(baseline=base, current=cur)
     assert any("task_success" in r for r in diff["regressions"])
+
+
+def _latency_summary(*entries: tuple[float, str | None, str | None]):
+    results = []
+    for index, (latency_ms, runtime_kind, eval_layer) in enumerate(entries):
+        metrics = {"latency_ms": latency_ms}
+        if runtime_kind is not None:
+            metrics["runtime_kind"] = runtime_kind
+        if eval_layer is not None:
+            metrics["eval_layer"] = eval_layer
+        results.append(
+            EvalResult(
+                case_id=f"latency-{index}",
+                passed=True,
+                answer="",
+                metrics=metrics,
+                tags=["harness", "stability"] if eval_layer == "harness_stability" else [],
+            )
+        )
+    return aggregate_metrics(results)
+
+
+def test_compare_baselines_ignores_wall_clock_jitter_for_explicit_fake_harness_runs():
+    base = _latency_summary((264.7, "fake", "harness_stability"))
+    cur = _latency_summary((368.052, "fake", "harness_stability"))
+
+    assert cur.fake_runtime_cases == cur.total == 1
+    assert cur.harness_stability_cases == cur.total == 1
+    diff = compare_baselines(baseline=base, current=cur)
+
+    assert diff["delta"]["p95_latency_ms"]["current"] == 368.052
+    assert not any("p95_latency_ms" in item for item in diff["regressions"])
+
+
+def test_compare_baselines_keeps_latency_gate_without_explicit_fake_harness_evidence():
+    base = _latency_summary((264.7, "fake", "harness_stability"))
+    current_summaries = [
+        _latency_summary((368.052, "fake", "fake_runtime")),
+        _latency_summary((368.052, "provider", "model_quality")),
+        _latency_summary(
+            (368.052, "fake", "harness_stability"),
+            (368.052, "provider", "model_quality"),
+        ),
+    ]
+
+    for current in current_summaries:
+        diff = compare_baselines(baseline=base, current=current)
+        assert any("p95_latency_ms grew" in item for item in diff["regressions"])
+
+    legacy_base = _latency_summary((264.7, None, None))
+    diff = compare_baselines(
+        baseline=legacy_base,
+        current=_latency_summary((368.052, "fake", "harness_stability")),
+    )
+    assert any("p95_latency_ms grew" in item for item in diff["regressions"])
 
 
 def test_compare_baselines_ignores_small_absolute_latency_jitter():

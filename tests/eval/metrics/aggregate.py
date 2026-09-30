@@ -355,6 +355,7 @@ class MetricSummary:
     fake_runtime_cases: int = 0
     provider_evaluation_cases: int = 0
     model_quality_evidence_cases: int = 0
+    harness_stability_cases: int = 0
     forbidden_tool_violation_rate: float = 0.0
     per_tag_success: dict[str, float] = field(default_factory=dict)
     per_capability_success: dict[str, float] = field(default_factory=dict)
@@ -413,6 +414,7 @@ class MetricSummary:
             "fake_runtime_cases": self.fake_runtime_cases,
             "provider_evaluation_cases": self.provider_evaluation_cases,
             "model_quality_evidence_cases": self.model_quality_evidence_cases,
+            "harness_stability_cases": self.harness_stability_cases,
             "forbidden_tool_violation_rate": round(self.forbidden_tool_violation_rate, 4),
             "per_tag_success": {k: round(v, 4) for k, v in self.per_tag_success.items()},
             "per_capability_success": {
@@ -481,6 +483,12 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
     summary.model_quality_evidence_cases = sum(
         1 for result in results if _result_metrics(result).get("model_quality_evidence") is True
     )
+    summary.harness_stability_cases = sum(
+        1
+        for result in results
+        if _result_metrics(result).get("runtime_kind") == "fake"
+        and _result_metrics(result).get("eval_layer") == "harness_stability"
+    )
 
     summary.delegation_role_hit_rate = _metric_hit_rate(results, "delegation_role_hits")
     summary.handoff_hit_rate = _metric_hit_rate(results, "handoff_hits")
@@ -520,6 +528,16 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
     return summary
 
 
+def _is_explicit_fake_harness_summary(summary: MetricSummary | None) -> bool:
+    """Identify an offline harness run whose wall-clock latency is not quality evidence."""
+    return bool(
+        summary
+        and summary.total > 0
+        and summary.fake_runtime_cases == summary.total
+        and summary.harness_stability_cases == summary.total
+    )
+
+
 def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary) -> dict:
     """Return a delta dict and a list of regression flags for CI gating."""
     delta: dict[str, dict] = {}
@@ -535,6 +553,9 @@ def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary)
         ("avg_cost_usd", False),
         ("forbidden_tool_violation_rate", False),
     ]
+    skip_harness_latency = _is_explicit_fake_harness_summary(
+        baseline
+    ) and _is_explicit_fake_harness_summary(current)
 
     for name, higher_better in fields:
         cur = getattr(current, name)
@@ -548,6 +569,8 @@ def compare_baselines(*, baseline: MetricSummary | None, current: MetricSummary)
             regressions.append(f"task_success dropped {(cur - base) * 100:.1f}pp")
         if name == "forbidden_tool_violation_rate" and cur > base + 1e-9:
             regressions.append(f"forbidden tool violations grew {base:.3f} -> {cur:.3f}")
+        if name == "p95_latency_ms" and skip_harness_latency:
+            continue
         if not higher_better and base > 0 and (cur - base) / base > 0.20:
             tolerance = _ABSOLUTE_REGRESSION_TOLERANCES.get(name, 0.0)
             if cur - base > tolerance:

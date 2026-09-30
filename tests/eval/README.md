@@ -222,6 +222,8 @@ indexes, for example `agent_team_tasks.0.role`. The default source is
 - `avg_tool_calls`, `avg_llm_calls`, `avg_input_tokens`, `avg_output_tokens`
 - `p50_latency_ms`, `p95_latency_ms`, `avg_cost_usd` (unknown when billing
   evidence is missing), and runtime/evidence counts
+- `harness_stability_cases` identifies results explicitly marked as both
+  `runtime_kind: "fake"` and `eval_layer: "harness_stability"`.
 - `forbidden_tool_violation_rate`
 - `per_tag_success`, `per_capability_success`, `per_risk_level_success`
 - `failed_case_ids`, `flaky_case_ids`, and `failure_clusters`
@@ -255,6 +257,13 @@ baselines as JSON (produced by `--report-json`) under `eval-baselines/` and
 bump them intentionally when you accept a trade-off. Without a baseline, the
 CLI still fails when any case fails; the regression comparison simply has no
 prior metrics to diff against.
+
+The deterministic `harness_stability` suite still records wall-clock latency,
+but its p95 latency is not a quality-regression gate only when both the
+baseline and current summary explicitly mark every case as fake
+`harness_stability`. Acceptance thresholds such as `max_p95_latency_ms` remain
+enforced by the runner. Ordinary fake runs, provider runs, and mixed-runtime
+summaries keep the p95 regression gate.
 
 ## Eval layers
 
