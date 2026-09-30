@@ -240,7 +240,10 @@ def test_ci_requires_android_debug_sync_build_lint_and_unit_tests():
     )
     assert node_step["with"]["node-version"] == "22"
     assert any(step.get("uses", "").startswith("actions/setup-java@") for step in steps)
-    assert any(step.get("uses", "").startswith("android-actions/setup-android@") for step in steps)
+    sdk_step = next(
+        step for step in steps if step.get("uses", "").startswith("android-actions/setup-android@")
+    )
+    assert sdk_step["with"]["packages"] == "platform-tools"
     assert any(
         step.get("run") == 'sdkmanager "platforms;android-36" "build-tools;36.0.0"'
         for step in steps
