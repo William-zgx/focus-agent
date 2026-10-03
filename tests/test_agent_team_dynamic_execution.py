@@ -386,8 +386,7 @@ def test_scheduler_lock_is_scoped_per_session() -> None:
     other_thread.start()
     assert other_done.wait(timeout=1)
     assert (
-        service.get_task(other_task.task_id, user_id="user-1").status
-        == AgentTeamTaskStatus.QUEUED
+        service.get_task(other_task.task_id, user_id="user-1").status == AgentTeamTaskStatus.QUEUED
     )
 
     repository.release.set()

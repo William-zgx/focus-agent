@@ -1,6 +1,6 @@
 # Skill Execution Matrix
 
-Updated: 2026-06-18
+Updated: 2026-09-28
 
 This matrix is the machine-readable acceptance source for local Skill execution
 coverage. The canonical data lives in
@@ -23,3 +23,9 @@ Current policy:
   general sandbox.
 - Local fallback smoke is degraded evidence only; Docker success is required for
   secure execution acceptance.
+
+This matrix classifies declared Skill entrypoints and their host-control policy;
+it does not assert that an external dependency is installed or that a broker is
+online. In particular, FastMCP/mcporter-style rows describe an installed
+Skill/approval workflow, not a first-class MCP client, browser/computer-use
+adapter, or account-backed connector supplied by the builtin runtime.

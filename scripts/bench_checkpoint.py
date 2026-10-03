@@ -54,7 +54,9 @@ def _saver_for_backend(backend: str, path: Path):
 
 def run_benchmark(*, backend: str, path: Path, turns: int, sample_every: int) -> dict[str, object]:
     if backend == "pickle":
-        os.environ.setdefault("FOCUS_AGENT_CHECKPOINT_HMAC_KEY", "bench-checkpoint-local-hmac-key-32")
+        os.environ.setdefault(
+            "FOCUS_AGENT_CHECKPOINT_HMAC_KEY", "bench-checkpoint-local-hmac-key-32"
+        )
     saver = _saver_for_backend(backend, path)
     durations_ms: list[float] = []
     size_samples: list[dict[str, int]] = []

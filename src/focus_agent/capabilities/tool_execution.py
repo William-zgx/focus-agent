@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 from ..core.context_policy import trim_tool_observation
+from ..core.context_tool_observation_compaction import _unretrievable_tool_observation
 from ..core.types import ContextBudget
 from ..observability.tracing import start_trace_span
 from .tool_cache import ToolResultCacheStore, cache_key
@@ -30,6 +32,8 @@ def execute_single(
     cache_store: ToolResultCacheStore | None,
     cache_scope_key: str | None,
     parallel_batch_size: int | None,
+    observation_saver: Callable[..., str | None] | None = None,
+    observation_thread_id: str | None = None,
 ) -> ToolExecutionResult:
     started_at = time.perf_counter()
     if item.runtime.side_effect:
@@ -53,6 +57,8 @@ def execute_single(
             cache_store=cache_store,
             cache_scope_key=cache_scope_key,
             parallel_batch_size=parallel_batch_size,
+            observation_saver=observation_saver,
+            observation_thread_id=observation_thread_id,
         )
         duration_ms = (time.perf_counter() - started_at) * 1000
         annotate_tool_result_runtime(
@@ -71,6 +77,8 @@ def execute_single_untraced(
     cache_store: ToolResultCacheStore | None,
     cache_scope_key: str | None,
     parallel_batch_size: int | None,
+    observation_saver: Callable[..., str | None] | None = None,
+    observation_thread_id: str | None = None,
 ) -> ToolExecutionResult:
     try:
         if item.runtime.validator is not None:
@@ -94,6 +102,8 @@ def execute_single_untraced(
                 tool_call_id=item.tool_call_id,
                 context_budget=context_budget,
                 max_chars=item.runtime.max_observation_chars,
+                observation_saver=observation_saver,
+                observation_thread_id=observation_thread_id,
             )
             emit_runtime_tool_event(
                 item=item,
@@ -150,6 +160,8 @@ def execute_single_untraced(
             tool_call_id=item.tool_call_id,
             context_budget=context_budget,
             max_chars=item.runtime.max_observation_chars,
+            observation_saver=observation_saver,
+            observation_thread_id=observation_thread_id,
         )
         return ToolExecutionResult(
             index=item.index,
@@ -186,6 +198,8 @@ def execute_single_untraced(
                     tool_call_id=item.tool_call_id,
                     context_budget=context_budget,
                     max_chars=item.runtime.max_observation_chars,
+                    observation_saver=observation_saver,
+                    observation_thread_id=observation_thread_id,
                 )
                 emit_runtime_tool_event(
                     item=item,
@@ -245,6 +259,8 @@ def trim_success(
     tool_call_id: str,
     context_budget: ContextBudget,
     max_chars: int | None,
+    observation_saver: Callable[..., str | None] | None = None,
+    observation_thread_id: str | None = None,
 ) -> tuple[str, dict[str, Any], str | None]:
     trimmed = trim_tool_observation(
         observation,
@@ -260,6 +276,56 @@ def trim_success(
                 "observation_prompt_compacted": True,
                 "observation_original_chars": len(observation),
                 "observation_trimmed_chars": len(trimmed),
+            }
+        )
+
+        fallback_limit = max_chars
+        if fallback_limit is None:
+            fallback_limit = max(
+                1,
+                int(context_budget.tool_observation_token_limit)
+                * max(1, int(context_budget.chars_per_token)),
+            )
+
+        def unavailable(error: str) -> tuple[str, dict[str, Any], str | None]:
+            runtime_info.update(
+                {
+                    "observation_retrievable": False,
+                    "observation_artifact_error": error,
+                }
+            )
+            return (
+                _unretrievable_tool_observation(
+                    observation,
+                    tool_name=tool_name,
+                    max_chars=fallback_limit,
+                ),
+                runtime_info,
+                None,
+            )
+
+        if observation_saver is None or tool_name == "artifact_read":
+            return unavailable(
+                "artifact_read output is not recursively persisted."
+                if tool_name == "artifact_read"
+                else "No tool-observation artifact saver is available."
+            )
+
+        try:
+            artifact_id = observation_saver(
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                content=observation,
+                thread_id=observation_thread_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return unavailable(str(exc))
+        if not artifact_id:
+            return unavailable("Tool-observation artifact was not saved.")
+        runtime_info.update(
+            {
+                "observation_retrievable": True,
+                "observation_artifact_id": str(artifact_id),
             }
         )
         prompt_observation = trim_tool_observation(

@@ -1580,7 +1580,7 @@ def test_preview_thread_context_increases_with_draft_message(tmp_path: Path):
     )["context_usage"]
 
     assert with_draft["used_tokens"] > baseline["used_tokens"]
-    assert with_draft["token_limit"] == 10000
+    assert with_draft["token_limit"] == 5904
 
 
 def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_path: Path):
@@ -1626,7 +1626,7 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
     payload = chat.compact_thread_context(thread_id="root-1", user_id="owner-1", trigger="manual")
 
     assert len(graph.values["messages"]) == 2
-    assert graph.updates[-1][1] == "context_compaction"
+    assert graph.updates[-1][1] is None
     assert graph.values["context_compaction"]["trigger"] == "manual"
     assert graph.values["context_compaction"]["non_destructive"] is True
     drift_report = graph.values["context_compaction"]["context_compaction_drift_report"]

@@ -28,6 +28,8 @@ export interface ProcessingStepEntry {
 export interface ToolActivityItem {
 	kind: "tool-activity";
 	id: string;
+	/** Persisted activity from a terminal run; unresolved steps are diagnostic only. */
+	isHistorical?: boolean;
 	skillIds: string[];
 	toolNames: string[];
 	summaryText: string;

@@ -1,5 +1,8 @@
 # GitHub Actions Release Gate
 
+Reviewed: 2026-09-28
+Source baseline: `718be87`
+
 This document is the canonical CI provider binding for the Focus Agent release gate and release evidence pack. It covers GitHub Actions, Buildkite, and generic CI runners; the provider-specific layer is responsible for artifact upload, approval metadata, and retention.
 
 For the human release readiness checklist and blocking criteria, see [../release-checklist.md](../release-checklist.md).
@@ -38,6 +41,13 @@ The default maximum input age and required-input collection window are both
 `21600` seconds. `/readyz` must additionally expose `deployment`,
 `app_version`, and `environment`; these must equal the deployment id, deployment
 version, and environment in `release_binding`.
+
+The identity check only binds the captured runtime response. A `ready=true`
+fallback component is not proof of a live database or provider, so production
+jobs must retain the corresponding migration, Postgres/provider, and smoke
+reports as independent inputs. Eval `acceptance` thresholds are enforced by
+the runner; missing usage or pricing is reported as unknown cost, not zero.
+Provider model-quality and fake/offline harness evidence remain separate.
 
 The production binding itself must pass all of these checks:
 
@@ -129,6 +139,12 @@ cross-check; static reports without a producer timestamp or with conflicting
 identity stop the job before production smoke. The evidence builder then
 revalidates complete binding, timestamps, freshness, and cross-artifact
 identity while building the schema v2 pack.
+
+This workflow attests release evidence; it does not supply the service's
+process supervisor. Production deployments must separately configure and test
+the platform/Compose/systemd/Kubernetes termination and restart policy. A
+one-shot or unverified process invocation is not an automatic-restart
+guarantee.
 
 Release-blocking eval evidence currently includes smoke, observability,
 golden multi-agent, harness stability, and memory/context reports. The nightly

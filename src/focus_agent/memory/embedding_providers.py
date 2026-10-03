@@ -241,7 +241,7 @@ def _ollama_pull_model(
 
     if isinstance(decoded, dict) and decoded.get("error"):
         raise EmbeddingProviderConfigError(
-            "Ollama embedding model pull failed: " f"{decoded.get('error')}"
+            f"Ollama embedding model pull failed: {decoded.get('error')}"
         )
 
 

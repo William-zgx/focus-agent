@@ -1,12 +1,15 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-07-14
+更新时间：2026-09-28（基线 commit：`718be87`）
 
 本文记录 Focus Agent 当前的 Agent Team Workbench：用户可在专门入口创建
-Mission，由 Orchestrator 生成动态 Mission DAG，任务按依赖执行并汇总为面向目标的
-`final_answer`。Mission 可以独立创建，也可以选择来源对话作为可选上下文；来源对话
-不是创建前置条件。工程 merge bundle 和 adoption review 是高级审查能力；需要采纳
-代码变更时再进入选择性应用流程。
+Mission，由 Orchestrator 生成动态 Mission DAG；在配置了可执行 executor 时，任务才会
+按依赖运行并汇总为面向目标的 `final_answer`。Mission 可以独立创建，也可以选择来源
+对话作为可选上下文；来源对话不是创建前置条件。工程 merge bundle 和 adoption review
+是高级审查能力；需要采纳代码变更时再进入选择性应用流程。当前默认配置为
+`AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、
+`AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`，因此
+工作台的 planning/API/UI 不应被理解为自动执行已开启。
 
 Agent Team 是平台 **Collaboration** 层能力，不是默认聊天主路径的替代品。
 整体定位见 [project-overview.md](project-overview.md)；与 branch-aware 主聊天的关系见
@@ -20,8 +23,10 @@ feature flags 控制；工作台可见或存在 Agent Team API 不表示 v2 已�
 发生或已全量上线。灰度和回滚口径见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
 
 `GET /v2/agent-team/readiness` 调用 `build_agent_team_readiness(settings,
-runtime=runtime)`；仅当 assessment 的 `phase=ready` 且 task-run、evidence、revision
-三项 service capability 都可用时才返回 `ready=true`。真实执行被请求时 assessment
+runtime=runtime)`；它是只读的配置/运行前置检查，不会执行任务。当前
+`agent_team_v2_capabilities()` 明确报告 `revision_commands=false`，revision command
+执行入口会返回 `NotImplementedError`，所以 readiness 不能被解释为完整的 revision
+loop 已可用。真实执行被请求时 assessment
 会检查 provider 凭据引用、durable worker、Postgres/coordination、fencing、locks 和
 Docker fail-closed。该响应不执行任务，也不返回完整 blockers/evidence；即使返回
 `ready=true`，仍需独立的 provider/Docker 实测和真实 run 证据，不能将 API 或
@@ -41,7 +46,7 @@ Focus Agent 当前已经具备分支对话、merge review、memory、trajectory 
   分支名为 `codex/agent-team/{session_short}/{task_slug}-{task_short}`；fake mode 只验证流程，
   不创建真实执行 worktree。
 - 每个 Agent 的产出以 artifact、branch-local findings、trajectory 和 task ledger 记录下来。
-- 主控 Agent 汇总各分支产物，生成用户可读的 Agent Team 最终答案。
+- 在真实 executor 已启用且有产物时，主控 Agent 汇总各分支产物，生成用户可读的 Agent Team 最终答案；默认 disabled/observe 路径只保证规划、状态与汇总接口，不保证模型委派已执行。
 - 需要采纳真实 worktree 变更时，用户通过 merge review 选择任务、预览 diff/test evidence、执行冲突预检，再显式 apply；系统不会自动 commit、push 或合并 main。
 - Reviewer / Verifier 证据不足时默认 `request_changes`，fake mode 只验证流程，不会被标为可交付。
 
@@ -77,7 +82,7 @@ Agent 分支里的探索、失败尝试和临时推理默认不进入主线。�
 
 ### 2.4 先做受控并行，不做无限自治
 
-当前版本支持模型优先的动态任务 DAG、bounded ready-task scheduler、人工可见的最终答案和高级 merge bundle。暂不支持 Agent 无限递归 spawn、自动冲突解决或无人值守提交。
+代码提供模型优先的动态任务 DAG、bounded ready-task scheduler、人工可见的最终答案和高级 merge bundle；这些执行路径受上述 flags/executor 控制，默认不会自动跑 delegated task。暂不支持 Agent 无限递归 spawn、自动冲突解决或无人值守提交。
 
 ### 2.5 治理与自治先观察后执行
 
@@ -234,7 +239,7 @@ class AgentTeamTask:
 
 ### 4.3 AgentTeamTaskOutput / AgentTeamArtifact
 
-AgentTeam task output 是最终答案和高级详情的主要证据来源。每个 output 至少保存 `summary`，并可附带 artifact id、changed files、test evidence、risk notes 和 execution metadata。Artifact 可以复用现有存储，但需要在 task/output 记录里保存 artifact id。建议 artifact kind 包括：
+AgentTeam task output 是最终答案和高级详情的主要证据来源。每个 output 至少保存 `summary`，并可附带 artifact id、changed files、test evidence、risk notes 和 execution metadata。Artifact 可以复用现有存储，但需要在 task/output 记录里保存 artifact id；当前 text artifact 写入接口返回本地 store 的 path/id，不提供通用上传、下载或外部交付通道。建议 artifact kind 包括：
 
 - `plan`
 - `patch_summary`
@@ -311,7 +316,7 @@ src/focus_agent/api/routers/agent_team_tool_approvals.py
 - 创建 team session
 - 读取 Mission goal、来源 thread 和已有任务，生成或刷新动态任务 DAG
 - 创建 task 并按需调用 `BranchService.fork_branch()`
-- 按依赖运行 ready tasks，支持 fake / inline / background execution mode
+- 按依赖运行 ready tasks，支持 fake / inline / background execution mode；`observe` 返回无 executor，默认 `disabled` 不执行
 - 维护 task 状态
 - 汇总 artifact、changed files、risk、verification
 - 生成用户态 `final_answer` 和高级 team merge bundle
@@ -330,7 +335,7 @@ approval list/decision/approve/reject 的实现拆到
 Fallback planner 仍要保留契约完整性：当旧字段如 `input_items`、`output_items`、`evidence`、`capabilities`、`risk` 或 `replan_when` 被填充时，规划服务会把它们归一化到 `input_contract`、`output_contract`、`evidence_required`、`capability_requirements`、`risk_level` 和 `replan_policy`，避免降级路径丢失执行和汇总所需的任务契约。
 
 
-`AgentTeamRunMixin` 与 `agent_team_run_orchestration.py` 会运行依赖已满足的
+`AgentTeamRunMixin` 与 `agent_team_run_orchestration.py` 在实际 executor 被启用时会运行依赖已满足的
 ready tasks。委派执行时，每个 subagent 都会收到 session 目标、task contract
 和上游依赖任务 outputs，避免下游任务只拿到元指令而缺少真实用户目标或前置
 产出。fake mode 只用于流程验证；当 merge bundle 检测到 fake output 或
@@ -534,6 +539,13 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
   恢复路径，不能与该队列 API 混用。
 - worktree 自动提供 Docker 隔离。worktree 仅隔离 Git 工作目录；Docker sandbox
   的 fail-closed 配置是另一层要求。
+- `revision_commands` 当前为 `false`，revision command 没有可执行实现。
+- `AgentBudget(max_llm_calls, max_tool_calls, max_cost_usd)`、task timeout/depth 等字段
+  目前未接入真实 runner 的逐任务 LLM/tool/cost/deadline enforcement；runner 使用全局
+  `agent_subagent_max_turns` 上限。
+- `ChatTurnRequest` 只有文本 `message: str`；Agent Team scoped tools 没有原生浏览器
+  导航/DOM/截图或图片附件输入闭环。内置 Web 工具是 text search/fetch，CI/Chrome UI
+  smoke 也不能替代 Agent browser capability。
 
 ## 9. 验收标准
 
@@ -541,14 +553,17 @@ Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids�
   Web workbench 的可见性不是 v2 runtime 开关。
 - 后端可以创建 session / task，并为 task 关联 branch。
 - `/plan` 能生成动态 DAG，重复调用默认幂等，`replace_existing=true` 可重拆。
-- `/run` 只推进依赖满足的 ready tasks，并把 output / artifact / evidence 回写到 session view。
+- `/run` 在 executor/readiness 条件满足时才推进依赖满足的 ready tasks，并把 output /
+  artifact / evidence 回写到 session view；默认 disabled/observe 只会留下未执行/blocked
+  结果，不能用 `/run` 请求本身证明模型任务已经运行。
 - enqueue 失败不会留下无主 `queued`；长任务执行会 heartbeat claim/resource lock。
 - session 完成、取消或 discard 后，AgentTeam worktree 清理会移除正常 worktree、orphan 目录并 prune git worktree metadata。
 - fake output 会生成 `placeholder` final answer，不能显示为可交付或可采纳代码变更。
 - `ready` final answer 只表示汇总结果可展示，不等于真实代码已执行或可采纳。真实
   写入需要 `inline` / `background` 的 run metadata、真实 `model_id`、artifact、
   worktree diff、测试原始输出和显式 merge-review 决定。
-- SDK 暴露完整 AgentTeam 类型和 client 方法。
+- SDK 暴露 AgentTeam 类型和 client 方法；这些方法是 API 调用面，不代表服务端已启用真实
+  provider-backed execution。
 - Web 可以展示 Mission header、任务 DAG、依赖状态、选中任务摘要、Agent Team 最终答案和高级详情。
 - branch tree 能看到 Agent task 分支，且角色标签合理。
 - task 输出可汇总成 merge bundle。
@@ -587,7 +602,8 @@ pnpm --filter @focus-agent/web-sdk build
 
 对 v2 真实执行或用户可见流程，以上源码/fixture 回归仍不足。还要完成
 `/readyz`、真实 provider/model、真实 Docker fail-closed sandbox、真实 worktree、
-审批决定后的显式重新运行、以及真实 Chrome 操作工作台的证据链。完整命令、证据字段
+审批决定后的显式重新运行、以及真实 Chrome 操作工作台的证据链。Chrome 证据只覆盖
+Web UI 交互，不证明 Agent 原生 browser、图片输入或文件交付能力。完整命令、证据字段
 和禁止宣称的情况见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md) 与
 [validation-runbook.md](validation-runbook.md)。
 

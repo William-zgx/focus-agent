@@ -213,37 +213,39 @@ def _looks_like_user_preference(text: str) -> bool:
     has_explicit_memory_instruction = _has_explicit_memory_instruction(lowered)
     if _looks_like_task_request(text) and not has_explicit_memory_instruction:
         return False
-    return any(
-        phrase in text
-        for phrase in (
-            "回答里不要",
-            "请不要",
-            "不要使用",
-            "别用",
-            "不用",
-            "请用中文",
-            "请用英文",
-            "请叫我",
-            "以后都",
-            "以后请",
-            "尽量简洁",
-            "尽量详细",
+    return (
+        any(
+            phrase in text
+            for phrase in (
+                "回答里不要",
+                "请不要",
+                "不要使用",
+                "别用",
+                "不用",
+                "请用中文",
+                "请用英文",
+                "请叫我",
+                "以后都",
+                "以后请",
+                "尽量简洁",
+                "尽量详细",
+            )
         )
-    ) or any(
-        phrase in lowered
-        for phrase in (
-            "i prefer",
-            "my preference",
-            "please keep",
-            "keep answers",
-            "keep replies",
-            "from now on",
-            "always answer",
-            "always reply",
-            "call me",
+        or any(
+            phrase in lowered
+            for phrase in (
+                "i prefer",
+                "my preference",
+                "please keep",
+                "keep answers",
+                "keep replies",
+                "from now on",
+                "always answer",
+                "always reply",
+                "call me",
+            )
         )
-    ) or (
-        has_explicit_memory_instruction and _is_sticky_response_preference(text)
+        or (has_explicit_memory_instruction and _is_sticky_response_preference(text))
     )
 
 

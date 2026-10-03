@@ -6,9 +6,7 @@ from typing import Any
 
 from langchain.messages import AIMessage, ToolMessage
 
-DEFAULT_DANGLING_TOOL_CALL_ERROR = (
-    "Tool call did not produce a result before the next model step."
-)
+DEFAULT_DANGLING_TOOL_CALL_ERROR = "Tool call did not produce a result before the next model step."
 
 
 def repair_dangling_tool_call_messages(

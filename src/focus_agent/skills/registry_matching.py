@@ -58,7 +58,10 @@ _QUERY_ALIAS_MARKERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("计划", "方案", "拆解"), ("plan", "planning")),
     (("调研", "研究", "资料"), ("research",)),
     (("提交", "合并", "拉取请求"), ("git", "pr", "workflow")),
-    (("股票", "股价", "行情", "个股", "证券", "a股", "港股", "美股"), ("stock", "stocks", "quote", "ticker", "market", "finance")),
+    (
+        ("股票", "股价", "行情", "个股", "证券", "a股", "港股", "美股"),
+        ("stock", "stocks", "quote", "ticker", "market", "finance"),
+    ),
     (("加密货币", "币价", "虚拟货币"), ("crypto", "price", "market")),
 )
 

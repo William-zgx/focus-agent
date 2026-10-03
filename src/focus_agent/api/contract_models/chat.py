@@ -66,6 +66,14 @@ class ChatResumeRequest(BaseModel):
 class ContextUsageResponse(BaseModel):
     used_tokens: int = 0
     token_limit: int = 0
+    configured_token_limit: int = 0
+    input_token_limit: int = 0
+    pretrim_tokens: int = 0
+    posttrim_tokens: int = 0
+    tool_schema_tokens: int = 0
+    output_reserve_tokens: int = 0
+    trimmed: bool = False
+    required_overflow: bool = False
     remaining_tokens: int = 0
     used_ratio: float = 0.0
     status: Literal["ok", "warm", "hot", "over", "compacting", "error"] = "ok"

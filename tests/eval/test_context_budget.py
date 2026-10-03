@@ -34,7 +34,11 @@ def test_eval_long_history_direct_writing_stays_tool_free(eval_runtime_factory):
                 "user_constraints": [
                     {"constraint": "Keep the current writing request authoritative."}
                 ],
-                "context_budget": ContextBudget(prompt_token_limit=360, chars_per_token=1),
+                "context_budget": ContextBudget(
+                    prompt_token_limit=380,
+                    output_token_reserve=0,
+                    chars_per_token=1,
+                ),
             },
         },
         expected={
@@ -70,6 +74,33 @@ def search_code(query: str = "") -> str:  # type: ignore[no-untyped-def]
         },
         ensure_ascii=False,
     )
+
+
+_EVAL_TOOL_OBSERVATIONS: dict[str, str] = {}
+
+
+def _save_eval_tool_observation(**kwargs: Any) -> str:
+    tool_name = str(kwargs.get("tool_name") or "tool")
+    tool_call_id = str(kwargs.get("tool_call_id") or "call")
+    artifact_id = f"tool-observation://{tool_name}/{tool_call_id}"
+    _EVAL_TOOL_OBSERVATIONS[artifact_id] = str(kwargs.get("content") or "")
+    return artifact_id
+
+
+@langchain_tool
+def artifact_read(artifact_id: str, offset: int | None = None, limit: int | None = None) -> str:
+    """Read a saved evaluation tool observation range."""
+    content = _EVAL_TOOL_OBSERVATIONS.get(artifact_id, "")
+    start = max(0, int(offset or 0))
+    if limit is None:
+        return content[start:]
+    return content[start : start + max(0, int(limit))]
+
+
+artifact_read.metadata = {"_focus_agent_save_tool_observation": _save_eval_tool_observation}
+
+# artifact_read adds 109 schema tokens (64 -> 173); retain the same message allowance.
+_LONG_TOOL_PROMPT_TOKEN_LIMIT = 600 + 109
 
 
 def _long_tool_output_script(messages: list[Any], allow_tools: bool) -> AIMessage:
@@ -124,7 +155,8 @@ def test_eval_long_tool_output_does_not_pollute_final_answer(eval_runtime_factor
             "user_message": "找到仓库里 assemble_context 的定义位置。",
             "initial_state": {
                 "context_budget": ContextBudget(
-                    prompt_token_limit=500,
+                    prompt_token_limit=_LONG_TOOL_PROMPT_TOKEN_LIMIT,
+                    output_token_reserve=0,
                     chars_per_token=1,
                     tool_observation_token_limit=260,
                 )
@@ -141,7 +173,10 @@ def test_eval_long_tool_output_does_not_pollute_final_answer(eval_runtime_factor
 
     result = run_case(
         case,
-        runtime=eval_runtime_factory(script=_long_tool_output_script, tools=[search_code]),
+        runtime=eval_runtime_factory(
+            script=_long_tool_output_script,
+            tools=[search_code, artifact_read],
+        ),
     )
 
     assert result.passed, [verdict.reasoning for verdict in result.verdicts]
@@ -160,7 +195,8 @@ def test_eval_long_tool_output_marks_prompt_compaction_runtime(eval_runtime_fact
             "user_message": "找到仓库里 assemble_context 的定义位置。",
             "initial_state": {
                 "context_budget": ContextBudget(
-                    prompt_token_limit=500,
+                    prompt_token_limit=_LONG_TOOL_PROMPT_TOKEN_LIMIT,
+                    output_token_reserve=0,
                     chars_per_token=1,
                     tool_observation_token_limit=180,
                     tool_reference_token_limit=80,
@@ -177,7 +213,10 @@ def test_eval_long_tool_output_marks_prompt_compaction_runtime(eval_runtime_fact
 
     result = run_case(
         case,
-        runtime=eval_runtime_factory(script=_long_tool_output_script, tools=[search_code]),
+        runtime=eval_runtime_factory(
+            script=_long_tool_output_script,
+            tools=[search_code, artifact_read],
+        ),
     )
 
     assert result.passed, [verdict.reasoning for verdict in result.verdicts]
@@ -217,7 +256,8 @@ def test_eval_tokenizer_first_budget_prioritizes_constraints(eval_runtime_factor
                 "rolling_summary": "OBSOLETE_HISTORY " * 120,
                 "user_constraints": [{"constraint": "Preserve this exact constraint."}],
                 "context_budget": ContextBudget(
-                    prompt_token_limit=45,
+                    prompt_token_limit=400,
+                    output_token_reserve=0,
                     chars_per_token=4,
                     token_budget_mode="tokenizer_first",
                     tokenizer_id="fake-model",
@@ -264,7 +304,11 @@ def test_eval_branch_review_packing_prioritizes_findings_and_artifacts(eval_runt
                 },
                 "branch_local_findings": [{"finding": "Branch finding worth importing"}],
                 "artifacts": [{"title": "Review notes", "kind": "note"}],
-                "context_budget": ContextBudget(prompt_token_limit=360, chars_per_token=1),
+                "context_budget": ContextBudget(
+                    prompt_token_limit=500,
+                    output_token_reserve=0,
+                    chars_per_token=1,
+                ),
             },
         },
         expected={

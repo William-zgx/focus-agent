@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from langgraph.config import get_stream_writer  # noqa: F401
 
 from ..core.types import ContextBudget
@@ -46,7 +48,26 @@ def execute_tool_calls(
     cache_scope_keys: dict[int, str] | None = None,
     invalidation_scope_keys: list[str] | None = None,
     max_parallel_workers: int = 4,
+    observation_saver: Callable[..., str | None] | None = None,
+    observation_thread_id: str | None = None,
 ) -> list[ToolExecutionResult]:
+    def execute_one(
+        item: ToolExecutionInput,
+        context_budget: ContextBudget,
+        cache_store: ToolResultCacheStore | None,
+        cache_scope_key: str | None,
+        parallel_batch_size: int | None,
+    ) -> ToolExecutionResult:
+        return execute_single(
+            item,
+            context_budget=context_budget,
+            cache_store=cache_store,
+            cache_scope_key=cache_scope_key,
+            parallel_batch_size=parallel_batch_size,
+            observation_saver=observation_saver,
+            observation_thread_id=observation_thread_id,
+        )
+
     pending_parallel: list[ToolExecutionInput] = []
     completed: list[ToolExecutionResult] = []
 
@@ -63,12 +84,12 @@ def execute_tool_calls(
                     cache_store=cache_store,
                     cache_scope_keys=cache_scope_keys or {},
                     max_parallel_workers=max_parallel_workers,
-                    execute_single=execute_single,
+                    execute_single=execute_one,
                 )
             )
             pending_parallel = []
         completed.append(
-            execute_single(
+            execute_one(
                 item,
                 context_budget=context_budget,
                 cache_store=cache_store,
@@ -90,7 +111,7 @@ def execute_tool_calls(
                 cache_store=cache_store,
                 cache_scope_keys=cache_scope_keys or {},
                 max_parallel_workers=max_parallel_workers,
-                execute_single=execute_single,
+                execute_single=execute_one,
             )
         )
 

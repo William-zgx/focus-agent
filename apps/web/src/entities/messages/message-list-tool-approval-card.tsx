@@ -34,7 +34,7 @@ export function ToolApprovalCard({
 	const argsLabel = isChineseUi ? "参数" : "Args";
 
 	return (
-		<article className="fa-tool-approval-card">
+		<article className="fa-branch-action-card fa-tool-approval-card">
 			<div className="fa-tool-approval-card-header">
 				<div>
 					<div className="fa-tool-approval-card-title">{title}</div>

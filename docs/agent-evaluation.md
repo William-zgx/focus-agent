@@ -1,5 +1,8 @@
 # Agent Evaluation
 
+Updated: 2026-10-03
+Source baseline: `81f7a6f` plus context-quality changes
+
 Focus Agent evaluates agent behavior end to end: the graph receives a scripted
 task, the runner records the final answer and tool trajectory, judges score the
 run, and reports aggregate quality, cost, latency, and collaboration signals.
@@ -27,11 +30,15 @@ Eval cases remain JSONL and stay backward-compatible. New fields are optional:
 - `risk_level`: `low`, `medium`, or `high`.
 - `agent_topology`: expected multi-agent mode, roles, handoff requirement, and
   critic requirement.
-- `environment.assertions`: deterministic final-state checks. Assertions can
-  fall back to `input.initial_state` when the graph does not preserve a field.
+- `environment.assertions`: final-state checks by default, with no implicit
+  fallback to initial state. Use `source: "input"` for explicit input-context
+  checks or `source: "trajectory"` for recorded execution evidence. Mutation
+  cases still need operation-specific final values or receipts.
 - `model_matrix`: labeled model variants for cross-model comparison.
 - `retries`: additional attempts for flaky-case detection.
-- `acceptance`: policy targets such as minimum success rate or maximum latency.
+- `acceptance`: enforced by the runner. Cost is checked per attempt; p95
+  latency and minimum success rate include all case attempts, including
+  failures and timeouts.
 
 ## Judges
 
@@ -77,7 +84,11 @@ uv run python -m tests.eval --suite golden_multi_agent \
 
 JSON and HTML reports include:
 
-- task success, failed cases, error count, latency, token, and cost metrics
+- task success, failed cases, error count, latency, token, and cost metrics.
+  Token/cost values are measured only when model usage metadata and runtime
+  pricing are available; otherwise `cost_status` is `unknown`, not zero cost.
+  `runtime_kind` and `eval_layer` distinguish provider quality from fake or
+  offline harness evidence.
 - per-tag, per-capability, and per-risk success
 - collaboration metrics for delegation, handoff, critic gate, fallback, and
   parallel tool use

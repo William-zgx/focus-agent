@@ -1,6 +1,6 @@
 # Zvec Retrieval Index
 
-Updated: 2026-06-25
+Updated: 2026-09-28
 
 This is the canonical guide for Focus Agent retrieval indexing. PostgreSQL and
 the filesystem remain the canonical stores. Zvec is a rebuildable, embedded
@@ -34,6 +34,18 @@ Rules:
 - Online failures fall back to PostgreSQL, legacy scorers, or an empty shadow
   signal depending on the feature.
 - API, SDK, and Web surfaces do not expose raw embeddings or vectors.
+
+Runtime status is conditional rather than an availability guarantee. The Zvec
+adapter and collection backfill are implemented, but index construction can
+return unavailable when the package, data directory, or embedding provider is
+missing. The retriever then uses the configured PostgreSQL/filesystem fallback;
+canonical records remain usable. `retrieval_zvec` readiness describes index
+availability only and does not establish embedding-provider health or semantic
+quality.
+
+Fallback readiness requires an available search-capable repository/store; a
+configured name alone no longer passes. It is a capability check, not a live
+query, so production verification still requires an actual backend/query check.
 
 ## Configuration
 
@@ -121,7 +133,9 @@ pgvector compatibility work only.
   per-replica local indexes rebuilt from PostgreSQL/filesystem canonical data.
 - Shared Zvec data dirs across concurrent writers are not supported.
 - `retrieval_zvec` readiness reports embedded index availability. A degraded
-  Zvec check should not imply canonical memory/artifact data loss.
+  Zvec check should not imply canonical memory/artifact data loss, and a green
+  index check should not be read as proof that a provider is configured or that
+  retrieval quality has been measured in production.
 
 ## Validation
 
@@ -132,6 +146,10 @@ uv run pytest tests/test_retrieval_index.py tests/test_retrieval_expansion.py
 uv run pytest tests/test_memory_retriever.py tests/test_skill_registry.py
 uv run pytest tests/test_default_tools.py
 ```
+
+These checks cover adapter contracts, fallback behavior, and fixture-backed
+hydration. They do not replace a deployment check with the configured provider
+and a representative semantic-quality evaluation.
 
 Broad checks:
 

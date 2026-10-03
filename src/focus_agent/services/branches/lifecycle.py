@@ -11,6 +11,7 @@ from ...core.types import ConversationRecord, PromptMode
 logger = logging.getLogger("focus_agent.branches")
 
 _LOCAL_SNAPSHOT_SEED_RESETS: dict[str, object] = {
+    "rolling_summary": "",
     "recent_messages": [],
     "assembled_context": "",
     "llm_calls": 0,
@@ -174,6 +175,8 @@ class BranchLifecycleCoordinator:
                 {"configurable": {"thread_id": child_thread_id}},
                 {
                     "branch_meta": branch_meta_payload,
+                    "rolling_summary": "",
+                    "context_compaction": {},
                     "merge_proposal": None,
                     "merge_decision": None,
                     "branch_local_findings": [],

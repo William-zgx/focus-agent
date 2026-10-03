@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from langchain.messages import ToolMessage
 
@@ -28,7 +28,8 @@ from .policy_intent_parsing import (
     _explicit_web_tool_contract_reason_codes,
     _filter_bare_current_hits,
     _preferred_first_args,
-    _should_prefer_web_fetch,
+    _preferred_first_tool,
+    _ToolPolicy,
     _workspace_search_query,
 )
 from .policy_intent_parsing import (
@@ -122,9 +123,6 @@ _SKILL_TOOL_NAMES = frozenset(
         "skill_sources",
     }
 )
-
-
-_ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -596,42 +594,6 @@ def _confidence(top_score: int, runner_up_score: int) -> float:
     return 0.6 + min(0.3, top_score * 0.04) + min(0.1, max(0, top_score - runner_up_score) * 0.03)
 
 
-def _preferred_first_tool(
-    text: str,
-    *,
-    policy: _ToolPolicy,
-    symbol_hits: tuple[str, ...],
-    file_browse_hits: tuple[str, ...],
-    web_lookup_hits: tuple[str, ...],
-    fresh_external_hits: tuple[str, ...],
-) -> str | None:
-    normalized = text.lower()
-    if policy == "live_web_research" and "web_search" in normalized and "web_fetch" in normalized:
-        return "web_search"
-    if policy in {"live_web_research", "execution"} and _should_prefer_web_fetch(text):
-        return "web_fetch"
-    if policy == "workspace_lookup":
-        if file_browse_hits and not symbol_hits:
-            return "list_files"
-        if (
-            symbol_hits
-            or _CODE_OR_FILE_REFERENCE_RE.search(text)
-            or _contains_any(text, _CODE_SEARCH_TOOL_INTENT_MARKERS)
-        ):
-            return "search_code"
-    if policy == "live_web_research":
-        if web_lookup_hits or _contains_any(text, _LIVE_WEB_SEARCH_FIRST_MARKERS):
-            return "web_search"
-    if policy == "execution":
-        wants_workspace_first = bool(symbol_hits) and not file_browse_hits
-        wants_web_first = bool(web_lookup_hits or fresh_external_hits)
-        if wants_workspace_first and not wants_web_first:
-            return "search_code"
-        if wants_web_first and not wants_workspace_first:
-            return "web_search"
-    return None
-
-
 def _tools_for_policy(
     policy: _ToolPolicy,
     tools: list[Any],
@@ -659,7 +621,9 @@ def _tools_for_policy(
             normalized, _FILE_BROWSE_INTENT_MARKERS
         ):
             focused = [
-                tool for tool in candidates if "code_search" in _tool_runtime(tool).intent_tags
+                tool
+                for tool in candidates
+                if "code_search" in _tool_runtime(tool).intent_tags or tool.name == "artifact_read"
             ]
             if focused:
                 return focused
@@ -691,6 +655,15 @@ def _filter_tools_by_exposure(tools: list[Any], exposure: TurnToolExposure) -> l
     filtered: list[Any] = []
     for tool in tools:
         runtime = _tool_runtime(tool)
+        # Workspace observations can be paged without exposing artifact-writing tools.
+        if (
+            exposure.policy == "workspace_lookup"
+            and "workspace" in allowed_toolsets
+            and tool.name == "artifact_read"
+            and not runtime.side_effect
+        ):
+            filtered.append(tool)
+            continue
         if runtime.toolset in hard_denied_toolsets:
             continue
         if allowed_toolsets and runtime.toolset not in allowed_toolsets:

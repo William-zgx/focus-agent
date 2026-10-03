@@ -57,10 +57,12 @@ class CitationRef(StateModel):
 
 class ContextBudget(StateModel):
     recent_message_limit: int = Field(default=12, ge=1)
+    recent_message_token_limit: int = Field(default=16000, ge=1)
     findings_limit: int = Field(default=8, ge=0)
     artifact_limit: int = Field(default=6, ge=0)
     citation_limit: int = Field(default=10, ge=0)
     prompt_token_limit: int = Field(default=128000, ge=1)
+    output_token_reserve: int = Field(default=4096, ge=0)
     chars_per_token: int = Field(default=4, ge=1)
     token_budget_mode: Literal["chars_fallback", "tokenizer_first"] = "tokenizer_first"
     tokenizer_id: str | None = None

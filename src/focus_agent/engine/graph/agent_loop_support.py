@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -141,25 +140,6 @@ def _with_focus_agent_turn_metadata(
     )
 
 
-def _fire_system_agent_trigger(runner: Any | None, trigger_name: str, ctx: dict[str, Any]) -> None:
-    """Best-effort fire-and-forget trigger for system agents from a sync node."""
-
-    if runner is None:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    try:
-        loop.create_task(runner.trigger(trigger_name, ctx))
-    except Exception:  # noqa: BLE001
-        _logger.debug(
-            "Failed to fire system agent trigger '%s'",
-            trigger_name,
-            exc_info=True,
-        )
-
-
 def _drain_steer_messages(run_manager: Any | None, thread_id: str | None) -> list[str]:
     """Drain any steering messages queued for ``thread_id``; safe if None."""
 
@@ -224,30 +204,9 @@ def _filter_tools_by_agent_def(
         return available_tools
 
 
-def _estimate_context_fullness(prompt_messages: list[Any]) -> float:
-    """Roughly estimate how full the prompt is as a 0..1 ratio."""
-
-    total = 0
-    for message in prompt_messages:
-        content = getattr(message, "content", "")
-        if isinstance(content, str):
-            total += len(content)
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict):
-                    total += len(str(part.get("text", "")))
-                else:
-                    total += len(str(part))
-        else:
-            total += len(str(content))
-    return min(1.0, total / 32000.0)
-
-
 __all__ = [
     "_drain_steer_messages",
-    "_estimate_context_fullness",
     "_filter_tools_by_agent_def",
-    "_fire_system_agent_trigger",
     "_model_for_stream_phase",
     "_model_with_tools_for_stream_phase",
     "_outcome_attempt_index",

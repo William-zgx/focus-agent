@@ -92,8 +92,7 @@ def convert_tool_calls_for_provider(
 
     OpenAI tool calls look like::
 
-        {"id": "call_abc", "type": "function",
-         "function": {"name": "search", "arguments": "{...}"}}
+        {"id": "call_abc", "type": "function", "function": {"name": "search", "arguments": "{...}"}}
 
     Anthropic tool calls are content blocks::
 
@@ -166,7 +165,12 @@ def _anthropic_to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]
                 converted["tool_calls"] = tool_calls
             out.append(converted)
         else:
-            out.append({"role": _map_role_to_openai(role), "content": str(content) if content is not None else ""})
+            out.append(
+                {
+                    "role": _map_role_to_openai(role),
+                    "content": str(content) if content is not None else "",
+                }
+            )
     return out
 
 
@@ -305,12 +309,12 @@ def _extract_thinking_block(content: str) -> tuple[str, str] | None:
     open_match = _THINKING_OPEN_RE.match(content)
     if not open_match:
         return None
-    after_open = content[open_match.end():]
+    after_open = content[open_match.end() :]
     close_match = _THINKING_CLOSE_RE.search(after_open)
     if not close_match:
         return None
     thinking = after_open[: close_match.start()].strip()
-    remaining = after_open[close_match.end():].lstrip()
+    remaining = after_open[close_match.end() :].lstrip()
     return thinking, remaining
 
 
@@ -363,15 +367,16 @@ def _generic_to_openai_fallback(messages: list[dict[str, Any]]) -> list[dict[str
                     if block.get("type") == "text":
                         text_parts.append(str(block.get("text", "")))
                     elif block.get("type") == "thinking":
-                        text_parts.append(
-                            f"<thinking>\n{block.get('thinking', '')}\n</thinking>"
-                        )
+                        text_parts.append(f"<thinking>\n{block.get('thinking', '')}\n</thinking>")
                 else:
                     text_parts.append(str(block))
             out.append({"role": _map_role_to_openai(role), "content": "\n".join(text_parts)})
         else:
             out.append(
-                {"role": _map_role_to_openai(role), "content": str(content) if content is not None else ""}
+                {
+                    "role": _map_role_to_openai(role),
+                    "content": str(content) if content is not None else "",
+                }
             )
     return out
 

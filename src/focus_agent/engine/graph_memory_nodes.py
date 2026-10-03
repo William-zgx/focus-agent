@@ -9,7 +9,6 @@ from langgraph.types import interrupt
 
 from ..agent_context_engineering import build_context_engineering_decision
 from ..config import Settings
-from ..core.branch_messages import branch_visible_messages
 from ..core.context_policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -92,13 +91,7 @@ def make_assemble_context_node(
         )
         active_skills_block = skill_registry.render_active_skills_block(active_skill_ids)
         available_skills_block = skill_registry.render_available_skills_block()
-        prompt_state = {
-            **dict(state),
-            "messages": branch_visible_messages(
-                list(state.get("messages", []) or []),
-                values=state,
-            ),
-        }
+        prompt_state = dict(state)
         context_slice = build_context_slice(
             {
                 **prompt_state,
@@ -169,16 +162,17 @@ def make_assemble_context_node(
 
 
 def summarize_turn(state: AgentState) -> dict[str, Any]:
-    last_user = _latest_human_message_text(state.get("messages", []))
-    last_ai = _latest_final_ai_text(state.get("messages", []))
-    previous_summary = state.get("rolling_summary", "")
-    candidate_lines = [
-        line for line in [previous_summary, f"User: {last_user}", f"Assistant: {last_ai}"] if line
-    ]
-    joined = "\n".join(candidate_lines)
-    if len(joined) > 4000:
-        joined = joined[-4000:]
-    return {"rolling_summary": joined}
+    from ..core.context_compaction import build_incremental_compaction_update
+
+    previous_meta = (
+        state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
+    )
+    return build_incremental_compaction_update(
+        state,
+        previous_meta,
+        trigger="turn_summary",
+        force=False,
+    )
 
 
 def _should_extract_memories(state: AgentState) -> bool:

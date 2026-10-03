@@ -1,5 +1,12 @@
 # Tool Risk Levels
 
+> **Historical refactor record.** These risk levels and approval examples are
+> policy design notes, not evidence of a live approval/replay capability. For
+> current defaults and open capability work, see the [current overview](../project-overview.md)
+> and the 2026-09-28 [research](../plans/2026-09-28-agent-capabilities/research.md),
+> [design](../plans/2026-09-28-agent-capabilities/design.md), and
+> [plan](../plans/2026-09-28-agent-capabilities/plan.md).
+
 ## Levels
 
 - `low`: read-only or local introspection tools.

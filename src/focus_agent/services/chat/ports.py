@@ -20,6 +20,7 @@ class ChatServicePorts:
     checkpointer: Any | None = None
     background_work: Any | None = None
     coordination_backend: CoordinationBackend | None = None
+    tool_registry: Any | None = None
 
     @classmethod
     def from_runtime(cls, runtime: Any) -> ChatServicePorts:
@@ -36,4 +37,5 @@ class ChatServicePorts:
             checkpointer=getattr(runtime, "checkpointer", None),
             background_work=getattr(runtime, "background_work", None),
             coordination_backend=getattr(runtime, "coordination_backend", None),
+            tool_registry=getattr(runtime, "tool_registry", None),
         )

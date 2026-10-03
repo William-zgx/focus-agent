@@ -1,5 +1,31 @@
+import pytest
+
 from focus_agent.engine.graph import policy
 from focus_agent.engine.graph import policy_intent_parsing as parsing
+
+
+@pytest.mark.parametrize(
+    ("prompt", "tool_name"),
+    [
+        (
+            "Use read_file(path='evidence.txt', start_line=1, end_line=300) to inspect this workspace file.",
+            "read_file",
+        ),
+        ("请调用 read_file(path='evidence.txt') 读取文件内容。", "read_file"),
+        (
+            "Use artifact_read(artifact_id='tool-observation://read_file/call-1', offset=20000, limit=300) to retrieve a page.",
+            "artifact_read",
+        ),
+    ],
+)
+def test_explicit_read_tool_invocation_is_not_forced_into_code_search(prompt, tool_name):
+    plan = policy.build_tool_intent_plan(prompt)
+    assert plan.preferred_first_tool == tool_name
+
+
+def test_search_for_read_tool_definition_keeps_code_search():
+    plan = policy.build_tool_intent_plan("Find the definition of read_file in this repository.")
+    assert plan.preferred_first_tool == "search_code"
 
 
 def test_policy_reexports_intent_parsing_helpers():
@@ -9,9 +35,9 @@ def test_policy_reexports_intent_parsing_helpers():
         "_filter_bare_current_hits",
         "_explicit_web_tool_contract_reason_codes",
         "_preferred_first_args",
+        "_preferred_first_tool",
         "_skill_view_name_from_text",
         "_skill_install_name_from_text",
-        "_should_prefer_web_fetch",
         "_first_http_url",
         "_workspace_search_query",
     )

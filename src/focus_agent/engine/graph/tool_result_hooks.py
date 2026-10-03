@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from langchain.messages import ToolMessage
@@ -10,6 +11,50 @@ from ...capabilities.tool_messages import build_tool_error_message, build_tool_m
 from ...capabilities.tool_runtime import ToolExecutionResult
 
 logger = logging.getLogger(__name__)
+
+
+def _blocked_tool_error(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+    *,
+    source: str,
+) -> ToolMessage:
+    """Build a result for an intercepted tool call that was not executed."""
+    return build_tool_error_message(
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        args=dict(tool_args or {}),
+        error=reason or f"blocked by {source}",
+        runtime_info={source: True, "blocked_reason": reason},
+    )
+
+
+def _denied_tool_result(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+) -> ToolMessage:
+    return _blocked_tool_error(
+        tool_call_id,
+        tool_name,
+        tool_args,
+        reason or "permission denied",
+        source="permission_denied",
+    )
+
+
+def _ask_permission_result(
+    tool_call_id: str,
+    tool_name: str,
+    tool_args: Mapping[str, Any] | None,
+    reason: str | None,
+) -> ToolMessage:
+    return _blocked_tool_error(
+        tool_call_id, tool_name, tool_args, reason or "permission required", source="permission_ask"
+    )
 
 
 def _patch_tool_message_content(message: ToolMessage, new_content: Any) -> ToolMessage:

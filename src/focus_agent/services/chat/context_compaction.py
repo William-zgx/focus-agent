@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain.messages import HumanMessage
 
+from ...core.context_compaction import build_incremental_compaction_update
 from ...core.repo_call import has_repo_method
 from ...observability.trajectory import utc_now
 from ..coordination import background_job_key
@@ -20,10 +21,13 @@ class ChatContextCompactionMixin:
             from ...context_usage import build_context_usage
 
             selected_model = str(values.get("selected_model") or self.runtime.settings.model)
+            registry = getattr(self.runtime, "tool_registry", None)
+            available_tools = tuple(getattr(registry, "tools", ()) or ())
             return build_context_usage(
                 values,
                 draft_message=draft_message,
                 selected_model=selected_model,
+                available_tools=available_tools,
             ).to_dict()
         except Exception as exc:  # noqa: BLE001
             logger.warning("failed to calculate context usage", exc_info=True)
@@ -47,10 +51,11 @@ class ChatContextCompactionMixin:
     def preview_thread_context(
         self, *, thread_id: str, user_id: str, draft_message: str | None = None
     ) -> dict[str, Any]:
-        context, _branch_meta, values = self._context_for_thread(
-            thread_id=thread_id, user_id=user_id
+        self._assert_known_thread_owner_before_context(thread_id=thread_id, user_id=user_id)
+        context, _branch_meta, values = self._preflight_thread_access(
+            thread_id=thread_id,
+            user_id=user_id,
         )
-        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
         return {"context_usage": self._context_usage_payload(values, draft_message=draft_message)}
 
     def compact_thread_context(
@@ -62,6 +67,7 @@ class ChatContextCompactionMixin:
         draft_message: str | None = None,
         force: bool = True,
     ) -> dict[str, Any]:
+        self._assert_known_thread_owner_before_context(thread_id=thread_id, user_id=user_id)
         _context, branch_meta, values = self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
@@ -88,6 +94,22 @@ class ChatContextCompactionMixin:
                 trace_correlation=None,
             )
 
+    def _assert_known_thread_owner_before_context(self, *, thread_id: str, user_id: str) -> None:
+        """Reject a known owner mismatch before loading graph state.
+
+        Unknown/legacy threads retain the existing access path: ``_ensure_access``
+        may establish ownership after resolving the context.  For repositories
+        that already know the owner, the check must happen before
+        ``_context_for_thread`` can read or derive any state.
+        """
+        repo = getattr(self.runtime, "repo", None)
+        get_owner = getattr(repo, "get_thread_owner", None)
+        assert_owner = getattr(repo, "assert_thread_owner", None)
+        if not callable(get_owner) or not callable(assert_owner):
+            return
+        if get_owner(thread_id=thread_id) is not None:
+            assert_owner(thread_id=thread_id, owner_user_id=user_id)
+
     def _compact_thread_context_locked(
         self,
         *,
@@ -97,46 +119,112 @@ class ChatContextCompactionMixin:
         draft_message: str | None = None,
         force: bool = False,
     ) -> dict[str, Any] | None:
-        usage = self._context_usage_payload(values, draft_message=draft_message)
+        # The caller may have preflighted the thread before acquiring the lease.
+        # Re-read while the lease is held so a branch merge/artifact update is
+        # not compacted from an older snapshot.
+        try:
+            snapshot = self.runtime.graph.get_state({"configurable": {"thread_id": thread_id}})
+            snapshot_values = getattr(snapshot, "values", None)
+            if not isinstance(snapshot_values, dict):
+                raise RuntimeError("graph state refresh returned no mapping")
+            latest_values = dict(snapshot_values)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed to refresh state before compaction; skipping", exc_info=True)
+            raise RuntimeError("cannot compact without a fresh graph state") from exc
+
+        if getattr(snapshot, "interrupts", ()):
+            from .service import ConcurrentTurnError
+
+            # LangGraph update_state clears pending interrupt writes. Wait for
+            # the user's answer/approval instead of invalidating its resume ID.
+            raise ConcurrentTurnError(
+                "Context compaction is deferred while a user response or tool approval is pending."
+            )
+
+        usage = self._context_usage_payload(latest_values, draft_message=draft_message)
         threshold = self._context_compaction_threshold(trigger)
-        if not force and float(usage.get("used_ratio") or 0) < threshold:
+        if not force and self._pretrim_context_ratio(usage) < threshold:
             return None
 
-        messages = list(values.get("messages", []) or [])
         previous_meta = (
-            values.get("context_compaction")
-            if isinstance(values.get("context_compaction"), dict)
+            latest_values.get("context_compaction")
+            if isinstance(latest_values.get("context_compaction"), dict)
             else {}
         )
-        if not force and int(previous_meta.get("source_message_count") or -1) == len(messages):
-            return None
-
-        now = utc_now().isoformat()
-        summary = self._build_compacted_summary(values)
-        drift_report = self._build_context_compaction_drift_report(
-            values=values,
-            summary=summary,
+        update = build_incremental_compaction_update(
+            latest_values,
+            previous_meta,
+            trigger=trigger,
+            force=force,
+            now=utc_now().isoformat(),
         )
-        compact_meta = {
-            **previous_meta,
-            "last_compacted_at": now,
-            "trigger": trigger,
-            "source_message_count": len(messages),
-            "source_prompt_tokens": int(usage.get("used_tokens") or 0),
-            "source_prompt_chars": int(usage.get("prompt_chars") or 0),
-            "context_compaction_drift_report": drift_report,
-            "non_destructive": True,
+        summary = str(update.get("rolling_summary") or "")
+        compact_meta = dict(update.get("context_compaction") or {})
+        if not force and compact_meta.get("no_gain") is True:
+            return None
+        before_usage = {
+            "used_tokens": int(usage.get("used_tokens") or 0),
+            "pretrim_tokens": int(usage.get("pretrim_tokens") or 0),
+            "posttrim_tokens": int(usage.get("posttrim_tokens") or 0),
+            "input_token_limit": int(
+                usage.get("input_token_limit") or usage.get("token_limit") or 0
+            ),
+            "prompt_chars": int(usage.get("prompt_chars") or 0),
+            "summary_chars": len(str(latest_values.get("rolling_summary") or "")),
         }
-        update = {
+        after_values = {
+            **latest_values,
+            "rolling_summary": summary,
+            "context_compaction": compact_meta,
+        }
+        after_usage = self._context_usage_payload(after_values, draft_message=draft_message)
+        after_measurement = {
+            "used_tokens": int(after_usage.get("used_tokens") or 0),
+            "pretrim_tokens": int(after_usage.get("pretrim_tokens") or 0),
+            "posttrim_tokens": int(after_usage.get("posttrim_tokens") or 0),
+            "input_token_limit": int(
+                after_usage.get("input_token_limit") or after_usage.get("token_limit") or 0
+            ),
+            "prompt_chars": int(after_usage.get("prompt_chars") or 0),
+            "summary_chars": len(summary),
+        }
+        no_gain = (
+            after_measurement["pretrim_tokens"] >= before_usage["pretrim_tokens"]
+            and after_measurement["prompt_chars"] >= before_usage["prompt_chars"]
+        )
+        compact_meta.update(
+            {
+                "source_prompt_tokens": before_usage["used_tokens"],
+                "source_prompt_chars": before_usage["prompt_chars"],
+                "before": {**dict(compact_meta.get("before") or {}), **before_usage},
+                "after": {**dict(compact_meta.get("after") or {}), **after_measurement},
+                "no_gain": no_gain,
+                "status": "no_gain" if no_gain else "updated",
+                "context_compaction_drift_report": compact_meta.get(
+                    "context_compaction_drift_report", {}
+                ),
+                "non_destructive": True,
+            }
+        )
+        final_update = {
             "rolling_summary": summary,
             "context_compaction": compact_meta,
         }
         self.runtime.graph.update_state(
             {"configurable": {"thread_id": thread_id}},
-            update,
-            as_node="context_compaction",
+            final_update,
         )
-        return update
+        return final_update
+
+    @staticmethod
+    def _pretrim_context_ratio(usage: dict[str, Any]) -> float:
+        numerator = int(usage.get("pretrim_tokens") or usage.get("used_tokens") or 0)
+        denominator = int(usage.get("input_token_limit") or usage.get("token_limit") or 0)
+        if denominator <= 0:
+            if bool(usage.get("required_overflow")):
+                return 1.0
+            return 0.0
+        return numerator / denominator
 
     def _context_compaction_threshold(self, trigger: str) -> float:
         if trigger == "auto_post_turn":
@@ -225,272 +313,6 @@ class ChatContextCompactionMixin:
                     logger.debug("post-turn context compaction skipped", exc_info=True)
 
         schedule_compact_later(delay=0.05, attempt=0)
-
-    def _build_compacted_summary(self, values: dict[str, Any]) -> str:
-        lines = ["Context compaction snapshot:"]
-        branch_meta = (
-            values.get("branch_meta") if isinstance(values.get("branch_meta"), dict) else {}
-        )
-        if branch_meta:
-            lines.append(
-                "Branch: "
-                + ", ".join(
-                    item
-                    for item in [
-                        str(branch_meta.get("branch_name") or "").strip(),
-                        str(branch_meta.get("branch_role") or "").strip(),
-                    ]
-                    if item
-                )
-            )
-        active_goal = str(values.get("active_goal") or "").strip()
-        if active_goal:
-            lines.append(f"Active goal: {active_goal}")
-        constraints = self._compact_state_items(
-            values.get("user_constraints"), key="constraint", limit=6
-        )
-        if constraints:
-            lines.append("Constraints: " + "; ".join(constraints))
-        pinned = self._compact_state_items(values.get("pinned_facts"), key="fact", limit=6)
-        if pinned:
-            lines.append("Pinned facts: " + "; ".join(pinned))
-        findings = [
-            *self._compact_state_items(values.get("imported_findings"), key="finding", limit=4),
-            *self._compact_state_items(values.get("branch_local_findings"), key="finding", limit=4),
-        ]
-        if findings:
-            lines.append("Findings: " + "; ".join(findings[:8]))
-        artifact_refs = self._compact_artifact_refs(values.get("artifacts"), limit=6)
-        if artifact_refs:
-            lines.append("Artifact refs: " + "; ".join(artifact_refs))
-
-        previous = " ".join(str(values.get("rolling_summary") or "").split())
-        if previous:
-            lines.append("Previous summary: " + self._truncate_inline(previous, 900))
-
-        recent_lines = []
-        for message in list(values.get("messages", []) or [])[
-            -self._CONTEXT_COMPACTION_RECENT_MESSAGES :
-        ]:
-            role = getattr(
-                message, "type", message.__class__.__name__.replace("Message", "").lower()
-            )
-            content = self._message_content_to_text(getattr(message, "content", ""))
-            if content.strip():
-                recent_lines.append(f"{role}: {self._truncate_inline(content, 240)}")
-        if recent_lines:
-            lines.append("Recent conversation:")
-            lines.extend(f"- {line}" for line in recent_lines)
-
-        summary = "\n".join(line for line in lines if line.strip())
-        return self._truncate_inline(summary, self._CONTEXT_COMPACTION_SUMMARY_CHARS)
-
-    def _compact_state_items(self, items: Any, *, key: str, limit: int) -> list[str]:
-        values: list[str] = []
-        for item in list(items or [])[:limit]:
-            if isinstance(item, dict):
-                text = str(
-                    item.get(key) or item.get("summary") or item.get("content") or ""
-                ).strip()
-            else:
-                text = str(getattr(item, key, "") or getattr(item, "summary", "") or item).strip()
-            if text:
-                values.append(self._truncate_inline(text, 220))
-        return values
-
-    def _compact_artifact_refs(self, items: Any, *, limit: int) -> list[str]:
-        refs: list[str] = []
-        for item in list(items or [])[:limit]:
-            if isinstance(item, dict):
-                title = str(item.get("title") or item.get("artifact_id") or "").strip()
-                uri = str(item.get("uri") or item.get("artifact_id") or "").strip()
-            else:
-                title = str(getattr(item, "title", "") or getattr(item, "artifact_id", "")).strip()
-                uri = str(getattr(item, "uri", "") or getattr(item, "artifact_id", "")).strip()
-            text = " ".join(part for part in (title, uri) if part)
-            if text:
-                refs.append(self._truncate_inline(text, 220))
-        return refs
-
-    def _build_context_compaction_drift_report(
-        self,
-        *,
-        values: dict[str, Any],
-        summary: str,
-    ) -> dict[str, Any]:
-        source_text = self._compaction_source_text(values)
-        recall_targets = self._compaction_recall_targets(values)
-        grounding_targets = self._compaction_grounding_targets(values)
-        answerability_targets = self._compaction_answerability_targets(values)
-        recall = self._target_coverage(recall_targets, summary)
-        precision = self._summary_precision(summary=summary, source_text=source_text)
-        grounding = self._target_coverage(grounding_targets, summary)
-        answerability = self._target_coverage(answerability_targets, summary)
-        overall_drift = round(1.0 - ((recall + precision + grounding + answerability) / 4), 4)
-        if overall_drift >= 0.34:
-            drift_risk = "high"
-        elif overall_drift > 0.0:
-            drift_risk = "medium"
-        else:
-            drift_risk = "low"
-        return {
-            "recall": recall,
-            "precision": precision,
-            "grounding": grounding,
-            "answerability": answerability,
-            "overall_drift": overall_drift,
-            "drift_risk": drift_risk,
-            "target_counts": {
-                "recall": len(recall_targets),
-                "grounding": len(grounding_targets),
-                "answerability": len(answerability_targets),
-            },
-        }
-
-    def _compaction_source_text(self, values: dict[str, Any]) -> str:
-        parts: list[str] = [
-            str(values.get("active_goal") or ""),
-            str(values.get("rolling_summary") or ""),
-        ]
-        for key in (
-            "user_constraints",
-            "pinned_facts",
-            "imported_findings",
-            "branch_local_findings",
-            "artifacts",
-        ):
-            parts.extend(self._compact_source_items(values.get(key)))
-        for message in list(values.get("messages", []) or []):
-            parts.append(self._message_content_to_text(getattr(message, "content", "")))
-        return "\n".join(part for part in parts if str(part).strip())
-
-    def _compact_source_items(self, items: Any) -> list[str]:
-        source_items: list[str] = []
-        for item in list(items or []):
-            if isinstance(item, dict):
-                source_items.extend(str(value) for value in item.values() if value)
-            else:
-                source_items.append(str(item))
-                for attr in (
-                    "fact",
-                    "constraint",
-                    "finding",
-                    "title",
-                    "summary",
-                    "uri",
-                    "artifact_id",
-                ):
-                    value = getattr(item, attr, None)
-                    if value:
-                        source_items.append(str(value))
-        return source_items
-
-    def _compaction_recall_targets(self, values: dict[str, Any]) -> list[str]:
-        targets = [
-            str(values.get("active_goal") or "").strip(),
-            *self._compact_state_items(values.get("user_constraints"), key="constraint", limit=6),
-            *self._compact_state_items(values.get("pinned_facts"), key="fact", limit=6),
-            *self._compact_state_items(values.get("imported_findings"), key="finding", limit=4),
-            *self._compact_state_items(values.get("branch_local_findings"), key="finding", limit=4),
-        ]
-        return self._dedupe_compaction_targets(targets)
-
-    def _compaction_grounding_targets(self, values: dict[str, Any]) -> list[str]:
-        targets: list[str] = []
-        for item in list(values.get("artifacts") or []):
-            if isinstance(item, dict):
-                targets.extend(
-                    str(item.get(key) or "").strip()
-                    for key in ("uri", "artifact_id")
-                    if item.get(key)
-                )
-            else:
-                for attr in ("uri", "artifact_id"):
-                    value = getattr(item, attr, None)
-                    if value:
-                        targets.append(str(value).strip())
-        for item in [
-            *list(values.get("imported_findings") or []),
-            *list(values.get("branch_local_findings") or []),
-        ]:
-            refs = (
-                item.get("evidence_refs")
-                if isinstance(item, dict)
-                else getattr(item, "evidence_refs", [])
-            )
-            targets.extend(str(ref).strip() for ref in list(refs or []) if str(ref).strip())
-        return self._dedupe_compaction_targets(targets)
-
-    def _compaction_answerability_targets(self, values: dict[str, Any]) -> list[str]:
-        targets = [
-            str(values.get("active_goal") or "").strip(),
-            *self._compact_state_items(values.get("user_constraints"), key="constraint", limit=4),
-            *self._compact_state_items(values.get("pinned_facts"), key="fact", limit=4),
-        ]
-        if not any(targets):
-            for message in reversed(list(values.get("messages", []) or [])):
-                content = self._message_content_to_text(getattr(message, "content", ""))
-                if content.strip():
-                    targets.append(content)
-                    break
-        return self._dedupe_compaction_targets(targets)
-
-    @staticmethod
-    def _dedupe_compaction_targets(targets: list[str]) -> list[str]:
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for target in targets:
-            compact = " ".join(str(target or "").split())
-            if not compact:
-                continue
-            key = compact.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(compact)
-        return deduped
-
-    def _target_coverage(self, targets: list[str], summary: str) -> float:
-        if not targets:
-            return 1.0
-        covered = sum(1 for target in targets if self._summary_contains_target(summary, target))
-        return round(covered / len(targets), 4)
-
-    def _summary_precision(self, *, summary: str, source_text: str) -> float:
-        claims = [
-            line.strip("- ").strip()
-            for line in summary.splitlines()
-            if line.strip() and not line.strip().endswith(":")
-        ]
-        claims = [claim for claim in claims if len(claim) >= 12]
-        if not claims:
-            return 1.0
-        supported = sum(1 for claim in claims if self._summary_contains_target(source_text, claim))
-        return round(supported / len(claims), 4)
-
-    @staticmethod
-    def _summary_contains_target(haystack: str, target: str) -> bool:
-        normalized_haystack = " ".join(str(haystack or "").casefold().split())
-        normalized_target = " ".join(str(target or "").casefold().split())
-        if not normalized_target:
-            return True
-        if normalized_target in normalized_haystack:
-            return True
-        prefix = normalized_target[:80].strip()
-        if len(prefix) >= 24 and prefix in normalized_haystack:
-            return True
-        words = [word for word in normalized_target.split() if len(word) >= 4]
-        if not words:
-            return False
-        required = max(1, int(len(words) * 0.67))
-        return sum(1 for word in words if word in normalized_haystack) >= required
-
-    @staticmethod
-    def _truncate_inline(text: str, max_chars: int) -> str:
-        compact = " ".join(str(text or "").split())
-        if len(compact) <= max_chars:
-            return compact
-        return f"{compact[: max(0, max_chars - 15)].rstrip()} ...[trimmed]"
 
     def _draft_message_from_payload(self, payload: Any) -> str | None:
         if not isinstance(payload, dict):

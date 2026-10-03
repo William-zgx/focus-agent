@@ -112,9 +112,7 @@ class SQLiteRunJournal:
     async def _run_db(self, operation: Callable[[sqlite3.Connection], T]) -> T:
         async with self._lock:
             loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                shared_thread_pool(), self._run_db_sync, operation
-            )
+            return await loop.run_in_executor(shared_thread_pool(), self._run_db_sync, operation)
 
     def _run_db_sync(self, operation: Callable[[sqlite3.Connection], T]) -> T:
         with self._connect() as conn:
@@ -210,9 +208,7 @@ class SQLiteRunJournal:
 
     async def get_run(self, run_id: str) -> JournalRun | None:
         row = await self._run_db(
-            lambda conn: conn.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
+            lambda conn: conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         )
         return _row_to_run(row) if row is not None else None
 

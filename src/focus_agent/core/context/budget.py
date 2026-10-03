@@ -31,16 +31,26 @@ def apply_prompt_budget_guard(
     prompt_messages: list[AnyMessage],
     *,
     budget: ContextBudget,
+    preserve_required_messages: bool = False,
 ) -> list[AnyMessage]:
     _sync_prompt_budget_hooks()
-    prioritized = _prioritize_tokenizer_first_system_messages(prompt_messages, budget=budget)
-    return _prompt_budget.apply_prompt_budget_guard(prioritized, budget=budget)
+    prioritized = _prioritize_tokenizer_first_system_messages(
+        prompt_messages,
+        budget=budget,
+        preserve_required_messages=preserve_required_messages,
+    )
+    return _prompt_budget.apply_prompt_budget_guard(
+        prioritized,
+        budget=budget,
+        preserve_required_messages=preserve_required_messages,
+    )
 
 
 def _prioritize_tokenizer_first_system_messages(
     prompt_messages: list[AnyMessage],
     *,
     budget: ContextBudget,
+    preserve_required_messages: bool = False,
 ) -> list[AnyMessage]:
     if budget.token_budget_mode != "tokenizer_first":
         return prompt_messages
@@ -49,6 +59,8 @@ def _prioritize_tokenizer_first_system_messages(
         _prompt_budget._trim_message_tool_observation(message, budget=budget)
         for message in prompt_messages
     ]
+    if preserve_required_messages:
+        return guarded
     system_indices = [
         index for index, message in enumerate(guarded) if isinstance(message, SystemMessage)
     ]

@@ -2,6 +2,14 @@
 
 更新时间：2026-07-13
 
+> **历史运行手册（快照）。** 本文保留当时的 v2 协调设计与验证步骤；其中
+> 的阶段、命令和“已实现”描述不是 2026-09-28 当前验收，也不代表默认运行时
+> 已开启。当前默认 `AGENT_DELEGATION_EXECUTION_MODE=observe`、Agent Team
+> execution `disabled`，且 revision command 未实现。当前基线与未来工作见
+> [project overview](../project-overview.md)、[research](../plans/2026-09-28-agent-capabilities/research.md)、
+> [design](../plans/2026-09-28-agent-capabilities/design.md) 和
+> [plan](../plans/2026-09-28-agent-capabilities/plan.md)。
+
 本手册用于运行已实现、但默认关闭的 Multi-Agent v2 协调能力。它不是全量上线
 声明，也不替代 [Agent Team v2 灰度与回滚手册](../agent-team-v2-rollout.md) 的
 产品/发布口径。普通聊天不因本手册中的开关或工作台可见而自动进入 Team runtime。

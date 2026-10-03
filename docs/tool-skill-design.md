@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-07-12
+更新时间：2026-09-28
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -237,7 +237,7 @@ Skill availability is intentionally managed through Admin settings rather than b
 
 Disabled skills remain visible in the catalog for auditing and re-enablement, but they are skipped by search, prefix activation, semantic matching, available-skill prompt rendering, and active-skill prompt injection.
 
-MCP-related workflows are represented as skills and tools today, for example FastMCP or mcporter workflows when installed. MCP Server lifecycle management is a reserved Admin connection surface until a first-class backend configuration contract exists.
+MCP-related workflows are represented as skills and tools today, for example FastMCP or mcporter workflows when installed. These entries describe an installed Skill/host-control workflow, not a builtin MCP client or connection session. MCP Server lifecycle management is a reserved Admin connection surface until a first-class backend configuration contract exists.
 
 ### Current limitations
 
@@ -246,6 +246,13 @@ MCP-related workflows are represented as skills and tools today, for example Fas
 - The system does not yet persist skill metadata snapshots or support linked reference files.
 - Semantic matching is configurable but intentionally conservative; prefix and explicit hint selection remain the most predictable activation path.
 - General Skill execution is declared-entrypoint only. The runtime does not expose arbitrary shell or host socket access through the Skill system.
+
+The current connector boundary is therefore partial: public `web_search` and
+policy-checked `web_fetch` are builtin tools, while browser/computer control,
+account-backed connector sessions, and first-class MCP transport/lifecycle are
+not builtin runtime capabilities. A Skill mentioning one of those integrations
+still requires its declared entrypoint, dependency, network policy, and any
+separate broker/approval path.
 
 ## Connector Boundary
 
@@ -546,6 +553,12 @@ The first general-agent batch is now part of the baseline:
 
 These capabilities are still primitives. For example, `research` decides how to gather and synthesize evidence, while `web_search`, `web_fetch`, and artifact tools perform the concrete operations.
 
+Durable execution is similarly layered: Agent Team v2 jobs and side-effect
+receipts are persisted only on their configured path; the generic harness
+`RunManager` and follow-up queues do not become restartable merely because a
+journal or Skill entrypoint exists. Approval records can block a turn, but an
+async queue decision does not automatically replay a returned graph.
+
 Current bundled skills already consume these primitives:
 
 - `research` uses `web_search`, `web_fetch`, and artifacts for evidence-backed answers.
@@ -564,6 +577,12 @@ is workflow quality on top of those stores:
 - note/task backlinks from conversations, Agent Team outputs, and artifacts,
 - skills that decide when to save to memory versus notes/tasks/artifacts,
 - user-configurable retention and archive policies.
+
+The following remain boundary work rather than implemented builtin tools:
+
+- first-class MCP connection registry/lifecycle and account-backed connector sessions,
+- browser/computer-use execution and its artifact/input contract,
+- durable generic run recovery, follow-up wakeup, and public approval-resume executor wiring.
 
 Potential future skills:
 

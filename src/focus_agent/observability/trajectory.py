@@ -196,10 +196,9 @@ def extract_trajectory_steps(
                 observation = observation[:max_chars]
             else:
                 observation = ""
-            is_error = (
-                (use_actual_message and getattr(msg, "status", "success") == "error")
-                or str(tool_outcome.get("status") or "") in {"failed", "blocked"}
-            )
+            is_error = (use_actual_message and getattr(msg, "status", "success") == "error") or str(
+                tool_outcome.get("status") or ""
+            ) in {"failed", "blocked"}
             steps.append(
                 TrajectoryStep(
                     tool=call["name"],
@@ -214,8 +213,7 @@ def extract_trajectory_steps(
                     ),
                     fallback_group=(
                         str(
-                            step_runtime.get("fallback_group")
-                            or tool_outcome.get("fallback_group")
+                            step_runtime.get("fallback_group") or tool_outcome.get("fallback_group")
                         )
                         if step_runtime.get("fallback_group") or tool_outcome.get("fallback_group")
                         else None

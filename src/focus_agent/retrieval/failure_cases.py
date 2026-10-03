@@ -16,8 +16,15 @@ def index_failure_case_from_trajectory(
     if retrieval_index is None or embedding_provider is None:
         return False
     status = str(getattr(record, "status", "") or "").lower()
-    has_step_error = any(str(getattr(step, "error", "") or "").strip() for step in getattr(record, "trajectory", []) or [])
-    if status not in {"failed", "error"} and not has_step_error and not getattr(record, "error", None):
+    has_step_error = any(
+        str(getattr(step, "error", "") or "").strip()
+        for step in getattr(record, "trajectory", []) or []
+    )
+    if (
+        status not in {"failed", "error"}
+        and not has_step_error
+        and not getattr(record, "error", None)
+    ):
         return False
     turn_id = str(getattr(record, "id", "") or "")
     if not turn_id:
@@ -36,7 +43,9 @@ def index_failure_case_from_trajectory(
                 "root_thread_id": str(getattr(record, "root_thread_id", "") or ""),
                 "thread_id": str(getattr(record, "thread_id", "") or ""),
                 "status": status,
-                "workspace_root": str((getattr(record, "plan_meta", {}) or {}).get("workspace_root") or ""),
+                "workspace_root": str(
+                    (getattr(record, "plan_meta", {}) or {}).get("workspace_root") or ""
+                ),
                 "content_hash": hashlib.sha256(text.encode()).hexdigest(),
             },
         )
@@ -135,7 +144,11 @@ def _hydrate_failure_hit(
         str(getattr(step, "error", "") or "").strip()
         for step in getattr(record, "trajectory", []) or []
     )
-    if status not in {"failed", "error"} and not has_step_error and not getattr(record, "error", None):
+    if (
+        status not in {"failed", "error"}
+        and not has_step_error
+        and not getattr(record, "error", None)
+    ):
         return None
     return RetrievalSearchHit(
         doc_id=hit.doc_id,

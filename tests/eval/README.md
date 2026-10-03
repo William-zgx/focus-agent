@@ -1,5 +1,8 @@
 # Agent Eval Framework
 
+Updated: 2026-09-28
+Source baseline: `718be87`
+
 Tests *behavior* of the Focus Agent, not its Python units. Drops the agent
 into scripted tasks, scores each trajectory against rule / LLM / trajectory
 judges, then aggregates suite-level metrics for CI gating.

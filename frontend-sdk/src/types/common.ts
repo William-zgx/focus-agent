@@ -46,5 +46,17 @@ export interface ContextUsageResponse {
   prompt_chars: number;
   prompt_budget_chars: number;
   tokenizer_mode: string;
+  counting_backend?: string;
+  tokenizer_id?: string | null;
+  estimated?: boolean;
+  drift_risk?: string;
+  configured_token_limit?: number;
+  input_token_limit?: number;
+  pretrim_tokens?: number;
+  posttrim_tokens?: number;
+  tool_schema_tokens?: number;
+  output_reserve_tokens?: number;
+  trimmed?: boolean;
+  required_overflow?: boolean;
   last_compacted_at?: string | null;
 }

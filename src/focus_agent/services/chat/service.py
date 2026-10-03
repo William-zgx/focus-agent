@@ -69,8 +69,6 @@ class ChatService(
     ChatThreadAccessMixin,
 ):
     _THREAD_STATE_MESSAGE_LIMIT = 200
-    _CONTEXT_COMPACTION_SUMMARY_CHARS = 2600
-    _CONTEXT_COMPACTION_RECENT_MESSAGES = 8
 
     def __init__(self, runtime: AppRuntime | ChatServicePorts):
         self.ports = (

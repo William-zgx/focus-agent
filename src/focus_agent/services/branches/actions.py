@@ -493,7 +493,11 @@ def explicit_branch_name_from_text(message: str) -> str | None:
 
 
 def _english_title_clause_parts(text: str, *, anchored: bool) -> tuple[str, str | None] | None:
-    body_match = _ENGLISH_BRANCH_TITLE_PREFIX_RE.match(text) if anchored else _ENGLISH_BRANCH_TITLE_PREFIX_RE.search(text)
+    body_match = (
+        _ENGLISH_BRANCH_TITLE_PREFIX_RE.match(text)
+        if anchored
+        else _ENGLISH_BRANCH_TITLE_PREFIX_RE.search(text)
+    )
     if not body_match:
         return None
     body = str(body_match.group("body") or "").strip(" ：:,")
@@ -520,10 +524,7 @@ def _looks_like_english_handoff_task(task: str) -> bool:
     )
     if not normalized:
         return False
-    return any(
-        re.match(rf"{re.escape(verb)}(?:\b|\s)", normalized)
-        for verb in _ENGLISH_TASK_VERBS
-    )
+    return any(re.match(rf"{re.escape(verb)}(?:\b|\s)", normalized) for verb in _ENGLISH_TASK_VERBS)
 
 
 def _extract_topic_name(text: str) -> str | None:
@@ -546,6 +547,7 @@ def _clean_name(value: str) -> str | None:
     if not cleaned or cleaned in {"分支", "同级分支", "子分支"}:
         return None
     return cleaned[:80]
+
 
 __all__ = [
     "utc_iso",

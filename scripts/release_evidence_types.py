@@ -12,6 +12,7 @@ class CommandOutcome:
     stdout: str = ""
     stderr: str = ""
 
+
 @dataclass(frozen=True)
 class EvidenceInput:
     kind: str

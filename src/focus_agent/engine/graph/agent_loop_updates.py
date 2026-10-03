@@ -4,6 +4,8 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
+from ...core.context_request import build_context_request
+
 
 def finalize_agent_loop_turn(
     *,
@@ -56,7 +58,6 @@ def finalize_agent_loop_turn(
     live_web_answer_repair_count = hooks["_live_web_answer_repair_count"]
     skill_execution_answer_repair_count = hooks["_skill_execution_answer_repair_count"]
     live_web_answer_needs_repair = hooks["_live_web_answer_needs_repair"]
-    apply_prompt_budget_guard = hooks["apply_prompt_budget_guard"]
     skill_execution_repair_prompt = hooks["_skill_execution_repair_prompt"]
     ensure_reasoning_content = hooks["_ensure_reasoning_content_for_tool_call_history"]
     invoke_with_tool_result_fallback = hooks["_invoke_with_tool_result_fallback"]
@@ -80,10 +81,15 @@ def finalize_agent_loop_turn(
     build_failure_records = hooks["build_failure_records"]
     build_review_queue = hooks["build_review_queue"]
 
+    context_overflow = execution_contract.get("blocked_reason_code") == "required_context_overflow"
     completed_turn_messages = latest_turn_messages([*state_messages, response])
-    if not getattr(response, "tool_calls", None) and should_replace_unfound_workspace_answer(
-        message_content_text(response),
-        completed_turn_messages,
+    if (
+        not context_overflow
+        and not getattr(response, "tool_calls", None)
+        and should_replace_unfound_workspace_answer(
+            message_content_text(response),
+            completed_turn_messages,
+        )
     ):
         response = AIMessage(content=fallback_answer_from_tool_results(completed_turn_messages))
         completed_turn_messages = latest_turn_messages([*state_messages, response])
@@ -124,7 +130,8 @@ def finalize_agent_loop_turn(
     skill_execution_repair_count = skill_execution_answer_repair_count(state)
     skill_execution_repair_taken = ""
     if (
-        str(execution_contract.get("policy") or "") == "skill_execution"
+        not context_overflow
+        and str(execution_contract.get("policy") or "") == "skill_execution"
         and not getattr(response, "tool_calls", None)
         and live_web_answer_needs_repair(answer_verification)
     ):
@@ -145,7 +152,7 @@ def finalize_agent_loop_turn(
             }
             skill_execution_repair_taken = "fallback_to_tool_results"
         elif skill_execution_repair_count < 1 and available_tools:
-            repair_prompt = apply_prompt_budget_guard(
+            repair_request = build_context_request(
                 [
                     prompt_messages[0],
                     SystemMessage(
@@ -157,25 +164,31 @@ def finalize_agent_loop_turn(
                     *prompt_messages[1:],
                 ],
                 budget=context_budget,
+                available_tools=available_tools,
             )
+            repair_prompt = repair_request.messages
             repair_prompt = ensure_reasoning_content(
                 repair_prompt,
                 model_id=selected_model,
                 thinking_mode=selected_thinking_mode,
                 settings=settings,
             )
-            repair_response = invoke_with_tool_result_fallback(
-                with_stream_phase(
-                    hooks["model_with_tools_for"](
-                        selected_model,
-                        selected_thinking_mode,
-                        available_tools,
+            repair_response = (
+                AIMessage(content="")
+                if repair_request.required_overflow
+                else invoke_with_tool_result_fallback(
+                    with_stream_phase(
+                        hooks["model_with_tools_for"](
+                            selected_model,
+                            selected_thinking_mode,
+                            available_tools,
+                        ),
+                        stream_visibility_quarantine,
                     ),
-                    stream_visibility_quarantine,
-                ),
-                repair_prompt,
-                fallback_messages=fallback_messages,
-                known_tool_names=known_names,
+                    repair_prompt,
+                    fallback_messages=fallback_messages,
+                    known_tool_names=known_names,
+                )
             )
             if looks_like_textual_tool_call_artifact(
                 repair_response,
@@ -380,7 +393,9 @@ def finalize_agent_loop_turn(
         intent_dumped["output_language_repair_attempts"] = language_repair_attempts
     if temporal_anchor_repair_taken:
         intent_dumped["temporal_anchor_repair_action_taken"] = temporal_anchor_repair_taken
-    if force_tool_free_answer:
+    if context_overflow:
+        intent_dumped["context_budget_exhausted"] = True
+    elif force_tool_free_answer:
         intent_dumped["tool_budget_exhausted_local_summary"] = True
     turn_metadata: dict[str, Any] = {}
     if intent_dumped.get("skill_execution_plan"):
@@ -398,11 +413,15 @@ def finalize_agent_loop_turn(
     if turn_metadata:
         response = with_focus_agent_turn_metadata(response, turn_metadata)
         updates["messages"] = [response]
-    updates["pending_tool_action"] = next_pending_tool_action(
-        state=state,
-        tool_intent_plan=intent_dumped,
-        response=response,
-        web_tool_result_seen=web_tool_result_seen,
+    updates["pending_tool_action"] = (
+        None
+        if context_overflow
+        else next_pending_tool_action(
+            state=state,
+            tool_intent_plan=intent_dumped,
+            response=response,
+            web_tool_result_seen=web_tool_result_seen,
+        )
     )
     append_agent_state_record(
         updates,

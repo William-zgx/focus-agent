@@ -90,7 +90,9 @@ def _hydrate_hit(repository: Any | None, hit: RetrievalSearchHit) -> RetrievalSe
     event = repository.get_branch_decision_event(hit.source_id)
     if event is None:
         return None
-    if str(getattr(event, "root_thread_id", "") or "") != str(hit.fields.get("root_thread_id") or ""):
+    if str(getattr(event, "root_thread_id", "") or "") != str(
+        hit.fields.get("root_thread_id") or ""
+    ):
         return None
     if str(getattr(event, "user_id", "") or "") != str(hit.fields.get("user_id") or ""):
         return None

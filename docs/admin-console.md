@@ -1,6 +1,6 @@
 # Admin Console 操作与实现手册
 
-更新时间：2026-07-12
+更新时间：2026-09-28（基线 commit：`718be87`）
 
 Admin Console 是 Focus Agent 当前的管理员访问治理入口，用于管理运行时设置、能力开关、持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。普通登录、注册、账号自助页面和 token/session 语义见 [auth-access.md](auth-access.md)。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
 
@@ -80,7 +80,7 @@ Admin 页面使用 auth cookie 发起 `POST`、`PUT`、`PATCH`、`DELETE` 时与
 - 总览：快速查看默认模型、模型连接、工具能力、Skill、Agent 策略和运行安全状态。
 - 连接：维护模型 Provider、默认模型、helper model、API key env/base URL 等连接项；MCP Server 目前作为扩展连接预留入口展示，不伪造后端尚未提供的数据。
 - 能力：集中维护 Skill 管理和工具配置。Skill 管理支持全局启停、单个 Skill 启停、搜索 catalog，并展示触发词、推荐工具、来源、路径和信任/安装状态；工具配置继续维护 tool provider、工具级描述、启用状态和 settings。
-- Agent 行为：维护路由、委派、记忆、上下文、多 Agent、Task Ledger、Critic Gate 等 runtime policy 值。
+- Agent 行为：维护路由、委派、记忆、上下文、多 Agent、Task Ledger、Critic Gate 等 runtime policy 值。这里是配置/审计入口，不代表对应 runner、critic、budget 或 revision capability 已在当前进程启用；当前多 Agent 默认 `observe`/`disabled`。
 - 安全与运行：维护敏感、安全、访问和运行时相关策略。
 - 高级：保留配置来源、低频策略和工程向信息，避免污染主要流程。
 
@@ -157,7 +157,7 @@ make sdk-check
 make frontend-android-runtime-smoke
 ```
 
-真实浏览器检查应覆盖：
+真实浏览器检查应覆盖（这些检查验证 Admin Web 交互，不等于 Agent 原生 browser 能力）：
 
 - 打开 `/app/admin/config`，确认总览、连接、能力、Agent 行为、安全与运行、高级分区可读。
 - 在能力区搜索 Skill，确认全局 Skill 开关、单个 Skill 开关和工具配置可见。

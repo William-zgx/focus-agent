@@ -4,7 +4,7 @@ This document is the implementation baseline for the frontend optimization plan.
 It keeps existing routes, copy, API calls, and interaction behavior stable while
 moving shared UI toward token-first primitives.
 
-Updated: 2026-05-30
+Updated: 2026-10-03 (validation baseline: `718be87`)
 
 ```mermaid
 flowchart TD
@@ -143,3 +143,33 @@ For branch decision or streaming UI changes, include at least one transcript
 state with a pending Branch Action card and one completed streamed answer. For
 observability changes, include overview, trajectory detail, replay, and promote
 right-rail states.
+
+## 2026-10-03 Quality Snapshot
+
+See the [MR quality validation](validation/2026-10-03-mr-quality.md)
+for the command-level record. Shared question/approval styles and removal of
+overridden duplicate declarations bring CSS back to 19,057 measured lines and
+64 modules. Both existing budgets remain unchanged.
+
+## Current Interaction Boundaries
+
+These are behavioral contracts, not visual polish claims:
+
+- Historical activity does not imply a live run: unresolved historical steps
+  display an unknown historical state, preserving known success/failure.
+  The current turn remains active during streaming or question/approval
+  interrupts. A non-streaming pause is not completion, and the latest thread
+  outcome is not applied to every historical turn.
+
+- `recommendation_user_visible=false` is an audit-only Branch Action event. The
+  Web card retains diagnostics and disables both confirm-route and stay-in-current
+  controls. Mainline commit `81f7a6f` fixed this enforcement in
+  `apps/web/src/entities/messages/message-list-branch-action-card.tsx`.
+- Handoff auto-run and normal send both create an optimistic user transcript
+  entry through `beginOptimisticMessageRequest()` in
+  `apps/web/src/features/thread-stream/use-thread-stream.ts`, as fixed by mainline
+  commit `81f7a6f`. The carried message retains the dedicated harness request
+  with `branch_handoff_auto_run` metadata.
+- Visual, axe, and real-Chrome checks validate the Web UI. They do not establish
+  an Agent-native browser/DOM/screenshot tool, image attachment support, or a
+  provider-backed Agent Team execution path.

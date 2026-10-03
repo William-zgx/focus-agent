@@ -276,9 +276,14 @@ function collectSkillIdsFromSkillPayload(
 	return skillIds;
 }
 
+interface TranscriptBuildOptions {
+	isCurrentTurnActive?: boolean;
+}
+
 export function buildTranscriptItems(
 	messages: Array<Record<string, unknown>>,
 	assistantMessage?: string | null,
+	options?: TranscriptBuildOptions,
 ): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
 	let pendingToolActivity: ToolActivityItem | null = null;
@@ -309,10 +314,16 @@ export function buildTranscriptItems(
 		pendingToolActivity = null;
 	}
 
-	function createToolActivity(id: string): ToolActivityItem {
+	function createToolActivity(
+		id: string,
+		messageIndex: number,
+	): ToolActivityItem {
 		return {
 			kind: "tool-activity",
 			id,
+			isHistorical:
+				messageIndex < latestHumanIndex ||
+				options?.isCurrentTurnActive === false,
 			skillIds: [],
 			toolNames: [],
 			summaryText: "",
@@ -509,7 +520,10 @@ export function buildTranscriptItems(
 		const turnMetadata = turnMetadataFromMessage(message);
 		if (hasSkillExecutionMetadata(turnMetadata)) {
 			if (!pendingToolActivity) {
-				pendingToolActivity = createToolActivity(`tool-activity-${messageId}`);
+				pendingToolActivity = createToolActivity(
+					`tool-activity-${messageId}`,
+					index,
+				);
 			}
 			appendSkillExecutionMetadataSteps(
 				pendingToolActivity,
@@ -520,7 +534,10 @@ export function buildTranscriptItems(
 
 		if (type === "ai" && toolCalls.length > 0) {
 			if (!pendingToolActivity) {
-				pendingToolActivity = createToolActivity(`tool-activity-${messageId}`);
+				pendingToolActivity = createToolActivity(
+					`tool-activity-${messageId}`,
+					index,
+				);
 			}
 			appendUniqueValues(
 				pendingToolActivity.skillIds,
@@ -553,7 +570,10 @@ export function buildTranscriptItems(
 
 		if (type === "tool") {
 			if (!pendingToolActivity) {
-				pendingToolActivity = createToolActivity(`tool-activity-${messageId}`);
+				pendingToolActivity = createToolActivity(
+					`tool-activity-${messageId}`,
+					index,
+				);
 			}
 
 			const toolName = normalizeText(message.name);

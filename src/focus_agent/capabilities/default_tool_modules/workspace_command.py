@@ -194,9 +194,7 @@ def _looks_like_scoped_package_name(value: str) -> bool:
     return not package.startswith((".", "/")) and "\\" not in package
 
 
-def validate_command_paths(
-    command: Sequence[str], *, resolve_path: WorkspacePathResolver
-) -> None:
+def validate_command_paths(command: Sequence[str], *, resolve_path: WorkspacePathResolver) -> None:
     for argument in command[1:]:
         path = _command_arg_path_candidate(argument)
         if path is None:

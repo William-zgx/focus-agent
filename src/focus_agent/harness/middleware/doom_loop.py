@@ -76,9 +76,7 @@ class DoomLoopMiddleware(BaseAgentMiddleware):
     # ------------------------------------------------------------------
     # Tool interception
     # ------------------------------------------------------------------
-    def on_tool_call(
-        self, ctx: Any, tool_name: str, args: dict
-    ) -> ToolCallInterception | None:
+    def on_tool_call(self, ctx: Any, tool_name: str, args: dict) -> ToolCallInterception | None:
         """Block the call if this tool+args has repeated too many times."""
         key = _stable_args_hash(tool_name, args)
         self._counts[key] = self._counts.get(key, 0) + 1

@@ -1,19 +1,20 @@
 # Focus Agent 当前路线图
 
-更新时间：2026-07-14
+源码核对日期：2026-09-28；基线：`718be87`。本轮只更新文档，未完成下列功能修复或生产验收。
 
 这份文档只回答两个问题：
 
 1. 现在仓库已经完成到了哪一步。
-2. 已验证基线之外，还存在哪些真实风险和下一阶段工作。
+2. 已有实现之外，还缺哪些调用接线、真实验证和下一阶段工作。
 
 产品定位与体量见 [project-overview.md](project-overview.md)。
 专题设计、操作命令和验收细节由 [文档索引](README.md) 指向各 canonical
-文档；本文不重复维护平行实施清单。
+文档。能力状态见 [能力地图](architecture/agent-capability-map.md)；新增能力的依据、设计和验收分别见
+[调研](plans/2026-09-28-agent-capabilities/research.md)、[设计草案](plans/2026-09-28-agent-capabilities/design.md)、[实施规划](plans/2026-09-28-agent-capabilities/plan.md)。
 
 ```mermaid
 flowchart LR
-    Baseline["Verified baseline"] --> Production["Real production integration"]
+    Baseline["Implemented components; evidence varies"] --> Production["Reliable execution and recovery"]
     Baseline --> Quality["Long-running quality evidence"]
     Baseline --> Evolution["2.0 evolution"]
     Production --> Identity["Deployment / approval / artifact identity"]
@@ -26,7 +27,7 @@ flowchart LR
 
 ## 1. 当前基线
 
-截至 2026-07-14，以下能力已经进入维护和回归阶段，不再列为未来建设项。
+截至上述源码基线，以下模块和接口已存在，不应重复从零建设；默认启用、运行环境可用和端到端验收需分别核对。已有测试入口或历史通过记录不代表本轮重新验证。
 
 ### 1.1 产品与 Agent 主路径
 
@@ -35,11 +36,10 @@ flowchart LR
   Agent Team Mission Runner 已形成可运行产品面。
 - 默认聊天入口为 V2 harness runs（`/v2/threads/.../runs[/stream]`），SSE
   contract 与 SDK reducer 受 contract / smoke 保护。
-- merged branch 只读、用户确认后才执行的 branch recommendation、thread
-  resolution、owner-scoped 数据访问和 audit 语义已有 contract 与回归保护。
+- merged branch 写入限制、用户确认的 branch recommendation、thread
+  resolution、owner-scoped 数据访问和 audit 均有实现与相关检查；授权前状态回填和前端 audit-only 操作边界仍有待修问题，不能据此宣称全链路副作用隔离已完成。
 - Plan-Act-Reflect、tool runtime、Memory v2、Context Engineering、Zvec
-  retrieval、trajectory replay/promotion、governance feedback 和 eval 基线已
-  接入主路径；Zvec 仍是可重建索引，命中必须回查 canonical source。
+  retrieval、trajectory replay/promotion、governance feedback 和 eval 均有实现；部分受配置、后端依赖或手工流程限制，并非全部默认启用或自动闭环。Zvec 是可重建索引，命中必须回查 canonical source。
 - memory forget/tombstone 与 embedding worker 已使用条件更新保护，不允许
   forgotten/deleted memory 被异步任务复活；schema v18 增加
   `embedding_status` 列。
@@ -56,7 +56,7 @@ flowchart LR
   `DATABASE_URI` 时继续托管 repo-local PostgreSQL。
 - 直接运行 API 且没有 `DATABASE_URI` 时，不再退回纯 InMemory app-state：
   branch、conversation、thread access、user 和 productivity 共用本地 SQLite；
-  LangGraph checkpoint/store 也默认使用 SQLite 并可跨重启恢复。
+  LangGraph checkpoint/store 也默认使用 SQLite，可跨重启读取持久状态；这不等于普通 harness run 的 producer 自动恢复、follow-up 自动续跑或审批后自动执行。
 - local-state migration 同时支持 canonical SQLite 和 legacy pickle。未知或歧义
   格式、活动 WAL sidecar、pickle owner/HMAC 不匹配会 fail closed；导入
   PostgreSQL 时以事务和 owner guard 防止跨 owner 重绑定。
@@ -110,6 +110,11 @@ flowchart LR
 
 | 风险域 | 当前已有基线 | 仍需完成 |
 |---|---|---|
+| 持久任务 | journal/checkpoint、v19 job/lease/receipt、后台执行组件 | 接通 run 启动恢复、持久 follow-up、审批续跑、请求去重与不确定副作用核对；详见规划 C01 |
+| 可信验收 | live-web/Skill execution contract、evidence、eval judge | 修复初始状态回退造成的环境断言假阳性；补普通实施任务验收与真实用量/成本语义；C02/C04 |
+| 外部操作与交付 | workspace/Git/web 文本工具、Skill、artifact 基础 | 一个受控浏览器或业务连接器场景、原生附件输入和授权成果交付；C03 |
+| 多 Agent 闭环 | DAG、任务表、隔离执行、feature flags | 接通 revision 返工、实际预算与证据整合，再用单 Agent 对照证明收益；C05 |
+| 记忆与反馈 | namespace/evidence/tombstone、trajectory/replay/promotion | 可撤销记忆修订，任务级反馈到候选和回归的关联；C06/C07 |
 | 生产发布身份 | schema v2、identity/freshness binding、production environment guard | 对接企业真实 deployment/approval/artifact 系统，保证四个 `RELEASE_*` 值来自部署控制面而不是人工拼装 |
 | PostgreSQL 运维 | migration/ops report、backup/restore evidence、transactional import、schema v19 | 在目标规模数据上演练 RPO/RTO、跨版本 restore、长期 retention 和故障切换 |
 | Observability | `/readyz`、`/metrics`、OTel smoke、alert report、真实 Chrome observability smoke | 接真实 collector、trace backend、pager/alert 平台，并增加长时间窗口与多实例验证 |
@@ -123,21 +128,12 @@ flowchart LR
 
 ## 3. 下一阶段优先级
 
-1. **绑定真实生产控制面。** 将 release identity、审批记录、制品 digest、部署
-   版本和 evidence retention 接到同一个不可伪造的 deployment lifecycle。
-2. **完成可恢复性演练。** 在接近生产规模的数据上执行 PostgreSQL
-   backup/restore、local SQLite migration、RPO/RTO 和 rollback drills，并保存
-   可审计结果。
-3. **扩大长时真实交互验证。** 将 Chrome、typed SDK stream、Android
-   emulator/device、断网重连和轻量 load 纳入定时回归，而不是只在短 smoke 中
-   验证。
-4. **接外部身份与观测平台。** 完成 IdP/JWKS、key rotation、collector、trace
-   query 和 alert/pager 的真实环境闭环。
-5. **用证据降低 Agent 与兼容风险。** 扩充失败 trajectory 和 golden cases；
-   用 telemetry 驱动 169 项 compatibility inventory 的逐项退场；同时收敛
-   runtime spine，避免新功能继续分叉执行路径。
-6. **校准产品剖面。** 在文档与构建层明确 Core / Platform / Team / Mobile /
-   Release 分层，使采用方可以有意识地启用能力，而不是默认吞下整个 monorepo。
+1. **校准现状文档并建立实施依据。** 本轮仅做此项；计划中的功能不写成已完成。
+2. **修复可靠性交付的前置问题。** 按规划 B01–B08 处理授权前写入、退出信号、readiness、eval 可信度、只读 UI/handoff、SDK 构建顺序和部署恢复证据。
+3. **可靠完成一个任务。** 阶段 A 接通持久恢复、审批续跑、真实预算和代码任务验收；优先复用已有表与运行时。
+4. **扩展一个真实操作场景。** 阶段 B 在浏览器验收与业务连接器中选择首个用例，同时补必要的输入/成果交付能力，不并行建设所有集成。
+5. **形成可测量的长期改进。** 阶段 C 补针对性返工、记忆纠错和反馈回归；用相同任务与预算比较单/多 Agent，而不是默认增加角色。
+6. **按部署需求推进生产集成。** 企业 IdP、collector/pager、release 控制面、RPO/RTO、Android 发布和兼容退场继续保留，但不取代 Agent 核心可靠性工作。需要真实账号、环境或数据规模时另行确认范围与证据。
 
 ## 4. 验证与文档入口
 
@@ -156,10 +152,10 @@ flowchart LR
 
 ## 5. 维护原则
 
-- 已完成并有回归保护的能力留在“当前基线”，不再反复写成未来计划。
-- 未来项必须描述尚缺的真实环境、规模、时长或治理证据，不能只写“继续优化”。
+- 已有实现留在“当前基线”，同时说明开关、接线和验证边界，不再重复从零建设。
+- 未来项必须描述尚缺的执行行为或真实环境证据，并有具体验收，不能只写“继续优化”。
 - `docs/` 同一主题只保留一个 canonical 文档；阶段性拆解放到 issue、PR 或项目
-  管理工具。
+  管理工具；本轮明确请求的调研/设计/规划集中维护于带日期和状态的 `plans/` 子目录。
 - 架构、兼容库存或优先级变化时，同步更新对应 baseline、canonical 文档和本文。
 - schema 版本以代码 `SCHEMA_VERSION` 为准，变更时同步 architecture / overview。
 - 1.x public import surface 仍受支持；只有满足

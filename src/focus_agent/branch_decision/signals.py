@@ -272,7 +272,9 @@ def collect_branch_recommendation_signals(
             else 0.0,
             weight=0.35,
             evidence_refs=["incoming_user_message"],
-            rationale=str(semantic_relation.get("reason") or "Semantic topic relation was not run."),
+            rationale=str(
+                semantic_relation.get("reason") or "Semantic topic relation was not run."
+            ),
         ),
         BranchDecisionSignal(
             name="pending_branch_action",

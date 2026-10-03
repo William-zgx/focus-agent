@@ -4,12 +4,15 @@ from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
 
-from ..core.context_policy import apply_prompt_budget_guard
+from ..core.context_request import build_context_request
 from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
 from .graph_tool_call_repair import _known_tool_names
 from .graph_tool_history_repair import _message_text
-from .graph_tool_result_fallback import _invoke_with_tool_result_fallback
+from .graph_tool_result_fallback import (
+    _invoke_with_tool_result_fallback,
+    _tool_result_fallback_message,
+)
 
 _TOOL_EXHAUSTION_NOTE = (
     "You have enough tool results for this turn. Do not call more tools. "
@@ -66,7 +69,7 @@ def _repair_textual_tool_call_response(
     if not _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
         return response
 
-    repaired_prompt = apply_prompt_budget_guard(
+    repair_request = build_context_request(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_PROTOCOL_REPAIR_NOTE),
@@ -74,7 +77,11 @@ def _repair_textual_tool_call_response(
             AIMessage(content=_message_text(response)),
         ],
         budget=context_budget,
+        available_tools=available_tools,
     )
+    if repair_request.required_overflow:
+        return _tool_result_fallback_message(fallback_messages or prompt_messages)
+    repaired_prompt = repair_request.messages
     repaired = _invoke_with_tool_result_fallback(
         model_with_tools_for(selected_model, selected_thinking_mode, available_tools),
         repaired_prompt,
@@ -84,7 +91,7 @@ def _repair_textual_tool_call_response(
     if not _looks_like_textual_tool_call_artifact(repaired, known_tool_names=known_names):
         return repaired
 
-    fallback_prompt = apply_prompt_budget_guard(
+    fallback_request = build_context_request(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_CALL_MARKUP_REPAIR_NOTE),
@@ -93,6 +100,9 @@ def _repair_textual_tool_call_response(
         ],
         budget=context_budget,
     )
+    if fallback_request.required_overflow:
+        return _tool_result_fallback_message(fallback_messages or prompt_messages)
+    fallback_prompt = fallback_request.messages
     return _invoke_with_tool_result_fallback(
         model_for(selected_model, selected_thinking_mode),
         fallback_prompt,
@@ -130,7 +140,7 @@ def _repair_tool_free_answer_response(
     if not _looks_like_textual_tool_call_artifact(response):
         return response
 
-    repaired_prompt = apply_prompt_budget_guard(
+    repair_request = build_context_request(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
@@ -140,6 +150,9 @@ def _repair_tool_free_answer_response(
         ],
         budget=context_budget,
     )
+    if repair_request.required_overflow:
+        return _tool_result_fallback_message(fallback_source_messages)
+    repaired_prompt = repair_request.messages
     repaired = _invoke_with_tool_result_fallback(
         model_for(selected_model, selected_thinking_mode),
         repaired_prompt,
@@ -148,7 +161,7 @@ def _repair_tool_free_answer_response(
     if not _looks_like_textual_tool_call_artifact(repaired):
         return repaired
 
-    final_prompt = apply_prompt_budget_guard(
+    final_request = build_context_request(
         [
             prompt_messages[0],
             SystemMessage(content=_TOOL_EXHAUSTION_NOTE),
@@ -159,6 +172,9 @@ def _repair_tool_free_answer_response(
         ],
         budget=context_budget,
     )
+    if final_request.required_overflow:
+        return _tool_result_fallback_message(fallback_source_messages)
+    final_prompt = final_request.messages
     final_attempt = _invoke_with_tool_result_fallback(
         model_for(selected_model, selected_thinking_mode),
         final_prompt,
