@@ -1,5 +1,8 @@
 # Agent Eval Framework
 
+Updated: 2026-09-28
+Source baseline: `718be87`
+
 Tests *behavior* of the Focus Agent, not its Python units. Drops the agent
 into scripted tasks, scores each trajectory against rule / LLM / trajectory
 judges, then aggregates suite-level metrics for CI gating.
@@ -131,10 +134,20 @@ Extended fields are optional and backward-compatible:
 
 - `capability` / `risk_level` classify cases for dashboards and filtering.
 - `agent_topology` seeds multi-agent roles and governance expectations.
-- `environment.assertions` checks final state with fallback to `input.initial_state`.
+- `environment.assertions` checks final state. For backward compatibility, a
+  missing final-state path falls back to `input.initial_state`; this can make an
+  assertion pass without proving that the run changed state. Assertions that
+  are meant to prove a mutation should assert an operation-specific final-state
+  value or receipt that was not present in `input.initial_state`. Until the
+  fallback behavior is removed or made strict, independently inspect final
+  state; absence alone is not sufficient evidence of a mutation.
 - `model_matrix` runs the same case across labeled model variants.
 - `retries` emits multiple attempts so flaky cases can be detected.
-- `acceptance` records suite policy targets for reports and review.
+- `acceptance` records suite policy targets for reports and review only. The
+  current CLI/harness parses and reports this metadata but does not enforce
+  `min_success_rate`, latency, or cost thresholds as an exit gate; use the
+  case results and an explicit baseline/release-health policy for blocking
+  decisions.
 
 ## Adding cases
 
@@ -214,7 +227,11 @@ indexes, for example `agent_team_tasks.0.role`.
 
 Token + cost accounting only works when the underlying chat model exposes
 `usage_metadata` (OpenAI / Anthropic SDKs do). Set `cost_per_1k_input` /
-`cost_per_1k_output` on `EvalRuntime` for dollar estimates.
+`cost_per_1k_output` on `EvalRuntime` for dollar estimates. If usage metadata
+or non-zero rates are absent, the report can contain zero tokens/cost; treat
+that as unmeasured accounting, not evidence of zero model cost or quality.
+Latency is runner-observed timing and should likewise be interpreted with the
+suite/runtime context rather than as a provider SLA.
 
 ## Regression gate
 
@@ -231,6 +248,9 @@ baselines as JSON (produced by `--report-json`) under `eval-baselines/` and
 bump them intentionally when you accept a trade-off. Without a baseline, the
 CLI still fails when any case fails; the regression comparison simply has no
 prior metrics to diff against.
+
+Baseline comparison only covers the metrics above. It does not turn per-case
+`acceptance` metadata into an enforced threshold.
 
 ## Eval layers
 

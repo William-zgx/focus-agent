@@ -1,3 +1,5 @@
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
 from focus_agent import model_registry
 from focus_agent.config import (
     ConfiguredModel,
@@ -433,6 +435,64 @@ def test_create_chat_model_uses_reasoning_passthrough_for_openai_thinking_model(
 
     assert isinstance(model, ReasoningAwareChatOpenAI)
     assert model.model_name == "deepseek-v4-pro"
+
+
+def test_create_chat_model_honors_disabled_deepseek_thinking_without_catalog_override(
+    monkeypatch,
+):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    settings = Settings(
+        model="deepseek:deepseek-v4-pro",
+        model_catalog=ModelCatalogConfig(
+            providers=(
+                ProviderConfig(
+                    id="deepseek",
+                    label="DeepSeek",
+                    backend_provider="openai",
+                    base_url_env="DEEPSEEK_BASE_URL",
+                    api_key_env="DEEPSEEK_API_KEY",
+                ),
+            ),
+            models=(
+                ConfiguredModel(
+                    id="deepseek:deepseek-v4-pro",
+                    supports_thinking=True,
+                    default_thinking_enabled=True,
+                    reasoning_effort="high",
+                    thinking_enable_extra_body_type="enabled",
+                ),
+            ),
+        ),
+    )
+
+    resolved = resolve_model_config(
+        "deepseek:deepseek-v4-pro",
+        thinking_mode="disabled",
+        settings=settings,
+    )
+    model = create_chat_model(
+        "deepseek:deepseek-v4-pro",
+        thinking_mode="disabled",
+        temperature=0.0,
+        settings=settings,
+    )
+    payload = model._get_request_payload(
+        [
+            HumanMessage(content="读取文件"),
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "call-1", "name": "read_file", "args": {"path": "x.txt"}}],
+                additional_kwargs={"reasoning_content": "旧的思考内容"},
+            ),
+            ToolMessage(content="ok", tool_call_id="call-1"),
+        ]
+    )
+
+    assert resolved.request_kwargs == {"extra_body": {"thinking": {"type": "disabled"}}}
+    assert isinstance(model, ReasoningAwareChatOpenAI)
+    assert payload["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert payload["messages"][1]["reasoning_content"] == "旧的思考内容"
 
 
 def test_create_chat_model_uses_openai_backend_for_ollama(monkeypatch):

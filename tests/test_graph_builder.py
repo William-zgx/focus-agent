@@ -2,6 +2,7 @@ import json
 import time
 from types import SimpleNamespace
 
+import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool
 from langgraph.types import Command
@@ -440,11 +441,7 @@ def test_messages_for_model_filters_copied_branch_control_context():
 
     messages = _messages_for_model(state)
 
-    assert [message.content for message in messages] == [
-        "我想去济州岛旅游，你能给我一份攻略大纲吗？",
-        "济州岛旅行可以按区域和主题规划。",
-        handoff,
-    ]
+    assert [message.content for message in messages] == [handoff]
 
 
 def test_messages_for_model_drops_branch_recent_history_cut_before_tool_call_user():
@@ -4260,7 +4257,11 @@ def test_graph_applies_prompt_budget_guard_before_direct_model_invoke(monkeypatc
             "selected_model": "openai:deepseek-reasoner",
             "rolling_summary": "obsolete summary " * 500,
             "user_constraints": [{"constraint": "Keep the current writing request authoritative."}],
-            "context_budget": ContextBudget(prompt_token_limit=320, chars_per_token=1),
+            "context_budget": ContextBudget(
+                prompt_token_limit=2000,
+                output_token_reserve=0,
+                chars_per_token=1,
+            ),
         },
         context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
         version="v2",
@@ -4271,10 +4272,74 @@ def test_graph_applies_prompt_budget_guard_before_direct_model_invoke(monkeypatc
 
     assert result.value["messages"][-1].content.startswith("杨絮")
     assert fake_model.bound_tool_batches == []
-    assert sum(len(str(message.content)) for message in prompt_messages) <= 320
+    assert sum(len(str(message.content)) for message in prompt_messages) <= 2000
     assert current_turn in rendered
     assert "Keep the current writing request authoritative." in rendered
     assert "obsolete summary" not in rendered
+    assert (
+        result.value["plan_meta"]["context_request"]["tokenizer_id"] == "openai:deepseek-reasoner"
+    )
+
+
+@pytest.mark.parametrize(
+    "user_request", ["Answer this request.", "Search web for the latest DeepSeek news."]
+)
+def test_graph_blocks_model_when_required_context_overflows(monkeypatch, user_request):
+    class FakeRunnable:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            self.owner.invocations.append(list(prompt_messages))
+            return AIMessage(content="should not be generated")
+
+    class FakeModel:
+        def __init__(self):
+            self.invocations = []
+
+        def bind_tools(self, _tools):
+            return FakeRunnable(self)
+
+        def with_config(self, _config):
+            return FakeRunnable(self)
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(
+        "focus_agent.engine.graph_builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search web."""
+        return query
+
+    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(web_search,)))
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content=user_request)],
+            "selected_model": "openai:deepseek-reasoner",
+            "user_constraints": [{"constraint": "required rule " * 200}],
+            "context_budget": ContextBudget(
+                prompt_token_limit=100,
+                output_token_reserve=0,
+                chars_per_token=1,
+            ),
+        },
+        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
+        version="v2",
+    )
+
+    assert fake_model.invocations == []
+    assert "model was not invoked" in result.value["messages"][-1].content
+    assert result.value["plan_meta"]["context_request"]["required_overflow"] is True
+    assert result.value["task_outcome"]["status"] == "blocked"
+    assert "__context_budget__" not in str(result.value["task_outcome"])
+    assert "prompt budget" in result.value["task_outcome"]["degradation_reason"]
+    assert result.value["pending_tool_action"] is None
 
 
 def test_empty_tool_free_repair_falls_back_to_tool_results():

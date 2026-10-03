@@ -1,13 +1,68 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
-from .policy_markers import _contains_any, _skill_install_hits
+from .policy_markers import (
+    _CODE_OR_FILE_REFERENCE_RE,
+    _CODE_SEARCH_TOOL_INTENT_MARKERS,
+    _LIVE_WEB_SEARCH_FIRST_MARKERS,
+    _contains_any,
+    _skill_install_hits,
+)
 
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
 _SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
 _WEB_SEARCH_QUERY_MAX_CHARS = 400
+_ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
+
+
+def _explicit_read_tool(text: str) -> str | None:
+    match = re.search(
+        r"(?:\b(?:use|call)\b|调用|使用)\s*(read_file|artifact_read)\s*\(",
+        text,
+        re.IGNORECASE,
+    )
+    return match.group(1).lower() if match else None
+
+
+def _preferred_first_tool(
+    text: str,
+    *,
+    policy: _ToolPolicy,
+    symbol_hits: tuple[str, ...],
+    file_browse_hits: tuple[str, ...],
+    web_lookup_hits: tuple[str, ...],
+    fresh_external_hits: tuple[str, ...],
+) -> str | None:
+    normalized = text.lower()
+    explicit_read = _explicit_read_tool(text)
+    if policy in {"workspace_lookup", "execution"} and explicit_read:
+        return explicit_read
+    if policy == "live_web_research" and "web_search" in normalized and "web_fetch" in normalized:
+        return "web_search"
+    if policy in {"live_web_research", "execution"} and _should_prefer_web_fetch(text):
+        return "web_fetch"
+    if policy == "workspace_lookup":
+        if file_browse_hits and not symbol_hits:
+            return "list_files"
+        if (
+            symbol_hits
+            or _CODE_OR_FILE_REFERENCE_RE.search(text)
+            or _contains_any(text, _CODE_SEARCH_TOOL_INTENT_MARKERS)
+        ):
+            return "search_code"
+    if policy == "live_web_research":
+        if web_lookup_hits or _contains_any(text, _LIVE_WEB_SEARCH_FIRST_MARKERS):
+            return "web_search"
+    if policy == "execution":
+        wants_workspace_first = bool(symbol_hits) and not file_browse_hits
+        wants_web_first = bool(web_lookup_hits or fresh_external_hits)
+        if wants_workspace_first and not wants_web_first:
+            return "search_code"
+        if wants_web_first and not wants_workspace_first:
+            return "web_search"
+    return None
 
 
 def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .context_tool_observation_json import _collapse_inline, _truncate_text
+from .context_tool_observation_json import _collapse_inline, _truncate_json_payload, _truncate_text
 from .context_tool_observation_references import (
     _artifact_like_ref_from_mapping,
     _collect_artifact_like_refs,
@@ -11,6 +11,23 @@ from .context_tool_observation_references import (
     _structured_tool_reference,
     _tool_observation_ref,
 )
+
+
+def _unretrievable_tool_observation(
+    observation: str,
+    *,
+    tool_name: str,
+    max_chars: int,
+) -> str:
+    """Return an honest compact view when the raw observation was not saved."""
+    payload = {
+        "tool": tool_name or "tool",
+        "summary": f"{tool_name or 'tool'} output was trimmed but could not be saved for rereading.",
+        "original_chars": len(observation),
+        "observation_retrievable": False,
+        "truncated_by_context_policy": True,
+    }
+    return _truncate_json_payload(payload, max_chars=max(1, int(max_chars)))
 
 
 def _compact_structured_observation(

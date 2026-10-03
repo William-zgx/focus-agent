@@ -24,10 +24,7 @@
 }
 
 .fa-thread-layout {
-	display: grid;
 	grid-template-columns: minmax(0, 1fr) 340px;
-	gap: 16px;
-	min-height: 0;
 	flex: 1 1 auto;
 }
 
@@ -38,7 +35,6 @@
 }
 
 .fa-transcript-panel {
-	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	min-height: 0;
 	overflow: hidden;
@@ -49,7 +45,6 @@
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 16px;
-	padding: 20px 22px 16px;
 	border-bottom: 1px solid var(--fa-border-subtle);
 }
 
@@ -87,10 +82,8 @@
 }
 
 .fa-thread-id {
-	margin-top: 14px;
 	color: white;
 	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-	font-size: 16px;
 	line-height: 1.5;
 	word-break: break-all;
 }
@@ -98,20 +91,11 @@
 .fa-thread-chip-row {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 10px;
 	margin-top: 14px;
 }
 
 .fa-chat-history {
-	min-height: 0;
 	overflow-y: auto;
-	padding: 20px;
-	background:
-		radial-gradient(
-			circle at top right,
-			rgba(99, 102, 241, 0.16),
-			transparent 30%
-		), linear-gradient(180deg, rgba(17, 17, 24, 0.9), rgba(10, 10, 15, 0.96));
 }
 
 .fa-chat-empty,
@@ -130,13 +114,6 @@
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
-}
-
-.fa-tree-section-header {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 12px;
 }
 
 .fa-tree-section-title-group {
@@ -190,42 +167,21 @@
 
 .fa-message-list {
 	display: grid;
-	gap: 14px;
-}
-
-.fa-message-row {
-	display: grid;
-}
-
-.fa-message-row.is-user {
-	justify-items: end;
-}
-
-.fa-message-row.is-assistant,
-.fa-message-row.is-system {
-	justify-items: start;
 }
 
 .fa-message-stack {
 	display: grid;
-	gap: 8px;
-	width: fit-content;
-	max-width: min(720px, 88%);
 }
 
 .fa-message-role {
 	display: inline-flex;
 	align-items: center;
 	width: fit-content;
-	padding: 5px 10px;
 	border-radius: 999px;
 	border: 1px solid
 		color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
 	background: color-mix(in srgb, var(--fa-accent) 12%, var(--fa-panel-2) 88%);
 	color: var(--fa-accent-text);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: 0.12em;
 }
 
 .fa-message-role.is-user {

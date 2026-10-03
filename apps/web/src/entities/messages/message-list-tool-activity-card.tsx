@@ -31,16 +31,28 @@ type ActivitySummaryChip = {
 	tone: ActivityChipTone;
 	value?: number;
 };
+type ActivitySummaryChipList = Array<{
+	id: string;
+	label: string;
+	tone: ActivityChipTone;
+}>;
 
 function processingStepStatusLabel(
 	step: ProcessingStepEntry,
 	isChineseUi: boolean,
+	isHistorical = false,
 ) {
 	if (step.status === "failed") {
 		return isChineseUi ? "失败" : "Failed";
 	}
 	if (step.status === "completed") {
 		return isChineseUi ? "完成" : "Done";
+	}
+	if (
+		isHistorical &&
+		(step.status === "running" || step.status === "pending")
+	) {
+		return isChineseUi ? "历史状态未知" : "Historical unknown";
 	}
 	if (step.status === "running") {
 		return isChineseUi ? "处理中" : "Running";
@@ -84,16 +96,20 @@ function countSteps(
 	return steps.filter((step) => step.status === status).length;
 }
 
-function activityStatusCounts(steps: ProcessingStepEntry[]) {
+function activityStatusCounts(activity: ToolActivityItem) {
+	const unresolvedCount =
+		countSteps(activity.steps, "running") +
+		countSteps(activity.steps, "pending");
 	return {
-		completed: countSteps(steps, "completed"),
-		failed: countSteps(steps, "failed"),
-		running: countSteps(steps, "running") + countSteps(steps, "pending"),
+		completed: countSteps(activity.steps, "completed"),
+		failed: countSteps(activity.steps, "failed"),
+		running: activity.isHistorical ? 0 : unresolvedCount,
+		historical: activity.isHistorical ? unresolvedCount : 0,
 	};
 }
 
 function activityStats(activity: ToolActivityItem, isChineseUi: boolean) {
-	const counts = activityStatusCounts(activity.steps);
+	const counts = activityStatusCounts(activity);
 
 	return [
 		{
@@ -133,6 +149,12 @@ function activityStats(activity: ToolActivityItem, isChineseUi: boolean) {
 			value: counts.running,
 		},
 		{
+			id: "historical",
+			label: isChineseUi ? "历史状态未知" : "Historical unknown",
+			tone: "neutral",
+			value: counts.historical,
+		},
+		{
 			id: "failed",
 			label: isChineseUi ? "失败" : "Failed",
 			tone: "danger",
@@ -148,8 +170,8 @@ function statusChipLabel(label: string, value: number, isChineseUi: boolean) {
 function activitySummaryChips(
 	activity: ToolActivityItem,
 	isChineseUi: boolean,
-): Array<{ id: string; label: string; tone: ActivityChipTone }> {
-	const counts = activityStatusCounts(activity.steps);
+): ActivitySummaryChipList {
+	const counts = activityStatusCounts(activity);
 	const skillChips: ActivitySummaryChip[] = activity.skillIds.map(
 		(skillId) => ({
 			id: `skill-${skillId}`,
@@ -187,6 +209,16 @@ function activitySummaryChips(
 				isChineseUi,
 			),
 			tone: "warn" as const,
+		},
+		{
+			id: "historical",
+			value: counts.historical,
+			label: statusChipLabel(
+				isChineseUi ? "历史状态未知" : "historical unknown",
+				counts.historical,
+				isChineseUi,
+			),
+			tone: "neutral" as const,
 		},
 		{
 			id: "failed",
@@ -269,9 +301,11 @@ function detailToggleLabel(isChineseUi: boolean) {
 
 function ProcessingStepRow({
 	isChineseUi,
+	isHistorical = false,
 	step,
 }: {
 	isChineseUi: boolean;
+	isHistorical?: boolean;
 	step: ProcessingStepEntry;
 }) {
 	return (
@@ -284,7 +318,7 @@ function ProcessingStepRow({
 				) : null}
 			</span>
 			<span className="fa-tool-activity-step-status">
-				{processingStepStatusLabel(step, isChineseUi)}
+				{processingStepStatusLabel(step, isChineseUi, isHistorical)}
 			</span>
 		</div>
 	);
@@ -303,6 +337,7 @@ export function ToolActivityCard({
 }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const [showAllSteps, setShowAllSteps] = useState(false);
+	const isHistorical = activity.isHistorical === true;
 	const timelineSteps = timelineStepsForActivity(activity, isChineseUi);
 	const compactSteps = compactTimelineSteps(timelineSteps);
 	const stats = activityStats(activity, isChineseUi);
@@ -323,14 +358,28 @@ export function ToolActivityCard({
 				>
 					<summary className="fa-tool-activity-summary">
 						<span className="fa-tool-activity-badge">
-							{toolLabel(isChineseUi)}
+							{isHistorical
+								? isChineseUi
+									? "历史"
+									: "History"
+								: toolLabel(isChineseUi)}
 						</span>
 						<span className="fa-tool-activity-copy">
 							<span className="fa-tool-activity-title">
-								{title ?? toolActivityTitle(activity.toolNames, isChineseUi)}
+								{title ??
+									(isHistorical
+										? isChineseUi
+											? "历史处理记录"
+											: "Historical run"
+										: toolActivityTitle(activity.toolNames, isChineseUi))}
 							</span>
 							<span className="fa-tool-activity-note">
-								{note ?? toolActivityNote(activity.toolNames, isChineseUi)}
+								{note ??
+									(isHistorical
+										? isChineseUi
+											? "本轮已结束，未完整记录的步骤仅供诊断。"
+											: "The run ended; unresolved steps are diagnostic only."
+										: toolActivityNote(activity.toolNames, isChineseUi))}
 							</span>
 							{summaryChips.length > 0 ? (
 								<span className="fa-tool-activity-preview">
@@ -398,6 +447,7 @@ export function ToolActivityCard({
 										<ProcessingStepRow
 											key={step.id}
 											isChineseUi={isChineseUi}
+											isHistorical={isHistorical}
 											step={step}
 										/>
 									))}

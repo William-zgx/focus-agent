@@ -345,24 +345,29 @@ export function AppShell({ children }: PropsWithChildren) {
 					</div>
 				</aside>
 
-				<hr
-					className="fa-panel-resizer"
-					{...tooltipProps(
-						isChineseUi ? "拖动调整左右栏宽度" : "Drag to resize panels",
-					)}
-					onBlur={handleTooltipHide}
-					onFocus={handleTooltipShow}
-					onMouseEnter={handleTooltipShow}
-					onMouseLeave={handleTooltipHide}
-					onKeyDown={handleResizerKeyDown}
-					onPointerDown={handleResizerPointerDown}
-					aria-label={isChineseUi ? "调整面板宽度" : "Resize panels"}
-					aria-orientation="vertical"
-					aria-valuemin={SIDEBAR_WIDTH_MIN}
-					aria-valuemax={getSidebarViewportMax()}
-					aria-valuenow={sidebarWidth}
-					tabIndex={0}
-				/>
+				<section
+					aria-label={isChineseUi ? "面板宽度调整" : "Panel width adjustment"}
+					style={{ display: "contents" }}
+				>
+					<hr
+						className="fa-panel-resizer"
+						{...tooltipProps(
+							isChineseUi ? "拖动调整左右栏宽度" : "Drag to resize panels",
+						)}
+						onBlur={handleTooltipHide}
+						onFocus={handleTooltipShow}
+						onMouseEnter={handleTooltipShow}
+						onMouseLeave={handleTooltipHide}
+						onKeyDown={handleResizerKeyDown}
+						onPointerDown={handleResizerPointerDown}
+						aria-label={isChineseUi ? "调整面板宽度" : "Resize panels"}
+						aria-orientation="vertical"
+						aria-valuemin={SIDEBAR_WIDTH_MIN}
+						aria-valuemax={getSidebarViewportMax()}
+						aria-valuenow={sidebarWidth}
+						tabIndex={0}
+					/>
+				</section>
 
 				<main
 					className={`fa-chat-panel ${isWorkspaceShell ? "is-workspace-shell" : "is-chat-shell"}`}

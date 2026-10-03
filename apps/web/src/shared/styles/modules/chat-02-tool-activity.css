@@ -37,7 +37,8 @@
 	cursor: pointer;
 }
 
-.fa-chat-main-body .fa-tool-activity-summary::-webkit-details-marker {
+.fa-chat-main-body .fa-tool-activity-summary::-webkit-details-marker,
+.fa-chat-main-body .fa-tool-activity-detail-summary::-webkit-details-marker {
 	display: none;
 }
 
@@ -62,7 +63,9 @@
 	text-transform: uppercase;
 }
 
-.fa-chat-main-body .fa-tool-activity-copy {
+.fa-chat-main-body .fa-tool-activity-copy,
+.fa-chat-main-body .fa-tool-activity-step-main,
+.fa-chat-main-body .fa-tool-activity-detail-copy {
 	display: grid;
 	gap: 3px;
 	min-width: 0;
@@ -281,12 +284,6 @@
 	background: var(--fa-danger);
 }
 
-.fa-chat-main-body .fa-tool-activity-step-main {
-	display: grid;
-	gap: 3px;
-	min-width: 0;
-}
-
 .fa-chat-main-body .fa-tool-activity-step-title {
 	color: var(--fa-text);
 	font-size: 13px;
@@ -349,16 +346,6 @@
 	cursor: pointer;
 }
 
-.fa-chat-main-body .fa-tool-activity-detail-summary::-webkit-details-marker {
-	display: none;
-}
-
-.fa-chat-main-body .fa-tool-activity-detail-copy {
-	display: grid;
-	gap: 3px;
-	min-width: 0;
-}
-
 .fa-chat-main-body .fa-tool-activity-detail-title {
 	min-width: 0;
 	overflow: hidden;
@@ -378,4 +365,57 @@
 	line-height: 1.35;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	color: var(--fa-text-soft);
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-language {
+	max-width: 86px;
+	overflow: hidden;
+	padding: 2px 6px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--fa-border) 70%, transparent);
+	text-overflow: ellipsis;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-toggle {
+	color: var(--fa-text-muted);
+	font-weight: 700;
+}
+
+.fa-chat-main-body
+	.fa-tool-activity-detail[open]
+	.fa-tool-activity-detail-toggle {
+	color: color-mix(in srgb, var(--fa-accent-cyan) 72%, var(--fa-text) 28%);
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body {
+	padding: 0 10px 10px;
+	border-top: 1px solid color-mix(in srgb, var(--fa-border) 66%, transparent);
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-block {
+	border-radius: 10px;
+}
+
+.fa-chat-main-body .fa-tool-activity-detail-body .fa-message-code-header {
+	padding: 6px 10px;
+}
+
+:where(.fa-chat-main-body .fa-tool-activity-detail-body)
+	.fa-message-code-block
+	pre {
+	max-height: 240px;
+	padding: 12px;
+	font-size: 12px;
 }

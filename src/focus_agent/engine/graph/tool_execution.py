@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
@@ -39,6 +40,9 @@ from ..graph_turn_helpers import (
 )
 from .tool_result_hooks import (
     _apply_result_hooks,
+    _ask_permission_result,
+    _blocked_tool_error,
+    _denied_tool_result,
     _patch_tool_message_content,
     _patch_tool_message_error,
 )
@@ -81,66 +85,6 @@ class HarnessToolServices:
 
 
 # ---------------------------------------------------------------------------
-# Helper builders for interception/permission result messages
-# ---------------------------------------------------------------------------
-
-
-def _blocked_tool_error(
-    tool_call_id: str,
-    tool_name: str,
-    tool_args: Mapping[str, Any] | None,
-    reason: str | None,
-    *,
-    source: str,
-) -> ToolMessage:
-    """Build a ToolMessage for a tool call that did not run because an
-    extension, middleware, or the permission system blocked it."""
-
-    args_dict = dict(tool_args or {})
-    error_text = reason or f"blocked by {source}"
-    return build_tool_error_message(
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        args=args_dict,
-        error=error_text,
-        runtime_info={source: True, "blocked_reason": reason},
-    )
-
-
-def _denied_tool_result(
-    tool_call_id: str,
-    tool_name: str,
-    tool_args: Mapping[str, Any] | None,
-    reason: str | None,
-) -> ToolMessage:
-    return _blocked_tool_error(
-        tool_call_id,
-        tool_name,
-        tool_args,
-        reason or "permission denied",
-        source="permission_denied",
-    )
-
-
-def _ask_permission_result(
-    tool_call_id: str,
-    tool_name: str,
-    tool_args: Mapping[str, Any] | None,
-    reason: str | None,
-) -> ToolMessage:
-    """Build a ToolMessage for the ASK case so downstream UI/approval logic
-    can surface a prompt to the user."""
-
-    return _blocked_tool_error(
-        tool_call_id,
-        tool_name,
-        tool_args,
-        reason or "permission required",
-        source="permission_ask",
-    )
-
-
-# ---------------------------------------------------------------------------
 # Command extraction for bash-like tools
 # ---------------------------------------------------------------------------
 
@@ -173,6 +117,16 @@ def _extract_command(tool_name: str, tool_args: Mapping[str, Any]) -> str | None
     return None
 
 
+def _configured_thread_id() -> str | None:
+    """Read the active LangGraph thread, not a model-controlled argument."""
+    try:
+        configurable = dict(get_config().get("configurable") or {})
+    except Exception:  # noqa: BLE001
+        return None
+    value = configurable.get("thread_id")
+    return str(value) if value else None
+
+
 def make_tool_executor_node(
     *,
     tools_by_name: Mapping[str, Any],
@@ -184,6 +138,12 @@ def make_tool_executor_node(
     approval_queue: Any | None = None,
     harness_services: HarnessToolServices | None = None,
 ) -> Any:
+    artifact_read_tool = tools_by_name.get("artifact_read")
+    artifact_read_metadata = getattr(artifact_read_tool, "metadata", {}) or {}
+    observation_saver = artifact_read_metadata.get("_focus_agent_save_tool_observation")
+    if not callable(observation_saver):
+        observation_saver = None
+
     def tool_executor(
         state: AgentState,
         runtime: Runtime[RequestContext],
@@ -207,7 +167,8 @@ def make_tool_executor_node(
             services.active_agent_name if services is not None else None
         ) or "focus_agent"
         run_id = services.run_id if services is not None else None
-        thread_id = (
+        configured_thread_id = _configured_thread_id()
+        thread_id = configured_thread_id or (
             state.get("thread_id") if isinstance(state.get("thread_id"), str) else root_thread_id
         )
         turn_scope_key = build_cache_scope_key(
@@ -639,6 +600,10 @@ def make_tool_executor_node(
             cache_scope_keys=cache_scope_keys,
             invalidation_scope_keys=invalidation_scope_keys,
             max_parallel_workers=max(1, int(max_parallel_workers or 1)),
+            # This scope is derived from the trusted graph runtime/state, never
+            # from tool arguments supplied by the model.
+            observation_saver=observation_saver,
+            observation_thread_id=configured_thread_id,
         )
         # Apply post-execution interception (middleware + extension on_tool_result)
         # to the initial batch before indexing into messages_by_index.
@@ -686,6 +651,8 @@ def make_tool_executor_node(
                 cache_scope_keys=cache_scope_keys,
                 invalidation_scope_keys=invalidation_scope_keys,
                 max_parallel_workers=max(1, int(max_parallel_workers or 1)),
+                observation_saver=observation_saver,
+                observation_thread_id=configured_thread_id,
             )
             retry_results = _apply_result_hooks(
                 retry_results,

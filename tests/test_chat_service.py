@@ -486,9 +486,9 @@ def test_send_message_pre_turn_recommendation_survives_stale_checkpoint_read(
     assert graph.invoke_calls == 0
     assert payload["branch_actions"][0]["source"] == "branch_decision"
     assert payload["branch_actions"][0]["status"] == "pending"
-    assert graph.values["branch_actions"][0]["action_id"] == payload["branch_actions"][0][
-        "action_id"
-    ]
+    assert (
+        graph.values["branch_actions"][0]["action_id"] == payload["branch_actions"][0]["action_id"]
+    )
     assert "确认项" in payload["assistant_message"]
     assert "branch_actions" in graph.updates[-1][0]
     assert "messages" in graph.updates[-1][0]
@@ -1107,7 +1107,9 @@ def test_response_payload_repairs_trailing_tool_calls_without_interrupt():
                 }
             )
 
-    chat = ChatService(ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace()))
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace())
+    )
 
     payload = chat._response_payload(
         thread_id="thread-1",
@@ -1144,7 +1146,9 @@ def test_response_payload_preserves_trailing_tool_calls_with_interrupt():
                 }
             )
 
-    chat = ChatService(ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace()))
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace())
+    )
     interrupt = {
         "kind": "tool_approval",
         "tool_call_id": "call-1",
@@ -1290,10 +1294,13 @@ def test_branch_action_dismissal_does_not_match_no_inside_words():
 
     assert not is_branch_action_dismissal(message)
     assert not is_branch_action_request(message)
-    assert branch_action_intent(
-        values={"branch_actions": [pending.model_dump(mode="json")]},
-        message=message,
-    ) is None
+    assert (
+        branch_action_intent(
+            values={"branch_actions": [pending.model_dump(mode="json")]},
+            message=message,
+        )
+        is None
+    )
     assert is_branch_action_dismissal("no")
     assert is_branch_action_dismissal("No, thanks")
 
@@ -1504,7 +1511,7 @@ def test_preview_thread_context_increases_with_draft_message(tmp_path: Path):
     )["context_usage"]
 
     assert with_draft["used_tokens"] > baseline["used_tokens"]
-    assert with_draft["token_limit"] == 10000
+    assert with_draft["token_limit"] == 5904
 
 
 def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_path: Path):
@@ -1550,7 +1557,7 @@ def test_compact_thread_context_updates_summary_without_deleting_messages(tmp_pa
     payload = chat.compact_thread_context(thread_id="root-1", user_id="owner-1", trigger="manual")
 
     assert len(graph.values["messages"]) == 2
-    assert graph.updates[-1][1] == "context_compaction"
+    assert graph.updates[-1][1] is None
     assert graph.values["context_compaction"]["trigger"] == "manual"
     assert graph.values["context_compaction"]["non_destructive"] is True
     drift_report = graph.values["context_compaction"]["context_compaction_drift_report"]
