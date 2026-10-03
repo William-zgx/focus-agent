@@ -91,9 +91,9 @@ curl --fail --show-error --silent http://127.0.0.1:5173/app/
 
 `/healthz` only proves the process is alive. `/readyz` is the runtime readiness
 gate, not a universal dependency probe. A `200`/`ready=true` response can still
-come from local/fallback checks: for example, a non-empty configured retrieval
-fallback name is sufficient for that fallback check, and a PostgreSQL-labelled
-path does not itself prove a live database connection. Inspect component
+come from local/fallback checks. Retrieval fallback now requires an available
+search-capable repository/store, not just a configured name; this capability
+check still does not establish a successful database query. Inspect component
 details and run explicit DB/provider smoke checks before claiming dependencies
 are ready. A common local failure is `background_jobs` reporting old pending work; inspect
 `/v1/admin/background-jobs/summary`, drain or restart the local dev process, and

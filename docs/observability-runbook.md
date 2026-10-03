@@ -53,8 +53,9 @@ curl http://127.0.0.1:8000/metrics
 - per-component `checks`, including trajectory recorder status when trajectory persistence is expected and `retrieval_zvec` when the embedded retrieval index is enabled
 
 Interpret `ready=true` together with those component details. A local/fallback
-check may report ready without a live PostgreSQL connection, and the retrieval
-fallback check currently treats any non-empty configured fallback name as ready.
+check may report ready without a live PostgreSQL connection. Retrieval fallback
+requires an available search-capable repository/store, not just a configured
+name; that capability check still does not execute a database query.
 For production diagnosis, corroborate `/readyz` with the relevant database,
 provider, migration, and smoke probes; do not treat an HTTP 200 response as
 dependency health evidence by itself.

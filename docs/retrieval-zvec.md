@@ -43,10 +43,9 @@ canonical records remain usable. `retrieval_zvec` readiness describes index
 availability only and does not establish embedding-provider health or semantic
 quality.
 
-There is also a known readiness limitation: the current fallback branch treats
-a non-empty fallback name as ready, without proving that backend can serve the
-query. A green fallback check therefore needs an actual backend/query check;
-see B03 in the [implementation plan](plans/2026-09-28-agent-capabilities/plan.md).
+Fallback readiness requires an available search-capable repository/store; a
+configured name alone no longer passes. It is a capability check, not a live
+query, so production verification still requires an actual backend/query check.
 
 ## Configuration
 

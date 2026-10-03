@@ -129,6 +129,7 @@ def test_readyz_exposes_active_connections_from_provider_snapshot() -> None:
                 agent_memory_embedding_enabled=False,
                 agent_memory_embedding_backend="disabled",
                 agent_memory_vector_search_mode="off",
+                agent_zvec_enabled=False,
                 background_job_old_pending_seconds=900.0,
                 app_version=None,
                 app_environment=None,

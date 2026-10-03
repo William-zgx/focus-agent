@@ -79,7 +79,6 @@ export function BranchActionCard({
 }) {
 	const pending = action.status === "pending";
 	const [isExpanded, setIsExpanded] = useState(pending);
-	const disabled = isReadOnly || Boolean(isBusy);
 	const branchName =
 		normalizeText(action.suggested_branch_name) ||
 		(isChineseUi ? "新分支" : "New branch");
@@ -103,6 +102,7 @@ export function BranchActionCard({
 			shouldShowBranchDecisionDiagnostic(sourceDecisionStatus)) &&
 		Boolean(sourceDecisionDiagnostic);
 	const auditOnly = action.recommendation_user_visible === false;
+	const disabled = isReadOnly || auditOnly || Boolean(isBusy);
 	const toggleLabel = isExpanded
 		? isChineseUi
 			? "收起详情"

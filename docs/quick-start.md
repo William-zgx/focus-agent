@@ -90,7 +90,7 @@ Open:
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend`, `memory_pgvector` for compatibility/fallback, and `retrieval_zvec` for the default embedded retrieval index. A `ready=true` response is not by itself a database or external-provider probe: local/fallback checks can be ready without a live PostgreSQL connection, and a configured non-empty retrieval fallback name can make that component report ready. Inspect the per-component `checks` and run the provider/DB smoke checks required by the deployment before treating it as dependency readiness. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
+`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend`, `memory_pgvector` for compatibility/fallback, and `retrieval_zvec` for the default embedded retrieval index. A `ready=true` response is not by itself a database or external-provider probe: retrieval fallback requires an available search-capable repository/store, but this capability check does not execute a database query. Inspect the per-component `checks` and run the provider/DB smoke checks required by the deployment before treating it as dependency readiness. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
 
 ## 3. Managed Local PostgreSQL
 

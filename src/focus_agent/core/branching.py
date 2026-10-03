@@ -205,6 +205,7 @@ class BranchActionProposal(BaseModel):
     navigation: BranchActionNavigation | None = None
     source: str | None = None
     source_decision_id: str | None = None
+    recommendation_user_visible: bool | None = None
     suggested_branch_name_source: Literal["explicit", "inferred"] | None = None
     confidence: float | None = None
     rationale: str | None = None

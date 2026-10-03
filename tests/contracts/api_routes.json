@@ -12815,6 +12815,16 @@
           "default": "",
           "type": "string"
         },
+        "recommendation_user_visible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "root_thread_id": {
           "type": "string"
         },

@@ -44,6 +44,7 @@ flowchart LR
     Topics --> Tools["Tool / Skill"]
     Topics --> Sandbox["Sandbox Execution"]
     Ops --> Docker["Docker Deployment"]
+    Ops --> UserSystemd["User systemd Service"]
     Ops --> Observability["Observability Runbook"]
     Ops --> Release["Release Checklist"]
     Ops --> CIGate["CI Release Gate"]
@@ -109,6 +110,7 @@ flowchart LR
 ## Operations And Release / 运维发布
 
 - [docker-deployment.md](docker-deployment.md)：本地 Docker 联调、生产/预发模板、外部 PostgreSQL 和迁移边界。
+- [operations/user-systemd.md](operations/user-systemd.md)：用户级持久服务的安装、独立构建、启动、重启、日志和健康检查入口。
 - [observability-runbook.md](observability-runbook.md)：overview、trajectory workbench、request/trace pivot、replay 和 promote 操作手册。
 - [release-checklist.md](release-checklist.md)：发布前人工检查清单、production evidence schema v2、身份/新鲜度阻断口径和证据包要求。
 - [ci/github-actions-release-gate.md](ci/github-actions-release-gate.md)：GitHub Actions、Buildkite 和通用 CI 的 release gate provider 绑定、`RELEASE_*` identity attestation、approval metadata、artifact retention 和 evidence upload 说明。

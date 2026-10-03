@@ -271,6 +271,8 @@ def execute_branch_action_locked(
         raise KeyError(action_id)
     if action.status.value != "pending":
         raise ValueError(f"Branch action {action_id} is not pending.")
+    if action.recommendation_user_visible is False:
+        raise ValueError(f"Branch action {action_id} is audit-only and cannot be executed.")
 
     from .service import execute_branch_action_navigation
 
@@ -379,6 +381,8 @@ def dismiss_branch_action_locked(
         raise KeyError(action_id)
     if action.status.value != "pending":
         raise ValueError(f"Branch action {action_id} is not pending.")
+    if action.recommendation_user_visible is False:
+        raise ValueError(f"Branch action {action_id} is audit-only and cannot be dismissed.")
     dismissed = mark_branch_action_dismissed(action)
     is_chinese = service._is_chinese_text(user_message or action.reason or "")
     assistant_text = dismissal_message(is_chinese=is_chinese)

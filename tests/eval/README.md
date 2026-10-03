@@ -28,6 +28,10 @@ uv run python -m tests.eval --suite all \
 uv run python -m tests.eval --suite model_matrix \
   --report-json reports/eval-model-matrix.json
 
+# Provider cost accounting (omit prices to keep billing evidence unknown).
+uv run python -m tests.eval --suite smoke \
+  --cost-per-1k-input 0.00015 --cost-per-1k-output 0.00060
+
 # Filter by taxonomy and emit failed cases as a follow-up dataset.
 uv run python -m tests.eval --suite golden_multi_agent \
   --only-capability governance \
@@ -68,6 +72,12 @@ The self-tests use `conftest.py::eval_runtime_factory` to inject a scripted
 fake model via the `model_factory` field on `EvalRuntime` — no network, no
 provider keys. Add suite-specific pytest modules (e.g. `test_golden_suite.py`)
 that parametrize over `load_dataset(...)` and assert `run_case(...).passed`.
+
+The delegation and critic cases in `golden_multi_agent` require role routing,
+delegation execution, task ledger, and critic gate to be enabled, with at least
+three delegated roles allowed. `observe` mode only plans work and cannot pass
+their completed-run assertions. The offline self-test runs the actual governance
+node with fake execution; this validates the assertions, not provider quality.
 
 ## Dataset format
 
@@ -134,20 +144,15 @@ Extended fields are optional and backward-compatible:
 
 - `capability` / `risk_level` classify cases for dashboards and filtering.
 - `agent_topology` seeds multi-agent roles and governance expectations.
-- `environment.assertions` checks final state. For backward compatibility, a
-  missing final-state path falls back to `input.initial_state`; this can make an
-  assertion pass without proving that the run changed state. Assertions that
-  are meant to prove a mutation should assert an operation-specific final-state
-  value or receipt that was not present in `input.initial_state`. Until the
-  fallback behavior is removed or made strict, independently inspect final
-  state; absence alone is not sufficient evidence of a mutation.
+- `environment.assertions` checks final state by default. Use
+  `source: "input"` only for an explicit input-context assertion, or
+  `source: "trajectory"` for recorded execution evidence; input state is never
+  an implicit substitute for final behavior.
 - `model_matrix` runs the same case across labeled model variants.
 - `retries` emits multiple attempts so flaky cases can be detected.
-- `acceptance` records suite policy targets for reports and review only. The
-  current CLI/harness parses and reports this metadata but does not enforce
-  `min_success_rate`, latency, or cost thresholds as an exit gate; use the
-  case results and an explicit baseline/release-health policy for blocking
-  decisions.
+- `acceptance` is enforced by the runner: `max_cost_usd` is checked per
+  attempt, while `max_p95_latency_ms` and `min_success_rate` are checked over
+  the case's attempts (including failures and timeouts).
 
 ## Adding cases
 
@@ -207,9 +212,10 @@ model re-judges and its verdict wins.
 `must_not_delegate_to_roles`, `must_record_handoffs_any_order`,
 `max_duplicate_tool_calls`, and `max_repeated_role_runs`.
 
-`EnvironmentJudge` supports `path`, `exists`, `equals`, `contains`,
+`EnvironmentJudge` supports `path`, `source`, `exists`, `equals`, `contains`,
 `not_contains`, `min_len`, and `max_len`. Paths use dot notation and list
-indexes, for example `agent_team_tasks.0.role`.
+indexes, for example `agent_team_tasks.0.role`. The default source is
+`final_state`; `input` and `trajectory` must be selected explicitly.
 
 ## Metrics
 
@@ -217,7 +223,10 @@ indexes, for example `agent_team_tasks.0.role`.
 
 - `task_success`, `passed`, `failed`, `errors`
 - `avg_tool_calls`, `avg_llm_calls`, `avg_input_tokens`, `avg_output_tokens`
-- `p50_latency_ms`, `p95_latency_ms`, `avg_cost_usd`
+- `p50_latency_ms`, `p95_latency_ms`, `avg_cost_usd` (unknown when billing
+  evidence is missing), and runtime/evidence counts
+- `harness_stability_cases` identifies results explicitly marked as both
+  `runtime_kind: "fake"` and `eval_layer: "harness_stability"`.
 - `forbidden_tool_violation_rate`
 - `per_tag_success`, `per_capability_success`, `per_risk_level_success`
 - `failed_case_ids`, `flaky_case_ids`, and `failure_clusters`
@@ -226,12 +235,15 @@ indexes, for example `agent_team_tasks.0.role`.
   and environment assertion rates
 
 Token + cost accounting only works when the underlying chat model exposes
-`usage_metadata` (OpenAI / Anthropic SDKs do). Set `cost_per_1k_input` /
-`cost_per_1k_output` on `EvalRuntime` for dollar estimates. If usage metadata
-or non-zero rates are absent, the report can contain zero tokens/cost; treat
-that as unmeasured accounting, not evidence of zero model cost or quality.
-Latency is runner-observed timing and should likewise be interpreted with the
-suite/runtime context rather than as a provider SLA.
+complete usage metadata (OpenAI / Anthropic SDKs do). Set
+`cost_per_1k_input` / `cost_per_1k_output` on `EvalRuntime` for dollar
+estimates. The CLI accepts `--cost-per-1k-input` and
+`--cost-per-1k-output`; missing usage or prices are reported as
+`cost_status: "unknown"`,
+never as a zero-dollar estimate. Results also identify `runtime_kind` as
+`fake` or `provider`, and `eval_layer` as `fake_runtime`, `model_quality`, or
+`harness_stability`; fake and offline harness runs are not model-quality
+evidence.
 
 ## Regression gate
 
@@ -249,8 +261,12 @@ bump them intentionally when you accept a trade-off. Without a baseline, the
 CLI still fails when any case fails; the regression comparison simply has no
 prior metrics to diff against.
 
-Baseline comparison only covers the metrics above. It does not turn per-case
-`acceptance` metadata into an enforced threshold.
+The deterministic `harness_stability` suite still records wall-clock latency,
+but its p95 latency is not a quality-regression gate only when both the
+baseline and current summary explicitly mark every case as fake
+`harness_stability`. Acceptance thresholds such as `max_p95_latency_ms` remain
+enforced by the runner. Ordinary fake runs, provider runs, and mixed-runtime
+summaries keep the p95 regression gate.
 
 ## Eval layers
 

@@ -7328,6 +7328,17 @@
             "title": "Reason",
             "type": "string"
           },
+          "recommendation_user_visible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation User Visible"
+          },
           "root_thread_id": {
             "title": "Root Thread Id",
             "type": "string"

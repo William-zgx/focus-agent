@@ -45,10 +45,9 @@ version, and environment in `release_binding`.
 The identity check only binds the captured runtime response. A `ready=true`
 fallback component is not proof of a live database or provider, so production
 jobs must retain the corresponding migration, Postgres/provider, and smoke
-reports as independent inputs. Eval `acceptance` fields are likewise metadata
-in the current harness, not per-case CLI thresholds; token/cost values are
-quality-cost evidence only when usage metadata and pricing were recorded (a
-zero can mean unmeasured usage).
+reports as independent inputs. Eval `acceptance` thresholds are enforced by
+the runner; missing usage or pricing is reported as unknown cost, not zero.
+Provider model-quality and fake/offline harness evidence remain separate.
 
 The production binding itself must pass all of these checks:
 

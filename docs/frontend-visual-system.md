@@ -162,15 +162,14 @@ These are behavioral contracts, not visual polish claims:
   outcome is not applied to every historical turn.
 
 - `recommendation_user_visible=false` is an audit-only Branch Action event. The
-  intended UI contract is to show diagnostics without confirm/dismiss execution
-  controls. The current Web card still has an audit-only enforcement gap in
-  `apps/web/src/entities/messages/message-list-branch-action-card.tsx`; do not
-  describe the existing card as fully disabled until that path is fixed.
-- Handoff auto-run currently calls `runCarriedMessageInThread()` without the
-  optimistic user transcript entry used by normal send in
-  `apps/web/src/features/thread-stream/use-thread-stream.ts`. Loading, error,
-  and retry states must account for that missing entry; a visual baseline must
-  not treat the handoff flow as equivalent to ordinary send.
+  Web card retains diagnostics and disables both confirm-route and stay-in-current
+  controls. Mainline commit `81f7a6f` fixed this enforcement in
+  `apps/web/src/entities/messages/message-list-branch-action-card.tsx`.
+- Handoff auto-run and normal send both create an optimistic user transcript
+  entry through `beginOptimisticMessageRequest()` in
+  `apps/web/src/features/thread-stream/use-thread-stream.ts`, as fixed by mainline
+  commit `81f7a6f`. The carried message retains the dedicated harness request
+  with `branch_handoff_auto_run` metadata.
 - Visual, axe, and real-Chrome checks validate the Web UI. They do not establish
   an Agent-native browser/DOM/screenshot tool, image attachment support, or a
   provider-backed Agent Team execution path.

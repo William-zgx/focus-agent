@@ -137,6 +137,18 @@ class BackfillImportGraph:
             self.values["rolling_summary"] = values["rolling_summary"]
 
 
+class FailingBackfillImportGraph(BackfillImportGraph):
+    def update_state(self, _config, values, as_node=None):
+        self.updates.append((values, as_node))
+        raise RuntimeError("checkpoint unavailable")
+
+
+class PostCommitFailingBackfillImportGraph(BackfillImportGraph):
+    def update_state(self, config, values, as_node=None):
+        super().update_state(config, values, as_node=as_node)
+        raise RuntimeError("checkpoint response unavailable")
+
+
 class BranchActionGraph:
     def __init__(self, values: dict[str, object] | None = None):
         self.values = values or {}
@@ -623,6 +635,63 @@ def test_pre_turn_recommendation_execution_carries_question_to_sibling_branch(
         isinstance(item, HumanMessage) and item.content == "并行探索东线备用方案"
         for item in child_messages
     )
+
+
+def test_pre_turn_execute_mode_audit_action_rejects_user_actions(tmp_path: Path):
+    repo = _repo_with_child_branch(tmp_path)
+    settings = Settings(
+        agent_branch_recommendation_enabled=True,
+        agent_branch_recommendation_mode="execute",
+    )
+    graph = MultiThreadBranchActionGraph(
+        {
+            "root-1": {"messages": [HumanMessage(content="根线程里的基础上下文。")]},
+            "child-1": {
+                "messages": [HumanMessage(content="当前分支在研究方案 A。")],
+                "branch_meta": {
+                    "branch_id": "branch-1",
+                    "root_thread_id": "root-1",
+                    "parent_thread_id": "root-1",
+                    "return_thread_id": "root-1",
+                    "branch_name": "方案 A",
+                    "branch_role": "deep_dive",
+                    "branch_depth": 1,
+                    "branch_status": "active",
+                },
+            },
+        }
+    )
+    branch_service = BranchActionBranchService()
+    runtime = SimpleNamespace(
+        settings=settings,
+        graph=graph,
+        repo=repo,
+        branch_service=branch_service,
+        branch_decision_service=_branch_recommendation_service(settings, graph),
+    )
+    chat = ChatService(runtime)
+
+    chat.send_message(
+        thread_id="child-1",
+        user_id="owner-1",
+        message="换个方向并行探索东线备用方案。",
+    )
+    action = graph.values_by_thread["child-1"]["branch_actions"][0]
+
+    assert action["recommendation_user_visible"] is False
+    with pytest.raises(ValueError, match="audit-only"):
+        chat.execute_branch_action(
+            thread_id="child-1",
+            action_id=action["action_id"],
+            user_id="owner-1",
+        )
+    with pytest.raises(ValueError, match="audit-only"):
+        chat.dismiss_branch_action(
+            thread_id="child-1",
+            action_id=action["action_id"],
+            user_id="owner-1",
+        )
+    assert branch_service.fork_calls == []
 
 
 def test_send_message_pre_turn_continue_recommendation_invokes_normally(tmp_path: Path):
@@ -3269,6 +3338,46 @@ def test_get_thread_state_backfills_visible_imported_conclusion(tmp_path: Path):
     )
     assert graph.updates
     assert graph.updates[0][1] == "bootstrap_turn"
+
+
+def test_unauthorized_thread_state_does_not_backfill_or_write_graph(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = BackfillImportGraph()
+    before = dict(graph.values)
+    chat = ChatService(SimpleNamespace(settings=Settings(), graph=graph, repo=repo))
+
+    with pytest.raises(PermissionError):
+        chat.get_thread_state(thread_id="root-1", user_id="intruder-1")
+
+    assert graph.updates == []
+    assert graph.values == before
+
+
+def test_backfill_failure_returns_persisted_state(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = FailingBackfillImportGraph()
+    chat = ChatService(SimpleNamespace(settings=Settings(), graph=graph, repo=repo))
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    assert payload["rolling_summary"] == "Existing summary."
+    assert not [message for message in payload["messages"] if message["type"] == "system"]
+    assert len(graph.updates) == 1
+
+
+def test_backfill_post_commit_failure_returns_new_persisted_state(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    graph = PostCommitFailingBackfillImportGraph()
+    chat = ChatService(SimpleNamespace(settings=Settings(), graph=graph, repo=repo))
+
+    payload = chat.get_thread_state(thread_id="root-1", user_id="owner-1")
+
+    assert "Imported from explore-alternatives" in payload["rolling_summary"]
+    assert any(message["type"] == "system" for message in payload["messages"])
+    assert len(graph.updates) == 1
 
 
 def test_get_thread_state_dedupes_dict_imported_conclusion_notice(tmp_path: Path):

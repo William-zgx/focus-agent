@@ -221,7 +221,7 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
         tags=["smoke"],
     )
 
-    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda settings=None: object())
+    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda **kwargs: object())
     monkeypatch.setattr(
         "tests.eval.cli.load_dataset",
         lambda path: [
@@ -367,7 +367,7 @@ def test_eval_cli_replays_trajectory_exports_and_writes_dataset(monkeypatch, cap
         },
     )
 
-    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda settings=None: object())
+    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda **kwargs: object())
     monkeypatch.setattr(
         "tests.eval.cli.run_suite",
         lambda cases, runtime, concurrency, progress=None: [replay_result],

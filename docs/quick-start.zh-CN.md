@@ -97,7 +97,7 @@ make api
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和兼容/fallback 用的 `memory_pgvector`，默认嵌入式检索索引由 `retrieval_zvec` 表示。`ready=true` 本身不等于数据库或外部 provider 探活：本地/fallback 检查可能在没有真实 PostgreSQL 连接时仍为 ready，检索配置只要有非空 fallback 名称也可能报告 ready。生产部署要结合各组件 `checks` 和实际 DB/provider smoke 再判断依赖是否可用。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
+其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和兼容/fallback 用的 `memory_pgvector`，默认嵌入式检索索引由 `retrieval_zvec` 表示。`ready=true` 本身不等于数据库或外部 provider 探活：检索 fallback 已要求可用且具备 search 能力的 repository/store，不再仅检查配置名称；该能力检查仍不执行真实数据库查询。生产部署要结合各组件 `checks` 和实际 DB/provider smoke 再判断依赖是否可用。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
 
 ## 3. 本地托管 PostgreSQL
 
