@@ -1,6 +1,7 @@
 # 快速开始
 
-更新时间：2026-07-14
+更新时间：2026-09-28
+源码基线：`718be87`
 
 这份文档承接根目录 README 里的最短启动路径，补充完整的本地运行说明。
 
@@ -96,7 +97,7 @@ make api
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和兼容/fallback 用的 `memory_pgvector`，默认嵌入式检索索引由 `retrieval_zvec` 表示。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
+其中 `/healthz` 是简单存活检查，`/readyz` 返回运行态组件 readiness；配置了 PostgreSQL memory embedding 时会包含 `memory_embedding_backend` 和兼容/fallback 用的 `memory_pgvector`，默认嵌入式检索索引由 `retrieval_zvec` 表示。`ready=true` 本身不等于数据库或外部 provider 探活：本地/fallback 检查可能在没有真实 PostgreSQL 连接时仍为 ready，检索配置只要有非空 fallback 名称也可能报告 ready。生产部署要结合各组件 `checks` 和实际 DB/provider smoke 再判断依赖是否可用。`/metrics` 输出 Prometheus 文本指标。Web observability 页面会基于 Postgres 中的 trajectory 数据支持 request/trace 关联排障。
 
 ## 3. 本地托管 PostgreSQL
 
@@ -105,10 +106,17 @@ make api
 这条托管路径：
 
 - 需要本机可用的 PostgreSQL CLI/服务端工具，例如 `initdb`、`pg_ctl`、`createdb`、`psql`
-- 会随着服务一起停止并清理临时运行态
+- 在正常的托管 helper 关闭路径中会随着服务一起停止并清理临时运行态
 - 会保留 repo-local Postgres 数据目录，方便下次继续复用
 
 如果你在启动前已经显式设置了 `DATABASE_URI`，启动命令会保留该值，不再覆盖，也不会再做托管本地 Postgres 的注入。
+
+这段清理说明只覆盖 `make` 托管生命周期。当前 runtime lifespan 会调用
+`install_signal_handlers`，在 event loop 上注册自己的 `SIGTERM`/`SIGINT`
+回调，可能覆盖 Uvicorn 默认的进程信号处理；因此它不保证直接运行的
+`uvicorn`/API 进程收到宿主机 `SIGTERM` 后一定退出或排空所有请求。在真实
+进程信号路径验证前，应把优雅终止视为未验证边界；supervisor 的重启策略
+只能提供故障恢复，不能证明请求已优雅排空。
 
 如果你更希望直接运行 `.venv/bin/focus-agent-api`，只有在需要 Postgres primary
 persistence 时才需要自行准备并导出 `DATABASE_URI`。裸跑二进制不会帮你启动这套托管本地 PostgreSQL；未设置 `DATABASE_URI` 时会使用

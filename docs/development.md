@@ -1,6 +1,7 @@
 # Development Guide
 
-Updated: 2026-07-14
+Updated: 2026-09-28
+Source baseline: `718be87`
 
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
 
@@ -241,10 +242,13 @@ open the deep link once from a cold start and once while the app is running.
 
 ```bash
 .venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
+make sdk-build
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
 ```
+
+The standalone Node regression imports `frontend-sdk/dist/index.js`; build the SDK first so the check exercises the current TypeScript sources rather than a missing or stale tracked build output.
 
 See [streaming-contract.md](streaming-contract.md) for the public SSE event contract and the internal `quarantine` / `visible` phase boundary. Browser checks should include a tool-using prompt and confirm that no DSML/XML/function-call text appears in the assistant bubble while tool cards still render.
 For live-web changes, use a relative-time prompt such as "today", "tomorrow", or "本周" and confirm `current_utc_time` anchors the search before `web_search`; stale evidence should trigger at most one repair search and then either a supported answer or an explicit uncertainty answer.
@@ -396,6 +400,9 @@ If the change touches handoff isolation, also run a child-to-sibling real
 browser flow with distinct sentinel text in each branch. Confirm the final
 sibling transcript, `GET /v1/threads/{thread_id}`, and context preview contain
 only the sibling handoff, not the source child handoff or an unrelated thread id.
+This is focused evidence for those read/context paths, not proof that every
+cross-owner mutation or downstream side effect is isolated across the full
+request chain.
 Also verify `GET /v1/threads/{thread_id}/resolution` for root, child, and unknown
 threads, and confirm branch tree routes work when opened from a child thread id.
 

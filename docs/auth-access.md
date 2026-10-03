@@ -1,6 +1,6 @@
 # Auth / Access / Account 操作与边界
 
-更新时间：2026-07-12
+源码核对日期：2026-09-28；基线：`718be87`。
 
 本文是 Focus Agent 当前认证、访问控制和普通账号自助页面的 canonical 文档。管理员用户治理见 [admin-console.md](admin-console.md)，部署侧生产安全配置见 [docker-deployment.md](docker-deployment.md)。
 
@@ -49,6 +49,11 @@ Frontend SDK 对应 `frontend-sdk/src/client/auth.ts` 和 `frontend-sdk/src/type
 所有依赖 `get_current_principal` 的 protected principal 请求都会先校验 access token，再按 `Principal.user_id` 查询持久化用户并确认状态仍为 active。这个检查不是只在 `/v1/auth/me` 或登录时执行：管理员禁用账号后，尚未过期的 access token 从下一次受保护请求起就会收到 `403`。授权状态存储不可用时请求 fail closed，不会只信任 JWT 中旧的 role、scope 或 status 声明。
 
 治理 trajectory 的读取也沿用该 principal 边界。列表和报告默认在 repository query 层强制 `owner_user_id=Principal.user_id`，客户端传入 `global_view` 或其他用户的 `thread_id` 不会扩大范围。全局读取只授予 active 持久化 admin，或明确持有 `governance:read:global` / `governance:trajectories:read:global` 的 active principal；这些专用权限不会改变普通 conversation/thread 的 owner 校验。
+
+当前仍有授权顺序问题需要修复：部分线程读取路径在资源 owner 校验前调用
+[`_safe_get_values`](../src/focus_agent/services/chat/threads.py)，该方法可能回填 imported records 并写入 graph state。
+最终返回拒绝不等于拒绝前没有副作用；不能将上述 principal/owner 检查解释为全链路写入隔离已经成立。
+修复与“跨 owner 请求拒绝前零写入”的验收见 [实施规划 B01](plans/2026-09-28-agent-capabilities/plan.md)。
 
 ## 4. Token、Session 与禁用语义
 

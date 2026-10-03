@@ -1,6 +1,7 @@
 # Validation Runbook
 
-Updated: 2026-07-14
+Updated: 2026-10-03
+Source baseline: `718be87`
 
 This runbook is the local evidence plan for broad Focus Agent changes across the
 self-hosted workbench platform. Use it when changes touch Agent runtime state,
@@ -12,10 +13,15 @@ Product layers and fit/non-fit: [project-overview.md](project-overview.md).
 Scoped day-to-day commands: [development.md](development.md). Remaining risk
 list: [roadmap.md](roadmap.md).
 
+Latest local execution evidence: [2026-10-03 MR quality report](validation/2026-10-03-mr-quality.md).
+It separates real-provider Chrome runs from response fixtures and records failing
+baseline gates and unavailable infrastructure. This is not a production release
+certificate or an assertion that every gate passed.
+
 The goal is to prove three things before claiming readiness:
 
 - the source tree is internally consistent,
-- the runtime can start and report `/readyz` as ready,
+- the runtime can start and report truthful component readiness through `/readyz`,
 - the product-specific Web surfaces and Agent workflows still work in a real
   browser or their canonical smoke checks.
 
@@ -83,8 +89,13 @@ curl --fail --show-error --silent http://127.0.0.1:8000/readyz
 curl --fail --show-error --silent http://127.0.0.1:5173/app/
 ```
 
-`/healthz` only proves the process is alive. `/readyz` is the readiness gate. A
-common local failure is `background_jobs` reporting old pending work; inspect
+`/healthz` only proves the process is alive. `/readyz` is the runtime readiness
+gate, not a universal dependency probe. A `200`/`ready=true` response can still
+come from local/fallback checks: for example, a non-empty configured retrieval
+fallback name is sufficient for that fallback check, and a PostgreSQL-labelled
+path does not itself prove a live database connection. Inspect component
+details and run explicit DB/provider smoke checks before claiming dependencies
+are ready. A common local failure is `background_jobs` reporting old pending work; inspect
 `/v1/admin/background-jobs/summary`, drain or restart the local dev process, and
 recheck `/readyz` before treating the environment as ready.
 
@@ -110,6 +121,11 @@ Stopping and restarting the process should preserve that state. This local
 durability does not substitute for the managed PostgreSQL path used by the
 standard `make api` / `make dev` startup commands, and it is not evidence of
 shared production persistence.
+Uvicorn owns process signals; the application lifespan registers shutdown hooks
+without replacing Uvicorn's handlers. The October 3 validation includes actual
+isolated API processes exiting normally on `SIGTERM` and a regression test for
+handler ownership. This does not establish production in-flight drain behavior
+under load; test that separately from local persistence and idle process exit.
 
 If legacy pickle checkpoint/store files exist, startup and local-state migration
 must fail closed on a missing HMAC key, missing or invalid signature, file-owner
@@ -183,8 +199,12 @@ by the browser scripts:
 pnpm --dir apps/web smoke:observability
 pnpm --dir apps/web smoke:productivity
 pnpm --dir apps/web smoke:agent-team-adoption
+make sdk-build
 node tests/test_thread_stream_frontend_regressions.mjs
 ```
+
+The standalone Node regression imports `frontend-sdk/dist/index.js`; build the
+SDK first so it does not exercise a missing or stale distribution artifact.
 
 These commands do not all provide the same evidence:
 
@@ -380,6 +400,11 @@ app_version == RELEASE_DEPLOYMENT_VERSION
 environment == RELEASE_ENVIRONMENT
 ```
 
+These identity checks validate the captured runtime binding, not database or
+provider health. In production, pair the payload with the required migration,
+Postgres ops, provider, and smoke reports; do not use HTTP 200 from a fallback
+readiness check as their substitute.
+
 Run the production pack only after those fields, all input bindings, and all
 timestamps have been checked:
 
@@ -410,6 +435,8 @@ Do not report a broad validation pass when any of these are true:
 - a static stream-event report is missing/mismatched/stale, even if the outer
   production-smoke report has the current release binding,
 - `/readyz` identifies a different deployment, app version, or environment,
+- `/readyz` is `ready=true` only because a local/fallback component check passed,
+  without the required external dependency smoke evidence,
 - a required evidence input is older than the configured freshness window,
 - generated SDK or OpenAPI files drift,
 - source-level smoke passes but the corresponding real browser flow was never

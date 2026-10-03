@@ -1,6 +1,7 @@
 # Observability Runbook
 
-Updated: 2026-07-12
+Updated: 2026-09-28
+Source baseline: `718be87`
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -33,7 +34,8 @@ flowchart TD
 Use the runtime endpoints in this order:
 
 - `/healthz` tells you the process is up.
-- `/readyz` tells you whether the runtime is actually ready to serve traffic.
+- `/readyz` tells you whether the configured runtime checks allow traffic.
+  It is not, by itself, a proof that every external dependency is reachable.
 - `/metrics` exposes Prometheus text metrics for runtime state, component readiness, and trajectory aggregates.
 
 Examples:
@@ -44,11 +46,18 @@ curl http://127.0.0.1:8000/readyz
 curl http://127.0.0.1:8000/metrics
 ```
 
-`/readyz` is the primary readiness signal. It returns:
+`/readyz` is the primary runtime readiness signal. It returns:
 
 - `status` and `ready`
 - `app_version`, `environment`, and `deployment`
 - per-component `checks`, including trajectory recorder status when trajectory persistence is expected and `retrieval_zvec` when the embedded retrieval index is enabled
+
+Interpret `ready=true` together with those component details. A local/fallback
+check may report ready without a live PostgreSQL connection, and the retrieval
+fallback check currently treats any non-empty configured fallback name as ready.
+For production diagnosis, corroborate `/readyz` with the relevant database,
+provider, migration, and smoke probes; do not treat an HTTP 200 response as
+dependency health evidence by itself.
 
 For a production evidence capture, `deployment`, `app_version`, and
 `environment` must equal `RELEASE_DEPLOYMENT_ID`,
@@ -61,6 +70,7 @@ Typical interpretation:
 
 - `/healthz` is `200` but `/readyz` is `503`: the process is alive but one or more runtime checks are degraded.
 - `/readyz` is `200` and `trajectory_recorder.ready=false`: runtime is serving, but trajectory persistence is not available.
+- `/readyz` is `200` only because a local/fallback check is ready: runtime wiring is responding, but the corresponding external dependency still needs its explicit smoke probe.
 - `/readyz` includes `retrieval_zvec.ready=false`: online retrieval should fall back to Postgres/legacy scorers, but canonical memory, artifact, and workspace data is not lost.
 - `/readyz` includes `background_jobs.ready=false`: local or production job queues have pending, retrying, or dead-lettered work. Treat release and smoke evidence as degraded until the queue drains or the pending jobs are explained.
 
@@ -533,7 +543,7 @@ uv run python scripts/agent_governance_report.py \
 
 Attach these reports to release-health with `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json`. The reports intentionally fail closed when supplied: empty coverage, malformed JSON, explicit `passed=false`, failed statuses, failed row-level checks, or governance blocking signals block the release-health result.
 
-Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema.
+Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema. These records are evidence for the instrumented ownership checks; they do not by themselves prove that every downstream mutation or side effect is isolated across the full request chain.
 
 ## 8. Recommended Oncall Flow
 

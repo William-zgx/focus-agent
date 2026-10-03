@@ -1,6 +1,7 @@
 # Docker 部署方案
 
-更新时间：2026-05-16
+更新时间：2026-09-28
+源码基线：`718be87`
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
@@ -53,6 +54,7 @@ flowchart TD
 - 只部署 `focus-agent`
 - `DATABASE_URI` 指向外部托管 PostgreSQL
 - 不把数据库生命周期绑在应用容器里
+- 当前模板声明 `restart: unless-stopped`；只有由支持该策略的 Compose/其他 supervisor 实际托管并验证时才构成保障
 
 ## 文件职责
 
@@ -200,6 +202,12 @@ export FOCUS_AGENT_RATE_LIMIT_ENABLED=true
 docker compose -f compose.prod.yaml up -d
 ```
 
+上面的 Compose 配置包含正式的容器重启策略，但只有在 service 持续由 Compose
+或其他 supervisor 托管、且策略已实际验证时才构成恢复保障。一次性的
+`docker compose run`、未配置 restart policy 的 `docker run` 或直接启动
+API/uvicorn 进程不能作为生产自动重启证据；`docker run` 即使支持显式
+`--restart`，也仍需验证宿主机 daemon 的策略、终止行为和就绪探针。
+
 生产 Zvec retrieval / memory embedding / pgvector fallback / durable job 配置建议写入挂载卷里的 `/data/local.env`，或在 `compose.prod.yaml` 中显式映射为应用读取的变量：
 
 ```env
@@ -224,7 +232,7 @@ BACKGROUND_JOB_BACKEND=postgres
 - Focus Agent 当前接受 HS256 Bearer JWT，`sub` 作为 `Principal.user_id`，`tenant_id` 与 `scope` 会进入运行时 principal。
 - `Principal.user_id` 是 conversation、thread、context、branch、merge 的 ownership 主键；`tenant_id` 只是后续多租户隔离扩展字段，不能替代 ownership；`scope` 只表达能力授权，不能让其他 `user_id` 访问已有线程。
 - 跨 principal 访问 conversation、thread、context preview/compact、branch fork/tree/proposal/merge 应返回 403。
-- repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，事件可导出为 trajectory / observability 兼容的 `ownership.audit` 记录，后续可接入统一审计 sink。
+- repository 层的 thread ownership 校验会生成 allow / deny audit event；事件字段包括 principal、resource type、resource id、action、decision、reason、request id。当前不新增数据库 schema，事件可导出为 trajectory / observability 兼容的 `ownership.audit` 记录，后续可接入统一审计 sink。这些记录只证明已埋点的 ownership 检查，不等于整条请求链所有跨 owner mutation 或下游副作用都已验证隔离。
 - 生产环境应由部署层或外部登录服务签发 JWT，并与 `FOCUS_AGENT_AUTH_JWT_SECRET` 或 key set、`FOCUS_AGENT_AUTH_JWT_ISSUER`、可选 `FOCUS_AGENT_AUTH_JWT_AUDIENCE`、`FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 保持一致；`compose.prod.yaml` 会把这些 `FOCUS_AGENT_*` 外部变量映射为应用实际读取的 `AUTH_*` / `RATE_LIMIT_*` 环境变量。
 - `FOCUS_AGENT_AUTH_JWT_ISSUER` 必须匹配 JWT `iss`；配置 `FOCUS_AGENT_AUTH_JWT_AUDIENCE` 后 JWT `aud` 必须存在且完全匹配；过期 `exp` 会被拒绝。
 - `FOCUS_AGENT_AUTH_ACCESS_TOKEN_TTL_SECONDS` 建议按部署风险设置为较短窗口，例如 900 秒，并由外部登录层负责刷新或重新签发。
@@ -324,7 +332,7 @@ App-state 的 thread access、conversation 和 branch 导入会在 Postgres 端�
 
 - 用 CI 构建镜像，不要在部署机现场编译
 - staging/prod 优先使用外部托管 PostgreSQL
-- `/healthz` 只表示进程存活；负载均衡 readiness 建议优先看 `/readyz`
+- `/healthz` 只表示进程存活；负载均衡可优先看 `/readyz`，但 `ready=true` 仍需结合组件 `checks` 和外部 DB/provider smoke，不能单独证明依赖健康
 - `/metrics` 输出 Prometheus 文本，包含 runtime readiness、组件状态、build labels 和 trajectory 聚合指标；当前它仍经过默认 API middleware，若开启高频 scrape 需留意全局 rate limit 设置
 - 如果要把 trace 上报给外部 collector，设置标准 OTel 环境变量：
   - `OTEL_TRACES_EXPORTER=otlp`

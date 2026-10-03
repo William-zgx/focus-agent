@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-07-13
+Updated: 2026-09-28
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -222,14 +222,20 @@ decision. There are two distinct paths:
 
 The codebase also contains an internal Agent Team approval resume-job state
 machine. It protects raw arguments/checkpoints from display DTOs and creates an
-idempotent executor-only job for an approved, non-cancelled task. It is not
-currently wired into a public Agent Team endpoint or runtime executor; do not
-present it as an available automatic resume feature.
+idempotent executor-only job for an approved, non-cancelled task. Its default
+resume store is in memory, and it is not currently wired into a public Agent
+Team endpoint or runtime executor; do not present it as an available automatic
+resume feature.
 
 For the async path, approval or rejection must be followed by an explicit,
 auditable task/run retry. Record the request id, deciding principal, decision
 time, new run id, execution evidence, and final status. Do not claim
 “approval resume” if only the queue status changed.
+
+This boundary is independent of run-journal replay. A persisted approval, job,
+checkpoint, lease, or side-effect receipt is evidence that the state was
+recorded; it does not by itself hydrate a generic harness `RunManager`, wake a
+follow-up queue, or restart an interrupted producer after process loss.
 
 ## 8. Memory Curator
 

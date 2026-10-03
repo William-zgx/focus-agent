@@ -1,5 +1,13 @@
 # Multi-Agent API Contracts v1.0
 
+> **Historical refactor record.** This contract snapshot documents the v1.0
+> design and its feature-flagged ports; it is not a current acceptance report or
+> proof that every coordination path is enabled. For the 2026-09-28 capability
+> baseline and follow-up work, see [project overview](../project-overview.md),
+> [research](../plans/2026-09-28-agent-capabilities/research.md),
+> [design](../plans/2026-09-28-agent-capabilities/design.md), and
+> [plan](../plans/2026-09-28-agent-capabilities/plan.md).
+
 ## Scope
 
 This document mirrors the runtime contracts in `src/focus_agent/multi_agent/contracts.py`.

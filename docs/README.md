@@ -1,6 +1,8 @@
 # Focus Agent Docs Index / 文档索引
 
-更新时间：2026-07-14
+源码核对日期：2026-09-28；基线：`718be87`。本轮为文档校准，不代表全量运行验收。
+
+最新修复和运行验收见 [2026-10-03 MR 质量报告](validation/2026-10-03-mr-quality.md)；[9 月 30 日报告](validation/2026-09-30-project-quality.md) 保留为历史证据。检查通过不代表未覆盖的基础设施路径已通过发布认证。
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight
 and point here for depth. **Product positioning, scale, fit/non-fit, and runtime spines**
@@ -55,8 +57,12 @@ flowchart LR
 | 本地跑起来 | [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md) |
 | 改代码与验证矩阵 | [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md) |
 | 模块边界与请求链路 | [architecture.md](architecture.md) |
-| 已验证基线 vs 剩余风险 | [roadmap.md](roadmap.md) |
+| 当前实现、启用条件与能力缺口 | [architecture/agent-capability-map.md](architecture/agent-capability-map.md) |
+| 当前基线、剩余风险与实施顺序 | [roadmap.md](roadmap.md) |
+| Agent 能力补全的调研 / 设计 / 规划 | [research.md](plans/2026-09-28-agent-capabilities/research.md) / [design.md](plans/2026-09-28-agent-capabilities/design.md) / [plan.md](plans/2026-09-28-agent-capabilities/plan.md) |
+| 方案探索与决策 Agent：首期范围、技术契约与多 Agent 开发分工（待实施） | [technical-plan.md](plans/2026-09-29-decision-workspace/technical-plan.md) |
 | 全面验收口径 | [validation-runbook.md](validation-runbook.md) |
+| 最新项目质量、真实模型复杂任务与环境缺口 | [2026-10-03-mr-quality.md](validation/2026-10-03-mr-quality.md) |
 
 ## Quick Use / 快速使用
 
@@ -71,7 +77,7 @@ flowchart LR
 ## Understand The System / 理解系统
 
 - [architecture.md](architecture.md)：整体架构、核心请求链路、平台维护边界、AppRuntime/harness/graph、本地 SQLite 与 PostgreSQL（schema **v19**）持久化边界、前端/SDK、部署和验证总览。
-- [roadmap.md](roadmap.md)：已验证基线、仍需真实环境落地的风险和下一阶段优先级；不重复专题实施细节。
+- [roadmap.md](roadmap.md)：源码可确认的基线、未接通的能力、仍需真实环境验证的风险和下一阶段优先级。
 - [architecture/agent-capability-map.md](architecture/agent-capability-map.md)：planning / execution / critic / memory / retrieval / skill 能力成熟度一览。
 
 ## Develop And Validate / 开发验证
@@ -118,10 +124,17 @@ flowchart LR
 
 ## Historical / Stage Docs / 阶段性文档
 
+### Active Plans / 当前规划
+
+- [Agent 能力补全调研](plans/2026-09-28-agent-capabilities/research.md)：一手资料、源码差距与取舍。
+- [Agent 能力补全设计草案](plans/2026-09-28-agent-capabilities/design.md)：持久恢复、证据验收、预算、工具/交付、协作、记忆与反馈设计；**尚未实施**。
+- [Agent 能力补全实施规划](plans/2026-09-28-agent-capabilities/plan.md)：B01–B08 可靠性前置问题、分阶段任务、依赖和验收标准；文档交付不等于功能完成。
+
+### Historical Records / 历史记录
+
 以下文档保留作历史实施记录，**不是**日常导航入口；新改动请更新对应 canonical 专题，而不是继续堆并行清单。
 
 - [multi_agent_refactor/](multi_agent_refactor/)：多 Agent 重构期 tickets、DAG 模板、risk levels、validation 记录
-- [agent-team-v2-rollout.md](agent-team-v2-rollout.md)：v2 灰度手册（仍在维护的操作文档；与 workbench 互补）
 
 ## Maintenance Principles / 维护原则
 
@@ -137,5 +150,6 @@ flowchart LR
 - `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Branch Decisions、Auth / Access、Agent Team、Admin Console、Streaming Contract、Runtime Outcomes、Context Window、Memory、Zvec Retrieval、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
 - `development.md` / `development.zh-CN.md` 讲本地开发与验证命令；release provider 细节放到 `ci/github-actions-release-gate.md`。
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
-- 阶段性方案、执行记录和草稿不要长期堆在 `docs/` 根目录；应放到 issue、PR、项目管理工具，或明确标注为 historical 子目录。
+- 当前状态放 canonical 专题；待实施方案放有日期和状态的 `plans/` 子目录并从本索引链接；执行记录和历史草稿明确标注 historical，不作为当前能力证据。
+- `implemented`、默认启用、端到端已接通和已通过验收分别说明。声明验证通过必须有对应版本、环境、命令与结果，不能仅依据模块存在或旧报告。
 - 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **169**）；README 与专题文档不得漂移。

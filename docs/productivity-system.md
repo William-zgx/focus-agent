@@ -1,6 +1,6 @@
 # Productivity System
 
-更新时间：2026-05-18
+更新时间：2026-09-28（基线 commit：`718be87`）
 
 这份文档是 Focus Agent 生产力模块的专题说明：笔记/任务的数据模型、路由与服务边界、事件与持久化，以及 Web SDK / Web App 的接入口径。
 
@@ -164,7 +164,7 @@ Capture 的关键规则：
 
 - v13：新增 `focus_notes` / `focus_tasks` / `focus_task_events`
 - v14：索引与来源追踪列（`source_*`、`pinned_context`、`captured_from`）增强
-- v17：整体 schema 当前版本（与主 `postgres_schema` 同步）
+- v19：当前应用级整体 schema 版本（与主 `postgres_schema` 同步）；v17 是历史迁移节点，不是当前总版本
 
 `SQLite` / `Postgres` 都会在 note/task 写入时保留 `data_json` 的完整对象，并按结构化列保留主过滤字段与索引。
 
@@ -239,7 +239,7 @@ make ui-smoke-observability
 uv run pytest tests/test_ui_smoke_script.py
 ```
 
-> 注：`tests/test_ui_smoke_script.py` 覆盖了可重复运行的 browser smoke 脚本契约，`make ui-smoke-productivity` 覆盖前端源代码层面的生产力页面接入扫描（`apps/web/scripts/productivity-smoke.mjs`）。
+> 注：`tests/test_ui_smoke_script.py` 覆盖了可重复运行的 browser smoke 脚本契约，`make ui-smoke-productivity` 覆盖前端源代码层面的生产力页面接入扫描（`apps/web/scripts/productivity-smoke.mjs`）。这些检查证明脚本/页面接线，不等于真实 Chrome 运行或 Agent 原生 browser 能力。
 
 ## 8. 变更引导（给开发者）
 

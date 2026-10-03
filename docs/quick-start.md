@@ -1,6 +1,7 @@
 # Quick Start
 
-Updated: 2026-07-14
+Updated: 2026-09-28
+Source baseline: `718be87`
 
 This guide expands on the shortest startup path from the root README.
 
@@ -89,7 +90,7 @@ Open:
 - `http://127.0.0.1:8000/readyz`
 - `http://127.0.0.1:8000/metrics`
 
-`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend`, `memory_pgvector` for compatibility/fallback, and `retrieval_zvec` for the default embedded retrieval index. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
+`/healthz` is a simple liveness check. `/readyz` reports runtime component readiness, including `memory_embedding_backend`, `memory_pgvector` for compatibility/fallback, and `retrieval_zvec` for the default embedded retrieval index. A `ready=true` response is not by itself a database or external-provider probe: local/fallback checks can be ready without a live PostgreSQL connection, and a configured non-empty retrieval fallback name can make that component report ready. Inspect the per-component `checks` and run the provider/DB smoke checks required by the deployment before treating it as dependency readiness. `/metrics` exposes Prometheus text metrics. The Web observability pages support request/trace correlation through trajectory data captured in Postgres.
 
 ## 3. Managed Local PostgreSQL
 
@@ -98,11 +99,20 @@ If `DATABASE_URI` is not already set, the local startup commands (`make api`, `m
 That managed path:
 
 - requires PostgreSQL CLI/server tools such as `initdb`, `pg_ctl`, `createdb`, and `psql`
-- stops the managed database together with the service
+- stops the managed database together with the service on the normal managed-helper shutdown path
 - cleans up temporary runtime files
 - keeps the repo-local Postgres data directory for reuse on the next run
 
 If you explicitly export `DATABASE_URI` before startup, that value is preserved and the local-Postgres bootstrap is skipped.
+
+This helper cleanup wording describes the normal `make` lifecycle only. The
+current runtime lifespan calls `install_signal_handlers`, which registers its
+own `SIGTERM`/`SIGINT` callbacks on the event loop and can override Uvicorn's
+normal process-signal handling; therefore this is not a guarantee that a direct
+`uvicorn`/API process will exit or drain every request after a host `SIGTERM`.
+Treat graceful termination as an unverified boundary until the actual process
+signal path is tested; a supervisor restart policy provides recovery, not proof
+of graceful draining.
 
 If you prefer to launch `.venv/bin/focus-agent-api` directly, export
 `DATABASE_URI` yourself when you want Postgres primary persistence. The raw binary does not start the managed local PostgreSQL helper for you. Without

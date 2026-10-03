@@ -1,5 +1,12 @@
 # Multi-Agent Refactor Tickets
 
+> **Historical refactor record.** These ticket scopes and outputs describe the
+> earlier refactor plan; listed outputs/tests are not current acceptance or a
+> claim that all flags are enabled. Use the [current overview](../project-overview.md)
+> and 2026-09-28 [research](../plans/2026-09-28-agent-capabilities/research.md),
+> [design](../plans/2026-09-28-agent-capabilities/design.md), and
+> [plan](../plans/2026-09-28-agent-capabilities/plan.md) for current status.
+
 ## MAR-DAG-001
 
 - Owner: DEV-A

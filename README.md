@@ -13,7 +13,7 @@
 
 Focus Agent is a **self-hosted, branch-aware Agent workbench and platform reference** for long AI workflows. The core idea is simple: keep the main thread focused, explore in temporary branches, and merge conclusions back only when they are ready.
 
-Around that branching workflow, the repository ships a full product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, Agent Team collaboration, sandbox execution, release/eval evidence, and an optional Android shell.
+Around that branching workflow, the repository ships a broad product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, Agent Team planning surfaces, sandbox execution, release/eval evidence, and an optional Android shell. Several collaboration and governance surfaces are deliberately flag-gated or preview-only; their presence in the repository is not a claim that production execution is enabled.
 
 > Positioning detail, scale snapshot, fit/non-fit, and runtime spines:
 > **[docs/project-overview.md](docs/project-overview.md)**
@@ -24,12 +24,12 @@ Focus Agent is an **open-source platform reference and self-hosted workbench**, 
 
 Treat it as a **medium-sized monorepo** (backend + typed SDK + React app + optional Android target + broad OpenAPI surface), not a weekend chat template. Current scale numbers and product layers live in [project-overview.md](docs/project-overview.md) so they stay in one place. The branch workflow, backend API, SSE stream contract, frontend SDK, and documented Web surfaces are protected by contract, build, and smoke checks. Deployment choices such as model provider, auth policy, PostgreSQL hosting, observability backend, and release process remain explicit configuration decisions for each adopter.
 
-### Hardened And Validated Baseline
+### Implemented Baseline And Validation Boundaries
 
 - **Durable local state:** the maintained `make api` / `make dev` / `make serve*` entry points still manage a repo-local PostgreSQL when `DATABASE_URI` is unset. Direct API startup without `DATABASE_URI` instead persists app-state plus LangGraph checkpoints/store in local SQLite; signed legacy pickle is compatibility-only and fails closed on owner or HMAC verification errors. See [Quick Start](docs/quick-start.md) and [Architecture](docs/architecture.md).
 - **Security boundaries:** cookie-authenticated mutations enforce same-origin browser metadata and use CSRF double-submit when non-development clients omit that metadata; disabled users are rejected on protected requests and lose refresh sessions; governance trajectories are owner-scoped unless a global permission is granted; `web_fetch` combines DNS validation with fixed-IP transport to resist rebinding SSRF. See [Security](SECURITY.md) and [Auth / Access](docs/auth-access.md).
-- **Production evidence:** schema-v2 evidence packs bind reports to commit, deployment ID, deployment version, environment, and timezone-aware generation time; production mode validates identity and freshness instead of accepting an unrelated or stale report. See [Release Checklist](docs/release-checklist.md) and [CI Release Gate](docs/ci/github-actions-release-gate.md).
-- **Executable UI and mobile gates:** a dedicated workflow runs real Chrome chat and observability interactions, while CI builds, lints, and unit-tests the Android debug project. Android also has bounded/cancellable native HTTP, one-shot cold/hot deep-link delivery, secure key storage, and disabled Capacitor bridge logging. See [Validation](docs/validation-runbook.md) and [Android](docs/android.md).
+- **Release/evidence tooling:** schema-v2 evidence packs bind reports to commit, deployment ID, deployment version, environment, and timezone-aware generation time; production mode validates identity and freshness instead of accepting an unrelated or stale report. These are release gates and evidence formats, not proof that this repository is deployed or production-ready. See [Release Checklist](docs/release-checklist.md) and [CI Release Gate](docs/ci/github-actions-release-gate.md).
+- **Repository UI and mobile gates:** a dedicated workflow runs real Chrome chat and observability interactions, while CI builds, lints, and unit-tests the Android debug project. The Chrome workflow validates Web UI behavior only; it does not provide an Agent-native browser/DOM/screenshot tool. Android also has bounded/cancellable native HTTP, one-shot cold/hot deep-link delivery, secure key storage, and disabled Capacitor bridge logging. See [Validation](docs/validation-runbook.md) and [Android](docs/android.md).
 - **Resilient streams:** ended in-memory streams are reclaimed after a replay window; SDK reconnects deduplicate event IDs across connections and raise `FocusAgentIncompleteStreamError` if EOF arrives without a terminal event. See [Streaming Contract](docs/streaming-contract.md) and the [Frontend SDK](frontend-sdk/README.md).
 - **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains **169** intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
 - **App Postgres schema:** application schema version is **v19** (Agent Team v2 tables plus earlier productivity / branch-decision / embedding-status migrations). See [Architecture §14](docs/architecture.md).
@@ -45,6 +45,14 @@ Treat it as a **medium-sized monorepo** (backend + typed SDK + React app + optio
 
 Honest boundary: **platform completeness is currently stronger than end-to-end agent outcome evidence.** Eval, golden failures, cost/latency profiles, and multi-agent quality gates are still open work. See [Roadmap](docs/roadmap.md).
 
+### Current Capability Boundaries (2026-09-28)
+
+The repository baseline is `718be87`. The default configuration keeps `AGENT_TEAM_V2_ENABLED=false`, `AGENT_TEAM_EXECUTION_MODE=disabled`, `AGENT_DELEGATION_ENABLED=false`, and `AGENT_DELEGATION_EXECUTION_MODE=observe`; Agent Team UI/API/planning can therefore exist without automatic delegated execution. The v2 service reports `revision_commands=false`, and revision-command execution is not implemented.
+
+Task budget fields are part of the planning/ledger contracts, but the real task runner currently uses the global subagent round limit and does not enforce per-task LLM-call, tool-call, cost, or deadline budgets. The text chat request is not an attachment/multimodal request; built-in Web tools are text search/fetch, and Agent Team scoped tools do not provide a native browser/DOM/screenshot or image-input loop. Text artifacts return local path/id references rather than a general upload/download delivery channel.
+
+For the distinction between current behavior and proposed capability work, see the [capability research](docs/plans/2026-09-28-agent-capabilities/research.md), [design](docs/plans/2026-09-28-agent-capabilities/design.md), and [plan](docs/plans/2026-09-28-agent-capabilities/plan.md).
+
 ## Why Focus Agent
 
 Most agent demos assume one chat box and one final answer. Focus Agent is built around a different idea: serious research, debugging, writing, and review work are not linear.
@@ -57,12 +65,12 @@ Instead of forcing every detour into one noisy thread, Focus Agent treats the ma
 - AI-assisted branch decisions and pre-turn branch recommendations that produce user-confirmed Branch Action cards
 - Streaming chat APIs (default harness path: `/v2/threads/.../runs[/stream]`) and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
-- Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis (v2 execution is flag-gated; see [Agent Team v2 rollout](docs/agent-team-v2-rollout.md))
+- Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis; delegated execution is disabled/observe by default and requires the explicit readiness conditions in [Agent Team v2 rollout](docs/agent-team-v2-rollout.md)
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, Admin Console, capability-centered settings, Zvec-backed retrieval/RAG, memory pipeline, governance feedback trends, and typed frontend SDK
 - Quarantined tool/protocol streams so `message.delta` only carries confirmed visible assistant text
-- Built-in repo read/edit, git, web, artifact, memory, productivity, and Skill catalog tools with guarded workspace command execution
+- Built-in repo read/edit, git, text web search/fetch, local text-artifact, memory, productivity, and Skill catalog tools with guarded workspace command execution; this is not a native browser or general file-delivery API
 - Thread-level sandbox execution for workspace commands and declared Skill entrypoints, with Docker-first isolation and explicit local fallback metadata
 - Admin-managed runtime settings for model connections, tool providers, Skill enablement, Agent behavior, security/runtime policy, and low-frequency advanced options
 
@@ -203,7 +211,9 @@ lint, and unit tests. Local equivalents and simulator/device checks are listed
 in [docs/validation-runbook.md](docs/validation-runbook.md). For broad runtime,
 sandbox, Skill, Agent Team, observability, or release-readiness work, use that
 runbook as the full evidence path (source checks, OpenAPI/SDK drift guards,
-real-browser smoke, and `/readyz`).
+real-browser UI smoke, and `/readyz`). A passing Chrome UI workflow is not evidence
+that an Agent can browse the Web, accept image attachments, or complete a real
+provider-backed Agent Team run.
 
 ## Contributing and Support
 

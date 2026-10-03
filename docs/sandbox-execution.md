@@ -1,6 +1,6 @@
 # Sandbox Execution
 
-Updated: 2026-07-12
+Updated: 2026-09-28
 
 This document is the canonical reference for Focus Agent code execution. It covers
 `run_workspace_command`, `run_skill_entrypoint`, Docker image preparation, local
@@ -22,7 +22,9 @@ backend result:
 The desired security model is Docker-first. Local backends exist so development
 and trusted local Skill workflows can still run when Docker is unavailable or the
 sandbox image has not been built. A local fallback is never treated as equivalent
-to a Docker sandbox.
+to a Docker sandbox. The persistent thread workspace is a filesystem reuse
+boundary, not durable task execution: it does not make a generic harness run,
+follow-up, or approval resume survive process loss.
 
 ## Execution Topology
 
@@ -208,6 +210,11 @@ blocked/failed status instead of remaining orphaned in `queued`.
 The current lock scope is per Agent Team session. It is not a global host-level
 Docker capacity controller.
 
+Agent Team v2 job claims, resource leases, and side-effect receipts provide a
+separate persistence surface when that path and its durable backend are enabled.
+They do not turn every sandbox command into a restartable durable job; the
+generic harness still needs an explicit run/retry owner.
+
 ## Configuration
 
 Important environment variables:
@@ -307,3 +314,8 @@ workspace.
   redirect checks to arbitrary Skill processes.
 - Host-control skills, such as Docker management, should use dedicated broker
   tools instead of mounting host sockets into the general sandbox.
+- The sandbox has no builtin browser/computer-use or MCP connection lifecycle;
+  a declared Skill may describe such a workflow, but its broker, credentials,
+  and external dependency remain separate capabilities.
+- Generic harness process recovery, durable follow-up wakeup, and automatic
+  approval-resume execution are not supplied by workspace persistence alone.

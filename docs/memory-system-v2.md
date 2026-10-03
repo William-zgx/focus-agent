@@ -1,6 +1,6 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-06-25
+更新时间：2026-09-28
 
 本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、Zvec-first retrieval、pgvector compatibility、审计治理、legacy fallback 和后续风险。跨 memory / artifact / skill / trajectory / workspace 的检索索引细节见 [Zvec Retrieval Index](retrieval-zvec.md)。
 
@@ -15,7 +15,7 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 在稳定 turn 结束后做保守启发式抽取，经 `MemoryPolicy` 和 `MemoryService` 写入 canonical store。
 - 分支和多 agent 产生的候选默认隔离，只有 merge/promotion 语义确认后才进入主线可依赖 memory。
 - PostgreSQL 独立业务表是生产 canonical storage；LangGraph Store 保留给 checkpoint/graph 兼容路径和本地 fallback。
-- Zvec 是默认 retrieval index；memory 写入仍保存到 `focus_memories`，并 best-effort 同步到 Zvec。pgvector embedding 保留为兼容/fallback 路径；本地默认自动探测 Ollama `embeddinggemma`。
+- Zvec 是默认 retrieval index；memory 写入先保存到 `focus_memories`，embedding/Zvec shadow 默认异步 best-effort（`FOCUS_AGENT_MEMORY_EMBED_ASYNC=true`），不阻塞 canonical upsert。关闭异步或未配置可用队列时才走同步 best-effort。pgvector embedding 保留为兼容/fallback 路径；本地默认自动探测 Ollama `embeddinggemma`，缺失 provider 时继续使用 canonical memory 和文本 fallback。
 
 当前明确不做：
 
@@ -73,7 +73,7 @@ flowchart TD
 | `src/focus_agent/memory/service.py` | repository-backed 写入治理、upsert、冲突、脱敏、forget、audit，并在注入 embedding service 时 best-effort 写 shadow。 |
 | `src/focus_agent/repositories/memory_repository.py` | canonical memory repository protocol。 |
 | `src/focus_agent/repositories/postgres_memory_repository.py` | PostgreSQL 实现，读写 `focus_memories`、`focus_memory_embeddings` 等业务表。 |
-| `src/focus_agent/repositories/postgres_schema.py` | schema v8-v10，创建 memory/audit/tombstone/candidate/embedding 表和索引。 |
+| `src/focus_agent/repositories/postgres_schema.py` | 应用 schema v19 中的 memory 相关表；memory 子迁移 v8-v10 创建/校验 memory/audit/tombstone/candidate/embedding 表和索引。 |
 | `src/focus_agent/memory/embedding.py` | `EmbeddingProvider`、Ollama native provider、OpenAI-compatible provider、deterministic test provider、provider auto detection、embedding text/hash。 |
 | `src/focus_agent/memory/embedding_policy.py` | `MemoryEmbeddingPolicy`，统一判断长期语义 memory 是否进入 pgvector shadow。 |
 | `src/focus_agent/memory/embedding_service.py` | `MemoryEmbeddingService` re-export，供 runtime/writer/tools/迁移引用。 |
@@ -149,6 +149,12 @@ flowchart TD
 `content` 保留事实内容，`summary` 优先用于 prompt、检索和控制台展示。`fingerprint` 用于物理等价去重，`semantic_key` 用于同主题合并和冲突判断。
 `embedding_*` 字段是 API/SDK/Web projection metadata，用于描述可选 pgvector shadow 的索引状态，不包含向量值，也不是 memory 权限、forget 或生命周期的事实源。
 
+当前 `MemoryRecord` 没有 `revision_id` 或 `parent_revision_id`。同一
+`memory_id` 的 merge 会通过 `model_copy` 和 repository upsert 更新现有行；
+`MemoryAuditEvent` 是 append-only，当前 merge 会合并保留 `evidence_refs`，但
+二者都不能还原每一次 content/summary 版本。Agent Team v2 的 revision 表是
+独立的协作任务快照，不能当作 memory revision history。
+
 ### 3.4 Write Decision、Audit、Candidate、Retrieval Plan
 
 `MemoryWriteDecision` 是统一写入结果：
@@ -177,7 +183,7 @@ Embedding 相关 repository dataclass 也定义在 `repositories/memory_reposito
 
 ## 4. PostgreSQL Canonical Storage
 
-Schema v8-v10 创建 memory 业务表：
+应用 schema 当前为 v19；其中 memory 相关子迁移 v8-v10 创建 memory 业务表：
 
 | 表 | 用途 |
 | --- | --- |
@@ -399,7 +405,7 @@ flowchart TD
 - Zvec index 创建由 `AGENT_RETRIEVAL_BACKEND=zvec`、`AGENT_ZVEC_ENABLED` 和 `AGENT_ZVEC_DATA_DIR` 控制；Postgres 仍是 canonical memory store。
 - v10 schema setup 会在 embedding backend 配置启用或 `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid` 时请求；pgvector extension 行为由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 决定，`auto_create` 会尝试创建，`required` 只校验已安装。
 - embedding provider 默认创建；显式设置 `AGENT_MEMORY_EMBEDDING_ENABLED=false` 且未指定 backend 时会关闭，或可直接设置 `AGENT_MEMORY_EMBEDDING_BACKEND=disabled`。仅设置 `hybrid` 但没有 provider 时会回退 FTS。
-- 有 repository 且 provider 创建成功时，runtime 会把同一个 `MemoryEmbeddingService` 注入 writer、tool registry 和 turn-level retriever。
+- 有 repository 且 provider 创建成功时，runtime 会把同一个 `MemoryEmbeddingService` 注入 writer、tool registry 和 turn-level retriever。canonical upsert 已接通；embedding/Zvec shadow 是否及时可见取决于 provider、index 和异步队列配置。
 - readiness 会在 Postgres 模式下检查 `memory_repository`，并通过 `memory_embedding_backend` 报告 provider 状态，通过 `retrieval_zvec` 报告 Zvec index 状态，通过 `memory_pgvector` 报告兼容/fallback extension/table/dimensions/index 状态。
 - local fallback 不维护 pgvector shadow；API list/detail 类 endpoint 返回 `available=false` 或 records 中的 `embedding_*` metadata 为空，不能据此判断生产索引健康度。
 
@@ -433,7 +439,7 @@ flowchart TD
 | `AGENT_MEMORY_VECTOR_SEARCH_MODE` | `hybrid` | 默认使用 RRF 合并 FTS/vector；`shadow` 只记录 vector candidates；无 provider 时回退到 FTS。 |
 | `AGENT_MEMORY_VECTOR_INDEX_ENABLED` | `false` | v10 schema 中是否创建 HNSW vector index。 |
 
-本地默认路线需要显式安装模型：`ollama pull embeddinggemma`。应用启动不会静默下载模型；缺失时 readiness 和 `focus-agent-memory-embedding doctor` 会给出安装提示。auto 首先探测 Ollama，只有显式配置了 cloud embedding fallback 信号时才尝试 OpenAI-compatible fallback；这些信号包括 `AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible`、`AGENT_MEMORY_EMBEDDING_PROVIDER=openai_compatible`、`AGENT_MEMORY_EMBEDDING_BASE_URL`、`AGENT_MEMORY_EMBEDDING_API_KEY`、非默认的 `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` 或非 `embeddinggemma` 的 explicit model。显式 cloud fallback 可以使用 memory embedding 专用 endpoint/key，也可以在缺省时复用已解析的模型 catalog client kwargs。provider 请求失败不会回滚 memory 写入，但 readiness 会把 `memory_embedding_backend` 标成 degraded。
+本地默认路线需要显式安装模型：`ollama pull embeddinggemma`。应用启动不会静默下载模型；缺失时 readiness 和 `focus-agent-memory-embedding doctor` 会给出安装提示。auto 首先探测 Ollama，只有显式配置了 cloud embedding fallback 信号时才尝试 OpenAI-compatible fallback；这些信号包括 `AGENT_MEMORY_EMBEDDING_BACKEND=openai_compatible`、`AGENT_MEMORY_EMBEDDING_PROVIDER=openai_compatible`、`AGENT_MEMORY_EMBEDDING_BASE_URL`、`AGENT_MEMORY_EMBEDDING_API_KEY`、非默认的 `AGENT_MEMORY_EMBEDDING_API_KEY_ENV` 或非 `embeddinggemma` 的 explicit model。显式 cloud fallback 可以使用 memory embedding 专用 endpoint/key，也可以在缺省时复用已解析的模型 catalog client kwargs。provider 请求失败不会回滚 memory 写入，但 readiness 会把 `memory_embedding_backend` 标成 degraded。默认异步写入只有在 durable coordination backend 配置时才会进入可恢复的持久 job；memory-only/local backend 的排队仍是进程级 best effort。
 
 维护命令：
 
@@ -671,7 +677,10 @@ Postgres runtime 注入 `MemoryEmbeddingService` 时，`accepted` 和 `merged` �
 - normalized summary/content
 - `memory_resolution_key()`
 
-用户偏好同主题倾向 latest wins。项目事实如果同 semantic key 但缺少纠正信号或文本重叠，可能被标记为 `conflict`，避免静默覆盖。
+用户偏好同主题倾向 latest wins，实际会在同一 `memory_id` 上合并/覆盖内容；
+这不是不可变 revision。项目事实如果同 semantic key 但缺少纠正信号或文本
+重叠，可能被标记为 `conflict`，避免静默覆盖。Audit 和 `evidence_refs`
+保留决策与来源线索，但不提供完整旧内容快照。
 
 ### 9.5 敏感内容脱敏
 
@@ -1028,6 +1037,14 @@ Zvec retrieval 已默认启用：
 - 可选 trigram。
 - embedding 质量评估、模型切换/重建流程、hybrid 排序阈值和召回监控。
 - 显式 tool search 是否接入 vector、接入后如何做成本控制和审批/观测。
+
+### 18.4 Memory Revision History
+
+当前 memory 的治理证据、forget tombstone 和 `evidence_refs` 已持久化，但
+canonical memory 仍是同一 `memory_id` 的可更新记录，没有独立的 immutable
+revision chain。若需要审计级历史回放或 conflict 的逐版本比较，应单独接入
+memory revision 表/事件投影；不要把 Agent Team v2 revision 或 embedding
+content hash 当作 memory 内容版本。
 
 ### 18.4 Candidate Promotion
 

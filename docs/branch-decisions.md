@@ -1,6 +1,6 @@
 # Branch Decisions And Recommendations
 
-更新时间：2026-06-25
+更新时间：2026-09-28
 
 This document is the canonical guide for Focus Agent branch decision records,
 pre-turn branch recommendations, and user-confirmed Branch Actions. Branch
@@ -140,6 +140,11 @@ Important implementation boundaries:
   indexed into Zvec after the canonical repository write. Stale Zvec hits are
   dropped unless the current repository still confirms owner/root/thread,
   branch status, tombstone, and hash/version compatibility.
+
+The idempotency boundary described above is for branch-decision events and
+branch actions. It does not add an idempotency key or cross-process recovery
+contract to a generic harness run submission, arbitrary follow-up, or stream
+producer.
 
 ## 4. Modes And Configuration
 

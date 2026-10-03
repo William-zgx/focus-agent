@@ -1,6 +1,6 @@
 # Streaming Contract
 
-更新时间：2026-07-12
+更新时间：2026-09-28
 
 This document is the canonical contract for Focus Agent streaming. It covers the server-side SSE event model, visible-text isolation, tool protocol quarantine, and the frontend SDK reducer boundary.
 
@@ -92,7 +92,8 @@ counter, and its cleanup task are removed from the memory bridge.
 cleanup, it can still replay retained journal events from a matching
 `Last-Event-ID` and terminate replay from the persisted `run.closed`/terminal
 run state. Memory cleanup must therefore not be described as deletion of the
-run journal.
+run journal. This is event/metadata replay only: it does not reattach or restart
+the graph producer after a process failure.
 
 `AgentEventPublisher.close()` is concurrency-safe: concurrent callers await one
 shielded close task, so caller cancellation does not cancel the shared close
@@ -116,6 +117,11 @@ reconnects are exhausted, or the stream cannot be resumed, iteration throws
 as success. Its optional `runId` identifies the run when the stream exposed one.
 An explicit caller `AbortSignal` remains cancellation, not an incomplete-stream
 failure.
+
+Reconnect and execution resume are separate contracts. `/runs/resume/stream`
+requires an explicit caller `Command(resume=...)` checkpoint payload; a persisted
+run journal or an SSE `Last-Event-ID` does not itself hydrate a generic
+`RunManager`, requeue a crashed run, or wake a follow-up handler.
 
 ## 2. Visible Text Boundary
 
