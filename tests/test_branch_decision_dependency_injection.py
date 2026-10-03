@@ -9,9 +9,7 @@ from focus_agent.branch_decision.service_runtime import BranchDecisionServiceRun
 class _Runtime(BranchDecisionServiceRuntimeMixin):
     def __init__(self, *, classifier=None) -> None:
         self.settings = SimpleNamespace()
-        self.branch_service = SimpleNamespace(
-            semantic_topic_relation_classifier=classifier
-        )
+        self.branch_service = SimpleNamespace(semantic_topic_relation_classifier=classifier)
         self.coordination_backend = None
 
 

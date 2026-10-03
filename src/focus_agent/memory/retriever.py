@@ -132,13 +132,11 @@ class MemoryRetriever:
                 if query_vector_status == "failed":
                     namespace_vector_hits, namespace_vector_status = [], "failed"
                 else:
-                    namespace_vector_hits, namespace_vector_status = (
-                        self._search_vector_namespace(
-                            namespace,
-                            effective_query,
-                            limit=self.default_limit,
-                            query_vector=query_vector,
-                        )
+                    namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
+                        namespace,
+                        effective_query,
+                        limit=self.default_limit,
+                        query_vector=query_vector,
                     )
                 vector_hits.extend(namespace_vector_hits)
                 vector_statuses.append(namespace_vector_status)
@@ -253,9 +251,7 @@ class MemoryRetriever:
         list_records = getattr(self.repository, "list_records", None)
         if not callable(list_records):
             return []
-        records = list_records(
-            MemoryListQuery(namespace=namespace, status="active", limit=limit)
-        )
+        records = list_records(MemoryListQuery(namespace=namespace, status="active", limit=limit))
         hits: list[MemorySearchHit] = []
         for record in records:
             if record.kind.value not in {"user_preference", "user_profile"}:

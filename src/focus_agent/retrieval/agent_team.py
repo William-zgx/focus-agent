@@ -90,7 +90,10 @@ class AgentTeamPlanRetrievalService:
             if session is not None:
                 if str(getattr(session, "user_id", "") or "") != user_id:
                     continue
-                if root_thread_id and str(getattr(session, "root_thread_id", "") or "") != root_thread_id:
+                if (
+                    root_thread_id
+                    and str(getattr(session, "root_thread_id", "") or "") != root_thread_id
+                ):
                     continue
             tasks = _repo_call(self.repository, "list_tasks", session_id=hit.source_id) or []
             results.append(
@@ -127,7 +130,9 @@ def _plan_text(*, session: Any, tasks: list[Any], outputs: list[Any]) -> str:
             [
                 getattr(output, "summary", ""),
                 getattr(output, "diff_summary", ""),
-                json.dumps(getattr(output, "metadata", {}) or {}, ensure_ascii=False, sort_keys=True),
+                json.dumps(
+                    getattr(output, "metadata", {}) or {}, ensure_ascii=False, sort_keys=True
+                ),
             ]
         )
     return "\n".join(str(part).strip() for part in parts if str(part).strip())

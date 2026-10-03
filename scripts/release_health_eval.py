@@ -114,6 +114,7 @@ def _eval_report_signals(paths: Iterable[str | Path], *, root: Path) -> list[Rel
             )
     return signals
 
+
 def _baseline_eval_report_signals(
     current_paths: Sequence[str | Path],
     baseline_paths: Sequence[str | Path],
@@ -189,11 +190,13 @@ def _baseline_eval_report_signals(
             )
     return signals
 
+
 def _number(value: Any) -> float:
     try:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
 
 def _summary_from_eval_report(payload: Any) -> dict[str, float]:
     if not isinstance(payload, dict) or not isinstance(payload.get("summary"), dict):
@@ -214,6 +217,7 @@ def _summary_from_eval_report(payload: Any) -> dict[str, float]:
         "avg_cost_usd": _number(summary.get("avg_cost_usd")),
         "forbidden_tool_violation_rate": _number(summary.get("forbidden_tool_violation_rate")),
     }
+
 
 def _compare_eval_summaries(baseline: dict[str, float], current: dict[str, float]) -> list[str]:
     regressions: list[str] = []
@@ -244,6 +248,7 @@ def _compare_eval_summaries(baseline: dict[str, float], current: dict[str, float
             regressions.append(f"{name} grew >20%: {base:.3f} -> {cur:.3f}")
     return regressions
 
+
 def _fallback_signal(input_name: str) -> ReleaseHealthSignal:
     return ReleaseHealthSignal(
         key="release_health_self_check_fallback",
@@ -251,6 +256,7 @@ def _fallback_signal(input_name: str) -> ReleaseHealthSignal:
         summary="release-health used self-check fallback because live input was unavailable",
         detail=input_name,
     )
+
 
 def _required_input_signal(input_name: str, detail: str) -> ReleaseHealthSignal:
     return ReleaseHealthSignal(

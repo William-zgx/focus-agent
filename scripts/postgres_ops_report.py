@@ -54,11 +54,13 @@ def _schema_migration_lock_id() -> int:
         return int(match.group(1))
     return _FALLBACK_SCHEMA_MIGRATION_LOCK_ID
 
+
 def _operation_by_name(operations: Sequence[Mapping[str, Any]], name: str) -> Mapping[str, Any]:
     for operation in operations:
         if operation.get("name") == name:
             return operation
     return {}
+
 
 def _report_sections(operations: Sequence[Mapping[str, Any]], *, dry_run: bool) -> dict[str, Any]:
     schema_version = _operation_by_name(operations, "schema_version")

@@ -37,9 +37,7 @@ class PendingMessageQueue:
 
     def __init__(self, drain_mode: DrainMode = "all") -> None:
         if drain_mode not in {"all", "one_at_a_time"}:
-            raise ValueError(
-                f"drain_mode must be 'all' or 'one_at_a_time', got {drain_mode!r}"
-            )
+            raise ValueError(f"drain_mode must be 'all' or 'one_at_a_time', got {drain_mode!r}")
         self._queue: deque[str] = deque()
         self._lock: asyncio.Lock = asyncio.Lock()
         self._drain_mode: DrainMode = drain_mode

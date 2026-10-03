@@ -294,9 +294,8 @@ class RolePromptStage:
         agent_def = ctx.metadata.get("agent_definition")
         role_prompt: str | None = None
         if agent_def is not None:
-            role_prompt = (
-                getattr(agent_def, "system_prompt", None)
-                or (agent_def.get("system_prompt") if isinstance(agent_def, dict) else None)
+            role_prompt = getattr(agent_def, "system_prompt", None) or (
+                agent_def.get("system_prompt") if isinstance(agent_def, dict) else None
             )
             role = (
                 getattr(agent_def, "role", None)

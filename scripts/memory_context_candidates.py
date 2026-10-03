@@ -66,6 +66,7 @@ def _load_dataset(path: str | Path) -> list[dict[str, Any]]:
         cases.append(payload)
     return cases
 
+
 @dataclass(frozen=True, slots=True)
 class CandidateImportResult:
     cases: list[dict[str, Any]]
@@ -94,6 +95,7 @@ class CandidateImportResult:
         if dataset is not None:
             payload["dataset"] = dataset
         return payload
+
 
 @dataclass(frozen=True, slots=True)
 class CandidatePromotionReviewResult:
@@ -139,6 +141,7 @@ class CandidatePromotionReviewResult:
             payload["promoted_dataset"] = promoted_dataset
         return payload
 
+
 def convert_failure_report_to_cases(
     path: str | Path,
     *,
@@ -155,6 +158,7 @@ def convert_failure_report_to_cases(
         if case is not None:
             cases.append(case)
     return cases
+
 
 def import_candidate_cases(
     sources: Sequence[str | Path],
@@ -231,6 +235,7 @@ def import_candidate_cases(
         duplicate_reasons=duplicate_reasons,
         pii_redaction_summary=pii_redaction_summary,
     )
+
 
 def review_candidate_cases(
     candidate_jsonl: Sequence[str | Path],
@@ -343,6 +348,7 @@ def review_candidate_cases(
         pii_redaction_summary=pii_redaction_summary,
     )
 
+
 def _resolve_candidate_source_type(payload: Any, *, source_type: str) -> str:
     if source_type != "auto":
         return source_type
@@ -362,6 +368,7 @@ def _resolve_candidate_source_type(payload: Any, *, source_type: str) -> str:
             return "trajectory"
     return "trajectory"
 
+
 def _extract_candidate_records(payload: Any, *, source_type: str) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [record for record in payload if isinstance(record, dict)]
@@ -378,6 +385,7 @@ def _extract_candidate_records(payload: Any, *, source_type: str) -> list[dict[s
         if payload:
             return [payload]
     raise ValueError("unsupported candidate source payload")
+
 
 def _candidate_record_to_case(
     record: dict[str, Any],
@@ -486,6 +494,7 @@ def _candidate_record_to_case(
         },
     }
 
+
 def _candidate_bucket(record: dict[str, Any], expected: dict[str, Any]) -> str:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     explicit = _first_text(
@@ -511,6 +520,7 @@ def _candidate_bucket(record: dict[str, Any], expected: dict[str, Any]) -> str:
         return "answerability"
     return "fact_recall"
 
+
 def _candidate_source_explanation(
     *,
     source_type: str,
@@ -529,6 +539,7 @@ def _candidate_source_explanation(
         "assertion_fields": assertion_fields,
         "selected_bucket": bucket,
     }
+
 
 def _candidate_source_observed_at(
     record: dict[str, Any],
@@ -549,8 +560,10 @@ def _candidate_source_observed_at(
     except OSError:
         return now
 
+
 def _candidate_dedupe_key(case: dict[str, Any]) -> str:
     return _stable_hash({"input": case.get("input"), "expected": case.get("expected")})
+
 
 def _with_promotion_review(
     case: dict[str, Any],
@@ -582,6 +595,7 @@ def _with_promotion_review(
     reviewed_case["promotion_review"] = _sanitize_json(review)
     return reviewed_case
 
+
 def _promotion_review_sla_for_case(
     case: dict[str, Any],
     *,
@@ -608,6 +622,7 @@ def _promotion_review_sla_for_case(
     sla["reviewed_after_due"] = bool(sla["overdue"])
     return sla
 
+
 def _reject_golden_dataset_output(
     path: str | Path,
     *,
@@ -626,6 +641,7 @@ def _reject_golden_dataset_output(
     }:
         raise ValueError(f"{operation} must not target the golden memory/context dataset")
 
+
 def _extract_failure_records(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [record for record in payload if isinstance(record, dict)]
@@ -638,6 +654,7 @@ def _extract_failure_records(payload: Any) -> list[dict[str, Any]]:
             return [payload]
     raise ValueError("unsupported failure conversion payload")
 
+
 def _record_failed(record: dict[str, Any]) -> bool:
     for key in ("passed", "replay_passed", "success"):
         if key in record:
@@ -646,6 +663,7 @@ def _record_failed(record: dict[str, Any]) -> bool:
         return True
     status = str(record.get("status") or record.get("source_status") or "").strip().lower()
     return bool(status) and status not in _PASS_STATUSES
+
 
 def _failure_record_to_case(
     record: dict[str, Any],
@@ -692,6 +710,7 @@ def _failure_record_to_case(
         },
     }
 
+
 def _convert_expected(record: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
     return {
         "required_facts": _strings(
@@ -719,6 +738,7 @@ def _convert_expected(record: dict[str, Any], expected: dict[str, Any]) -> dict[
             expected.get("answer_contains_all") or record.get("answer_contains_all")
         ),
     }
+
 
 def _has_expected_assertions(expected: dict[str, Any]) -> bool:
     return any(_strings(value) for value in expected.values())

@@ -322,15 +322,11 @@ def _agent_feedback_trend_response(
     principal: Principal,
 ) -> AgentFeedbackTrendResponse:
     repository = _governance_repository(runtime)
-    feedback_events = list(
-        repository.list_feedback_events(user_id=principal.user_id, limit=1000)
-    )
+    feedback_events = list(repository.list_feedback_events(user_id=principal.user_id, limit=1000))
     skill_events = list(
         repository.list_skill_selection_events(user_id=principal.user_id, limit=1000)
     )
-    context_evidence = list(
-        repository.list_context_evidence(user_id=principal.user_id, limit=1000)
-    )
+    context_evidence = list(repository.list_context_evidence(user_id=principal.user_id, limit=1000))
     low_confidence_count = sum(1 for event in skill_events if event.confidence < 0.5)
     override_count = sum(1 for event in skill_events if bool(event.user_override))
 
@@ -341,7 +337,9 @@ def _agent_feedback_trend_response(
         skill_low_confidence_rate=_safe_ratio(low_confidence_count, len(skill_events)),
         skill_override_rate=_safe_ratio(override_count, len(skill_events)),
         context_high_drift_count=sum(1 for item in context_evidence if _is_high_drift(item)),
-        notes_tasks_capture_count=sum(1 for event in feedback_events if _is_productivity_capture(event)),
+        notes_tasks_capture_count=sum(
+            1 for event in feedback_events if _is_productivity_capture(event)
+        ),
         top_failing_trajectory_samples=_top_failing_trajectory_samples(runtime),
         generated_at=_now_iso(),
     )

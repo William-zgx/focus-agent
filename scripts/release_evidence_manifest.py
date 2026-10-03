@@ -30,8 +30,10 @@ REQUIRED_PRODUCTION_ARTIFACT_KEYS = (
     "release_health_report",
 )
 
+
 def _format_utc(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -39,6 +41,7 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
 
 def _artifact_record(input_artifact: EvidenceInput) -> dict[str, Any]:
     path = input_artifact.path
@@ -56,6 +59,7 @@ def _artifact_record(input_artifact: EvidenceInput) -> dict[str, Any]:
         else None,
     }
 
+
 def _tail_output(output: str) -> str:
     if not output:
         return ""
@@ -65,6 +69,7 @@ def _tail_output(output: str) -> str:
         tail = tail[-TAIL_CHAR_LIMIT:]
     return tail
 
+
 def _stream_summary(output: str) -> dict[str, int | bool]:
     tail = _tail_output(output)
     return {
@@ -72,6 +77,7 @@ def _stream_summary(output: str) -> dict[str, int | bool]:
         "line_count": len(output.splitlines()),
         "truncated": tail != output,
     }
+
 
 def _ci_metadata(env: Mapping[str, str] | None = None) -> dict[str, Any]:
     env = env or os.environ
@@ -119,6 +125,7 @@ def _ci_metadata(env: Mapping[str, str] | None = None) -> dict[str, Any]:
         "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
     }
 
+
 def _command_record(
     *,
     command: Sequence[str],
@@ -136,6 +143,7 @@ def _command_record(
         "stdout_summary": _stream_summary(outcome.stdout),
         "stdout_tail": _tail_output(outcome.stdout),
     }
+
 
 def _load_release_health_summary(report_json: Path) -> dict[str, Any]:
     if not report_json.exists():
@@ -181,6 +189,7 @@ def _load_release_health_summary(report_json: Path) -> dict[str, Any]:
         "status": str(payload.get("status") or "unknown"),
     }
 
+
 def _artifact_count(artifacts: dict[str, Any]) -> int:
     count = 0
     for value in artifacts.values():
@@ -190,6 +199,7 @@ def _artifact_count(artifacts: dict[str, Any]) -> int:
             count += 1
     return count
 
+
 def _iter_artifact_records(artifacts: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for value in artifacts.values():
@@ -198,6 +208,7 @@ def _iter_artifact_records(artifacts: dict[str, Any]) -> list[dict[str, Any]]:
         elif isinstance(value, dict):
             records.append(value)
     return records
+
 
 def _artifact_summary(artifacts: dict[str, Any]) -> dict[str, Any]:
     records = _iter_artifact_records(artifacts)
@@ -229,6 +240,7 @@ def _artifact_summary(artifacts: dict[str, Any]) -> dict[str, Any]:
         "total_bytes": total_bytes,
     }
 
+
 def _missing_required_artifacts(artifacts: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     for key, value in artifacts.items():
@@ -241,6 +253,7 @@ def _missing_required_artifacts(artifacts: dict[str, Any]) -> list[str]:
                 break
     return missing
 
+
 def _retention_metadata(*, generated_at: datetime, retention_days: int) -> dict[str, Any]:
     if retention_days < 1:
         raise ValueError("--retention-days must be at least 1")
@@ -251,6 +264,7 @@ def _retention_metadata(*, generated_at: datetime, retention_days: int) -> dict[
         "policy": "retain-evidence-pack",
         "retain_until": _format_utc(retain_until),
     }
+
 
 def _storage_metadata(
     *,
@@ -291,6 +305,7 @@ def _storage_metadata(
         "summary_json": str(summary_json),
     }
 
+
 def _verify_storage_metadata(*, storage: dict[str, Any]) -> dict[str, Any]:
     if not storage.get("enabled"):
         return {
@@ -321,6 +336,7 @@ def _verify_storage_metadata(*, storage: dict[str, Any]) -> dict[str, Any]:
         "summary_matches": summary_matches,
     }
 
+
 def _manifest_hash_payload(value: Any) -> Any:
     if isinstance(value, dict):
         return {
@@ -336,6 +352,7 @@ def _manifest_hash_payload(value: Any) -> Any:
         return [_manifest_hash_payload(item) for item in value]
     return value
 
+
 def _normalized_manifest_sha256(manifest: dict[str, Any]) -> str:
     payload = json.dumps(
         _manifest_hash_payload(manifest),
@@ -344,6 +361,7 @@ def _normalized_manifest_sha256(manifest: dict[str, Any]) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
 
 def _artifact_storage_metadata(
     *,
@@ -371,6 +389,7 @@ def _artifact_storage_metadata(
         "verification": storage.get("verification"),
     }
 
+
 def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
     if not storage.get("enabled"):
         return
@@ -387,11 +406,13 @@ def _copy_pack_to_storage(*, pack_dir: Path, storage: dict[str, Any]) -> None:
     stored_pack_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(pack_dir, stored_pack_dir)
 
+
 def _sync_storage_manifest_files(*, storage: dict[str, Any]) -> None:
     if not storage.get("enabled"):
         return
     shutil.copy2(Path(str(storage["manifest_json"])), Path(str(storage["stored_manifest_json"])))
     shutil.copy2(Path(str(storage["summary_json"])), Path(str(storage["stored_summary_json"])))
+
 
 def _approval_metadata(
     *,
@@ -410,6 +431,7 @@ def _approval_metadata(
         "required": not dry_run,
         "status": status,
     }
+
 
 def _production_validation(
     *,
@@ -464,6 +486,7 @@ def _production_validation(
         "storage_required": storage_required,
         "storage_verified": storage_ok,
     }
+
 
 def _failure_summary(
     *,
@@ -527,6 +550,7 @@ def _failure_summary(
         "release_health_status": release_health.get("status"),
     }
 
+
 def _summary_payload(
     *,
     approval: dict[str, Any],
@@ -563,6 +587,7 @@ def _summary_payload(
         },
         "summary": summary,
     }
+
 
 def _manifest_artifacts(
     prepared_inputs: dict[str, list[EvidenceInput] | EvidenceInput],

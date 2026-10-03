@@ -34,7 +34,9 @@ def _prepare_run_payload(
     # displayed verbatim in the UI thread history.
     runtime = getattr(chat, "runtime", None)
     harness = getattr(runtime, "harness", None) if runtime is not None else None
-    agent_registry = getattr(harness, "agent_definition_registry", None) if harness is not None else None
+    agent_registry = (
+        getattr(harness, "agent_definition_registry", None) if harness is not None else None
+    )
     primary_agent, message = _extract_primary_agent(raw_message, agent_registry)
     metadata = dict(payload.metadata or {})
     if primary_agent:
@@ -52,7 +54,10 @@ def _prepare_run_payload(
         user_id=user_id,
         require_writable=True,
     )
-    if getattr(selection, "selection_source", "none") in {"explicit", "mixed"} and selection.skill_ids:
+    if (
+        getattr(selection, "selection_source", "none") in {"explicit", "mixed"}
+        and selection.skill_ids
+    ):
         active_skill_ids = tuple(selection.skill_ids)
     else:
         active_skill_ids = _merged_skill_ids(

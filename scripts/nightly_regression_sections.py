@@ -15,7 +15,9 @@ _DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _active_repo_root() -> Path:
     module = sys.modules.get("scripts.nightly_regression") or sys.modules.get("__main__")
-    if module is not None and str(getattr(module, "__file__", "")).endswith("nightly_regression.py"):
+    if module is not None and str(getattr(module, "__file__", "")).endswith(
+        "nightly_regression.py"
+    ):
         return Path(getattr(module, "REPO_ROOT", _DEFAULT_REPO_ROOT))
     return _DEFAULT_REPO_ROOT
 
@@ -36,6 +38,7 @@ def _read_json(path: str | Path) -> dict[str, Any] | None:
         raise ValueError(f"{target} must contain a JSON object")
     return payload
 
+
 def _artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any]:
     target = _resolve(path)
     payload = _read_json(target)
@@ -52,10 +55,12 @@ def _artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any]:
         "regressions": list(comparison.get("regressions") or []),
     }
 
+
 def _suite_name(payload: dict[str, Any]) -> str | None:
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
     suite = meta.get("suite") or payload.get("suite")
     return str(suite) if suite else None
+
 
 def _status_from_summary(summary: dict[str, Any], comparison: dict[str, Any]) -> str:
     if comparison.get("regressions"):
@@ -65,6 +70,7 @@ def _status_from_summary(summary: dict[str, Any], comparison: dict[str, Any]) ->
     if int(summary.get("total") or 0) > 0:
         return "passed"
     return "unknown"
+
 
 def _trend_summary(path: str | Path) -> dict[str, Any]:
     target = _resolve(path)
@@ -88,6 +94,7 @@ def _trend_summary(path: str | Path) -> dict[str, Any]:
         "promotion_history": promotion,
         "pollution_alerts": alerts,
     }
+
 
 def _trend_drift_report(payload: dict[str, Any]) -> dict[str, Any]:
     stages = payload.get("stages") if isinstance(payload.get("stages"), dict) else {}
@@ -117,6 +124,7 @@ def _trend_drift_report(payload: dict[str, Any]) -> dict[str, Any]:
     worst = max(reports, key=lambda report: float(report.get("overall_drift") or 0.0))
     return dict(worst)
 
+
 def _replay_summary(path: str | Path) -> dict[str, Any]:
     artifact = _artifact_summary(path, kind="replay")
     payload = _read_json(path)
@@ -131,6 +139,7 @@ def _replay_summary(path: str | Path) -> dict[str, Any]:
     artifact["failed_case_ids"] = [case_id for case_id in failed_case_ids if case_id]
     artifact["failed"] = len(artifact["failed_case_ids"])
     return artifact
+
 
 def _alert_summary(path: str | Path) -> dict[str, Any]:
     target = _resolve(path)
@@ -151,6 +160,7 @@ def _alert_summary(path: str | Path) -> dict[str, Any]:
         "alerts": alerts,
         "alert_count": len(alerts),
     }
+
 
 def _feedback_report_summary(path: str | Path) -> dict[str, Any]:
     target = _resolve(path)
@@ -206,14 +216,17 @@ def _feedback_report_summary(path: str | Path) -> dict[str, Any]:
         "feedback_pipeline": pipeline,
     }
 
+
 def _existing_default_artifacts(*paths: Path) -> list[Path]:
     return [_resolve(path) for path in paths if _resolve(path).exists()]
+
 
 def _load_jsonl_cases(path: str | Path) -> list[dict[str, Any]]:
     target = _resolve(path)
     if not target.exists():
         return []
     return memory_context_eval.load_dataset(target)
+
 
 def _candidate_artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any]:
     target = _resolve(path)
@@ -237,6 +250,7 @@ def _candidate_artifact_summary(path: str | Path, *, kind: str) -> dict[str, Any
         "review_status_counts": review_status_counts,
         "promotion_sla_summary": memory_context_eval._promotion_sla_summary(cases),
     }
+
 
 def _candidate_pipeline_summary(
     *,
@@ -322,6 +336,7 @@ def _candidate_pipeline_summary(
         "baseline_delta": {},
     }
 
+
 def _replay_pipeline_summary(replay: Sequence[dict[str, Any]]) -> dict[str, Any]:
     failed_case_ids = [
         str(case_id) for artifact in replay for case_id in (artifact.get("failed_case_ids") or [])
@@ -335,6 +350,7 @@ def _replay_pipeline_summary(replay: Sequence[dict[str, Any]]) -> dict[str, Any]
         "alert_count": 0,
         "baseline_delta": {},
     }
+
 
 def _build_memory_review(
     *,
@@ -378,6 +394,7 @@ def _build_memory_review(
         ],
         "promoted_case_ids": [str(case.get("id")) for case in result.promoted_cases],
     }
+
 
 def _build_regressions(
     *,

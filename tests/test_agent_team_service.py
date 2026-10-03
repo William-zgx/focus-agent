@@ -750,9 +750,7 @@ def test_agent_team_service_records_outputs_and_prepares_merge_bundle() -> None:
     )
     assert decision.accepted_tasks == [task.task_id]
     assert service.get_session(session.session_id, user_id="user-1").status == "completed"
-    assert workspace_service.cleanup_calls == [
-        {"session_id": session.session_id, "force": True}
-    ]
+    assert workspace_service.cleanup_calls == [{"session_id": session.session_id, "force": True}]
 
 
 def test_agent_team_service_persists_workbench_state_across_instances(tmp_path) -> None:

@@ -218,7 +218,9 @@ def as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
-def outcome_projection(plan_meta: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def outcome_projection(
+    plan_meta: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     task_outcome = plan_meta.get("task_outcome")
     tool_outcomes = plan_meta.get("tool_outcomes")
     return (

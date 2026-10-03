@@ -588,7 +588,9 @@ def _query_relevance_terms(query: str) -> set[str]:
         if len(cleaned) >= 2:
             terms.add(cleaned.lower())
             if len(cleaned) <= 12:
-                terms.update(cleaned[index : index + 2].lower() for index in range(len(cleaned) - 1))
+                terms.update(
+                    cleaned[index : index + 2].lower() for index in range(len(cleaned) - 1)
+                )
     return terms
 
 

@@ -31,8 +31,7 @@ def _has_tool_call(messages: list[Any], name: str) -> bool:
 
 def _has_tool_result(messages: list[Any], tool_call_id: str) -> bool:
     return any(
-        isinstance(message, ToolMessage)
-        and getattr(message, "tool_call_id", None) == tool_call_id
+        isinstance(message, ToolMessage) and getattr(message, "tool_call_id", None) == tool_call_id
         for message in messages
     )
 

@@ -36,6 +36,7 @@ def _should_run_semantic_topic_relation(
         and has_history_context
     )
 
+
 def _branch_recommendation_signal_value(
     signals: list[Any],
     name: str,
@@ -46,15 +47,19 @@ def _branch_recommendation_signal_value(
             return getattr(signal, "value", default)
     return default
 
+
 def _normalized_message_hash(message: str | None) -> str:
     normalized = " ".join(str(message or "").split())
     return sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
+
 def _branch_handoff_idempotency_key(*, thread_id: str, message: str | None) -> str:
     return f"branch_handoff:{thread_id}:{_normalized_message_hash(message)}"
 
+
 def _message_preview(message: str | None, *, limit: int = 240) -> str:
     return " ".join(str(message or "").split())[:limit]
+
 
 def _semantic_topic_relation_metadata(signals: list[Any]) -> dict[str, Any]:
     relation = _semantic_topic_relation_from_signals(signals)
@@ -66,6 +71,7 @@ def _semantic_topic_relation_metadata(signals: list[Any]) -> dict[str, Any]:
         "semantic_classifier_status": relation.get("status"),
     }
 
+
 def _semantic_topic_relation_diagnostic(signals: list[Any]) -> dict[str, Any]:
     relation = _semantic_topic_relation_from_signals(signals)
     return {
@@ -76,9 +82,11 @@ def _semantic_topic_relation_diagnostic(signals: list[Any]) -> dict[str, Any]:
         "semantic_reason": relation.get("reason"),
     }
 
+
 def _semantic_topic_relation_from_signals(signals: list[Any]) -> dict[str, Any]:
     value = _branch_recommendation_signal_value(signals, "semantic_topic_relation", {})
     return value if isinstance(value, dict) else {}
+
 
 def _call_semantic_topic_relation_classifier(
     classifier: Any,
@@ -134,6 +142,7 @@ def _call_semantic_topic_relation_classifier(
             continue
     return callable_classifier(message, messages, branch_meta)
 
+
 def _semantic_topic_relation_callable(classifier: Any) -> Any:
     for attr in (
         "classify_semantic_topic_relation",
@@ -147,6 +156,7 @@ def _semantic_topic_relation_callable(classifier: Any) -> Any:
     if callable(classifier):
         return classifier
     raise TypeError("semantic topic relation classifier is not callable")
+
 
 def _normalize_semantic_topic_relation_result(result: Any) -> dict[str, Any]:
     payload = _model_payload(result)
@@ -181,12 +191,14 @@ def _normalize_semantic_topic_relation_result(result: Any) -> dict[str, Any]:
         "model": payload.get("model") or payload.get("model_name"),
     }
 
+
 def _selected_model_from_values(values: dict[str, Any]) -> str | None:
     for key in ("selected_model", "model", "model_id"):
         text = str(values.get(key) or "").strip()
         if text:
             return text
     return None
+
 
 def _model_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -202,11 +214,13 @@ def _model_payload(value: Any) -> dict[str, Any]:
     raw_dict = getattr(value, "__dict__", None)
     return raw_dict if isinstance(raw_dict, dict) else {}
 
+
 def _semantic_status(value: Any) -> str:
     status = str(value or "success").strip().lower()
     if status in {"succeeded", "completed"}:
         return "success"
     return status or "error"
+
 
 def _semantic_confidence(payload: dict[str, Any]) -> float:
     raw = payload.get("confidence")
@@ -216,6 +230,7 @@ def _semantic_confidence(payload: dict[str, Any]) -> float:
         return max(0.0, min(float(raw or 0.0), 1.0))
     except (TypeError, ValueError):
         return 0.0
+
 
 def _semantic_recommended_action(value: Any) -> BranchDecisionAction:
     raw = str(value or "").strip()
@@ -228,6 +243,7 @@ def _semantic_recommended_action(value: Any) -> BranchDecisionAction:
             return action
     return BranchDecisionAction.CONTINUE_CURRENT
 
+
 def _branch_decision_mode(value: object) -> BranchDecisionMode:
     normalized = str(value or "").strip().lower()
     if normalized == BranchDecisionMode.SUGGEST.value:
@@ -236,15 +252,18 @@ def _branch_decision_mode(value: object) -> BranchDecisionMode:
         return BranchDecisionMode.EXECUTE
     return BranchDecisionMode.SHADOW
 
+
 def _branch_action_kind_for_decision(action: BranchDecisionAction) -> BranchActionKind:
     if action == BranchDecisionAction.FORK_SIBLING_BRANCH:
         return BranchActionKind.FORK_SIBLING_BRANCH
     return BranchActionKind.FORK_CHILD_BRANCH
 
+
 def _decision_action_for_branch_action_kind(kind: BranchActionKind) -> BranchDecisionAction:
     if kind == BranchActionKind.FORK_SIBLING_BRANCH:
         return BranchDecisionAction.FORK_SIBLING_BRANCH
     return BranchDecisionAction.FORK_CHILD_BRANCH
+
 
 def _recommendation_target_for_decision(
     action: BranchDecisionAction,
@@ -255,6 +274,7 @@ def _recommendation_target_for_decision(
         return BranchDecisionRecommendationTarget.FORK_CHILD_BRANCH
     return BranchDecisionRecommendationTarget.CONTINUE_CURRENT
 
+
 def _branch_role_for_recommendation(
     target: BranchDecisionRecommendationTarget | None,
 ) -> BranchRole:
@@ -262,8 +282,10 @@ def _branch_role_for_recommendation(
         return BranchRole.DEEP_DIVE
     return BranchRole.EXPLORE_ALTERNATIVES
 
+
 def _recommendation_user_visible(*, enabled: bool, mode: BranchDecisionMode) -> bool:
     return bool(enabled and mode == BranchDecisionMode.SUGGEST)
+
 
 def _recommendation_diagnostics(
     *,
@@ -281,6 +303,7 @@ def _recommendation_diagnostics(
         "semantic_enabled": bool(semantic_enabled),
         "semantic_model": semantic_model,
     }
+
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
