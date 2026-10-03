@@ -167,17 +167,17 @@ export function AskUserQuestionCard({
 	}
 
 	return (
-		<article className="fa-ask-user-question-card">
+		<article className="fa-branch-action-card fa-tool-approval-card fa-ask-user-question-card">
 			<div className="fa-ask-user-question-card-header">
 				<div>
 					<div className="fa-ask-user-question-card-title">{title}</div>
 					<div className="fa-ask-user-question-card-subtitle">{subtitle}</div>
-					<div className="fa-ask-user-question-card-meta">
+					<div className="fa-tool-approval-card-meta fa-ask-user-question-card-meta">
 						<code>{interrupt.tool_name}</code>
 						<span>{interrupt.interrupt_id}</span>
 					</div>
 				</div>
-				<span className="fa-ask-user-question-card-badge">
+				<span className="fa-tool-approval-card-badge fa-ask-user-question-card-badge">
 					{isChineseUi ? "等待回答" : "Awaiting answers"}
 				</span>
 			</div>

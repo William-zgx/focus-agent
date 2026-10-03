@@ -1,5 +1,14 @@
 # Multi-Agent Refactor Validation Report
 
+> **Historical validation snapshot.** This matrix, test inventory, coverage,
+> timings, and gray-release stages record an earlier refactor validation run;
+> they are not current 2026-09-28 acceptance evidence and do not override the
+> current default-off/observe configuration. Recheck current capability against
+> the [project overview](../project-overview.md) and the 2026-09-28
+> [research](../plans/2026-09-28-agent-capabilities/research.md),
+> [design](../plans/2026-09-28-agent-capabilities/design.md), and
+> [plan](../plans/2026-09-28-agent-capabilities/plan.md).
+
 ## Acceptance Matrix
 
 | Capability | Evidence |
@@ -52,7 +61,7 @@ Recommended TTL defaults remain conservative: lock TTL 120s, message TTL 300s, a
 
 - Scheduler complexity is bounded by the number of task nodes plus dependency/resource checks; the focused 5-task diamond acceptance test verifies that independent middle tasks are not serialized.
 - Resource locking and approval queues use in-memory ports by default and Postgres ports only when the multi-agent feature is enabled with a database-backed coordination backend.
-- Focused local validation on 2026-05-16: 145 multi-agent tests completed in 1.72s, and the coverage report completed at 94% line coverage.
+- Historical focused local validation on 2026-05-16: 145 multi-agent tests completed in 1.72s, and the coverage report completed at 94% line coverage. These numbers are not a current-tree or production-readiness measurement.
 - Runtime watchpoints during gray release: average task wait time for `execution_status="waiting_resource_lock"`, pending approval age, unacked message count by session, and expired lock cleanup count.
 
 ## Notes

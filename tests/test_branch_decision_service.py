@@ -212,6 +212,7 @@ def test_branch_decision_execute_mode_downgrades_to_suggest() -> None:
     assert event.status == BranchDecisionStatus.PROMOTED
     assert event.metadata["downgraded_from_execute"] is True
     assert actions[0].status == BranchActionStatus.PENDING
+    assert actions[0].recommendation_user_visible is False
 
 
 def test_branch_recommendation_suggests_child_pending_action() -> None:
@@ -241,6 +242,7 @@ def test_branch_recommendation_suggests_child_pending_action() -> None:
     assert actions[0].target_parent_thread_id == "thread-1"
     assert actions[0].status == BranchActionStatus.PENDING
     assert actions[0].source_decision_id == event.decision_id
+    assert actions[0].recommendation_user_visible is True
     assert actions[0].handoff_message == "深入研究方案 B"
 
 

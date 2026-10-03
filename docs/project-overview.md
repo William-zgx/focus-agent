@@ -1,6 +1,6 @@
 # Focus Agent 项目定位与现状
 
-更新时间：2026-07-14
+更新时间：2026-09-28（基线 commit：`718be87`）
 
 本文是 Focus Agent **产品定位、体量、适用边界与运行主路径** 的 canonical 文档。
 根目录 README 只保留轻量入口；架构细节见 [architecture.md](architecture.md)；
@@ -32,7 +32,7 @@ merge conclusions only after review.
 它 **是**：
 
 - 面向长任务研究 / 调试 / 写作 / 审查的 Web-first 应用平台
-- 带流式协议、typed SDK、鉴权、Admin、可观测、记忆检索、Agent Team、发布证据链的完整 monorepo
+- 带流式协议、typed SDK、鉴权、Admin、可观测、记忆检索、Agent Team 规划面、发布证据链的 monorepo；部分 runtime 能力仍默认关闭或只提供 preview
 - 可被团队 fork 后改造成自有 AI 工作台的参考实现
 
 ---
@@ -60,10 +60,10 @@ merge conclusions only after review.
 
 ## 3. 当前体量（代码事实） / Scale Snapshot
 
-以下数字来自仓库当前树（约 2026-07-14），用于校准“脚手架” vs “平台”的预期，
-不是对外 SLA。
+以下数字来自 **2026-07-14 的历史仓库快照**，用于校准“脚手架” vs “平台”的预期，
+不是 2026-09-28 重新统计的当前量，也不是对外 SLA。
 
-| 维度 | 当前量级 |
+| 维度 | 历史量级（2026-07-14 快照） |
 |------|----------|
 | Python 包版本 | `1.0.0`（`pyproject.toml`） |
 | 后端 Python 源文件 | ~560 个（`src/focus_agent/**/*.py`） |
@@ -106,7 +106,7 @@ merge conclusions only after review.
 |------|----------|--------------|
 | **Core** | branch-aware chat、SSE stream contract、typed SDK、鉴权与 owner 边界 | 必选理解 |
 | **Platform** | memory、Zvec retrieval、tools/skills/sandbox、Admin、observability/trajectory | 完整工作台需要 |
-| **Collaboration** | Agent Team Mission Runner / v2 schema & flags | 多 Agent 任务需要；v2 默认 flag 关闭 |
+| **Collaboration** | Agent Team Mission/plan/run API、v2 schema & flags | 规划与展示可用；`AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、委派默认 `observe`，真实任务需要单独 readiness |
 | **Mobile** | Android Capacitor + `android-local-runtime` | 可选；与 server-backed Web 并行 |
 | **Release** | release-gate、evidence pack、nightly、eval harness | 生产采用需要 |
 
@@ -142,7 +142,7 @@ Android 与 Web 不是同一集成模型：
 
 - 产品与 API：`services/agent_team*`、`api/routers/agent_team.py`、Web `features/agent-team/`
 - v2 执行与 schema：Postgres v19 表 + feature flags（见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)）
-- **默认不自动启用 v2 真实执行**；UI 可见 ≠ runtime ready
+- **默认不自动启用 v2 真实执行**：`AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、`AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`；UI/API/规划可见 ≠ runtime ready。当前 v2 capability 报告 `revision_commands=false`，revision command 尚未实现。
 
 ### 5.4 装配点
 
@@ -183,9 +183,17 @@ Android 与 Web 不是同一集成模型：
 | 本地与 CI 可验证性 | 真实生产控制面绑定（deployment identity 不可伪造） |
 | 安全默认与 fail-closed 路径 | 企业 IdP/JWKS、跨服务 logout、长时多实例演练 |
 | 文档与 debt 计量 | 169 项 1.x 兼容债的 telemetry 驱动退场 |
+| 文本聊天、文本 Web search/fetch、路径型文本 artifact | 原生浏览器/DOM/截图、图片附件/多模态输入、通用 artifact 上传下载 |
 
-平台完备度 **高于** 结果质量证据；roadmap 以“仍缺的真实环境/规模/证据”描述未来项，
-而不是空泛的“继续优化”。
+平台完备度 **高于** 结果质量证据；此外，task budget 合同目前没有接入真实 runner 的
+每任务 LLM/tool/cost/deadline enforcement，不能把 budget 字段当作运行时配额。CI 的
+真实 Chrome 只证明 Web UI 交互，不证明 Agent 原生 browser 能力或真实 provider-backed
+Team run。roadmap 以“仍缺的真实环境/规模/证据”描述未来项，而不是空泛的“继续优化”。
+
+当前能力与未来能力研究、设计、计划分开维护：见
+[capability research](plans/2026-09-28-agent-capabilities/research.md)、
+[design](plans/2026-09-28-agent-capabilities/design.md) 和
+[plan](plans/2026-09-28-agent-capabilities/plan.md)。
 
 ---
 

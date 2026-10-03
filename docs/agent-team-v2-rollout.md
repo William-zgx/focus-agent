@@ -1,6 +1,6 @@
 # Agent Team v2 灰度与回滚手册
 
-更新时间：2026-07-14
+更新时间：2026-09-28（基线 commit：`718be87`）
 
 本文定义 Agent Team v2 的可验证灰度口径。它只描述已在当前代码中
 受 feature flag 保护的协调能力；不是“v2 已全量上线”的声明。工作台 UI
@@ -41,6 +41,18 @@ MULTI_AGENT_FAILURE_HANDLER_ENABLED=false
 工作台可见性，不等同于 v2 runtime 总开关。需要临时隐藏入口时，将其设为
 `false` 并重新构建 Web；不能把隐藏入口当成执行层 kill switch。
 
+当前 Agent Team / delegation 的安全默认还包括：
+
+```dotenv
+AGENT_TEAM_V2_ENABLED=false
+AGENT_TEAM_EXECUTION_MODE=disabled
+AGENT_DELEGATION_ENABLED=false
+AGENT_DELEGATION_EXECUTION_MODE=observe
+```
+
+`agent_team_v2_capabilities()` 当前报告 `revision_commands=false`，revision command
+执行会明确返回未实现；打开 planning、task-run 或页面入口不会补齐该能力。
+
 ## 2. 灰度前置条件
 
 在改变任何开关前，记录：
@@ -52,11 +64,12 @@ curl --fail --show-error --silent http://127.0.0.1:8000/readyz
 curl --fail --show-error --silent http://127.0.0.1:8000/v2/agent-team/readiness
 ```
 
-只有 `/readyz` 返回 HTTP 200 且响应中的 `ready=true` 时，才开始灰度。
-`/healthz` 只说明进程存活，不能替代 readiness。`/v2/agent-team/readiness`
-由 router 调用 `build_agent_team_readiness(settings, runtime=runtime)`，并仅在其
-`phase=ready` 且 task-run、evidence、revision 三项 v2 service capability 都可用时
-返回 `ready=true`。当配置请求真实执行时，该 assessment 会检查 provider 凭据引用、
+`/readyz` 返回 HTTP 200 且响应中的 `ready=true` 只是服务级前置条件，不足以开始
+Agent Team 真实灰度。`/healthz` 只说明进程存活，不能替代 readiness。还要检查
+`/v2/agent-team/readiness` 的 assessment 与实际 deployment/provider 状态，并保留真实
+run 证据。该 endpoint 由 router 调用 `build_agent_team_readiness(settings, runtime=runtime)`；
+当前 revision capability 仍为 `false`，因此不能声称完整 revision loop 已 ready。
+当配置请求真实执行时，该 assessment 会检查 provider 凭据引用、
 Postgres/durable worker/coordination、fencing、locks 和 Docker fail-closed 等前置
 条件。该响应不执行任务，也不返回完整 blockers/evidence payload；因此即使
 `ready=true`，仍需独立的 provider/Docker 实测和真实 run 证据，不能单独宣称
@@ -79,8 +92,8 @@ resume job。重启或多进程切换后，不能把审批恢复或 exactly-once
 4. 配置了真实模型 provider、模型和凭据；测试记录中应能看到实际
    `model_id`，不能以 fixture 或 fake executor 代替。
 5. 配置 `AGENT_TEAM_V2_ENABLED=true`、非 `off` 的
-   `AGENT_TEAM_ROLLOUT_PHASE`、`AGENT_TEAM_EXECUTION_MODE`、并解除默认启用的
-   `AGENT_TEAM_KILL_SWITCH_ENABLED=true`；同时通过完整的 Agent Team readiness
+   `AGENT_TEAM_ROLLOUT_PHASE`、可执行的 `AGENT_TEAM_EXECUTION_MODE`，并在审批后将
+   默认启用的 `AGENT_TEAM_KILL_SWITCH_ENABLED=true` 改为 `false`；同时通过完整的 Agent Team readiness
    assessment 确认没有 blocker。仅打开 `MULTI_AGENT_*` 不会满足这些前置条件。
 6. 若任务会调用 workspace command 或 Skill entrypoint，Docker sandbox
    镜像已就绪，且目标环境采用 fail-closed 配置，见第 5 节。
@@ -115,7 +128,8 @@ DTO 分离；但当前公开 API/运行时尚未消费该 job，且默认 store/
 
 ## 4. 真实执行证据链
 
-只有下列信息能够组成“真实执行过”的最小证据链：
+只有下列信息能够组成“真实执行过”的最小证据链；planning response、task summary、
+`ready` 状态或 UI fixture 都不算：
 
 ```text
 session/task id
@@ -141,6 +155,10 @@ event。最终答案、任务摘要、`changed_files` 字段或单独的“tests
 - 无 `agent_run_id`、`model_id`、artifact、workspace 元数据或可复现测试输出。
 - Docker sandbox payload 标记 `fallback_used=true`、`degraded_reason=local_host_execution`
   或 `sandbox_backend=local_subprocess` / `local_venv`。
+- task budget 字段存在于合同中，但当前 real runner 未执行每任务 LLM/tool/cost/deadline
+  配额；不能把声明的 budget 当作已 enforced 的运行时限制。
+- 当前 Team 工具面没有原生浏览器导航/DOM/截图或图片附件输入；Chrome workflow 只覆盖
+  Web UI，text artifact 也只是本地 path/id 引用。
 
 Merge review 必须显式预览和 apply；系统不应自动 commit、push 或合并
 `main`。fake output 被 merge review 标记为不可采纳，不能通过人工修改文案
@@ -221,7 +239,8 @@ AGENT_DELEGATION_EXECUTION_MODE=observe
 - **浏览器：** 真实 Chrome 完成创建、查看证据、审批决定、重新运行和 merge review；
   `pnpm --dir apps/web smoke:agent-team-adoption` 仅检查源码接线，不是浏览器证据；
   `make agent-team-evidence` 的 UI 部分也是确定性 fixture，`--mode real` 当前返回
-  `disabled`，同样不能作为浏览器证据。
+  `disabled`，同样不能作为浏览器证据。即使 Chrome UI 通过，也不等于 Agent 原生
+  browser/DOM/screenshot 或图片输入能力可用。
 - **回滚：** kill-switch 后的新普通聊天仍不创建 Team task/worktree，且现有
   session 证据可读。
 

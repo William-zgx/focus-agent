@@ -12831,6 +12831,16 @@
           "default": "",
           "type": "string"
         },
+        "recommendation_user_visible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "root_thread_id": {
           "type": "string"
         },
@@ -13982,6 +13992,10 @@
     },
     "ContextUsageResponse": {
       "properties": {
+        "configured_token_limit": {
+          "default": 0,
+          "type": "integer"
+        },
         "counting_backend": {
           "default": "chars_fallback",
           "type": "string"
@@ -13994,6 +14008,10 @@
           "default": true,
           "type": "boolean"
         },
+        "input_token_limit": {
+          "default": 0,
+          "type": "integer"
+        },
         "last_compacted_at": {
           "anyOf": [
             {
@@ -14003,6 +14021,18 @@
               "type": "null"
             }
           ]
+        },
+        "output_reserve_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "posttrim_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "pretrim_tokens": {
+          "default": 0,
+          "type": "integer"
         },
         "prompt_budget_chars": {
           "default": 0,
@@ -14015,6 +14045,10 @@
         "remaining_tokens": {
           "default": 0,
           "type": "integer"
+        },
+        "required_overflow": {
+          "default": false,
+          "type": "boolean"
         },
         "status": {
           "default": "ok",
@@ -14045,6 +14079,14 @@
         "tokenizer_mode": {
           "default": "chars_fallback",
           "type": "string"
+        },
+        "tool_schema_tokens": {
+          "default": 0,
+          "type": "integer"
+        },
+        "trimmed": {
+          "default": false,
+          "type": "boolean"
         },
         "used_ratio": {
           "default": 0.0,

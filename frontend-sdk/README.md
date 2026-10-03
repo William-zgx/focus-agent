@@ -40,6 +40,23 @@ This SDK packages those concerns into a small, typed client layer.
 - `FocusAgentRequestError` for structured HTTP failure handling
 - `FocusAgentIncompleteStreamError` when EOF never reaches a terminal event
 
+## Current Capability Boundaries
+
+`streamTurn()` accepts a text `message` (plus the documented turn options); the
+current request contract has no first-class attachment or multimodal content
+field. The SDK exposes Agent Team planning/run/merge methods because those API
+routes exist, but the server defaults keep delegation in `observe` and Agent
+Team execution `disabled`; client method availability is not evidence of a
+provider-backed run.
+
+The built-in Web capability exposed through the current runtime is text
+`web_search`/`web_fetch`, not a browser with DOM navigation or screenshots. Agent
+artifact APIs expose list/synthesis metadata, while text artifact writes return
+local path/id references; consumers should not assume a portable artifact
+upload/download channel. `recommendation_user_visible=false` is an audit-only
+event and consumers must suppress confirmation controls themselves; the SDK
+does not enforce that UI behavior.
+
 ## Package Layout
 
 - `src/client.ts` - `FocusAgentClient` facade and endpoint mixin registration
@@ -70,6 +87,11 @@ pnpm --dir frontend-sdk validate:transport
 ```
 
 When working only inside `frontend-sdk/`, `pnpm --dir frontend-sdk check` and `pnpm --dir frontend-sdk build` are still valid package-local commands. Repository changes should prefer the root `make sdk-*` targets so the same checks run as CI and release gates.
+
+The package entrypoint resolves to `dist/`. Run `pnpm --dir frontend-sdk build` (or
+`make sdk-build`) before direct Node/package-consumer checks after changing
+`src/`; source-level type checks alone do not refresh the generated runtime
+artifact.
 
 When API routes or backend Pydantic contract models change, regenerate and check the OpenAPI-derived types:
 

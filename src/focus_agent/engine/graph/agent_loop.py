@@ -13,6 +13,7 @@ from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ...config import Settings
 from ...core.context.policy import apply_prompt_budget_guard
+from ...core.context_request import build_context_request
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_task_outcome
@@ -95,9 +96,7 @@ from .agent_loop_support import (
     _PRIMARY_OUTCOME_ROLES,  # noqa: F401
     _SUCCESS_OUTCOME_STATUSES,  # noqa: F401
     _drain_steer_messages,
-    _estimate_context_fullness,
     _filter_tools_by_agent_def,
-    _fire_system_agent_trigger,
     _outcome_attempt_index,  # noqa: F401
     _outcome_max_attempts,  # noqa: F401
     _resolve_agent_definition,
@@ -262,6 +261,8 @@ def make_agent_loop_node(
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
         tool_intent_text = _tool_intent_text(state, latest_user)
         context_budget = _context_budget_from_state(state)
+        if not context_budget.tokenizer_id and selected_model:
+            context_budget = context_budget.model_copy(update={"tokenizer_id": selected_model})
         pending_tool_action = _pending_live_web_search_action_from_state(
             state,
             latest_user=tool_intent_text,
@@ -413,26 +414,22 @@ def make_agent_loop_node(
                 SystemMessage(content=policy_note),
                 *prompt_messages[1:],
             ]
-        # Detect context overflow BEFORE budget guard trims — if the prompt is
-        # already past ~85% of budget, fire the context_overflow system agent
-        # so compact_context / summarize can kick in.
-        try:
-            fullness = _estimate_context_fullness(prompt_messages)
-            if fullness >= 0.85:
-                _fire_system_agent_trigger(
-                    system_agent_runner,
-                    "context_overflow",
-                    {
-                        "state": dict(state),
-                        "context": getattr(runtime, "context", None),
-                        "thread_id": thread_id,
-                        "fullness": fullness,
-                        "message_count": len(prompt_messages),
-                    },
-                )
-        except Exception:  # noqa: BLE001
-            _logger.debug("context_overflow trigger failed", exc_info=True)
-        prompt_messages = apply_prompt_budget_guard(prompt_messages, budget=context_budget)
+        context_request = build_context_request(
+            prompt_messages,
+            budget=context_budget,
+            available_tools=available_tools,
+            output_reserve_tokens=state.get("output_token_reserve"),
+            preserve_required_messages=True,
+        )
+        prompt_messages = context_request.messages
+        context_overflow = context_request.required_overflow
+        state = {
+            **state,
+            "plan_meta": {
+                **(state.get("plan_meta") or {}),
+                "context_request": context_request.to_dict(),
+            },
+        }
         prompt_messages = _ensure_reasoning_content_for_tool_call_history(
             prompt_messages,
             model_id=selected_model,
@@ -443,7 +440,17 @@ def make_agent_loop_node(
         terminal_stream_phase = (
             STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
         )
-        if force_tool_free_answer:
+        if context_overflow:
+            response = AIMessage(
+                content=(
+                    "必需的会话上下文已超出可用预算，本次未调用模型。请缩短输入、调整预算或新建会话。"
+                    if any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text)
+                    else "The model was not invoked because the required conversation context "
+                    "exceeds the available prompt budget. Please shorten the request or start "
+                    "a new thread."
+                )
+            )
+        elif force_tool_free_answer:
             fallback_answer = _fallback_answer_from_tool_results(fallback_messages)
             if tool_policy == "live_web_research":
                 if any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text):
@@ -706,6 +713,22 @@ def make_agent_loop_node(
                 content=_degraded_answer_from_tool_results(_latest_turn_messages(state_messages))
             )
             forced_degraded_skill_recovery = True
+        finalize_execution_contract = execution_contract
+        finalize_tool_policy = tool_policy
+        finalize_available_tools = available_tools
+        finalize_known_names = known_names
+        finalize_temporal_anchor_required = temporal_anchor_required
+        if context_overflow:
+            finalize_execution_contract = {
+                **execution_contract,
+                "status": "blocked",
+                "blocked_reason": "Required conversation context exceeds the available prompt budget.",
+                "blocked_reason_code": "required_context_overflow",
+            }
+            finalize_tool_policy = ""
+            finalize_available_tools = []
+            finalize_known_names = []
+            finalize_temporal_anchor_required = False
         return finalize_agent_loop_turn(
             state=state,
             state_messages=state_messages,
@@ -714,11 +737,11 @@ def make_agent_loop_node(
             settings=settings,
             tool_intent_plan=tool_intent_plan,
             tool_route_plan=tool_route_plan,
-            tool_policy=tool_policy,
+            tool_policy=finalize_tool_policy,
             tool_intent_text=tool_intent_text,
-            available_tools=available_tools,
-            known_names=known_names,
-            execution_contract=execution_contract,
+            available_tools=finalize_available_tools,
+            known_names=finalize_known_names,
+            execution_contract=finalize_execution_contract,
             prompt_messages=prompt_messages,
             fallback_messages=fallback_messages,
             context_budget=context_budget,
@@ -727,10 +750,10 @@ def make_agent_loop_node(
             quarantined_model_for=quarantined_model_for,
             quarantined_model_with_tools_for=quarantined_model_with_tools_for,
             current_utc_time_result=current_utc_time_result,
-            temporal_anchor_required=temporal_anchor_required,
+            temporal_anchor_required=finalize_temporal_anchor_required,
             temporal_anchor_forced=temporal_anchor_forced,
             forced_degraded_skill_recovery=forced_degraded_skill_recovery,
-            force_tool_free_answer=force_tool_free_answer,
+            force_tool_free_answer=force_tool_free_answer or context_overflow,
             tool_protocol_repair_count=tool_protocol_repair_count,
             tool_protocol_repair_reason=tool_protocol_repair_reason,
         )

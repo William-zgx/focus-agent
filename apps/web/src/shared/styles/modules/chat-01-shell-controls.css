@@ -81,10 +81,7 @@
 }
 
 .fa-chat-header-top {
-	display: flex;
-	align-items: center;
 	justify-content: space-between;
-	gap: 18px;
 }
 
 .fa-chat-header-copy,
@@ -108,10 +105,6 @@
 	align-items: center;
 	gap: 8px;
 	flex: 0 0 auto;
-}
-
-.fa-chat-header-copy {
-	flex: 1 1 auto;
 }
 
 .fa-chat-logo-toggle {
@@ -163,10 +156,6 @@
 	border-color: rgba(129, 140, 248, 0.38);
 	box-shadow: 0 14px 28px rgba(4, 10, 22, 0.2);
 	transform: translateY(-1px);
-}
-
-.fa-chat-header-actions {
-	justify-content: flex-end;
 }
 
 .fa-brand-lockup {
@@ -325,7 +314,8 @@
 .fa-conversation-title-button:focus-visible,
 .fa-conversation-select:focus,
 .fa-composer-select:focus,
-.fa-composer-textarea:focus {
+.fa-composer-textarea:focus,
+.fa-inline-rename-input:focus {
 	border-color: rgba(129, 140, 248, 0.54);
 	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
@@ -503,9 +493,4 @@
 	color: var(--fa-text-muted);
 	font-weight: 700;
 	white-space: nowrap;
-}
-
-.fa-inline-rename-input:focus {
-	border-color: rgba(129, 140, 248, 0.54);
-	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }

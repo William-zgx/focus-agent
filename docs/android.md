@@ -1,6 +1,6 @@
 # Android App
 
-Updated: 2026-07-14
+Updated: 2026-09-28 (baseline commit: `718be87`)
 
 The Android shell is a Capacitor wrapper around the existing Web app, plus a
 **device-local single-user runtime** under `apps/web/src/android-local-runtime/`
@@ -214,6 +214,11 @@ device configuration while preserving the non-Agent-Team runtime surfaces:
 - Agent governance, memory, and observability routes backed by local app data.
 - Local `web_search` tool-call streaming for current web lookups.
 
+The Android-local `web_search`/fetch helpers are text request helpers, not a native
+browser with DOM navigation, screenshots, or image-attachment input. They also do
+not provide the server-backed Agent Team runtime, remote MCP management, or a
+general artifact upload/download channel.
+
 The Android target disables the Agent Team workbench, productivity routes, and
 account/user/audit administration routes. The Web target continues to include
 those server-backed capabilities by default.
@@ -251,6 +256,15 @@ make frontend-qa
 
 That bundle adds full Web/SDK checks, style governance, bundle budget,
 architecture report, and compatibility inventory around the Android smoke.
+
+### 2026-09-30 Quality Snapshot
+
+See the [2026-09-30 project quality validation](validation/2026-09-30-project-quality.md)
+for the command-level record. The Android local runtime smoke passed, the eight
+Android scaffold/security checks passed, and the Android-targeted Web debug
+build passed with 401 modules. This does not establish native Android build or
+emulator coverage: the available environment had JDK 11 but no Android
+SDK/`adb`, so native Gradle validation and emulator execution were not run.
 
 ### CI And Emulator Boundary
 

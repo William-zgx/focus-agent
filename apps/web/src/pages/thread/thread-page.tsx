@@ -199,10 +199,14 @@ export function ThreadPage() {
 
 	async function handleCompactContext() {
 		if (!threadId || isMergedReadOnlyThread) return;
-		const payload = await compactThreadContext.mutateAsync({
-			trigger: "manual",
-		});
-		setPreviewContextUsage(payload.context_usage ?? null);
+		try {
+			const payload = await compactThreadContext.mutateAsync({
+				trigger: "manual",
+			});
+			setPreviewContextUsage(payload.context_usage ?? null);
+		} catch {
+			return;
+		}
 	}
 
 	async function handleDecideToolApproval(

@@ -1,8 +1,14 @@
 # Runtime Outcomes
 
-更新时间：2026-06-18
+更新时间：2026-09-28
 
 Runtime Outcome is the graph-level source of truth for tool and task completion. It replaces answer paths that previously summarized raw tool metadata such as `run_id`, `command`, or `stdout_truncated` as the main assistant response.
+
+These are recorded execution outcomes, not universal proof that the user's goal
+was achieved. The current execution-contract verifier requires evidence for
+`live_web_research` and `skill_execution`; other policies return `not_required`.
+General code, UI, or external-data tasks still need the proposed environment
+verification in the [capability design](plans/2026-09-28-agent-capabilities/design.md).
 
 ## Model
 
@@ -47,6 +53,13 @@ flowchart TD
 The graph, not stream consumers or UI reducers, decides whether a tool failed, recovered, blocked, or whether the task is answered/degraded/blocked. Stream, API, SDK, trajectory, and UI surfaces only transport and render these outcomes.
 
 ## Recovery Policy
+
+These outcomes describe the current turn's graph/tool recovery, not a promise of
+process-level task recovery. A journal, Agent Team job, lease, or side-effect
+receipt may preserve evidence on the configured durable path, but a generic
+harness process is not automatically hydrated and restarted from that record.
+Pending approval remains a blocker until an explicit, auditable resume or retry
+path runs.
 
 - Retryable tool failures are retried at most once in the tool executor. The message history keeps the final tool result only; the outcome ledger records both failed and recovered attempts.
 - Side-effect tools are not auto-retried unless their runtime metadata explicitly marks them `retry_safe`.

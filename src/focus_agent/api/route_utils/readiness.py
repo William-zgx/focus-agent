@@ -194,10 +194,44 @@ def _retrieval_zvec_check(runtime: Any) -> RuntimeComponentStatusResponse:
         )
     fallback = str(getattr(settings, "agent_retrieval_fallback_backend", "postgres") or "").strip()
     error = getattr(runtime, "retrieval_index_error", None) or "zvec unavailable"
+
+    database_uri = getattr(settings, "database_uri", None)
+    memory_repository = getattr(runtime, "memory_repository", None)
+    if (
+        database_uri
+        and callable(getattr(memory_repository, "search", None))
+        and fallback.lower()
+        in {
+            "postgres",
+            "postgresql",
+        }
+    ):
+        return RuntimeComponentStatusResponse(
+            name="retrieval_zvec",
+            ready=True,
+            detail=f"{error}; fallback=postgres (memory repository ready)",
+        )
+
+    memory_retriever = getattr(runtime, "memory_retriever", None)
+    local_store = getattr(memory_retriever, "store", None)
+    if callable(getattr(local_store, "search", None)) and fallback.lower() in {
+        "local",
+        "local_fallback",
+        "legacy_store",
+        "store",
+        "postgres",
+        "postgresql",
+    }:
+        return RuntimeComponentStatusResponse(
+            name="retrieval_zvec",
+            ready=True,
+            detail=f"{error}; fallback=local_fallback (store ready)",
+        )
+
     return RuntimeComponentStatusResponse(
         name="retrieval_zvec",
-        ready=bool(fallback),
-        detail=f"{error}; fallback={fallback or 'none'}",
+        ready=False,
+        detail=f"{error}; fallback={fallback or 'none'} unavailable",
     )
 
 

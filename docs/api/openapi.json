@@ -7346,6 +7346,17 @@
             "title": "Reason",
             "type": "string"
           },
+          "recommendation_user_visible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation User Visible"
+          },
           "root_thread_id": {
             "title": "Root Thread Id",
             "type": "string"
@@ -8656,6 +8667,11 @@
       },
       "ContextUsageResponse": {
         "properties": {
+          "configured_token_limit": {
+            "default": 0,
+            "title": "Configured Token Limit",
+            "type": "integer"
+          },
           "counting_backend": {
             "default": "chars_fallback",
             "title": "Counting Backend",
@@ -8671,6 +8687,11 @@
             "title": "Estimated",
             "type": "boolean"
           },
+          "input_token_limit": {
+            "default": 0,
+            "title": "Input Token Limit",
+            "type": "integer"
+          },
           "last_compacted_at": {
             "anyOf": [
               {
@@ -8681,6 +8702,21 @@
               }
             ],
             "title": "Last Compacted At"
+          },
+          "output_reserve_tokens": {
+            "default": 0,
+            "title": "Output Reserve Tokens",
+            "type": "integer"
+          },
+          "posttrim_tokens": {
+            "default": 0,
+            "title": "Posttrim Tokens",
+            "type": "integer"
+          },
+          "pretrim_tokens": {
+            "default": 0,
+            "title": "Pretrim Tokens",
+            "type": "integer"
           },
           "prompt_budget_chars": {
             "default": 0,
@@ -8696,6 +8732,11 @@
             "default": 0,
             "title": "Remaining Tokens",
             "type": "integer"
+          },
+          "required_overflow": {
+            "default": false,
+            "title": "Required Overflow",
+            "type": "boolean"
           },
           "status": {
             "default": "ok",
@@ -8730,6 +8771,16 @@
             "default": "chars_fallback",
             "title": "Tokenizer Mode",
             "type": "string"
+          },
+          "tool_schema_tokens": {
+            "default": 0,
+            "title": "Tool Schema Tokens",
+            "type": "integer"
+          },
+          "trimmed": {
+            "default": false,
+            "title": "Trimmed",
+            "type": "boolean"
           },
           "used_ratio": {
             "default": 0.0,

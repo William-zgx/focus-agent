@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
-from .models import MemoryRecord, RetrievedMemoryBundle
+from pydantic import ValidationError
+
+from ..core.context_assembly_coercion import _finding_to_line
+from ..core.types import PromptMode
+from .models import MemoryRecord, MemorySearchHit, MemoryStatus, RetrievedMemoryBundle
 
 _FENCE_TAG_RE = re.compile(r"</?\s*memory-context\s*>", re.IGNORECASE)
 _MEMORY_CONTEXT_GUARD = (
@@ -16,7 +21,8 @@ _MEMORY_CONTEXT_GUARD = (
 class _RenderedMemoryLine:
     block_key: str
     line: str
-    dedupe_key: str
+    dedupe_key: tuple[str, str, str]
+    evidence_refs: tuple[str, ...]
     promoted: bool
     root_scoped: bool
     shared: bool
@@ -36,17 +42,26 @@ def build_memory_blocks(bundle: RetrievedMemoryBundle) -> dict[str, list[str]]:
         "episodic_context": [],
         "other": [],
     }
-    deduped: dict[str, _RenderedMemoryLine] = {}
+    deduped: dict[tuple[str, str, str], _RenderedMemoryLine] = {}
     for index, hit in enumerate(bundle.hits):
         candidate = _rendered_memory_line(hit.record, score=hit.score, recency_order=index)
         if candidate is None:
             continue
         current = deduped.get(candidate.dedupe_key)
-        if current is None or _memory_line_preference(candidate) > _memory_line_preference(current):
+        if current is None:
             deduped[candidate.dedupe_key] = candidate
+        else:
+            references = tuple(dict.fromkeys([*current.evidence_refs, *candidate.evidence_refs]))
+            preferred = max((current, candidate), key=_memory_line_preference)
+            preferred.evidence_refs = references
+            preferred.evidence_count = len(references)
+            deduped[candidate.dedupe_key] = preferred
 
     for item in sorted(deduped.values(), key=_memory_line_preference, reverse=True):
-        blocks[item.block_key].append(item.line)
+        evidence = (
+            " [evidence: " + ", ".join(item.evidence_refs) + "]" if item.evidence_refs else ""
+        )
+        blocks[item.block_key].append(item.line + evidence)
 
     return {key: value for key, value in blocks.items() if value}
 
@@ -70,6 +85,64 @@ def render_memory_block(bundle: RetrievedMemoryBundle) -> str:
         rendered_lines = "\n".join(f"- {line}" for line in lines)
         sections.append(f"## {title}\n{rendered_lines}")
     return f"<memory-context>\n{_MEMORY_CONTEXT_GUARD}\n{chr(10).join(sections)}\n</memory-context>"
+
+
+def render_scoped_context_memories(
+    state: dict[str, Any],
+    *,
+    prompt_mode: PromptMode,
+    represented_lines: list[str],
+    fallback: str,
+) -> str:
+    """Deduplicate only represented claims with matching provenance and evidence."""
+    branch_id = (state.get("branch_meta") or {}).get("branch_id")
+    represented: set[tuple[str, str, frozenset[str]]] = set()
+    for item in [*state.get("imported_findings", []), *state.get("branch_local_findings", [])]:
+        if _finding_to_line(item) not in represented_lines:
+            continue
+        if isinstance(item, dict):
+            payload = item
+        elif hasattr(item, "model_dump"):
+            payload = item.model_dump()
+        else:
+            continue
+        source = payload.get("source_branch_id")
+        if source:
+            represented.add(
+                (
+                    " ".join(str(payload.get("finding", "")).split()),
+                    str(source),
+                    frozenset(payload.get("evidence_refs") or []),
+                )
+            )
+    hits = []
+    valid_records = 0
+    for item in state.get("retrieved_memories", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            record = MemoryRecord.model_validate(
+                {key: value for key, value in item.items() if key in MemoryRecord.model_fields}
+            )
+        except ValidationError:
+            continue
+        valid_records += 1
+        if record.status != MemoryStatus.ACTIVE:
+            continue
+        if record.scope.value == "branch" and not record.promoted_to_main:
+            if record.source_branch_id != branch_id or prompt_mode == PromptMode.SYNTHESIZE:
+                continue
+        source_key = (
+            " ".join((record.summary or record.content).split()),
+            record.source_branch_id or "",
+            frozenset(record.evidence_refs),
+        )
+        if source_key in represented:
+            continue
+        hits.append(MemorySearchHit(record=record, score=float(item.get("score") or 0)))
+    if not valid_records:
+        return fallback
+    return render_memory_block(RetrievedMemoryBundle(query="", hits=hits))
 
 
 def sanitize_memory_text(text: str) -> str:
@@ -98,10 +171,13 @@ def _rendered_memory_line(
         f"; updated:{record.updated_at.date().isoformat()}"
         f"; confidence:{float(record.confidence or 0.0):.2f}] {summary}"
     )
+    if record.source_branch_id:
+        line += f" [source_branch={sanitize_memory_text(record.source_branch_id)}]"
     return _RenderedMemoryLine(
         block_key=_memory_block_key(record),
         line=line,
         dedupe_key=_memory_line_key(record, summary=summary, recency_order=recency_order),
+        evidence_refs=tuple(sanitize_memory_text(ref) for ref in record.evidence_refs),
         promoted=bool(record.promoted_to_main),
         root_scoped=record.scope.value == "root_thread",
         shared=record.visibility.value == "shared",
@@ -133,11 +209,17 @@ def _memory_source_label(record: MemoryRecord) -> str:
     return f"{record.scope.value}/{record.kind.value}"
 
 
-def _memory_line_key(record: MemoryRecord, *, summary: str, recency_order: int) -> str:
+def _memory_line_key(
+    record: MemoryRecord, *, summary: str, recency_order: int
+) -> tuple[str, str, str]:
     normalized = _normalize_memory_text(summary)
     if normalized:
-        return normalized
-    return f"{record.memory_id}:{recency_order}"
+        return (
+            normalized,
+            record.source_branch_id or "",
+            record.root_thread_id or record.source_thread_id or "",
+        )
+    return (f"{record.memory_id}:{recency_order}", "", "")
 
 
 def _normalize_memory_text(text: str) -> str:

@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-07-14
+更新时间：2026-09-28
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径。
 
@@ -59,7 +59,7 @@ OpenAPI ~159 paths、compat baseline 169 项），而不是“轻量脚手架”
 - 默认聊天入口：V2 Harness Runs（`/v2/threads/{thread_id}/runs` 与 stream/resume/cancel）
 - Frontend：React 19 + Vite + TanStack Router + TanStack Query（`apps/web`）
 - SDK：`frontend-sdk` typed browser / Node client；OpenAPI schema 导出和 generated TypeScript types 作为 drift guard
-- Persistence：Postgres primary persistence（app schema **v19**）；local SQLite fallback；filesystem artifact bodies behind `ArtifactStore`
+- Persistence：Postgres primary persistence（app schema **v19**）；local SQLite fallback；filesystem artifact bodies behind `ArtifactStore`。Run journal 可持久化和回放，但 active `RunManager`、follow-up queue 和通用运行恢复仍是进程级能力；Agent Team/durable background worker 需要显式配置。
 - Retrieval：Zvec 为默认可重建索引；Postgres/文件系统仍是 canonical store
 - Observability：request id、readiness、metrics、trajectory、replay、promote、release-health
 - Release evidence：release gate reports、production evidence pack、approval、artifact storage verification
@@ -184,7 +184,7 @@ flowchart LR
 - `agent_team_service`：Agent Team session / task / output 业务服务。
 - `user_service`：local user/session/role 业务服务。
 - `productivity_service`、`productivity_repository`：owner-scoped notes/tasks/capture 业务服务和 repository。
-- `coordination_backend`、`background_worker`：thread lease、durable background job 和后台 side-effect 调度。
+- `coordination_backend`、`background_worker`：thread lease、可选 durable background job 和后台 side-effect 调度；worker 只有在 durable backend 配置下才承担跨进程 claim/retry。
 - `checkpointer`：LangGraph checkpoint persistence。
 - `store`：LangGraph store，用于 checkpoint/graph 兼容路径和无数据库 local fallback。
 - `memory_repository`：PostgreSQL canonical memory repository，读写 `focus_memories`、audit/tombstone/candidate 和可重建的 `focus_memory_embeddings`。
@@ -196,7 +196,7 @@ flowchart LR
 - `artifact_metadata_repository`。
 - `otel_runtime`。
 
-当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`。默认 retrieval backend 为 Zvec，data dir 来自 `AGENT_ZVEC_DATA_DIR`；pgvector v10 schema 由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理，作为兼容/fallback 路径。无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用，但本地 Zvec index 仍可用于可重建的 workspace/artifact/skill 等索引。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
+当 `DATABASE_URI` 存在时，runtime 选择 Postgres primary persistence，并初始化 `PostgresMemoryRepository`。默认 memory embedding backend 为 `auto`，会优先探测本地 Ollama `embeddinggemma`；provider 不可用时 canonical memory 仍可写入，但 semantic shadow 会降级。默认 retrieval backend 为 Zvec，data dir 来自 `AGENT_ZVEC_DATA_DIR`；pgvector v10 schema 由 `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE` 管理，作为兼容/fallback 路径。无 `DATABASE_URI` 时使用 local fallback，memory repository 和 pgvector shadow 不可用，但本地 Zvec index 仍可用于可重建的 workspace/artifact/skill 等索引。配置解析由 `Settings.from_env()` 完成；目录创建副作用集中在 `ensure_runtime_directories(settings)`，并由 runtime 入口调用。
 
 ### 4.1 Perf P1/P2 Runtime Path
 
@@ -224,7 +224,7 @@ Key boundaries:
 - Local checkpoint writes are debounced by default; `FOCUS_AGENT_CHECKPOINT_INCREMENTAL=false` restores per-write flush.
 - Local LangGraph checkpoints and the local store both use SQLite by default.
 - `FOCUS_AGENT_CHECKPOINT_BACKEND=pickle` explicitly switches both local files to pickle. When `FOCUS_AGENT_CHECKPOINT_VERIFY_SIGNATURE=true`, startup requires a stable `FOCUS_AGENT_CHECKPOINT_HMAC_KEY` before either file is created; owner and HMAC validation remain mandatory on restore.
-- Memory writes enqueue `memory_embedding` durable jobs when `FOCUS_AGENT_MEMORY_EMBED_ASYNC=true`; setting it to `false` restores synchronous best-effort embedding.
+- Memory writes schedule `memory_embedding` asynchronously by default (`FOCUS_AGENT_MEMORY_EMBED_ASYNC=true`). A configured durable backend can persist those jobs; otherwise the process-local/best-effort path is used. Setting it to `false` restores synchronous best-effort embedding.
 - Tool execution uses `tool_thread_pool` when `FOCUS_AGENT_TOOL_POOL_ISOLATED=true`; setting it to `false` returns tool batches to the shared pool.
 
 Operational metrics to watch during rollout:
@@ -270,7 +270,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Auth | `POST /v1/auth/demo-token`、register / login / refresh / logout / change-password / sessions、`GET /v1/auth/me` | 本地 demo token、用户名密码登录、refresh session、账号自助和当前 principal |
 | Models | `GET /v1/models` | 模型目录和能力 |
 | Conversations | `GET/POST/PATCH /v1/conversations`、archive / activate | root thread 会话管理 |
-| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/threads/{thread_id}/runs/cancel`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events|snapshot|trajectory` | V2 harness run、流式 run、resume、按 thread 或 run 取消、事件回放、snapshot、trajectory |
+| Harness Runs | `POST /v2/threads/{thread_id}/runs`、`/runs/stream`、`/runs/resume/stream`、`POST /v2/threads/{thread_id}/runs/cancel`、`POST /v2/runs/{run_id}/stream`、`GET /v2/runs/{run_id}`、`POST /v2/runs/{run_id}/cancel`、`GET /events`、`/snapshot`、`/trajectory` | V2 harness run、流式 run、显式 checkpoint resume、按 thread 或 run 取消、事件回放、snapshot、trajectory；事件/元数据可回放不等于 producer 崩溃后自动恢复 |
 | Threads | `GET /v1/threads/{thread_id}`、`GET /v1/threads/{thread_id}/resolution`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、root/child 线程引用解析、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree、branch action execute/dismiss | 分支生命周期、root/child-aware branch tree 和用户确认的分支动作 |
 | Branch Decisions | `GET /v1/branch-decisions/config`、`GET /v1/threads/{thread_id}/branch-decisions`、decision promote / dismiss | post-turn 决策记录和 pre-turn recommendation 证据 |
@@ -349,7 +349,7 @@ flowchart LR
 
 ## 7. Harness Run 数据流
 
-Harness run 是默认聊天入口。非流式、流式和 resume 入口最终都会汇入 V2 harness runtime、RunManager、StreamBridge、graph 执行、状态落盘和 trajectory 记录路径。下图把共享生命周期和分支点压缩在一起：
+Harness run 是默认聊天入口。非流式、流式和显式 resume 入口最终都会汇入 V2 harness runtime、RunManager、StreamBridge、graph 执行、状态落盘和 trajectory 记录路径。Run journal 可以保存事件和运行元数据，但当前 `RunManager` 不在启动时从 journal hydrate，也不会自动把中断的 producer 重新排队；下图把共享生命周期和分支点压缩在一起：
 
 ```mermaid
 flowchart TD
@@ -545,7 +545,7 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
 - retrieval tools：`memory_search`、`artifact_search` 和 `workspace_search` 默认使用共享 `RetrievalIndex`，Zvec 命中必须回查 canonical memory、artifact metadata/body 或当前 workspace 文件 hash 后才返回。
 - 线程级沙箱执行：`run_workspace_command` 和声明式 `run_skill_entrypoint` 会构造 `SandboxExecutionRequest`，由 `SandboxExecutionService` 路由到 Docker backend 或显式 local fallback。同一 thread / branch 使用稳定 `sandbox_id` 和 `.focus_agent/sandboxes/threads/<sandbox_id>/workspace`；单次命令仍用 `run_id` 记录审计和输出。
-- live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。
+- live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。内置外部访问是受策略约束的公共 Web 搜索/抓取，不代表 MCP、浏览器/电脑控制或账号连接器已经具备生命周期管理。
 
 ## 13. Agent Governance 概览
 
@@ -614,7 +614,7 @@ Artifact 正文仍在文件系统，Postgres 保存 metadata、relative path、c
 
 ### 14.2 Async repository boundary
 
-Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使用各自同步 DB driver，但同步 I/O 会通过共享线程池执行，并保留 journal 内部 `asyncio.Lock` 来串行 sequence-sensitive 写入。这避免了 run 创建、stream event 持久化、snapshot 和 trajectory 查询在 event loop 线程上直接阻塞，同时保持现有 repository contract 不变。
+Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使用各自同步 DB driver，但同步 I/O 会通过共享线程池执行，并保留 journal 内部 `asyncio.Lock` 来串行 sequence-sensitive 写入。这避免了 run 创建、stream event 持久化、snapshot 和 trajectory 查询在 event loop 线程上直接阻塞，同时保持现有 repository contract 不变。它提供的是查询/回放边界，不是通用 active-run 恢复协议；`/runs/resume/stream` 需要调用方显式提供 `Command(resume=...)`。
 
 ### 14.3 Local fallback persistence
 
@@ -632,8 +632,12 @@ Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使�
 branch、conversation、thread access、用户和 productivity 数据统一写入
 `BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`），因此直接重启裸跑 API
 不会丢失这些 app-state。Agent Team 仍保留 in-memory fallback；trajectory 和
-artifact metadata 也不会在该模式下获得 Postgres durability。这是单机本地
-fallback，不是生产多副本方案。
+artifact metadata 也不会在该模式下获得 Postgres durability。已持久化的
+checkpoint、journal 或 workspace copy 不能单独保证任务进程重启后继续执行；
+跨进程 claim/retry 只对已接入具体 job handler 的 Agent Team v2 或 durable
+background worker 路径成立；启用 flag 本身不会让通用 harness run 自动恢复，
+generic run 仍需要显式的 run/retry owner。这是单机本地 fallback，不是生产
+多副本方案。
 
 LangGraph checkpoint/store 默认分别写入
 `.focus_agent/langgraph-checkpoints.sqlite3` 和

@@ -225,7 +225,7 @@ def _runtime_stub(
         branch_service=object(),
         tool_registry=object(),
         skill_registry=object(),
-        memory_repository=object(),
+        memory_repository=SimpleNamespace(search=lambda **_kwargs: []),
         trajectory_recorder=trajectory_recorder
         if trajectory_recorder is not None
         else _FakeTrajectoryRepo(),

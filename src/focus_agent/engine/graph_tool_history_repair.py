@@ -6,7 +6,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from ..config import Settings
-from ..core.branch_messages import branch_fork_message_count, branch_visible_messages
+from ..core.branch_messages import branch_context_messages, branch_fork_message_count
 from ..core.state import AgentState
 from ..core.tool_call_protocol import repair_dangling_tool_call_messages
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
@@ -77,13 +77,28 @@ def _drop_leading_messages_before_first_human(messages: list[Any]) -> list[Any]:
 
 def _messages_for_model(state: AgentState) -> list[Any]:
     raw_recent_messages = list(state.get("recent_messages") or [])
-    messages = branch_visible_messages(list(state.get("messages", []) or []), values=state)
-    recent_messages = (
-        messages[-len(raw_recent_messages) :]
-        if raw_recent_messages and branch_fork_message_count(state) is not None
-        else raw_recent_messages
-    )
+    source_messages = list(state.get("messages", []) or [])
+    messages = branch_context_messages(source_messages, values=state)
     trailing_tool_span_start = _find_trailing_tool_span_start(messages)
+    recent_messages = raw_recent_messages
+    if raw_recent_messages and branch_fork_message_count(state) is not None:
+        source_objects = {id(message) for message in source_messages}
+        if any(
+            not getattr(message, "id", None) and id(message) not in source_objects
+            for message in raw_recent_messages
+        ):
+            # Restored messages without IDs cannot prove their branch origin by value.
+            # Use the cursor-projected source; the active tool span is appended below.
+            recent_messages = messages[:trailing_tool_span_start]
+        else:
+            local_objects = {id(message) for message in messages}
+            local_ids = {message.id for message in messages if getattr(message, "id", None)}
+            recent_messages = [
+                message
+                for message in raw_recent_messages
+                if id(message) in local_objects
+                or (getattr(message, "id", None) and message.id in local_ids)
+            ]
     if trailing_tool_span_start is None:
         selected = _collapse_unanswered_trailing_humans(recent_messages or messages)
     else:
@@ -108,9 +123,10 @@ def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
 def _should_force_tool_free_answer(messages: list[Any]) -> bool:
     if not messages or not isinstance(messages[-1], ToolMessage):
         return False
-    return (
-        _count_tool_call_rounds_since_latest_human(messages) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS
-        or _has_repeated_failed_tool_call(messages, max_repetitions=2)
+    return _count_tool_call_rounds_since_latest_human(
+        messages
+    ) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS or _has_repeated_failed_tool_call(
+        messages, max_repetitions=2
     )
 
 

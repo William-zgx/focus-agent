@@ -222,6 +222,35 @@ def _request_kwargs_for_model(
     return profile_kwargs
 
 
+def _ensure_deepseek_thinking_disabled(
+    provider: str,
+    configured: ConfiguredModel,
+    request_kwargs: dict[str, object],
+    *,
+    thinking_mode: str,
+) -> dict[str, object]:
+    """Send DeepSeek's explicit thinking switch when the catalog omits it.
+
+    DeepSeek models may enable thinking by default on their compatible endpoint.
+    The local model catalog is user-owned and may only describe that a model
+    supports thinking, so an explicit UI ``disabled`` selection must still
+    reach the provider instead of becoming an in-process-only state.
+    """
+    if provider != "deepseek" or thinking_mode != "disabled" or not configured.supports_thinking:
+        return request_kwargs
+    if configured.thinking_disabled_model_name or configured.thinking_disable_switch_model:
+        return request_kwargs
+
+    extra_body = request_kwargs.get("extra_body")
+    thinking = extra_body.get("thinking") if isinstance(extra_body, Mapping) else None
+    if isinstance(thinking, Mapping) and thinking.get("type"):
+        return request_kwargs
+    return _merge_request_kwargs(
+        request_kwargs,
+        {"extra_body": {"thinking": {"type": "disabled"}}},
+    )
+
+
 def supports_thinking_mode(model_id: str, *, settings: Settings | None = None) -> bool:
     configured = _configured_model(model_id, settings=settings)
     return bool(configured.supports_thinking) if configured is not None else False
@@ -343,6 +372,12 @@ def resolve_model_config(
         effective_thinking_mode = _effective_thinking_mode(configured, thinking_mode)
         request_kwargs = _request_kwargs_for_model(
             configured,
+            thinking_mode=effective_thinking_mode,
+        )
+        request_kwargs = _ensure_deepseek_thinking_disabled(
+            provider,
+            configured,
+            request_kwargs,
             thinking_mode=effective_thinking_mode,
         )
         if effective_thinking_mode == "disabled":

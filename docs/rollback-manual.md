@@ -1,11 +1,20 @@
 # Rollback Manual
 
-Updated: 2026-07-12
+Updated: 2026-09-28
+Source baseline: `718be87`
 
 This runbook covers the perf-p1/perf-p2 flags and their persistence safety
 boundaries. Roll back one subsystem at a time when possible, restart the API,
 and watch `/readyz`, `/metrics`, API error rate, and the relevant backlog signal
 for at least one scrape window.
+
+Read `/readyz` component details rather than treating HTTP 200/`ready=true` as
+proof of every dependency: local/fallback checks can be ready without a live
+PostgreSQL/provider connection. Also use the deployment supervisor's tested
+restart/termination path for production rollback. The runtime currently
+registers its own signal callbacks through `install_signal_handlers`, which can
+override Uvicorn's process-signal handling; a rollback smoke must not claim a
+graceful `SIGTERM` drain unless that actual process path was tested.
 
 A deployment rollback creates a new evidence identity. Do not reuse reports
 from the deployment being replaced: bind the post-rollback commit, deployment
@@ -24,8 +33,10 @@ evidence for the recovered instance.
 
 ## Rollback Order
 
-1. If the service is not ready, check `/readyz` first. A DB pool issue usually
-   shows up as rising `active_connections` or connection acquisition errors.
+1. If the service is not ready, check `/readyz` first. Inspect component
+   details and corroborate DB/provider health separately; a fallback `ready=true`
+   is not a dependency probe. A DB pool issue usually shows up as rising
+   `active_connections` or connection acquisition errors.
 2. If writes are slow but the API is healthy, roll back checkpoint debounce or
    SQLite backend before changing memory embedding.
 3. If memory writes are slow or embedding jobs dead-letter, set

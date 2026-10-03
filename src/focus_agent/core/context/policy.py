@@ -10,6 +10,7 @@ from ..context_budget_guard import (
     _coerce_prompt_mode,
     _conversation_safe_messages,
 )
+from ..context_compaction import select_recent_messages
 from ..state import normalize_agent_state
 from ..types import ContextBudget, PromptMode
 from . import budget as _budget_guard
@@ -159,8 +160,8 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     branch_meta = normalized.get("branch_meta") or {}
     is_branch = bool(branch_meta)
 
-    messages = list(normalized.get("messages", []) or normalized.get("recent_messages", []))
-    recent_messages = _conversation_safe_messages(messages, limit=budget.recent_message_limit)
+    messages = select_recent_messages({**normalized, "context_budget": budget})
+    recent_messages = _conversation_safe_messages(messages, limit=max(1, len(messages)))
 
     memory_lines = _dedupe_memory_lines(
         [str(item) for item in state.get("_memory_lines", [])],
@@ -219,6 +220,17 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     )
     artifact_lines = _dedupe_artifact_lines(artifact_lines, limit=budget.artifact_limit)
 
+    if normalized.get("retrieved_memories"):
+        # Re-render structured sources instead of retaining a stale opaque block.
+        from ...memory.assembler import render_scoped_context_memories
+
+        memory_block = render_scoped_context_memories(
+            normalized,
+            prompt_mode=prompt_mode,
+            represented_lines=[*imported_lines, *local_finding_lines],
+            fallback=memory_block,
+        )
+
     system_instructions = "\n\n".join(
         [
             "You are Focus Agent, a concise research-oriented assistant optimized for long dialogues.",
@@ -252,6 +264,10 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         if findings_sections
         else _render_lines("Findings", [])
     )
+    compaction = normalized.get("context_compaction") or {}
+    summary = normalized.get("rolling_summary") or ""
+    if compaction.get("compaction_version") == 2 and "history_summary" in compaction:
+        summary = compaction["history_summary"]
 
     return ContextSlice(
         prompt_mode=prompt_mode,
@@ -260,7 +276,7 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         active_skills_block=active_skills_block,
         available_skills_block=available_skills_block,
         memory_block=memory_block,
-        summary_block=f"## Rolling summary\n{normalized.get('rolling_summary') or '(empty)'}",
+        summary_block=f"## Rolling summary\n{summary or '(empty)'}",
         pinned_block=_render_lines("Pinned facts", pinned_lines[-10:]),
         constraints_block=_render_lines("Constraints and goals", constraint_lines[-10:]),
         findings_block=findings_block,

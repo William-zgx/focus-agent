@@ -5624,6 +5624,8 @@ export interface components {
              * @default
              */
             reason: string;
+            /** Recommendation User Visible */
+            recommendation_user_visible?: boolean | null;
             /** Root Thread Id */
             root_thread_id: string;
             /** Source */
@@ -6098,6 +6100,11 @@ export interface components {
         /** ContextUsageResponse */
         ContextUsageResponse: {
             /**
+             * Configured Token Limit
+             * @default 0
+             */
+            configured_token_limit: number;
+            /**
              * Counting Backend
              * @default chars_fallback
              */
@@ -6112,8 +6119,28 @@ export interface components {
              * @default true
              */
             estimated: boolean;
+            /**
+             * Input Token Limit
+             * @default 0
+             */
+            input_token_limit: number;
             /** Last Compacted At */
             last_compacted_at?: string | null;
+            /**
+             * Output Reserve Tokens
+             * @default 0
+             */
+            output_reserve_tokens: number;
+            /**
+             * Posttrim Tokens
+             * @default 0
+             */
+            posttrim_tokens: number;
+            /**
+             * Pretrim Tokens
+             * @default 0
+             */
+            pretrim_tokens: number;
             /**
              * Prompt Budget Chars
              * @default 0
@@ -6129,6 +6156,11 @@ export interface components {
              * @default 0
              */
             remaining_tokens: number;
+            /**
+             * Required Overflow
+             * @default false
+             */
+            required_overflow: boolean;
             /**
              * Status
              * @default ok
@@ -6147,6 +6179,16 @@ export interface components {
              * @default chars_fallback
              */
             tokenizer_mode: string;
+            /**
+             * Tool Schema Tokens
+             * @default 0
+             */
+            tool_schema_tokens: number;
+            /**
+             * Trimmed
+             * @default false
+             */
+            trimmed: boolean;
             /**
              * Used Ratio
              * @default 0

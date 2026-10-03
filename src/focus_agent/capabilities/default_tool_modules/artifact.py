@@ -10,9 +10,17 @@ from typing import Any
 
 from langchain.tools import tool
 
+from ...core.context_tool_observation_references import (
+    _is_tool_observation_artifact_id,
+    _observation_artifact_id,
+    _observation_artifact_id_from_ref,
+    _parse_tool_observation_ref,
+)
 from ...retrieval.artifacts import artifact_content_hash, index_artifact_content
 from ...storage import LocalArtifactStore
 from .common import _coerce_relative_posix, _require_non_empty_text_arg
+
+_MAX_ARTIFACT_READ_RANGE = 50_000
 
 
 def _slugify(value: str) -> str:
@@ -57,6 +65,12 @@ def build_artifact_tools(
         if hasattr(store, "artifact_id_for_path"):
             return store.artifact_id_for_path(path)
         return path.relative_to(artifact_dir.resolve()).as_posix()
+
+    def _reject_reserved_observation_path(artifact_id: str) -> None:
+        if _is_tool_observation_artifact_id(artifact_id):
+            raise PermissionError(
+                "tool-observation artifacts must be read through a scoped tool-observation reference."
+            )
 
     def _get_artifact_metadata_repo():
         nonlocal artifact_metadata_repo
@@ -109,6 +123,31 @@ def build_artifact_tools(
         except Exception:  # noqa: BLE001
             return
 
+    def _save_tool_observation(
+        *,
+        tool_name: str,
+        tool_call_id: str,
+        content: str,
+        thread_id: str | None,
+    ) -> str | None:
+        """Persist a trimmed tool's raw output under the trusted runtime thread."""
+        if not thread_id:
+            raise PermissionError("tool-observation persistence requires a runtime thread scope.")
+        artifact_id = _observation_artifact_id(
+            thread_id=thread_id,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+        )
+        path = _artifact_path_for(artifact_id)
+        store.save(artifact_id, content.encode("utf-8"))
+        _upsert_artifact_metadata(
+            thread_id=thread_id,
+            artifact_id=artifact_id,
+            path=path,
+            title=f"Tool observation: {tool_name}",
+        )
+        return artifact_id
+
     def _search_artifacts_from_filesystem(*, query: str, limit: int) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         terms = _query_terms(query)
@@ -118,6 +157,8 @@ def build_artifact_tools(
             else LocalArtifactStore(artifact_dir).iter_artifacts()
         )
         for item in artifact_iter:
+            if _is_tool_observation_artifact_id(item.artifact_id):
+                continue
             try:
                 content = store.load(item.artifact_id).decode("utf-8")
             except Exception:  # noqa: BLE001
@@ -153,6 +194,8 @@ def build_artifact_tools(
         results: list[dict[str, Any]] = []
         for hit in hits:
             artifact_id = str(hit.fields.get("artifact_id") or hit.source_id)
+            if _is_tool_observation_artifact_id(artifact_id):
+                continue
             try:
                 content = store.load(artifact_id).decode("utf-8")
             except Exception:  # noqa: BLE001
@@ -195,6 +238,8 @@ def build_artifact_tools(
             else LocalArtifactStore(artifact_dir).iter_artifacts()
         )
         for item in artifact_iter:
+            if _is_tool_observation_artifact_id(item.artifact_id):
+                continue
             artifacts.append(
                 {
                     "artifact_id": item.artifact_id,
@@ -268,6 +313,11 @@ def build_artifact_tools(
             if repo is not None and thread_id:
                 try:
                     metadata_rows = repo.list_by_thread(thread_id, limit=capped_results + 1)
+                    metadata_rows = [
+                        record
+                        for record in metadata_rows
+                        if not _is_tool_observation_artifact_id(str(record.artifact_id))
+                    ]
                     truncated = len(metadata_rows) > capped_results
                     artifacts = [
                         _artifact_payload_from_metadata(record)
@@ -300,47 +350,102 @@ def build_artifact_tools(
             raise
 
     @tool
-    def artifact_read(artifact_id: str) -> str:
-        """Read a saved text artifact by filename or artifact id."""
+    def artifact_read(artifact_id: str, offset: int | None = None, limit: int | None = None) -> str:
+        """Read a saved text artifact, or a scoped tool-observation range."""
         tool_name = "artifact_read"
-        emit_tool_event(tool_name=tool_name, stage="start", artifact_id=artifact_id)
+        emit_tool_event(
+            tool_name=tool_name,
+            stage="start",
+            artifact_id=artifact_id,
+            offset=offset,
+            limit=limit,
+        )
         try:
+            if isinstance(offset, bool) or (offset is not None and int(offset) != offset):
+                raise ValueError("offset must be a non-negative integer")
+            if isinstance(limit, bool) or (limit is not None and int(limit) != limit):
+                raise ValueError("limit must be a positive integer")
+            requested_offset = 0 if offset is None else int(offset)
+            if requested_offset < 0:
+                raise ValueError("offset must be a non-negative integer")
+            configured_limit = max(1, int(tool_catalog.artifact_read.max_chars))
+            read_limit = min(_MAX_ARTIFACT_READ_RANGE, configured_limit)
+            if limit is not None:
+                read_limit = min(read_limit, int(limit))
+                if read_limit < 1:
+                    raise ValueError("limit must be a positive integer")
+
+            observation_ref = _parse_tool_observation_ref(artifact_id)
+            if artifact_id.startswith("tool-observation://") and observation_ref is None:
+                raise ValueError("invalid tool-observation reference")
             read_artifact_id = artifact_id
             path = _artifact_path_for(read_artifact_id)
-            repo = _get_artifact_metadata_repo()
-            if repo is not None:
-                try:
-                    metadata_record = repo.get_by_artifact_id(artifact_id)
-                except Exception as exc:  # noqa: BLE001
-                    emit_tool_event(
-                        tool_name=tool_name,
-                        stage="delta",
-                        message="Artifact metadata lookup failed; reading from filesystem path.",
-                        error=str(exc),
-                    )
-                else:
-                    if metadata_record is not None:
-                        metadata_path = Path(str(metadata_record.path)).expanduser()
-                        if not metadata_path.is_absolute():
-                            metadata_path = metadata_path.resolve()
-                        try:
-                            metadata_path.relative_to(artifact_dir.resolve())
-                        except ValueError:
-                            pass
-                        else:
-                            read_artifact_id = _artifact_id_for_path(metadata_path)
-                            path = metadata_path
+            metadata_record = None
+            if observation_ref is not None:
+                thread_id = get_current_thread_id()
+                if not thread_id:
+                    raise PermissionError("tool-observation reads require a runtime thread scope")
+                read_artifact_id = _observation_artifact_id_from_ref(
+                    reference=artifact_id, thread_id=thread_id
+                )
+                if read_artifact_id is None:
+                    raise PermissionError("invalid tool-observation scope")
+                path = _artifact_path_for(read_artifact_id)
+                repo = _get_artifact_metadata_repo()
+                if repo is not None:
+                    try:
+                        metadata_record = repo.get_by_artifact_id(read_artifact_id)
+                    except Exception as exc:  # noqa: BLE001
+                        raise PermissionError(
+                            "tool-observation metadata lookup failed; refusing unscoped read"
+                        ) from exc
+                    if metadata_record is not None and str(metadata_record.thread_id) != str(
+                        thread_id
+                    ):
+                        raise PermissionError("tool-observation is not readable in this thread")
+            else:
+                _reject_reserved_observation_path(artifact_id)
+                repo = _get_artifact_metadata_repo()
+                if repo is not None:
+                    try:
+                        metadata_record = repo.get_by_artifact_id(artifact_id)
+                    except Exception as exc:  # noqa: BLE001
+                        emit_tool_event(
+                            tool_name=tool_name,
+                            stage="delta",
+                            message="Artifact metadata lookup failed; reading from filesystem path.",
+                            error=str(exc),
+                        )
+                    else:
+                        if metadata_record is not None:
+                            metadata_path = Path(str(metadata_record.path)).expanduser()
+                            if not metadata_path.is_absolute():
+                                metadata_path = metadata_path.resolve()
+                            try:
+                                metadata_path.relative_to(artifact_dir.resolve())
+                            except ValueError:
+                                pass
+                            else:
+                                read_artifact_id = _artifact_id_for_path(metadata_path)
+                                path = metadata_path
+                _reject_reserved_observation_path(read_artifact_id)
             if not store.exists(read_artifact_id):
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
                 raise IsADirectoryError(artifact_id)
             content = store.load(read_artifact_id).decode("utf-8")
-            truncated = len(content) > tool_catalog.artifact_read.max_chars
+            content_end = min(len(content), requested_offset + read_limit)
             payload = {
-                "artifact_id": _artifact_id_for_path(path),
+                "artifact_id": artifact_id
+                if observation_ref is not None
+                else _artifact_id_for_path(path),
                 "path": str(path),
-                "content": content[: tool_catalog.artifact_read.max_chars],
-                "truncated": truncated,
+                "content": content[requested_offset:content_end],
+                "offset": requested_offset,
+                "limit": read_limit,
+                "total_chars": len(content),
+                "next_offset": content_end if content_end < len(content) else None,
+                "truncated": content_end < len(content),
             }
             result = json.dumps(payload, ensure_ascii=False)
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
@@ -351,12 +456,18 @@ def build_artifact_tools(
             )
             raise
 
+    artifact_read.metadata = {
+        **(getattr(artifact_read, "metadata", {}) or {}),
+        "_focus_agent_save_tool_observation": _save_tool_observation,
+    }
+
     @tool
     def artifact_update(artifact_id: str, body: str, mode: str = "replace") -> str:
         """Replace, append to, or prepend content in an existing text artifact."""
         tool_name = "artifact_update"
         emit_tool_event(tool_name=tool_name, stage="start", artifact_id=artifact_id, mode=mode)
         try:
+            _reject_reserved_observation_path(artifact_id)
             path = _artifact_path_for(artifact_id)
             if not store.exists(artifact_id):
                 raise FileNotFoundError(artifact_id)

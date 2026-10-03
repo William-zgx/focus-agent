@@ -1,5 +1,8 @@
 # Release Checklist
 
+Reviewed: 2026-09-28
+Source baseline: `718be87`
+
 This checklist is intended for maintainers preparing Focus Agent for a public release or a tagged internal milestone. It is the human release-readiness checklist: what to confirm, what blocks release, and what evidence must exist. CI provider binding details live in [docs/ci/github-actions-release-gate.md](ci/github-actions-release-gate.md) from this docs directory.
 
 ```mermaid
@@ -133,6 +136,7 @@ focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `make ui-smoke-agent-team-adoption` is the command name for the Agent Team adoption source-level smoke. It covers task selection, diff/test evidence, conflict/apply state, capture to Notes/Tasks, context evidence, and skill feedback wiring; pair it with real-browser coverage when changing the visual adoption flow.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
+- Eval `acceptance` thresholds are enforced by the runner. Missing usage or pricing is `cost_status=unknown`, not zero cost; fake/offline harness results must remain distinct from provider quality evidence.
 - `scripts/feedback_regression.py` summarizes online feedback and adoption/governance signals into `reports/nightly/feedback-regression.json`. It is non-blocking when no production feedback artifact exists, but nightly reports must include its `feedback_pipeline` when events are provided.
 - `focus-agent-retrieval-index doctor` is the Zvec release preflight. Include its output as release evidence when Zvec is enabled; it should show backend, data dir, collection/readiness status, and fallback backend without exposing vectors.
 - `focus-agent-memory-embedding doctor` is the memory embedding/pgvector fallback preflight. Include its JSON output as release evidence when PostgreSQL memory embedding or pgvector fallback is enabled; it should show provider readiness, table dimension compatibility, extension status, and vector index state without exposing API keys or vector values.
@@ -146,7 +150,7 @@ Production evidence is fail-closed and is separate from `--dry-run` planning:
 
 - Bind the pack to the complete `RELEASE_COMMIT_SHA`, `RELEASE_DEPLOYMENT_ID`, `RELEASE_DEPLOYMENT_VERSION`, and `RELEASE_ENVIRONMENT` tuple. The commit must be a hexadecimal SHA that resolves in the checkout and resolves to the current `HEAD`; deployment id and version must be non-empty; the environment must canonicalize to `production`.
 - Every JSON supplied through a production `--*-json` evidence input must carry a timezone-aware evidence timestamp and a complete `release_binding` with the same four values. Required evidence timestamps must also fit within one collection window. The default maximum age and collection-window span is `21600` seconds; use `--max-evidence-age-seconds` only to make an intentional, reviewed override.
-- `/readyz` must additionally expose `deployment`, `app_version`, and `environment`, matching the bound deployment id, deployment version, and production environment. These checks supplement, rather than replace, its timestamp and complete `release_binding`.
+- `/readyz` must additionally expose `deployment`, `app_version`, and `environment`, matching the bound deployment id, deployment version, and production environment. These checks supplement, rather than replace, its timestamp and complete `release_binding`; a `ready=true` fallback component is not proof of external DB/provider health, so retain the required migration, Postgres/provider, and smoke reports.
 - Trusted capture must process every production JSON input that was not emitted
   by an attesting writer through `scripts/release_evidence_capture.py`. Existing
   top-level or `meta.release_binding` values must already match the environment;
@@ -283,6 +287,7 @@ uv run python -m tests.eval replay \
 - Review bootstrap admin IDs, local implicit-admin behavior, persisted admin roles, and the last-active-admin guard
 - Review logout semantics: refresh sessions and cookies are revoked, while stateless copied access tokens remain valid until expiry or key rotation
 - Review thread ownership enforcement paths
+- Verify the deployment platform/supervisor owns and has tested restart and termination behavior. A one-shot `docker run`, Compose `run`, or direct API process without a configured and verified restart policy is not production restart evidence; the production Compose template's `restart: unless-stopped` is evidence only when that service is actually managed by Compose.
 - Review any filesystem write locations used by tools or examples
 - Review dependency versions and known advisories
 - Confirm no sensitive values are present in tracked docs or examples

@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .context_assembly import _context_block_priority
+from .context_assembly_rendering import _context_block_header
 from .context_policy_helpers import units_to_char_budget as _units_to_char_budget_helper
 from .context_token_counting import _message_budget_units, _text_for_budget
 from .context_tool_observation import (
@@ -20,6 +21,7 @@ def apply_prompt_budget_guard(
     prompt_messages: list[AnyMessage],
     *,
     budget: ContextBudget,
+    preserve_required_messages: bool = False,
 ) -> list[AnyMessage]:
     """Deterministically trim a prompt before model invocation."""
     counter = _PromptBudgetCounter(budget)
@@ -47,11 +49,21 @@ def apply_prompt_budget_guard(
                 target_chars,
                 max(0, _prompt_char_limit(budget) - _prompt_char_count(other_messages)),
             )
-        trimmed_system = _trim_system_text_by_blocks(
-            _text_for_budget(guarded[main_system_index]),
-            max_chars=target_chars,
-            target_units=target_units,
-            budget=budget,
+        system_text = _text_for_budget(guarded[main_system_index])
+        trimmed_system = (
+            _trim_system_text_preserving_required_blocks(
+                system_text,
+                max_chars=target_chars,
+                target_units=target_units,
+                budget=budget,
+            )
+            if preserve_required_messages
+            else _trim_system_text_by_blocks(
+                system_text,
+                max_chars=target_chars,
+                target_units=target_units,
+                budget=budget,
+            )
         )
         guarded[main_system_index] = _copy_message_with_content(
             guarded[main_system_index],
@@ -80,7 +92,12 @@ def apply_prompt_budget_guard(
     if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
-    return _hard_limit_prompt_messages(guarded, budget=budget, counter=counter)
+    return _hard_limit_prompt_messages(
+        guarded,
+        budget=budget,
+        counter=counter,
+        preserve_required_messages=preserve_required_messages,
+    )
 
 
 def _prompt_char_limit(budget: ContextBudget) -> int:
@@ -229,6 +246,42 @@ def _trim_system_text_by_blocks(
     return _truncate_block(rendered, max_chars=max_chars)
 
 
+def _trim_system_text_preserving_required_blocks(
+    text: str,
+    *,
+    max_chars: int,
+    target_units: int,
+    budget: ContextBudget,
+) -> str:
+    """Drop low-priority context without truncating instruction sections."""
+
+    blocks = _split_context_blocks(text)
+    if not blocks:
+        return text
+    required = {
+        index
+        for index, block in enumerate(blocks)
+        if _context_block_header(block) not in {"summary", "memory", "available_skills", "empty"}
+    }
+    selected = set(required)
+    used_chars = sum(len(blocks[index]) for index in required) + max(0, len(required) - 1) * 2
+    used_units = sum(
+        _message_budget_units(SystemMessage(content=blocks[index]), budget=budget)
+        for index in required
+    )
+    for index, block in enumerate(blocks):
+        if index in required:
+            continue
+        extra_chars = len(block) + (2 if selected else 0)
+        extra_units = _message_budget_units(SystemMessage(content=block), budget=budget)
+        if used_chars + extra_chars > max_chars or used_units + extra_units > target_units:
+            continue
+        selected.add(index)
+        used_chars += extra_chars
+        used_units += extra_units
+    return "\n\n".join(blocks[index] for index in sorted(selected) if blocks[index])
+
+
 def _split_context_blocks(text: str) -> list[str]:
     return [block.strip() for block in text.split("\n\n") if block.strip()]
 
@@ -323,10 +376,12 @@ def _hard_limit_prompt_messages(
     *,
     budget: ContextBudget,
     counter: _PromptBudgetCounter | None = None,
+    preserve_required_messages: bool = False,
 ) -> list[AnyMessage]:
     guarded = list(messages)
     budget_counter = counter or _PromptBudgetCounter(budget)
     latest_human = _latest_human_index(guarded)
+    required_indices = _mandatory_prompt_indices(guarded) if preserve_required_messages else set()
     ordered_indices = [
         *[
             index
@@ -351,6 +406,8 @@ def _hard_limit_prompt_messages(
     seen: set[int] = set()
     for index in ordered_indices:
         if index in seen or index >= len(guarded):
+            continue
+        if index in required_indices:
             continue
         seen.add(index)
         current_count = budget_counter.count(guarded)

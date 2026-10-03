@@ -364,6 +364,33 @@ function loadTrajectoryUtilityFunctions() {
   return context.module.exports;
 }
 
+function loadToolActivityFunctions() {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-tool-activity-card.tsx"),
+    "utf8",
+  );
+  const functionNames = [
+    "processingStepStatusLabel",
+    "countSteps",
+    "activityStatusCounts",
+    "statusChipLabel",
+    "activitySummaryChips",
+  ];
+  const snippet = functionNames.map((name) => extractFunction(sourceText, name)).join("\n\n");
+  const transpiled = ts.transpileModule(snippet, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const context = {
+    exports: {},
+    module: { exports: {} },
+  };
+  vm.runInNewContext(`${transpiled}\nmodule.exports = { ${functionNames.join(", ")} };`, context);
+  return context.module.exports;
+}
+
 function loadMarkdownParagraphFunction() {
   const sourceText = readFileSync(
     path.join(repoRoot, "apps/web/src/entities/messages/message-markdown-blocks.tsx"),
@@ -1941,7 +1968,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      "const activeRunId = activeRunIdsRef.current.get(options.threadId); if (activeRunId)",
+      "const activeRunId = activeRunIdsRef.current.get(requestThreadId); if (activeRunId)",
     ),
     true,
   );
@@ -1953,7 +1980,15 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      'client .cancelThreadHarnessRuns(options.threadId, { action: "interrupt" })',
+      'client .cancelThreadHarnessRuns(requestThreadId, { action: "interrupt" })',
+    ),
+    true,
+  );
+  assert.equal(streamHookSource.includes("previousThreadIdRef"), true);
+  assert.equal(streamHookSource.includes("requestRegistry.hasStreamRequest"), true);
+  assert.equal(
+    compactSource(streamHookSource).includes(
+      "stopStreamingForThread(previousThreadId)",
     ),
     true,
   );
@@ -1972,7 +2007,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamHookSource).includes(
-      "requestRegistry.stopStreamRequest(options.threadId); activeRunIdsRef.current.delete(options.threadId);",
+      "requestRegistry.stopStreamRequest(requestThreadId); activeRunIdsRef.current.delete(requestThreadId);",
     ),
     true,
   );
@@ -2550,6 +2585,79 @@ test("message transcript keeps historical tool results inside one tool activity"
   );
 });
 
+test("terminal transcript marks unresolved activity as historical diagnostics, not processing", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+  const { activitySummaryChips, processingStepStatusLabel } = loadToolActivityFunctions();
+  const messages = [
+    { id: "user-1", type: "human", content: "First request." },
+    {
+      id: "assistant-contract-1",
+      type: "ai",
+      content: "",
+      turn_metadata: {
+        execution_contract: {
+          status: "missing_required_tools",
+          required_tools: ["run_workspace_command"],
+        },
+      },
+    },
+    { id: "user-2", type: "human", content: "Second request." },
+    {
+      id: "assistant-contract-2",
+      type: "ai",
+      content: "",
+      turn_metadata: {
+        execution_contract: { status: "unknown" },
+      },
+    },
+  ];
+
+  const historicalItems = buildTranscriptItems(messages, null, { isCurrentTurnActive: false });
+  const historicalActivities = historicalItems.filter((item) => item.kind === "tool-activity");
+  assert.equal(historicalActivities.length, 2);
+  assert.equal(historicalActivities.every((item) => item.isHistorical === true), true);
+  assert.equal(historicalActivities[0].steps[0].status, "running");
+  assert.equal(historicalActivities[1].steps[0].status, "pending");
+
+  for (const activity of historicalActivities) {
+    const labels = activitySummaryChips(activity, true).map((chip) => chip.label);
+    assert.equal(labels.some((label) => label.includes("处理中")), false);
+    assert.equal(labels.some((label) => label.includes("历史状态未知")), true);
+    assert.equal(
+      processingStepStatusLabel(activity.steps[0], true, activity.isHistorical),
+      "历史状态未知",
+    );
+  }
+
+  const liveItems = buildTranscriptItems(messages.slice(0, 2), null, { isCurrentTurnActive: true });
+  const liveActivity = liveItems.find((item) => item.kind === "tool-activity");
+  assert.equal(liveActivity.isHistorical, false);
+  const liveLabels = activitySummaryChips(liveActivity, true).map((chip) => chip.label);
+  assert.equal(liveLabels.includes("处理中 1"), true);
+  assert.equal(liveLabels.some((label) => label.includes("历史状态未知")), false);
+
+  const activeTurnItems = buildTranscriptItems(messages, null, { isCurrentTurnActive: true });
+  const activeTurnActivities = activeTurnItems.filter((item) => item.kind === "tool-activity");
+  assert.equal(activeTurnActivities[0].isHistorical, true);
+  assert.equal(activeTurnActivities[1].isHistorical, false);
+});
+
+test("paused question and approval interrupts keep the current turn active", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list.tsx"),
+    "utf8",
+  );
+  const expression = source.match(/const isCurrentTurnActive =([\s\S]*?);/)[1];
+  const isCurrentTurnActive = new Function(
+    "isStreaming", "toolApprovalInterrupts", "askUserQuestionInterrupts",
+    `return (${expression});`,
+  );
+  assert.equal(isCurrentTurnActive(false, [], []), false);
+  assert.equal(isCurrentTurnActive(true, [], []), true);
+  assert.equal(isCurrentTurnActive(false, [{ interrupt_id: "approval" }], []), true);
+  assert.equal(isCurrentTurnActive(false, [], [{ interrupt_id: "question" }]), true);
+});
+
 test("trajectory previews hide internal tool and reasoning artifacts", () => {
 	const { compactSnippet, extractStructuredSummary } =
 		loadTrajectoryUtilityFunctions();
@@ -2650,6 +2758,90 @@ test("context meter formats current context usage separately from token spend", 
   assert.equal(shouldShowContextCompactAction({ ...usage, used_ratio: 0.86, status: "hot" }), true);
   assert.equal(contextUsageTone({ ...usage, used_ratio: 0.72, status: "warm" }), "is-warm");
   assert.equal(contextUsageTone({ ...usage, used_ratio: 0.93, status: "over" }), "is-over");
+});
+
+test("manual context compaction consumes mutation failures without unhandled rejection", async () => {
+  const source = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/thread-page.tsx"),
+    "utf8",
+  );
+  const handlerStart = source.indexOf("async function handleCompactContext()");
+  const handlerEnd = source.indexOf(
+    "async function handleDecideToolApproval",
+    handlerStart,
+  );
+  const handler = compactSource(source.slice(handlerStart, handlerEnd));
+
+  assert.ok(handlerStart >= 0);
+  assert.ok(handlerEnd > handlerStart);
+  assert.equal(
+    handler.includes(
+      'try { const payload = await compactThreadContext.mutateAsync({ trigger: "manual", }); setPreviewContextUsage(payload.context_usage ?? null); } catch { return; }',
+    ),
+    true,
+  );
+  assert.equal(
+    source.includes("compactContextError={compactThreadContext.error?.message}"),
+    true,
+  );
+
+  const buildHandler = ({ mutateAsync, setPreviewContextUsage }) =>
+    new Function(
+      "threadId",
+      "isMergedReadOnlyThread",
+      "compactThreadContext",
+      "setPreviewContextUsage",
+      `return (${source.slice(handlerStart, handlerEnd).trim()});`,
+    )(
+      "thread-1",
+      false,
+      { mutateAsync },
+      setPreviewContextUsage,
+    );
+
+  const failedRequests = [];
+  const failedPreviewUpdates = [];
+  const failureHandler = buildHandler({
+    mutateAsync: async (request) => {
+      failedRequests.push(request);
+      throw new Error("409 thread busy");
+    },
+    setPreviewContextUsage: (value) => failedPreviewUpdates.push(value),
+  });
+  const unhandledRejections = [];
+  const onUnhandledRejection = (reason) => unhandledRejections.push(reason);
+  process.on("unhandledRejection", onUnhandledRejection);
+  let failureOutcome = "pending";
+  const failurePromise = failureHandler();
+  failurePromise.then(
+    () => {
+      failureOutcome = "resolved";
+    },
+    () => {
+      failureOutcome = "rejected";
+    },
+  );
+  try {
+    void failurePromise;
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.off("unhandledRejection", onUnhandledRejection);
+  }
+  assert.deepEqual(failedRequests, [{ trigger: "manual" }]);
+  assert.deepEqual(failedPreviewUpdates, []);
+  assert.equal(failureOutcome, "resolved");
+  assert.deepEqual(unhandledRejections, []);
+
+  const successfulPreviewUpdates = [];
+  const successHandler = buildHandler({
+    mutateAsync: async (request) => {
+      assert.deepEqual(request, { trigger: "manual" });
+      return { context_usage: { remaining_tokens: 12 } };
+    },
+    setPreviewContextUsage: (value) => successfulPreviewUpdates.push(value),
+  });
+  await successHandler();
+  assert.deepEqual(successfulPreviewUpdates, [{ remaining_tokens: 12 }]);
 });
 
 test("markdown paragraph line keys avoid array index fallback for repeated tool markup lines", () => {
@@ -2776,6 +2968,10 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
     path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
     "utf8",
   );
+  const branchActionCardSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-branch-action-card.tsx"),
+    "utf8",
+  );
   const streamSource = readFileSync(
     path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
     "utf8",
@@ -2785,6 +2981,7 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
     "utf8",
   );
   const compactBranchAction = compactSource(branchActionSource);
+  const compactBranchActionCard = compactSource(branchActionCardSource);
   const compactStream = compactSource(streamSource);
 
   assert.equal(compactBranchAction.includes("result.branch_action.handoff_message"), true);
@@ -2807,8 +3004,20 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
   assert.equal(threadPageSource.includes("onComposerSelectionChange={handleComposerSelectionChange}"), true);
   assert.equal(compactStream.includes("client.streamHarnessRun( requestThreadId,"), true);
   assert.equal(compactStream.includes("message: cleanMessage"), true);
+  assert.equal(
+    compactStream.includes(
+      "beginOptimisticMessageRequest( requestThreadId, cleanMessage, )",
+    ),
+    true,
+  );
   assert.equal(compactStream.includes("input: { messages: [] }"), false);
   assert.equal(compactStream.includes("branch_handoff_auto_run: true"), true);
+  assert.equal(
+    compactBranchActionCard.includes(
+      "const disabled = isReadOnly || auditOnly || Boolean(isBusy);",
+    ),
+    true,
+  );
 });
 
 test("thread busy retry helper waits through transient previous-turn conflicts", async () => {

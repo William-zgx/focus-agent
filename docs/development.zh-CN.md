@@ -1,6 +1,7 @@
 # 开发指南
 
-更新时间：2026-07-14
+更新时间：2026-09-28
+源码基线：`718be87`
 
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
 
@@ -245,10 +246,13 @@ connected tests 会覆盖 native 可取消 HTTP 与 deep-link 插件。安装后
 
 ```bash
 .venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
+make sdk-build
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
 pnpm web:check
 ```
+
+独立运行的 Node regression 会直接 import `frontend-sdk/dist/index.js`；先构建 SDK，避免测试误用缺失或陈旧的 dist，而不是当前 TypeScript 源码。
 
 公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
 如果改动 live-web 行为，请用包含 "today"、"tomorrow" 或 "本周" 的相对时间问题验证 `current_utc_time` 会先锚定时间再 `web_search`；过期证据最多触发一次修复检索，最终应给出有证据的回答或明确的不确定说明。
@@ -387,6 +391,7 @@ make web-check
 真实浏览器验证时，开启 `AGENT_BRANCH_RECOMMENDATION_ENABLED=true` 和
 `AGENT_BRANCH_RECOMMENDATION_MODE=suggest`，并使用明确要求创建子分支或同级分支的 prompt。需要确认推荐卡片出现、该推荐没有继续进入普通 graph turn、确认/取消后 thread 与 branch tree cache 都刷新正确。
 如果改动触及 handoff 隔离，还需要使用不同 sentinel 跑“子分支 -> 同级分支”真实浏览器流程，确认最终同级分支 transcript、`GET /v1/threads/{thread_id}` 和 context preview 只包含自己的交接文本，不包含源子分支交接文本或无关 thread id。
+这只证明上述读取/context 路径的定向证据，不等于已经证明整条请求链的所有跨 owner mutation 或下游副作用都完成隔离。
 同时验证 `GET /v1/threads/{thread_id}/resolution` 对 root、child、unknown thread 的返回，以及从 child thread 路由打开分支树仍能解析到 root。
 
 15. 如果改动影响 Auth / Access Model、token 生命周期或 ownership 语义：

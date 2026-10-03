@@ -1,6 +1,7 @@
 # Secret Rotation
 
-Updated: 2026-07-12
+Updated: 2026-09-28
+Source baseline: `718be87`
 
 Focus Agent now has a `SecretProvider` abstraction with `env` as the default provider and stubs for Vault and AWS Secrets Manager.
 
@@ -12,6 +13,12 @@ Focus Agent now has a `SecretProvider` abstraction with `env` as the default pro
 4. Verify `/readyz` and a provider smoke request before removing the old key.
 5. Ensure logs, generated reports, shell history, and retained release artifacts
    contain no secret value before revoking the old credential.
+
+The restart/drain step must be performed by the production supervisor or
+deployment platform. A one-shot API/uvicorn process is not automatic-restart
+evidence, and `/readyz` HTTP success alone does not prove that the provider or
+database dependency accepted the new credential; keep the explicit provider
+smoke (and DB/migration checks for database rotations).
 
 ## JWT Secret
 

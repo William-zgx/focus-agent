@@ -441,6 +441,9 @@ def test_openai_compatible_factory_reports_missing_configured_api_key_env() -> N
 
 def test_readiness_reports_memory_embedding_backend_ready_and_keeps_trajectory_last() -> None:
     class _Repository:
+        def search(self, **_kwargs):
+            return []
+
         def inspect_pgvector_support(
             self, *, dimensions: int, vector_index: bool
         ) -> dict[str, object]:
@@ -536,7 +539,7 @@ def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
     assert "dimensions=768" in check.detail
 
 
-def test_readiness_reports_zvec_fallback_without_failing_readyz() -> None:
+def test_readiness_reports_zvec_fallback_without_a_real_backend() -> None:
     runtime = SimpleNamespace(
         settings=Settings(
             agent_retrieval_backend="zvec", agent_retrieval_fallback_backend="postgres"
@@ -558,9 +561,83 @@ def test_readiness_reports_zvec_fallback_without_failing_readyz() -> None:
     readiness = _build_runtime_readiness(runtime)
     check = next(item for item in readiness.checks if item.name == "retrieval_zvec")
 
+    assert readiness.ready is False
+    assert check.ready is False
+    assert "fallback=postgres unavailable" in check.detail
+
+
+def test_readiness_accepts_local_retrieval_fallback_when_store_is_available() -> None:
+    runtime = SimpleNamespace(
+        settings=Settings(
+            agent_retrieval_backend="zvec",
+            agent_retrieval_fallback_backend="local_fallback",
+        ),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=None,
+        memory_retriever=SimpleNamespace(
+            store=SimpleNamespace(search=lambda *_args, **_kwargs: [])
+        ),
+        memory_embedding_service=None,
+        memory_embedding_backend_error=None,
+        retrieval_index=None,
+        retrieval_index_error="zvec_unavailable: RuntimeError",
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "retrieval_zvec")
+
     assert readiness.ready is True
     assert check.ready is True
-    assert "fallback=postgres" in check.detail
+    assert "fallback=local_fallback (store ready)" in check.detail
+
+    runtime.memory_retriever.store = object()
+    unavailable = _build_runtime_readiness(runtime)
+    assert unavailable.ready is False
+    assert next(item for item in unavailable.checks if item.name == "retrieval_zvec").ready is False
+
+
+def test_readiness_accepts_postgres_retrieval_fallback_when_repository_is_available() -> None:
+    runtime = SimpleNamespace(
+        settings=Settings(
+            database_uri="postgresql://focus-agent.test/readiness",
+            agent_retrieval_backend="zvec",
+            agent_retrieval_fallback_backend="postgres",
+            agent_memory_embedding_enabled=False,
+            agent_memory_embedding_backend="disabled",
+            agent_memory_vector_search_mode="off",
+            trajectory_enabled=False,
+        ),
+        graph=object(),
+        repo=object(),
+        branch_service=object(),
+        tool_registry=object(),
+        skill_registry=object(),
+        memory_repository=SimpleNamespace(search=lambda **_kwargs: []),
+        memory_embedding_service=None,
+        memory_embedding_backend_error=None,
+        retrieval_index=None,
+        retrieval_index_error="zvec_unavailable: RuntimeError",
+        otel_runtime=None,
+        trajectory_recorder=None,
+    )
+
+    readiness = _build_runtime_readiness(runtime)
+    check = next(item for item in readiness.checks if item.name == "retrieval_zvec")
+
+    assert readiness.ready is True
+    assert check.ready is True
+    assert "fallback=postgres (memory repository ready)" in check.detail
+
+    runtime.memory_repository = object()
+    unavailable = _build_runtime_readiness(runtime)
+    assert unavailable.ready is False
+    assert next(item for item in unavailable.checks if item.name == "retrieval_zvec").ready is False
 
 
 def test_readiness_degrades_when_configured_pgvector_storage_is_missing() -> None:
@@ -665,7 +742,10 @@ def test_readiness_keeps_local_fallback_ready_when_default_embedding_credentials
     None
 ):
     runtime = SimpleNamespace(
-        settings=Settings(agent_memory_embedding_backend="openai_compatible"),
+        settings=Settings(
+            agent_memory_embedding_backend="openai_compatible",
+            agent_zvec_enabled=False,
+        ),
         graph=object(),
         repo=object(),
         branch_service=object(),

@@ -135,6 +135,29 @@ export function ContextUsageMeter({
 						: `${used} context tokens used of ${limit}`}
 				</span>
 				<span className="fa-context-meter-status">{statusText}</span>
+				{usage?.pretrim_tokens !== undefined ? (
+					<span className="fa-context-meter-window">
+						{isChineseUi
+							? `裁剪前 ${formatContextMarkerCount(usage.pretrim_tokens)}；工具定义 ${formatContextMarkerCount(usage.tool_schema_tokens ?? 0)}；输出预留 ${formatContextMarkerCount(usage.output_reserve_tokens ?? 0)}`
+							: `Before trimming ${formatContextMarkerCount(usage.pretrim_tokens)}; tool schemas ${formatContextMarkerCount(usage.tool_schema_tokens ?? 0)}; output reserve ${formatContextMarkerCount(usage.output_reserve_tokens ?? 0)}`}
+					</span>
+				) : null}
+				{usage?.trimmed || usage?.required_overflow ? (
+					<span className="fa-context-meter-status">
+						{usage.required_overflow
+							? isChineseUi
+								? "必需上下文超出预算，请缩短输入或调整预算"
+								: "Required context exceeds the budget; shorten the input or adjust the budget"
+							: isChineseUi
+								? "部分历史已从本次请求中裁剪，原始记录仍保留"
+								: "Some history was trimmed from this request; original records are retained"}
+					</span>
+				) : null}
+				<span className="fa-context-meter-status">
+					{isChineseUi
+						? "发送前估算；执行时的工具选择和新增结果可能改变占用"
+						: "Pre-send estimate; runtime tool selection and new results may change usage"}
+				</span>
 				{showCompact || isCompacting ? (
 					<button
 						className="fa-context-meter-compact"

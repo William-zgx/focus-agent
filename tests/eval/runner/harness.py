@@ -29,6 +29,12 @@ from focus_agent.skills import SkillRegistry
 
 from ..judges import EnvironmentJudge, LLMJudge, RuleJudge, TrajectoryJudge
 from ..schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
+from .metrics import (
+    _apply_suite_acceptance,
+    _build_metrics,
+    _evaluate_case_acceptance,
+    _failure_metrics,
+)
 from .stability import harness_stability_tools, make_harness_stability_model
 
 # The graph builder caches model instances internally; when we monkey-patch
@@ -52,8 +58,9 @@ class EvalRuntime:
     llm_judge: LLMJudge = field(default_factory=LLMJudge)
     trajectory_judge: TrajectoryJudge = field(default_factory=TrajectoryJudge)
     environment_judge: EnvironmentJudge = field(default_factory=EnvironmentJudge)
-    cost_per_1k_input: float = 0.0
-    cost_per_1k_output: float = 0.0
+    runtime_kind: str | None = None
+    cost_per_1k_input: float | None = None
+    cost_per_1k_output: float | None = None
 
 
 def build_default_runtime(
@@ -62,6 +69,9 @@ def build_default_runtime(
     tools: Iterable[Any] | None = None,
     model_factory: Callable[..., Any] | None = None,
     llm_judge: LLMJudge | None = None,
+    runtime_kind: str | None = None,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
 ) -> EvalRuntime:
     settings = settings or Settings()
     if tools is None:
@@ -76,16 +86,26 @@ def build_default_runtime(
         tool_registry=tool_registry,
         model_factory=model_factory,
         llm_judge=llm_judge or LLMJudge(),
+        runtime_kind=runtime_kind or ("fake" if model_factory is not None else "provider"),
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
     )
 
 
-def build_harness_stability_runtime(*, settings: Settings | None = None) -> EvalRuntime:
+def build_harness_stability_runtime(
+    *,
+    settings: Settings | None = None,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
+) -> EvalRuntime:
     """Build an offline runtime for the harness_stability release-gate suite."""
 
     return build_default_runtime(
         settings=settings,
         tools=harness_stability_tools(),
         model_factory=make_harness_stability_model,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
     )
 
 
@@ -206,7 +226,6 @@ def _run_case_inner(
             state=state,
             before_state=before_state,
         )
-        passed = all(v.passed for v in verdicts)
 
         metrics = _build_metrics(
             case=case,
@@ -221,6 +240,10 @@ def _run_case_inner(
             attempt=attempt,
             attempts=attempts,
         )
+        acceptance_verdict = _evaluate_case_acceptance(case=case, metrics=metrics)
+        if acceptance_verdict is not None:
+            verdicts.append(acceptance_verdict)
+        passed = all(v.passed for v in verdicts)
         result_case_id = _result_case_id(
             case.id,
             model_label=model_label,
@@ -244,6 +267,16 @@ def _run_case_inner(
             attempt=attempt,
             attempts=attempts,
         )
+        metrics = _failure_metrics(
+            case=case,
+            runtime=runtime,
+            latency_ms=latency_ms,
+            model_label=model_label,
+            model_name=model_name or runtime.settings.model,
+            base_case_id=base_case_id or case.id,
+            attempt=attempt,
+            attempts=attempts,
+        )
         return EvalResult(
             case_id=result_case_id,
             passed=False,
@@ -257,18 +290,7 @@ def _run_case_inner(
                 )
             ],
             trajectory=[],
-            metrics={
-                "latency_ms": latency_ms,
-                "tool_calls": 0,
-                "llm_calls": 0,
-                "model_label": model_label,
-                "model": model_name or runtime.settings.model,
-                "base_case_id": base_case_id or case.id,
-                "attempt": attempt,
-                "attempts": attempts,
-                "capability": case.capability,
-                "risk_level": case.risk_level,
-            },
+            metrics=metrics,
             error=repr(exc),
             tags=list(case.tags),
         )
@@ -319,6 +341,17 @@ def _run_case_with_timeout(
             attempt=attempt,
             attempts=attempts,
         )
+        metrics = _failure_metrics(
+            case=case,
+            runtime=runtime,
+            latency_ms=latency_ms,
+            model_label=model_label,
+            model_name=model_name or runtime.settings.model,
+            base_case_id=base_case_id or case.id,
+            attempt=attempt,
+            attempts=attempts,
+        )
+        metrics["timeout_s"] = timeout_s
         return EvalResult(
             case_id=result_case_id,
             passed=False,
@@ -333,19 +366,7 @@ def _run_case_with_timeout(
                 )
             ],
             trajectory=[],
-            metrics={
-                "latency_ms": latency_ms,
-                "tool_calls": 0,
-                "llm_calls": 0,
-                "model_label": model_label,
-                "model": model_name or runtime.settings.model,
-                "base_case_id": base_case_id or case.id,
-                "attempt": attempt,
-                "attempts": attempts,
-                "capability": case.capability,
-                "risk_level": case.risk_level,
-                "timeout_s": timeout_s,
-            },
+            metrics=metrics,
             error=f"case timed out after {timeout_s:g}s",
             tags=list(case.tags),
         )
@@ -377,9 +398,11 @@ def run_suite(
                 attempt=attempt,
                 attempts=attempts,
             )
-            if progress:
-                progress(r)
             results.append(r)
+        results = _apply_suite_acceptance(results)
+        if progress:
+            for result in results:
+                progress(result)
         return results
 
     results_by_id: dict[str, EvalResult] = {}
@@ -403,6 +426,16 @@ def run_suite(
             try:
                 r = fut.result()
             except Exception as exc:  # noqa: BLE001
+                metrics = _failure_metrics(
+                    case=case,
+                    runtime=runtime,
+                    latency_ms=None,
+                    model_label=model_label,
+                    model_name=model_name or runtime.settings.model,
+                    base_case_id=case.id,
+                    attempt=attempt,
+                    attempts=attempts,
+                )
                 r = EvalResult(
                     case_id=_result_case_id(
                         case.id,
@@ -417,13 +450,12 @@ def run_suite(
                             kind="harness", passed=False, reasoning=f"future failed: {exc!r}"
                         )
                     ],
+                    metrics=metrics,
                     error=repr(exc),
                     tags=list(case.tags),
                 )
             results_by_id[r.case_id] = r
-            if progress:
-                progress(r)
-    return [
+    ordered_results = [
         results_by_id[
             _result_case_id(
                 case.id,
@@ -434,6 +466,11 @@ def run_suite(
         ]
         for case, attempt, attempts in work_items
     ]
+    ordered_results = _apply_suite_acceptance(ordered_results)
+    if progress:
+        for result in ordered_results:
+            progress(result)
+    return ordered_results
 
 
 def _build_isolated_graph(runtime: EvalRuntime) -> Any:
@@ -539,70 +576,6 @@ def _run_judges(
     return verdicts
 
 
-def _build_metrics(
-    *,
-    case: EvalCase,
-    state: dict[str, Any],
-    trajectory: list[TrajectoryStep],
-    latency_ms: float,
-    runtime: EvalRuntime,
-    verdicts: list[JudgeVerdict],
-    model_label: str | None,
-    model_name: str,
-    base_case_id: str,
-    attempt: int,
-    attempts: int,
-) -> dict[str, Any]:
-    llm_calls = int(state.get("llm_calls") or 0)
-    tool_calls = len(trajectory)
-    # Token accounting: providers usage_metadata when available; otherwise zero.
-    input_tokens = 0
-    output_tokens = 0
-    for msg in state.get("messages", []) or []:
-        usage = getattr(msg, "usage_metadata", None) or {}
-        if isinstance(usage, dict):
-            input_tokens += int(usage.get("input_tokens", 0) or 0)
-            output_tokens += int(usage.get("output_tokens", 0) or 0)
-
-    cost_usd = (
-        input_tokens / 1000.0 * runtime.cost_per_1k_input
-        + output_tokens / 1000.0 * runtime.cost_per_1k_output
-    )
-    cache_hits = sum(1 for step in trajectory if step.cache_hit)
-    fallback_uses = sum(1 for step in trajectory if step.fallback_used)
-    parallel_tool_calls = sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1)
-    role_hits = _delegation_role_hits(trajectory)
-    handoff_hits = _handoff_hits(trajectory)
-    critic_gate_hits = _critic_gate_hits(state, trajectory)
-    environment_failures = sum(
-        len(verdict.details.get("failures", []))
-        for verdict in verdicts
-        if verdict.kind == "environment"
-    )
-    return {
-        "latency_ms": latency_ms,
-        "tool_calls": tool_calls,
-        "llm_calls": llm_calls,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd": cost_usd,
-        "cache_hits": cache_hits,
-        "fallback_uses": fallback_uses,
-        "parallel_tool_calls": parallel_tool_calls,
-        "delegation_role_hits": role_hits,
-        "handoff_hits": handoff_hits,
-        "critic_gate_hits": critic_gate_hits,
-        "environment_assertions_failed": environment_failures,
-        "model_label": model_label,
-        "model": model_name,
-        "base_case_id": base_case_id,
-        "attempt": attempt,
-        "attempts": attempts,
-        "capability": case.capability,
-        "risk_level": case.risk_level,
-    }
-
-
 def _has_trajectory_expectations(expected: dict[str, Any]) -> bool:
     keys = {
         "optimal_tool_sequence",
@@ -669,36 +642,3 @@ def _topology_initial_state(topology: dict[str, Any]) -> dict[str, Any]:
     if topology.get("handoff_required"):
         payload.setdefault("agent_governance_requirements", {})["handoff_required"] = True
     return payload
-
-
-def _delegation_role_hits(trajectory: list[TrajectoryStep]) -> int:
-    roles: set[str] = set()
-    for step in trajectory:
-        for key in ("role", "agent_role", "branch_role"):
-            value = step.args.get(key) or step.runtime.get(key)
-            if value:
-                roles.add(str(value))
-    return len(roles)
-
-
-def _handoff_hits(trajectory: list[TrajectoryStep]) -> int:
-    hits = 0
-    for step in trajectory:
-        runtime = step.runtime or {}
-        if runtime.get("handoff_to") or runtime.get("handoff_from"):
-            hits += 1
-        if step.args.get("handoff_to") or step.args.get("handoff_from"):
-            hits += 1
-    return hits
-
-
-def _critic_gate_hits(state: dict[str, Any], trajectory: list[TrajectoryStep]) -> int:
-    hits = 0
-    records = state.get("agent_review_queue") or state.get("critic_gate_records") or []
-    if isinstance(records, list):
-        hits += len(records)
-    for step in trajectory:
-        role = step.args.get("role") or step.runtime.get("role") or step.runtime.get("branch_role")
-        if str(role or "").lower() == "critic":
-            hits += 1
-    return hits

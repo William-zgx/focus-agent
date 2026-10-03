@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from langchain.messages import AnyMessage, HumanMessage, SystemMessage
 
 from .core.context_policy import (
-    _prompt_budget_count,
-    apply_prompt_budget_guard,
     assemble_context,
 )
-from .core.context_token_counting import estimate_messages_token_count
+from .core.context_request import build_context_request
 from .core.types import ContextBudget, PromptMode
 
 ContextUsageStatus = Literal["ok", "warm", "hot", "over", "compacting", "error"]
@@ -20,6 +19,8 @@ ContextUsageStatus = Literal["ok", "warm", "hot", "over", "compacting", "error"]
 class ContextUsage:
     used_tokens: int
     token_limit: int
+    configured_token_limit: int
+    input_token_limit: int
     remaining_tokens: int
     used_ratio: float
     status: ContextUsageStatus
@@ -31,11 +32,19 @@ class ContextUsage:
     estimated: bool
     drift_risk: str
     last_compacted_at: str | None = None
+    pretrim_tokens: int = 0
+    posttrim_tokens: int = 0
+    tool_schema_tokens: int = 0
+    output_reserve_tokens: int = 0
+    trimmed: bool = False
+    required_overflow: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "used_tokens": self.used_tokens,
             "token_limit": self.token_limit,
+            "configured_token_limit": self.configured_token_limit,
+            "input_token_limit": self.input_token_limit,
             "remaining_tokens": self.remaining_tokens,
             "used_ratio": self.used_ratio,
             "status": self.status,
@@ -47,6 +56,12 @@ class ContextUsage:
             "estimated": self.estimated,
             "drift_risk": self.drift_risk,
             "last_compacted_at": self.last_compacted_at,
+            "pretrim_tokens": self.pretrim_tokens,
+            "posttrim_tokens": self.posttrim_tokens,
+            "tool_schema_tokens": self.tool_schema_tokens,
+            "output_reserve_tokens": self.output_reserve_tokens,
+            "trimmed": self.trimmed,
+            "required_overflow": self.required_overflow,
         }
 
 
@@ -65,6 +80,8 @@ def build_context_usage(
     *,
     draft_message: str | None = None,
     selected_model: str | None = None,
+    available_tools: Iterable[Any] | None = None,
+    output_reserve_tokens: int | None = None,
 ) -> ContextUsage:
     budget = _context_budget_from_state(state, selected_model=selected_model)
     prompt_mode = _prompt_mode_from_state(state)
@@ -83,13 +100,30 @@ def build_context_usage(
     if draft_message and str(draft_message).strip():
         prompt_messages.append(HumanMessage(content=str(draft_message).strip()))
 
-    guarded = apply_prompt_budget_guard(prompt_messages, budget=budget)
-    used_tokens = max(0, int(_prompt_budget_count(guarded, budget=budget)))
-    count_estimate = estimate_messages_token_count(guarded, budget=budget)
-    token_limit = max(1, int(budget.prompt_token_limit))
-    remaining_tokens = max(0, token_limit - used_tokens)
-    used_ratio = min(1.0, used_tokens / token_limit) if token_limit else 0.0
-    prompt_chars = sum(len(_message_text_for_chars(message)) for message in guarded)
+    request = build_context_request(
+        prompt_messages,
+        budget=budget,
+        available_tools=available_tools
+        if available_tools is not None
+        else state.get("available_tools", ()),
+        output_reserve_tokens=(
+            output_reserve_tokens
+            if output_reserve_tokens is not None
+            else state.get("output_token_reserve")
+        ),
+        preserve_required_messages=True,
+    )
+    used_tokens = request.posttrim_tokens
+    token_limit = request.input_token_limit
+    remaining_tokens = request.remaining_tokens
+    used_ratio = (
+        1.0
+        if request.required_overflow
+        else min(1.0, used_tokens / token_limit)
+        if token_limit
+        else 0.0
+    )
+    prompt_chars = request.prompt_chars
     prompt_budget_chars = max(1, token_limit * max(1, int(budget.chars_per_token)))
     compaction = (
         state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
@@ -102,21 +136,29 @@ def build_context_usage(
     return ContextUsage(
         used_tokens=used_tokens,
         token_limit=token_limit,
+        configured_token_limit=request.configured_token_limit,
+        input_token_limit=request.input_token_limit,
         remaining_tokens=remaining_tokens,
         used_ratio=used_ratio,
         status=context_usage_status(used_ratio),
         prompt_chars=prompt_chars,
         prompt_budget_chars=prompt_budget_chars,
         tokenizer_mode=str(budget.token_budget_mode),
-        counting_backend=count_estimate.counting_backend,
-        tokenizer_id=count_estimate.tokenizer_id or budget.tokenizer_id,
-        estimated=bool(count_estimate.estimated),
+        counting_backend=request.counting_backend,
+        tokenizer_id=request.tokenizer_id or budget.tokenizer_id,
+        estimated=request.estimated,
         drift_risk=_context_drift_risk(
             used_ratio=used_ratio,
-            estimated=bool(count_estimate.estimated),
+            estimated=request.estimated,
             drift_report=drift_report,
         ),
         last_compacted_at=str(compaction.get("last_compacted_at") or "") or None,
+        pretrim_tokens=request.pretrim_tokens,
+        posttrim_tokens=request.posttrim_tokens,
+        tool_schema_tokens=request.tool_schema_tokens,
+        output_reserve_tokens=request.output_reserve_tokens,
+        trimmed=request.trimmed,
+        required_overflow=request.required_overflow,
     )
 
 
@@ -151,13 +193,6 @@ def _prompt_mode_from_state(state: dict[str, Any]) -> PromptMode:
     if state.get("merge_proposal") and not state.get("merge_decision"):
         return PromptMode.BRANCH_REVIEW
     return PromptMode.EXPLORE
-
-
-def _message_text_for_chars(message: AnyMessage) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, list):
-        return "".join(str(item) for item in content)
-    return str(content)
 
 
 def _context_drift_risk(

@@ -99,9 +99,16 @@ export function MessageList({
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
 }: MessageListProps) {
+	const isCurrentTurnActive =
+		isStreaming ||
+		toolApprovalInterrupts.length > 0 ||
+		askUserQuestionInterrupts.length > 0;
 	const transcriptItems = useMemo(
-		() => buildTranscriptItems(messages, assistantMessage),
-		[assistantMessage, messages],
+		() =>
+			buildTranscriptItems(messages, assistantMessage, {
+				isCurrentTurnActive,
+			}),
+		[assistantMessage, isCurrentTurnActive, messages],
 	);
 	const safeStreamVisibleText = safeVisibleText(streamVisibleText ?? "");
 	const visibleStreamReply = normalizeText(safeStreamVisibleText)

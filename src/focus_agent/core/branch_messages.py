@@ -282,6 +282,21 @@ def branch_visible_messages(messages: list[Any], *, values: dict[str, Any]) -> l
     return visible_messages
 
 
+def branch_context_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
+    """Project local work without changing the stored or UI-visible transcript."""
+    copied_count = branch_fork_message_count(values)
+    if copied_count is None or copied_count > len(messages):
+        return branch_visible_messages(messages, values=values)
+    local = messages[copied_count:]
+    if any(_is_human_message_type(_message_type_name(message)) for message in local):
+        return branch_visible_messages(local, values={})
+    seed = branch_visible_messages(messages[:copied_count], values=values)
+    for index in range(len(seed) - 1, -1, -1):
+        if _is_human_message_type(_message_type_name(seed[index])):
+            return [*seed[index:], *local]
+    return local
+
+
 def branch_seed_messages(messages: list[Any], *, values: dict[str, Any]) -> list[Any]:
     if _has_sibling_branch_handoff(values):
         return []

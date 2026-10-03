@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import quote, unquote, urlsplit
 
 from .context_tool_observation_json import (
     _collapse_inline,
@@ -8,11 +10,78 @@ from .context_tool_observation_json import (
     _truncate_text,
 )
 
+_TOOL_OBSERVATION_REF_PREFIX = "tool-observation://"
+_TOOL_OBSERVATION_ARTIFACT_ROOT = ".tool-observations"
+
 
 def _tool_observation_ref(*, tool_name: str, tool_call_id: str) -> str:
     normalized_tool = (tool_name or "tool").strip() or "tool"
     normalized_call = (tool_call_id or "latest").strip() or "latest"
-    return f"tool-observation://{normalized_tool}/{normalized_call}"
+    return (
+        f"{_TOOL_OBSERVATION_REF_PREFIX}{quote(normalized_tool, safe='')}/"
+        f"{quote(normalized_call, safe='')}"
+    )
+
+
+def _parse_tool_observation_ref(value: str) -> tuple[str, str] | None:
+    """Parse a prompt-only observation reference without accepting path traversal."""
+    if not isinstance(value, str) or not value.startswith(_TOOL_OBSERVATION_REF_PREFIX):
+        return None
+    parsed = urlsplit(value)
+    try:
+        has_port = parsed.port is not None
+    except ValueError:
+        has_port = True
+    if (
+        parsed.scheme != "tool-observation"
+        or not parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+        or has_port
+    ):
+        return None
+    raw_call = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
+    tool_name = unquote(parsed.netloc)
+    tool_call_id = unquote(raw_call)
+    if not _safe_observation_segment(tool_name) or not _safe_observation_segment(tool_call_id):
+        return None
+    return tool_name, tool_call_id
+
+
+def _safe_observation_segment(value: str) -> bool:
+    return bool(value) and value not in {".", ".."} and "/" not in value and "\\" not in value
+
+
+def _observation_artifact_id(*, thread_id: str, tool_name: str, tool_call_id: str) -> str:
+    """Build a reserved, encoded path; callers must provide the trusted thread scope."""
+    segments = (thread_id, tool_name, tool_call_id)
+    if not all(_safe_observation_segment(str(value)) for value in segments):
+        raise ValueError("tool observation scope contains an unsafe path segment")
+    encoded = [f"s-{quote(str(value), safe='')}" for value in segments]
+    return f"{_TOOL_OBSERVATION_ARTIFACT_ROOT}/{'/'.join(encoded)}.txt"
+
+
+def _observation_artifact_id_from_ref(*, reference: str, thread_id: str) -> str | None:
+    parsed = _parse_tool_observation_ref(reference)
+    if parsed is None or not _safe_observation_segment(thread_id):
+        return None
+    tool_name, tool_call_id = parsed
+    return _observation_artifact_id(
+        thread_id=thread_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+    )
+
+
+def _is_tool_observation_artifact_id(value: str) -> bool:
+    """Reserved namespace check used to prevent ordinary artifact path bypasses."""
+    try:
+        parts = PurePosixPath(str(value)).parts
+    except Exception:  # noqa: BLE001
+        return False
+    return _TOOL_OBSERVATION_ARTIFACT_ROOT in parts
 
 
 def _collect_artifact_like_refs(payload: Any) -> list[str]:

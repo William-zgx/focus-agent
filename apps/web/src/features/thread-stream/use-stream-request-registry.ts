@@ -54,9 +54,14 @@ export function useStreamRequestRegistry() {
 		activeRequestIdsRef.current.delete(threadId);
 	}
 
+	function hasStreamRequest(threadId: string) {
+		return abortControllersRef.current.has(threadId);
+	}
+
 	return {
 		beginStreamRequest,
 		completeStreamRequest,
+		hasStreamRequest,
 		isCurrentStreamRequest,
 		stopStreamRequest,
 	};

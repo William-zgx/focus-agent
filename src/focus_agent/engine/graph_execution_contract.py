@@ -125,6 +125,8 @@ def evaluate_execution_contract(
     user_query: str | None = None,
     skill_evidence_facts: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
+    if contract.get("blocked_reason_code") == "required_context_overflow":
+        return {**dict(contract), "status": "blocked"}
     required_tools = [str(item) for item in contract.get("required_tools") or [] if str(item)]
     seen = {str(item) for item in tool_results_seen if str(item)}
     missing = [name for name in required_tools if name not in seen]
@@ -167,6 +169,12 @@ def verify_answer_against_evidence(
 ) -> dict[str, Any]:
     contract_status = str((contract or {}).get("status") or "not_required")
     policy = str((contract or {}).get("policy") or "")
+    if (contract or {}).get("blocked_reason_code") == "required_context_overflow":
+        return _verification(
+            "blocked",
+            required_tools_satisfied=False,
+            repair_action="adjust_context_budget",
+        )
     if policy not in {"live_web_research", "skill_execution"}:
         return _verification("not_required", required_tools_satisfied=True)
     if contract_status == "blocked":
