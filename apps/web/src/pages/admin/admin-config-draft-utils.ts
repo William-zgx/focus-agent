@@ -5,6 +5,7 @@ import type {
 	FocusAgentAdminModelConfigEntry,
 	FocusAgentAdminToolConfigEntry,
 	FocusAgentAdminToolProviderConfig,
+	FocusAgentModelProtocol,
 } from "@focus-agent/web-sdk";
 
 export type EditableConfigSection = "models" | "policies" | "tools";
@@ -35,6 +36,7 @@ export type ModelProviderDraft = {
 export type ModelEntryDraft = {
 	id: string;
 	label: string;
+	protocol: FocusAgentModelProtocol;
 	supportsThinking: boolean;
 	defaultThinkingEnabled: boolean;
 	reasoningEffort: string;
@@ -257,9 +259,25 @@ const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 		label: "分支推荐",
 		description: "在每轮对话前启用分支推荐。",
 	},
+	agent_branch_recommendation_semantic_enabled: {
+		label: "语义分支推荐启用",
+		description: "启用基于语义模型的分支推荐判断。",
+	},
 	agent_branch_recommendation_min_confidence: {
 		label: "推荐最低置信度",
 		description: "触发分支推荐所需的最低置信度。",
+	},
+	agent_branch_recommendation_semantic_model: {
+		label: "分支推荐语义模型",
+		description: "用于分支推荐语义判断的模型 ID；留空则跟随当前聊天模型。",
+	},
+	agent_branch_recommendation_semantic_fallback_model: {
+		label: "分支推荐语义备用模型",
+		description: "主语义模型失败时使用的备用模型 ID；留空表示不启用备用模型。",
+	},
+	agent_branch_recommendation_semantic_decision_min_confidence: {
+		label: "决策模型最低置信度",
+		description: "仅用于 System One 决策模型；普通聊天模型沿用推荐置信度门槛。",
 	},
 	agent_branch_recommendation_mode: {
 		label: "分支推荐模式",
@@ -544,6 +562,7 @@ function modelToDraft(model: FocusAgentAdminModelConfigEntry): ModelEntryDraft {
 	return {
 		id: model.id,
 		label: textValue(model.label),
+		protocol: model.protocol === "system_one" ? "system_one" : "chat",
 		supportsThinking: Boolean(model.supports_thinking),
 		defaultThinkingEnabled: Boolean(model.default_thinking_enabled),
 		reasoningEffort: textValue(model.reasoning_effort),
@@ -552,17 +571,57 @@ function modelToDraft(model: FocusAgentAdminModelConfigEntry): ModelEntryDraft {
 	};
 }
 
+export function isChatModel(model: Pick<ModelEntryDraft, "protocol">) {
+	return model.protocol !== "system_one";
+}
+
+export function updateModelEntryDraft(
+	draft: ModelDraft,
+	index: number,
+	patch: Partial<ModelEntryDraft>,
+): ModelDraft {
+	const modelId = draft.models[index]?.id;
+	const switchingToDecisionModel = patch.protocol === "system_one";
+	return {
+		...draft,
+		models: draft.models.map((model, modelIndex) =>
+			modelIndex === index ? { ...model, ...patch } : model,
+		),
+		defaultModel:
+			switchingToDecisionModel && modelId === draft.defaultModel
+				? ""
+				: draft.defaultModel,
+		helperModel:
+			switchingToDecisionModel && modelId === draft.helperModel
+				? ""
+				: draft.helperModel,
+		modelChoices: switchingToDecisionModel
+			? draft.modelChoices.filter((modelChoice) => modelChoice !== modelId)
+			: draft.modelChoices,
+	};
+}
+
 export function buildModelDraft(
 	config: FocusAgentAdminConfig | undefined,
 ): ModelDraft {
 	const modelConfig = config?.models;
+	const models = (modelConfig?.models ?? []).map(modelToDraft);
+	const isChatModelId = (modelId: string | null | undefined) => {
+		if (!modelId) return true;
+		const model = models.find((item) => item.id === modelId);
+		return !model || isChatModel(model);
+	};
 	return {
 		reason: "",
-		defaultModel: modelConfig?.default_model ?? "",
-		helperModel: modelConfig?.helper_model ?? "",
-		modelChoices: [...(modelConfig?.model_choices ?? [])],
+		defaultModel: isChatModelId(modelConfig?.default_model)
+			? (modelConfig?.default_model ?? "")
+			: "",
+		helperModel: isChatModelId(modelConfig?.helper_model)
+			? (modelConfig?.helper_model ?? "")
+			: "",
+		modelChoices: (modelConfig?.model_choices ?? []).filter(isChatModelId),
 		providers: (modelConfig?.providers ?? []).map(providerToDraft),
-		models: (modelConfig?.models ?? []).map(modelToDraft),
+		models,
 	};
 }
 

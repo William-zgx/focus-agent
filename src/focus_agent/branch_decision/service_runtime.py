@@ -29,6 +29,7 @@ from focus_agent.services.branch_actions import (
     target_parent_thread_id,
 )
 
+from .budget import recommendation_expired
 from .classifier import classify_topic_relation
 from .service_helpers import (
     _branch_action_kind_for_decision,
@@ -52,6 +53,7 @@ class BranchDecisionServiceRuntimeMixin:
         message: str,
         values: dict[str, Any],
         branch_meta: BranchMeta | None,
+        deadline: float | None = None,
     ) -> dict[str, Any]:
         classifier = self._semantic_topic_relation_classifier()
         if classifier is None:
@@ -65,6 +67,7 @@ class BranchDecisionServiceRuntimeMixin:
         try:
             result = _call_semantic_topic_relation_classifier(
                 classifier,
+                deadline=deadline,
                 settings=self.settings,
                 message=message,
                 values=values,
@@ -208,6 +211,7 @@ class BranchDecisionServiceRuntimeMixin:
         *,
         user_id: str,
         request_id: str | None = None,
+        deadline: float | None = None,
     ) -> BranchDecisionEvent:
         values = self._safe_get_values(event.source_thread_id)
         actions = normalize_branch_actions(values.get("branch_actions"))
@@ -299,6 +303,20 @@ class BranchDecisionServiceRuntimeMixin:
         next_audit.append(audit)
         if not has_repo_method(self.graph, "update_state"):
             raise RuntimeError("Conversation graph does not support branch action state updates.")
+        if recommendation_expired(deadline):
+            return self._update_event(
+                event,
+                status=BranchDecisionStatus.SKIPPED,
+                metadata={
+                    **event.metadata,
+                    "reason": "recommendation_timeout",
+                    "recommendation_user_visible": False,
+                    "diagnostic": {
+                        **event.metadata.get("diagnostic", {}),
+                        "gate_reason": "recommendation_timeout",
+                    },
+                },
+            )
         self.graph.update_state(
             {"configurable": {"thread_id": event.source_thread_id}},
             {

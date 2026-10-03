@@ -63,6 +63,8 @@ export interface FocusAgentBranchDecisionConfig {
 	recommendation_min_confidence: number;
 	recommendation_semantic_enabled: boolean;
 	recommendation_semantic_model?: string | null;
+	recommendation_semantic_fallback_model?: string | null;
+	recommendation_semantic_decision_min_confidence?: number;
 	recommendation_user_visible: boolean;
 	recommendation_diagnostics: FocusAgentBranchDecisionDiagnostic;
 	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;

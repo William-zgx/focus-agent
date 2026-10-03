@@ -24,6 +24,7 @@ from focus_agent.services.branch_actions import (
     target_parent_thread_id,
 )
 
+from .budget import recommendation_deadline, recommendation_expired
 from .indexing import index_branch_decision_best_effort, zvec_branch_context_shadow_signals
 from .scorers import score_branch_decisions, score_branch_recommendation, select_best_score
 from .service_decision_operations import BranchDecisionServiceDecisionOperationsMixin
@@ -112,6 +113,12 @@ class BranchDecisionService(
             ),
             recommendation_semantic_enabled=recommendation_semantic_enabled,
             recommendation_semantic_model=recommendation_semantic_model,
+            recommendation_semantic_fallback_model=getattr(
+                self.settings, "agent_branch_recommendation_semantic_fallback_model", None
+            ),
+            recommendation_semantic_decision_min_confidence=getattr(
+                self.settings, "agent_branch_recommendation_semantic_decision_min_confidence", 0.9
+            ),
             recommendation_user_visible=_recommendation_user_visible(
                 enabled=recommendation_enabled,
                 mode=recommendation_mode,
@@ -150,6 +157,12 @@ class BranchDecisionService(
             ),
             recommendation_semantic_enabled=semantic_enabled,
             recommendation_semantic_model=semantic_model,
+            recommendation_semantic_fallback_model=getattr(
+                self.settings, "agent_branch_recommendation_semantic_fallback_model", None
+            ),
+            recommendation_semantic_decision_min_confidence=getattr(
+                self.settings, "agent_branch_recommendation_semantic_decision_min_confidence", 0.9
+            ),
             recommendation_user_visible=_recommendation_user_visible(
                 enabled=enabled,
                 mode=mode,
@@ -172,6 +185,7 @@ class BranchDecisionService(
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any] | None:
+        deadline = recommendation_deadline(self.settings)
         config = self.recommendation_config()
         if not config.enabled:
             return None
@@ -184,6 +198,7 @@ class BranchDecisionService(
         try:
             event = self._evaluate_pre_turn_recommendation(
                 config=config,
+                deadline=deadline,
                 values=values,
                 branch_meta=branch_meta,
                 thread_id=thread_id,
@@ -502,6 +517,7 @@ class BranchDecisionService(
         self,
         *,
         config: BranchDecisionConfig,
+        deadline: float,
         values: dict[str, Any],
         branch_meta: BranchMeta | None,
         thread_id: str,
@@ -523,6 +539,7 @@ class BranchDecisionService(
         )
         if _should_run_semantic_topic_relation(signals=signals, action=best.action):
             semantic_topic_relation = self._classify_semantic_topic_relation(
+                deadline=deadline,
                 message=message,
                 values=values,
                 branch_meta=branch_meta,
@@ -595,6 +612,8 @@ class BranchDecisionService(
             score=best.score,
             threshold=best.threshold,
         )
+        if recommendation_expired(deadline):
+            status, gate_reason = BranchDecisionStatus.SKIPPED, "recommendation_timeout"
         metadata: dict[str, Any] = {
             "phase": "pre_turn",
             "recommendation_target": recommendation_target.value,
@@ -664,6 +683,7 @@ class BranchDecisionService(
                 event,
                 user_id=user_id,
                 request_id=request_id,
+                deadline=deadline,
             )
         return event
 

@@ -40,6 +40,15 @@
             ],
             "title": "No Temperature"
           },
+          "protocol": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "system_one"
+            ],
+            "title": "Protocol",
+            "type": "string"
+          },
           "reasoning_effort": {
             "anyOf": [
               {
@@ -980,6 +989,15 @@
               }
             ],
             "title": "No Temperature"
+          },
+          "protocol": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "system_one"
+            ],
+            "title": "Protocol",
+            "type": "string"
           },
           "reasoning_effort": {
             "anyOf": [
@@ -7487,10 +7505,26 @@
             "$ref": "#/components/schemas/BranchDecisionMode",
             "default": "shadow"
           },
+          "recommendation_semantic_decision_min_confidence": {
+            "default": 0.9,
+            "title": "Recommendation Semantic Decision Min Confidence",
+            "type": "number"
+          },
           "recommendation_semantic_enabled": {
             "default": false,
             "title": "Recommendation Semantic Enabled",
             "type": "boolean"
+          },
+          "recommendation_semantic_fallback_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Semantic Fallback Model"
           },
           "recommendation_semantic_model": {
             "anyOf": [

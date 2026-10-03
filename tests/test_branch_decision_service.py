@@ -1112,3 +1112,80 @@ def test_branch_recommendation_config_exposes_semantic_settings() -> None:
     assert config.recommendation_semantic_model == "moonshot:kimi-k2"
     assert config.recommendation_diagnostics["semantic_enabled"] is True
     assert config.recommendation_diagnostics["semantic_model"] == "moonshot:kimi-k2"
+
+
+@pytest.mark.parametrize("confidence, promoted", [(0.79, False), (0.95, True)])
+def test_decision_model_threshold_and_diagnostics(confidence, promoted):
+    service, graph, repository = _recommendation_service()
+    result = _semantic_topic_shift_result(recommended_action=BranchDecisionAction.FORK_CHILD_BRANCH)
+    result.update(
+        confidence=confidence,
+        decision_min_confidence=0.9,
+        diagnostics={"protocol": "system_one", "fallback_used": True},
+    )
+    _attach_semantic_classifier(service, _FakeSemanticClassifier(result=result))
+    payload = service.recommend_for_message(
+        thread_id="thread-1", user_id="u-1", message="免费托管怎么样？"
+    )
+    assert bool(normalize_branch_actions(graph.values.get("branch_actions"))) is promoted
+    assert payload["metadata"]["semantic_diagnostics"]["protocol"] == "system_one"
+    if promoted:
+        assert (
+            normalize_branch_actions(graph.values["branch_actions"])[0].status
+            == BranchActionStatus.PENDING
+        )
+
+
+def test_late_classifier_result_never_promotes(monkeypatch):
+    import focus_agent.branch_decision.budget as budget
+
+    clock = [10.0]
+    monkeypatch.setattr(budget, "monotonic", lambda: clock[0])
+    service, graph, repository = _recommendation_service()
+    service.settings.agent_branch_recommendation_timeout_seconds = 1
+
+    def late(**kwargs):
+        clock[0] = 12.0
+        return _semantic_topic_shift_result(
+            recommended_action=BranchDecisionAction.FORK_CHILD_BRANCH
+        )
+
+    _attach_semantic_classifier(service, _FakeSemanticClassifier(result=late))
+    payload = service.recommend_for_message(
+        thread_id="thread-1", user_id="u-1", message="免费托管怎么样？"
+    )
+    assert payload["status"] == "skipped"
+    assert payload["metadata"]["reason"] == "recommendation_timeout"
+    assert not normalize_branch_actions(graph.values.get("branch_actions"))
+
+
+def test_deadline_expiring_during_promotion_read_does_not_write_action(monkeypatch):
+    import focus_agent.branch_decision.budget as budget
+
+    clock = [10.0]
+    monkeypatch.setattr(budget, "monotonic", lambda: clock[0])
+    service, graph, repository = _recommendation_service()
+    service.settings.agent_branch_recommendation_timeout_seconds = 1
+    original_read = service._safe_get_values
+    reads = []
+
+    def read(thread_id):
+        reads.append(thread_id)
+        if len(reads) > 1:
+            clock[0] = 12.0
+        return original_read(thread_id)
+
+    monkeypatch.setattr(service, "_safe_get_values", read)
+    _attach_semantic_classifier(
+        service,
+        _FakeSemanticClassifier(
+            result=_semantic_topic_shift_result(
+                recommended_action=BranchDecisionAction.FORK_CHILD_BRANCH,
+            )
+        ),
+    )
+    payload = service.recommend_for_message(
+        thread_id="thread-1", user_id="u-1", message="免费托管怎么样？"
+    )
+    assert payload["status"] == "skipped"
+    assert not normalize_branch_actions(graph.values.get("branch_actions"))

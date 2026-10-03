@@ -28,7 +28,26 @@ import {
 	stringValue,
 } from "./helpers";
 import type { LocalFocusAgentRuntime } from "./local-focus-agent-runtime";
+import {
+	configuredModelForSelection,
+	type ModelProviderIdentity,
+} from "./model-runtime";
 import { defaultAdminConfig, localUser } from "./state";
+
+function chatModelSelectionError(
+	modelEntries: FocusAgentAdminConfig["models"]["models"],
+	providers: readonly ModelProviderIdentity[],
+	selections: ReadonlyArray<readonly [string, string | null | undefined]>,
+): string | null {
+	for (const [fieldName, modelId] of selections) {
+		if (!modelId) continue;
+		const model = configuredModelForSelection(modelEntries, providers, modelId);
+		if (model?.protocol === "system_one") {
+			return `${fieldName} cannot reference system_one model ${modelId}.`;
+		}
+	}
+	return null;
+}
 
 export async function handleAdmin(
 	ctx: LocalFocusAgentRuntime,
@@ -162,9 +181,65 @@ export async function handleAdminConfig(
 	if (resource === "models" && method === "PATCH") {
 		const body = parseJsonBody(init) as FocusAgentUpdateAdminModelConfigRequest;
 		const models = ctx.state.adminConfig.models;
-		models.default_model = body.default_model ?? models.default_model;
-		models.helper_model = body.helper_model ?? models.helper_model;
-		models.model_choices = body.model_choices ?? models.model_choices;
+		const nextModelEntries: FocusAgentAdminConfig["models"]["models"] =
+			body.models?.map((item) => ({
+				id: item.id,
+				label: item.label ?? item.id,
+				protocol:
+					item.protocol === "system_one" ? ("system_one" as const) : "chat",
+				supports_thinking: item.supports_thinking ?? false,
+				default_thinking_enabled: item.default_thinking_enabled ?? false,
+				request_kwargs: item.request_kwargs ?? {},
+				thinking_enabled_request_kwargs:
+					item.thinking_enabled_request_kwargs ?? {},
+				thinking_disabled_request_kwargs:
+					item.thinking_disabled_request_kwargs ?? {},
+				thinking_disabled_model_name: item.thinking_disabled_model_name ?? null,
+				reasoning_effort: item.reasoning_effort ?? null,
+				no_temperature: item.no_temperature ?? true,
+				thinking_enable_extra_body_type:
+					item.thinking_enable_extra_body_type ?? null,
+				thinking_disable_extra_body_type:
+					item.thinking_disable_extra_body_type ?? null,
+				thinking_disable_switch_model:
+					item.thinking_disable_switch_model ?? null,
+			})) ?? models.models;
+		const nextDefaultModel =
+			body.default_model === undefined
+				? models.default_model
+				: body.default_model;
+		const nextHelperModel =
+			body.helper_model === undefined ? models.helper_model : body.helper_model;
+		const nextModelChoices =
+			body.model_choices === undefined
+				? models.model_choices
+				: (body.model_choices ?? []);
+		const nextProviderIdentities = body.providers
+			? body.providers.map((provider) => {
+					const id = provider.id.trim();
+					const existing = models.providers.find((item) => item.id === id);
+					return {
+						id,
+						aliases: provider.aliases ?? existing?.aliases ?? [id],
+					};
+				})
+			: models.providers;
+		const selectionError = chatModelSelectionError(
+			nextModelEntries,
+			nextProviderIdentities,
+			[
+				["default_model", nextDefaultModel],
+				["helper_model", nextHelperModel],
+				...nextModelChoices.map(
+					(modelId) => ["model_choices", modelId] as const,
+				),
+			],
+		);
+		if (selectionError) return errorResponse(400, selectionError);
+		models.default_model = nextDefaultModel;
+		models.helper_model = nextHelperModel;
+		models.model_choices = nextModelChoices;
+		models.models = nextModelEntries;
 		if (body.providers) {
 			const nextProviderIds = new Set<string>();
 			models.providers = body.providers.map((provider) => {
@@ -204,28 +279,6 @@ export async function handleAdminConfig(
 				}
 			}
 			await ctx.persistSecrets();
-		}
-		if (body.models) {
-			models.models = body.models.map((item) => ({
-				id: item.id,
-				label: item.label ?? item.id,
-				supports_thinking: item.supports_thinking ?? false,
-				default_thinking_enabled: item.default_thinking_enabled ?? false,
-				request_kwargs: item.request_kwargs ?? {},
-				thinking_enabled_request_kwargs:
-					item.thinking_enabled_request_kwargs ?? {},
-				thinking_disabled_request_kwargs:
-					item.thinking_disabled_request_kwargs ?? {},
-				thinking_disabled_model_name: item.thinking_disabled_model_name ?? null,
-				reasoning_effort: item.reasoning_effort ?? null,
-				no_temperature: item.no_temperature ?? true,
-				thinking_enable_extra_body_type:
-					item.thinking_enable_extra_body_type ?? null,
-				thinking_disable_extra_body_type:
-					item.thinking_disable_extra_body_type ?? null,
-				thinking_disable_switch_model:
-					item.thinking_disable_switch_model ?? null,
-			}));
 		}
 		ctx.touchAdminConfig("Admin model config updated locally.");
 		ctx.persist();

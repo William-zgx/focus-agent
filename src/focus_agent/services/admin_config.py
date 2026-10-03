@@ -131,6 +131,7 @@ def update_admin_model_config(
     )
     content = _render_model_catalog_toml(updated_catalog)
     loaded = load_model_catalog_toml(content, source=str(_model_catalog_path(settings)))
+    _validate_chat_model_selections(loaded)
     _write_text_atomic(_model_catalog_path(settings), content)
 
     settings.model_catalog = loaded
@@ -142,6 +143,35 @@ def update_admin_model_config(
         message="Model configuration saved.",
         updated_by=updated_by,
     )
+
+
+def _validate_chat_model_selections(catalog: ModelCatalogConfig) -> None:
+    aliases = {
+        alias.lower(): provider.id for provider in catalog.providers for alias in provider.aliases
+    }
+    protocols: dict[str, str] = {}
+    for model in catalog.models:
+        raw_id = model.id.strip()
+        provider, _, name = raw_id.partition(":")
+        if not name:
+            provider, name = "openai", provider
+        canonical = f"{aliases.get(provider.lower(), provider.lower())}:{name.strip()}"
+        protocols[canonical] = model.protocol
+
+    selections = (
+        ("default_model", catalog.default_model),
+        ("helper_model", catalog.helper_model),
+        *(("model_choices", model_id) for model_id in catalog.model_choices),
+    )
+    for field_name, model_id in selections:
+        if not model_id:
+            continue
+        provider, _, name = str(model_id).strip().partition(":")
+        if not name:
+            provider, name = "openai", provider
+        canonical = f"{aliases.get(provider.lower(), provider.lower())}:{name.strip()}"
+        if protocols.get(canonical) == "system_one":
+            raise AdminConfigError(f"{field_name} cannot reference system_one model {model_id!r}.")
 
 
 def update_admin_tool_config(
@@ -349,6 +379,7 @@ def _build_model_section(settings: Any) -> AdminConfigModelSectionResponse:
             contracts.AdminConfigModelResponse(
                 id=model.id,
                 label=model.label,
+                protocol=model.protocol,
                 supports_thinking=model.supports_thinking,
                 default_thinking_enabled=model.default_thinking_enabled,
                 request_kwargs=dict(model.request_kwargs),

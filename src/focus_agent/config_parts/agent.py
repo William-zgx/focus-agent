@@ -290,6 +290,21 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_MODEL",
             defaults.agent_branch_recommendation_semantic_model,
         ),
+        "agent_branch_recommendation_semantic_fallback_model": _optional_string_env(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_FALLBACK_MODEL",
+            defaults.agent_branch_recommendation_semantic_fallback_model,
+        ),
+        "agent_branch_recommendation_semantic_decision_min_confidence": _float_env(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_DECISION_MIN_CONFIDENCE",
+            defaults.agent_branch_recommendation_semantic_decision_min_confidence,
+        ),
+        "agent_branch_recommendation_timeout_seconds": _float_env(
+            env,
+            "AGENT_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS",
+            defaults.agent_branch_recommendation_timeout_seconds,
+        ),
         "skill_install_directory": (
             env.get("SKILL_INSTALL_DIRECTORY") or defaults.skill_install_directory
         ),

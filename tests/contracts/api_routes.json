@@ -6456,6 +6456,14 @@
             }
           ]
         },
+        "protocol": {
+          "default": "chat",
+          "enum": [
+            "chat",
+            "system_one"
+          ],
+          "type": "string"
+        },
         "reasoning_effort": {
           "anyOf": [
             {
@@ -7274,6 +7282,14 @@
               "type": "null"
             }
           ]
+        },
+        "protocol": {
+          "default": "chat",
+          "enum": [
+            "chat",
+            "system_one"
+          ],
+          "type": "string"
         },
         "reasoning_effort": {
           "anyOf": [
@@ -12952,9 +12968,23 @@
         "recommendation_mode": {
           "$ref": "#/components/schemas/BranchDecisionMode"
         },
+        "recommendation_semantic_decision_min_confidence": {
+          "default": 0.9,
+          "type": "number"
+        },
         "recommendation_semantic_enabled": {
           "default": false,
           "type": "boolean"
+        },
+        "recommendation_semantic_fallback_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "recommendation_semantic_model": {
           "anyOf": [

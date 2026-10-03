@@ -1,0 +1,331 @@
+[
+  {
+    "id": "bd_continue_followup_cn",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "我们在排查支付 API 的 500 错误。"},
+      {"role": "assistant", "content": "已确认错误发生在重试中间件。"}
+    ],
+    "incoming": "继续看刚才的 500，先检查 retry 配置和下一步修复。",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "同一故障的直接追问；没有分支意图或新主题词。"
+  },
+  {
+    "id": "bd_continue_correction_mixed",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "We are debugging the v2 payment endpoint timeout."},
+      {"role": "assistant", "content": "The current plan checks gateway retries first."}
+    ],
+    "incoming": "Correction: I meant the v2 endpoint, please update the same debugging plan.",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "纠正同一故障的细节；same debugging plan 明确保持上下文。"
+  },
+  {
+    "id": "bd_continue_quoted_instruction",
+    "category": "quoted_instruction",
+    "history": [
+      {"role": "user", "content": "当前在审阅部署规范。"},
+      {"role": "assistant", "content": "规范中包含若干分支流程示例。"}
+    ],
+    "incoming": "引用需求原文：“请新建分支比较两个方案。”这里只审阅这句话的风险，不要创建分支。",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "引号内是被分析的文本；显式‘不要创建分支’由规则优先处理。"
+  },
+  {
+    "id": "bd_continue_ambiguous_short",
+    "category": "ambiguous",
+    "history": [
+      {"role": "user", "content": "我们正在比较 PostgreSQL 连接池的两个配置。"},
+      {"role": "assistant", "content": "目前更倾向低连接数并观察峰值。"}
+    ],
+    "incoming": "那这个呢？",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "短且指代不清；分类提示要求 underspecified short questions 继续当前话题。"
+  },
+  {
+    "id": "bd_continue_mixed_same_thread",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "当前在修复 SQL 查询超时。"},
+      {"role": "assistant", "content": "已找到一个缺失索引。"}
+    ],
+    "incoming": "Keep it in the same thread，顺便把刚才的 SQL 错误改正并给出 next step。",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "this thread 与‘改正’均表示同一主线继续；显式 continue hint 规则优先。"
+  },
+  {
+    "id": "bd_continue_child_current_branch",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "这个分支专门验证方案 A 的回滚条件。"},
+      {"role": "assistant", "content": "方案 A 的数据库回滚仍需补充演练。"}
+    ],
+    "incoming": "在当前线程里继续验证方案 A 的回滚条件，别切换主题。",
+    "branch_context": {
+      "branch_id": "branch-a",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "方案 A 回滚",
+      "branch_depth": 1
+    },
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "明确要求当前分支内继续；规则层应跳过语义分类器。"
+  },
+  {
+    "id": "bd_continue_no_history_ambiguous",
+    "category": "no_history",
+    "history": [],
+    "incoming": "Could you compare option A and B?",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "没有历史且没有明确分支请求；无历史时语义分类器不应运行。"
+  },
+  {
+    "id": "bd_child_independent_topic_en",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "当前主线正在定位 payment API 的 500 错误。"},
+      {"role": "assistant", "content": "接下来会检查 gateway retry 与数据库连接。"}
+    ],
+    "incoming": "I also need a separate Kubernetes cost monitoring plan; it is unrelated to the API bug.",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "run",
+    "evidence": "根线程中出现无关的独立工程主题；没有显式 branch marker，交给语义模型判断后落为 child。"
+  },
+  {
+    "id": "bd_child_independent_topic_cn",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "当前在研究订单服务的幂等设计。"},
+      {"role": "assistant", "content": "已列出 request key 与重放窗口的约束。"}
+    ],
+    "incoming": "另外我还想规划家庭旅行保险预算，这和订单幂等问题无关。",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "run",
+    "evidence": "中文混合新主题但不使用固定分支词；根线程独立主题应是 child。"
+  },
+  {
+    "id": "bd_child_explicit_deep_dive",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "主线在评估消息队列迁移。"},
+      {"role": "assistant", "content": "主线方案需要继续比较兼容性。"}
+    ],
+    "incoming": "请新开一个子分支，深入分析 Kafka 到 Pulsar 的迁移风险。",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "明确子分支与深入分析请求；规则层直接给出 child。"
+  },
+  {
+    "id": "bd_child_no_history_explicit",
+    "category": "no_history",
+    "history": [],
+    "incoming": "No prior context; please open a child branch to explore data migration separately.",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "没有历史但有明确 child branch 请求；无需调用语义模型也可确定 child。"
+  },
+  {
+    "id": "bd_child_switch_topic",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "当前主线在讨论济州岛旅行路线。"},
+      {"role": "assistant", "content": "已完成交通和住宿的初步比较。"}
+    ],
+    "incoming": "换个话题，改看酒店取消政策和退款边界。",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "固定 topic drift 词命中；根线程目标是 child。"
+  },
+  {
+    "id": "bd_sibling_independent_topic_en",
+    "category": "sibling",
+    "history": [
+      {"role": "user", "content": "这个分支正在整理济州岛美食路线。"},
+      {"role": "assistant", "content": "已按市场、餐厅和夜间交通完成清单。"}
+    ],
+    "incoming": "The next question is an unrelated finance budget; analyze it separately.",
+    "branch_context": {
+      "branch_id": "branch-food",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "济州岛美食",
+      "branch_depth": 1
+    },
+    "expected_action": "fork_sibling_branch",
+    "expected_model_action": "fork_sibling_branch",
+    "expected_classifier": "run",
+    "evidence": "已有 child branch 且 incoming 是独立财务主题；语义模型决定 sibling。"
+  },
+  {
+    "id": "bd_sibling_explicit",
+    "category": "sibling",
+    "history": [
+      {"role": "user", "content": "这个分支专门评估方案 A。"},
+      {"role": "assistant", "content": "方案 A 的压测结果已经整理。"}
+    ],
+    "incoming": "请开一个同级分支并行评估方案 B，保持 A 的结论不变。",
+    "branch_context": {
+      "branch_id": "branch-a",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "方案 A",
+      "branch_depth": 1
+    },
+    "expected_action": "fork_sibling_branch",
+    "expected_model_action": "fork_sibling_branch",
+    "expected_classifier": "bypass",
+    "evidence": "同级/并行是显式 sibling 词；规则层优先。"
+  },
+  {
+    "id": "bd_sibling_topic_drift_cn",
+    "category": "sibling",
+    "history": [
+      {"role": "user", "content": "当前分支已经在研究方案 A。"},
+      {"role": "assistant", "content": "方案 A 的关键取舍已记录。"}
+    ],
+    "incoming": "先看另一个问题：不相关领域的预算口径怎么定？",
+    "branch_context": {
+      "branch_id": "branch-a",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "方案 A",
+      "branch_depth": 1
+    },
+    "expected_action": "fork_sibling_branch",
+    "expected_model_action": "fork_sibling_branch",
+    "expected_classifier": "bypass",
+    "evidence": "固定 topic drift 词命中；已有 child branch 时目标转 sibling。"
+  },
+  {
+    "id": "bd_sibling_mixed_explicit",
+    "category": "sibling",
+    "history": [
+      {"role": "user", "content": "这个分支只做测试策略验证。"},
+      {"role": "assistant", "content": "测试矩阵和回归边界已完成。"}
+    ],
+    "incoming": "Switch to a sibling branch for an alternative deployment path; keep this branch focused on tests.",
+    "branch_context": {
+      "branch_id": "branch-tests",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "测试策略",
+      "branch_depth": 1
+    },
+    "expected_action": "fork_sibling_branch",
+    "expected_model_action": "fork_sibling_branch",
+    "expected_classifier": "bypass",
+    "evidence": "英文 sibling/alternative 明确要求同级分支；规则层直接判定。"
+  },
+  {
+    "id": "bd_continue_child_underspecified",
+    "category": "ambiguous",
+    "history": [
+      {"role": "user", "content": "这个分支正在做方案 A 的成本测算。"},
+      {"role": "assistant", "content": "目前只缺少峰值流量假设。"}
+    ],
+    "incoming": "那预算呢？",
+    "branch_context": {
+      "branch_id": "branch-a",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "方案 A 成本",
+      "branch_depth": 1
+    },
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "已有分支但问题短且指代当前成本主题；不应将‘预算’误判为独立主题。"
+  },
+  {
+    "id": "bd_quoted_followup_no_action",
+    "category": "quoted_instruction",
+    "history": [
+      {"role": "user", "content": "当前在审阅 API 网关的变更说明。"},
+      {"role": "assistant", "content": "下一步是确认版本兼容性。"}
+    ],
+    "incoming": "The quoted text says “open a new branch”. Please explain the wording only; do not create a branch, then continue the API review.",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "引用指令与真实操作意图分离；do not create a branch 是规则优先的否定。"
+  },
+  {
+    "id": "bd_failover_codiv_to_deepseek",
+    "category": "fallback",
+    "history": [
+      {"role": "user", "content": "主线正在讨论 API 网关。"},
+      {"role": "assistant", "content": "已确认基础请求链路。"}
+    ],
+    "incoming": "I also need a separate Kubernetes cost monitoring plan; it is unrelated to the API bug.",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "run",
+    "failure_injection": "primary_endpoint",
+    "primary_model": "codiv:openjev-0.1",
+    "fallback_model": "deepseek:deepseek-v4-pro",
+    "evidence": "主模型使用本地拒绝连接 endpoint；备用使用真实 DeepSeek，失败属于请求层，最终动作仍按备用结果判断。"
+  },
+  {
+    "id": "bd_failover_deepseek_to_codiv",
+    "category": "fallback",
+    "history": [
+      {"role": "user", "content": "这个分支专门研究方案 A。"},
+      {"role": "assistant", "content": "方案 A 的限制已经列出。"}
+    ],
+    "incoming": "The next question is an unrelated finance budget; analyze it separately.",
+    "branch_context": {
+      "branch_id": "branch-a",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "方案 A",
+      "branch_depth": 1
+    },
+    "expected_action": "fork_sibling_branch",
+    "expected_model_action": "fork_sibling_branch",
+    "expected_classifier": "run",
+    "failure_injection": "primary_endpoint",
+    "primary_model": "deepseek:deepseek-v4-pro",
+    "fallback_model": "codiv:openjev-0.1",
+    "evidence": "主模型使用本地拒绝连接 endpoint；备用使用真实 System One，需区分主请求失败与最终语义结果。"
+  }
+]

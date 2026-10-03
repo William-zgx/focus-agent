@@ -2738,6 +2738,12 @@ export interface components {
             label?: string | null;
             /** No Temperature */
             no_temperature?: boolean | null;
+            /**
+             * Protocol
+             * @default chat
+             * @enum {string}
+             */
+            protocol: "chat" | "system_one";
             /** Reasoning Effort */
             reasoning_effort?: string | null;
             /** Request Kwargs */
@@ -3103,6 +3109,12 @@ export interface components {
             label?: string | null;
             /** No Temperature */
             no_temperature?: boolean | null;
+            /**
+             * Protocol
+             * @default chat
+             * @enum {string}
+             */
+            protocol: "chat" | "system_one";
             /** Reasoning Effort */
             reasoning_effort?: string | null;
             /** Request Kwargs */
@@ -5687,10 +5699,17 @@ export interface components {
             /** @default shadow */
             recommendation_mode: components["schemas"]["BranchDecisionMode"];
             /**
+             * Recommendation Semantic Decision Min Confidence
+             * @default 0.9
+             */
+            recommendation_semantic_decision_min_confidence: number;
+            /**
              * Recommendation Semantic Enabled
              * @default false
              */
             recommendation_semantic_enabled: boolean;
+            /** Recommendation Semantic Fallback Model */
+            recommendation_semantic_fallback_model?: string | null;
             /** Recommendation Semantic Model */
             recommendation_semantic_model?: string | null;
             /**

@@ -144,6 +144,19 @@ def _configured_model(model_id: str, *, settings: Settings | None = None) -> Con
     return _merged_model_configs(settings).get(canonical_model_id(model_id, settings=settings))
 
 
+def _assert_chat_model(
+    model_id: str,
+    *,
+    settings: Settings | None = None,
+    selection: str = "chat model",
+) -> None:
+    configured = _configured_model(model_id, settings=settings)
+    if configured is not None and configured.protocol == "system_one":
+        raise ModelCatalogValidationError(
+            f"model {model_id!r} is a system_one model and cannot be used as a {selection}."
+        )
+
+
 def _merge_request_kwargs(*items: Mapping[str, object] | None) -> dict[str, object]:
     merged: dict[str, object] = {}
     for item in items:
@@ -248,6 +261,11 @@ def default_thinking_enabled(model_id: str, *, settings: Settings | None = None)
     return bool(configured.default_thinking_enabled) if configured is not None else False
 
 
+def model_protocol(model_id: str, *, settings: Settings | None = None) -> str:
+    configured = _configured_model(model_id, settings=settings)
+    return configured.protocol if configured is not None else "chat"
+
+
 def _provider_label(provider: str, *, settings: Settings | None = None) -> str:
     provider_config = _merged_provider_configs(settings).get(provider)
     if provider_config and provider_config.label:
@@ -269,6 +287,11 @@ def build_model_catalog(
     environ: Mapping[str, str] | None = None,
 ) -> list[ModelOption]:
     del environ
+    _assert_chat_model(settings.model, settings=settings, selection="chat default")
+    if settings.helper_model:
+        _assert_chat_model(settings.helper_model, settings=settings, selection="chat helper")
+    for model_id in settings.model_choices:
+        _assert_chat_model(model_id, settings=settings, selection="chat choice")
     ordered_ids: list[str] = [settings.model, *settings.model_choices]
     deduped_ids: list[str] = []
     seen: set[str] = set()
@@ -401,7 +424,10 @@ def create_chat_model(
     temperature: float,
     thinking_mode: str | None = None,
     settings: Settings | None = None,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
 ):
+    _assert_chat_model(model_id, settings=settings)
     resolved = resolve_model_config(
         model_id,
         thinking_mode=thinking_mode,
@@ -458,7 +484,12 @@ def create_chat_model(
         if settings is not None
         else Settings().model_request_timeout_seconds
     )
-    init_kwargs["timeout"] = max(float(request_timeout_seconds), 1.0)
+    init_kwargs["timeout"] = max(
+        float(request_timeout_seconds if timeout_seconds is None else timeout_seconds),
+        0.001 if timeout_seconds is not None else 1.0,
+    )
+    if max_retries is not None:
+        init_kwargs["max_retries"] = max(0, int(max_retries))
     if resolved.backend_provider == "openai" and (
         resolved.provider == "moonshot"
         or _needs_openai_reasoning_passthrough(model_id, settings=settings)
@@ -489,6 +520,7 @@ __all__ = [
     "canonical_model_id",
     "create_chat_model",
     "default_thinking_enabled",
+    "model_protocol",
     "normalize_provider_name",
     "parse_model_id",
     "resolve_model_config",

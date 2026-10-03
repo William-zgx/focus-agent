@@ -8,7 +8,12 @@ from focus_agent.config import (
     ProviderConfig,
     Settings,
 )
-from focus_agent.model_registry import build_model_catalog, create_chat_model, resolve_model_config
+from focus_agent.model_registry import (
+    build_model_catalog,
+    create_chat_model,
+    model_protocol,
+    resolve_model_config,
+)
 from focus_agent.providers.moonshot_openai import MoonshotChatOpenAI
 from focus_agent.providers.reasoning_openai import ReasoningAwareChatOpenAI
 
@@ -66,6 +71,40 @@ def test_create_chat_model_applies_configured_request_timeout(monkeypatch):
     assert model.request_timeout == 17.5
 
 
+def test_create_chat_model_accepts_explicit_short_timeout_and_retry_budget(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_init_chat_model(model_name: str, **kwargs):
+        captured["model_name"] = model_name
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(model_registry, "init_chat_model", fake_init_chat_model)
+
+    create_chat_model(
+        "openai:gpt-4.1-mini",
+        temperature=0.0,
+        timeout_seconds=0.02,
+        max_retries=0,
+    )
+
+    assert captured["kwargs"]["timeout"] == 0.02
+    assert captured["kwargs"]["max_retries"] == 0
+
+
+def test_model_protocol_defaults_to_chat_and_exposes_system_one():
+    settings = Settings(
+        model="openai:chat-model",
+        model_catalog=ModelCatalogConfig(
+            providers=(ProviderConfig(id="system"),),
+            models=(ConfiguredModel(id="system:branch-model", protocol="system_one"),),
+        ),
+    )
+
+    assert model_protocol("openai:gpt-4.1-mini", settings=settings) == "chat"
+    assert model_protocol("system:branch-model", settings=settings) == "system_one"
+
+
 def test_resolve_model_config_maps_mimo_to_openai_backend():
     resolved = resolve_model_config(
         "xiaomi:mimo-v2.5-pro",
@@ -120,6 +159,42 @@ def test_build_model_catalog_rejects_unknown_provider_reference():
         assert "unknown provider" in str(exc)
     else:
         raise AssertionError("expected unknown provider validation failure")
+
+
+def test_build_model_catalog_rejects_system_one_chat_selections():
+    settings = Settings(
+        model="system:branch-model",
+        model_catalog=ModelCatalogConfig(
+            providers=(ProviderConfig(id="system", label="System One"),),
+            models=(ConfiguredModel(id="system:branch-model", protocol="system_one"),),
+        ),
+    )
+
+    try:
+        build_model_catalog(settings)
+    except ModelCatalogValidationError as exc:
+        assert "system_one" in str(exc)
+        assert "chat default" in str(exc)
+    else:
+        raise AssertionError("expected system_one chat selection validation failure")
+
+
+def test_create_chat_model_rejects_system_one_model(monkeypatch):
+    settings = Settings(
+        model="openai:chat-model",
+        model_catalog=ModelCatalogConfig(
+            providers=(ProviderConfig(id="system", label="System One"),),
+            models=(ConfiguredModel(id="system:branch-model", protocol="system_one"),),
+        ),
+    )
+    monkeypatch.setattr(model_registry, "init_chat_model", lambda *_args, **_kwargs: object())
+
+    try:
+        create_chat_model("system:branch-model", temperature=0.0, settings=settings)
+    except ModelCatalogValidationError as exc:
+        assert "system_one" in str(exc)
+    else:
+        raise AssertionError("expected system_one chat model rejection")
 
 
 def test_resolve_model_config_disables_kimi_thinking_via_extra_body():

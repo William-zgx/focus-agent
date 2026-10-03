@@ -263,6 +263,53 @@ def test_admin_config_updates_models_tools_and_policies(
     }.issubset(actions)
 
 
+def test_admin_config_preserves_system_one_models_but_rejects_chat_selections(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings, service, model_path, _tool_path, _local_env_path = _build_client(
+        monkeypatch, tmp_path
+    )
+    service.create_user(user_id="admin-1", roles=["admin"])
+    headers = _headers(settings, "admin-1")
+
+    response = client.patch(
+        "/v1/admin/config/models",
+        headers=headers,
+        json={
+            "default_model": "openai:gpt-4.1-mini",
+            "helper_model": "openai:gpt-4.1-mini",
+            "model_choices": ["openai:gpt-4.1-mini"],
+            "models": [
+                {"id": "openai:gpt-4.1-mini", "label": "GPT-4.1 Mini"},
+                {
+                    "id": "system:branch-model",
+                    "label": "Branch Model",
+                    "protocol": "system_one",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["models"]["models"][1]["protocol"] == "system_one"
+    assert 'protocol = "system_one"' in model_path.read_text(encoding="utf-8")
+
+    rejected = client.patch(
+        "/v1/admin/config/models",
+        headers=headers,
+        json={
+            "default_model": "system:branch-model",
+            "models": [
+                {"id": "openai:gpt-4.1-mini"},
+                {"id": "system:branch-model", "protocol": "system_one"},
+            ],
+        },
+    )
+
+    assert rejected.status_code == 400
+    assert "system_one" in rejected.json()["message"]
+
+
 def test_admin_config_rejects_provider_api_key_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

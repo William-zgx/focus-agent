@@ -114,9 +114,12 @@ export interface FocusAgentAdminConfigProvider {
   api_key_configured: boolean;
 }
 
+export type FocusAgentModelProtocol = "chat" | "system_one";
+
 export interface FocusAgentAdminModelConfigEntry {
   id: string;
   label?: string | null;
+  protocol?: FocusAgentModelProtocol | null;
   supports_thinking?: boolean | null;
   default_thinking_enabled?: boolean | null;
   request_kwargs: Record<string, unknown>;
@@ -260,6 +263,7 @@ export interface FocusAgentUpdateAdminModelProviderConfig {
 export interface FocusAgentUpdateAdminModelConfigEntry {
   id: string;
   label?: string | null;
+  protocol?: FocusAgentModelProtocol | null;
   supports_thinking?: boolean | null;
   default_thinking_enabled?: boolean | null;
   request_kwargs?: Record<string, unknown>;

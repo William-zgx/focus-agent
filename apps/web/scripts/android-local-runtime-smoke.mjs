@@ -479,6 +479,11 @@ function assertAdminConfigContract(config) {
 			);
 			assertNonEmptyString(modelRecord.id, `model entry ${index}.id`);
 			assertNullableString(modelRecord.label, `model entry ${index}.label`);
+			assert.ok(
+				modelRecord.protocol === "chat" ||
+					modelRecord.protocol === "system_one",
+				`model entry ${index}.protocol should be chat or system_one`,
+			);
 			assertBoolean(
 				modelRecord.supports_thinking,
 				`model entry ${index}.supports_thinking`,
@@ -696,6 +701,14 @@ function assertModelsResponseContract(modelList, adminConfig) {
 			adminConfig.models.default_model,
 		);
 		for (const model of adminConfig.models.models) {
+			if (model.protocol === "system_one") {
+				assert.equal(
+					models.some((item) => item.id === model.id),
+					false,
+					`model list should hide system_one model ${model.id}`,
+				);
+				continue;
+			}
 			assert.ok(
 				models.some((item) => item.id === model.id),
 				`model list should expose admin model ${model.id}`,
@@ -1614,6 +1627,104 @@ try {
 	);
 	assert.equal(providerRequests[0].authorization, "Bearer moonshot-key");
 	assert.equal(providerRequests[0].body.model, "kimi-k2.6");
+
+	const systemOneConfig = await expectJson(
+		await focusFetch("http://focus-agent.local/v1/admin/config/models", {
+			...jsonBody({
+				default_model: "deepseek-v4-pro",
+				helper_model: null,
+				model_choices: ["deepseek-v4-pro"],
+				providers: [deepseekProvider, moonshotProvider],
+				models: [
+					{ id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+					{
+						id: "kimi:kimi-k2.6",
+						label: "Kimi K2.6 decision model",
+						protocol: "system_one",
+					},
+				],
+			}),
+			method: "PATCH",
+		}),
+	);
+	assertAdminConfigContract(systemOneConfig);
+	const systemOneEntry = systemOneConfig.models.models.find(
+		(model) => model.id === "kimi:kimi-k2.6",
+	);
+	assert.equal(systemOneEntry?.protocol, "system_one");
+	assert.equal(systemOneConfig.models.default_model, "deepseek-v4-pro");
+	assert.equal(systemOneConfig.models.helper_model, null);
+	assert.deepEqual(systemOneConfig.models.model_choices, ["deepseek-v4-pro"]);
+	const systemOneModelList = await expectJson(
+		await focusFetch("http://focus-agent.local/v1/models"),
+	);
+	assert.equal(
+		systemOneModelList.models.some((model) => model.id === "kimi:kimi-k2.6"),
+		false,
+		"Android local model list should hide system_one entries",
+	);
+	await expectStatus(
+		await focusFetch("http://focus-agent.local/v1/admin/config/models", {
+			...jsonBody({
+				default_model: "kimi:kimi-k2.6",
+				models: systemOneConfig.models.models,
+			}),
+			method: "PATCH",
+		}),
+		400,
+	);
+	await expectStatus(
+		await focusFetch("http://focus-agent.local/v1/admin/config/models", {
+			...jsonBody({
+				default_model: "moonshot:kimi-k2.6",
+				models: systemOneConfig.models.models,
+			}),
+			method: "PATCH",
+		}),
+		400,
+	);
+	const rejectedSystemOneSelectionConfig = await expectJson(
+		await focusFetch("http://focus-agent.local/v1/admin/config"),
+	);
+	assert.equal(
+		rejectedSystemOneSelectionConfig.models.default_model,
+		"deepseek-v4-pro",
+		"rejected system_one chat selection should not mutate local config",
+	);
+	const systemOneConversation = await expectJson(
+		await focusFetch(
+			"http://focus-agent.local/v1/conversations",
+			jsonBody({ title: "Android system one chat boundary smoke" }),
+		),
+	);
+	await collectSse(
+		await focusFetch(
+			`http://focus-agent.local/v2/threads/${systemOneConversation.root_thread_id}/runs/stream`,
+			jsonBody({
+				message: "Do not send this decision model through chat.",
+				model: "kimi:kimi-k2.6",
+			}),
+		),
+	);
+	assert.equal(
+		providerRequests.length,
+		1,
+		"system_one models must not reach the Android chat provider",
+	);
+	await collectSse(
+		await focusFetch(
+			`http://focus-agent.local/v2/threads/${systemOneConversation.root_thread_id}/runs/stream`,
+			jsonBody({
+				message: "The provider alias must also stay out of chat.",
+				model: "moonshot:kimi-k2.6",
+			}),
+		),
+	);
+	assert.equal(
+		providerRequests.length,
+		1,
+		"provider aliases for system_one models must not reach chat",
+	);
 
 	await expectJson(
 		await focusFetch("http://focus-agent.local/v1/admin/config/models", {

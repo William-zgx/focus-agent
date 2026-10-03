@@ -157,6 +157,8 @@ class BranchDecisionConfig(BaseModel):
     recommendation_min_confidence: float = 0.72
     recommendation_semantic_enabled: bool = False
     recommendation_semantic_model: str | None = None
+    recommendation_semantic_fallback_model: str | None = None
+    recommendation_semantic_decision_min_confidence: float = 0.9
     recommendation_user_visible: bool = False
     recommendation_diagnostics: dict[str, Any] = Field(default_factory=dict)
 

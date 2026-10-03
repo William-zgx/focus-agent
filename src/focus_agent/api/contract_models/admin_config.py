@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,7 @@ class AdminConfigProviderResponse(BaseModel):
 class AdminConfigModelResponse(BaseModel):
     id: str
     label: str | None = None
+    protocol: Literal["chat", "system_one"] = "chat"
     supports_thinking: bool | None = None
     default_thinking_enabled: bool | None = None
     request_kwargs: dict[str, Any] = Field(default_factory=dict)
@@ -188,6 +189,7 @@ class AdminModelProviderConfigPayload(BaseModel):
 class AdminModelConfigPayload(BaseModel):
     id: str
     label: str | None = None
+    protocol: Literal["chat", "system_one"] = "chat"
     supports_thinking: bool | None = None
     default_thinking_enabled: bool | None = None
     request_kwargs: dict[str, Any] = Field(default_factory=dict)

@@ -245,6 +245,7 @@ export function defaultAdminConfig(): FocusAgentAdminConfig {
 				{
 					id: model.id,
 					label: model.label,
+					protocol: "chat",
 					supports_thinking: model.supports_thinking,
 					default_thinking_enabled: model.default_thinking_enabled,
 					request_kwargs: {},

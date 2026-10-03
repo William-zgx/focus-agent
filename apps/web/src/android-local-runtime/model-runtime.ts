@@ -19,6 +19,26 @@ import type {
 	ResolvedLocalModelProvider,
 } from "./types";
 
+export type ModelProviderIdentity = Pick<
+	FocusAgentAdminConfig["models"]["providers"][number],
+	"id" | "aliases"
+>;
+type ModelEntry = FocusAgentAdminConfig["models"]["models"][number];
+
+function providerPrefixMatches(
+	provider: ModelProviderIdentity,
+	modelProviderPrefix: string,
+): boolean {
+	const normalizedPrefix = modelProviderPrefix.trim().toLowerCase();
+	if (!normalizedPrefix) return false;
+	return (
+		provider.id.toLowerCase() === normalizedPrefix ||
+		provider.aliases.some(
+			(alias) => alias.trim().toLowerCase() === normalizedPrefix,
+		)
+	);
+}
+
 export function adminConfigResponse(
 	ctx: LocalFocusAgentRuntime,
 ): FocusAgentAdminConfig {
@@ -38,14 +58,47 @@ export function providerMatchesModelPrefix(
 	provider: FocusAgentAdminConfig["models"]["providers"][number],
 	modelProviderPrefix: string,
 ): boolean {
-	const normalizedPrefix = modelProviderPrefix.trim().toLowerCase();
-	if (!normalizedPrefix) return false;
-	return (
-		provider.id.toLowerCase() === normalizedPrefix ||
-		provider.aliases.some(
-			(alias) => alias.trim().toLowerCase() === normalizedPrefix,
-		)
-	);
+	return providerPrefixMatches(provider, modelProviderPrefix);
+}
+
+export function configuredModelForSelection(
+	modelEntries: readonly ModelEntry[],
+	providers: readonly ModelProviderIdentity[],
+	selectedModel: string,
+): ModelEntry | undefined {
+	const normalizedModel = selectedModel.trim();
+	const directMatch = modelEntries.find((item) => item.id === normalizedModel);
+	if (directMatch) return directMatch;
+	const resolvedSelection = resolveProviderConfig(providers, normalizedModel);
+	const resolvedProvider = resolvedSelection?.provider;
+	if (!resolvedSelection || !resolvedProvider) return undefined;
+	return modelEntries.find((entry) => {
+		const resolvedEntry = resolveProviderConfig(providers, entry.id);
+		return (
+			resolvedEntry?.provider?.id.toLowerCase() ===
+				resolvedProvider.id.toLowerCase() &&
+			resolvedEntry.model === resolvedSelection.model
+		);
+	});
+}
+
+function resolveProviderConfig<T extends ModelProviderIdentity>(
+	providers: readonly T[],
+	selectedModel: string,
+): { model: string; provider: T | null } | null {
+	const model = selectedModel.trim() || DEFAULT_MODEL_ID;
+	const providerSeparatorIndex = model.indexOf(":");
+	if (providerSeparatorIndex > 0 && providerSeparatorIndex < model.length - 1) {
+		const providerPrefix = model.slice(0, providerSeparatorIndex);
+		const modelName = model.slice(providerSeparatorIndex + 1);
+		const provider =
+			providers.find((item) => providerPrefixMatches(item, providerPrefix)) ??
+			null;
+		return { model: modelName, provider };
+	}
+	if (providerSeparatorIndex > 0) return null;
+	const [provider] = providers;
+	return provider ? { model, provider } : null;
 }
 
 export function providerConfigForModel(
@@ -55,26 +108,22 @@ export function providerConfigForModel(
 	model: string;
 	provider: FocusAgentAdminConfig["models"]["providers"][number] | null;
 } | null {
-	const model = selectedModel.trim() || DEFAULT_MODEL_ID;
-	const providerSeparatorIndex = model.indexOf(":");
-	if (providerSeparatorIndex > 0 && providerSeparatorIndex < model.length - 1) {
-		const providerPrefix = model.slice(0, providerSeparatorIndex);
-		const modelName = model.slice(providerSeparatorIndex + 1);
-		const provider =
-			ctx.state.adminConfig.models.providers.find((item) =>
-				ctx.providerMatchesModelPrefix(item, providerPrefix),
-			) ?? null;
-		return { model: modelName, provider };
-	}
-	if (providerSeparatorIndex > 0) return null;
-	const [provider] = ctx.state.adminConfig.models.providers;
-	return provider ? { model, provider } : null;
+	return resolveProviderConfig(
+		ctx.state.adminConfig.models.providers,
+		selectedModel,
+	);
 }
 
 export function modelProvider(
 	ctx: LocalFocusAgentRuntime,
 	selectedModel: string,
 ): ResolvedLocalModelProvider | null {
+	const configuredModel = configuredModelForSelection(
+		ctx.state.adminConfig.models.models,
+		ctx.state.adminConfig.models.providers,
+		selectedModel,
+	);
+	if (configuredModel?.protocol === "system_one") return null;
 	const resolved = ctx.providerConfigForModel(selectedModel);
 	if (!resolved?.provider) return null;
 	const provider = resolved.provider;
@@ -173,14 +222,21 @@ export function threadMessagesForProvider(
 export function modelsResponse(
 	ctx: LocalFocusAgentRuntime,
 ): FocusAgentModelsResponse {
-	const defaultModel =
-		ctx.state.adminConfig.models.default_model || DEFAULT_MODEL_ID;
 	const configuredModels = ctx.state.adminConfig.models.models;
+	const chatModels = configuredModels.filter(
+		(item) => item.protocol !== "system_one",
+	);
+	const configuredDefault = ctx.state.adminConfig.models.default_model;
+	const defaultModel =
+		configuredDefault &&
+		chatModels.some((item) => item.id === configuredDefault)
+			? configuredDefault
+			: chatModels[0]?.id || DEFAULT_MODEL_ID;
 	const providers = ctx.adminConfigResponse().models.providers;
 	const fallbackProvider = providers[0];
 	const models =
-		configuredModels.length > 0
-			? configuredModels.map((item) => {
+		chatModels.length > 0
+			? chatModels.map((item) => {
 					const provider =
 						ctx.providerConfigForModel(item.id)?.provider ?? fallbackProvider;
 					return {
