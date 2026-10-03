@@ -5612,6 +5612,8 @@ export interface components {
              * @default
              */
             reason: string;
+            /** Recommendation User Visible */
+            recommendation_user_visible?: boolean | null;
             /** Root Thread Id */
             root_thread_id: string;
             /** Source */

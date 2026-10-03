@@ -216,11 +216,7 @@ def build_branch_action_proposal_result(
         target_parent_thread_id=target_parent,
         suggested_branch_name=suggested_branch_name,
         suggested_branch_name_source=(
-            "explicit"
-            if explicit_branch_name
-            else "inferred"
-            if suggested_branch_name
-            else None
+            "explicit" if explicit_branch_name else "inferred" if suggested_branch_name else None
         ),
         reason="User requested a branch switch from chat.",
         handoff_message=_branch_handoff_text_from_message(message)
@@ -275,6 +271,8 @@ def execute_branch_action_locked(
         raise KeyError(action_id)
     if action.status.value != "pending":
         raise ValueError(f"Branch action {action_id} is not pending.")
+    if action.recommendation_user_visible is False:
+        raise ValueError(f"Branch action {action_id} is audit-only and cannot be executed.")
 
     from .service import execute_branch_action_navigation
 
@@ -383,6 +381,8 @@ def dismiss_branch_action_locked(
         raise KeyError(action_id)
     if action.status.value != "pending":
         raise ValueError(f"Branch action {action_id} is not pending.")
+    if action.recommendation_user_visible is False:
+        raise ValueError(f"Branch action {action_id} is audit-only and cannot be dismissed.")
     dismissed = mark_branch_action_dismissed(action)
     is_chinese = service._is_chinese_text(user_message or action.reason or "")
     assistant_text = dismissal_message(is_chinese=is_chinese)

@@ -127,7 +127,7 @@ test-graph-builder: .venv/bin/python
 test-chat-service: .venv/bin/python
 	$(PYTEST) tests/test_chat_service.py
 
-test-thread-stream-frontend-regressions: node_modules
+test-thread-stream-frontend-regressions: sdk-build
 	node --test tests/test_thread_stream_frontend_regressions.mjs
 
 lint: .venv/bin/python

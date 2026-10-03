@@ -10,7 +10,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +20,7 @@ from focus_agent.capabilities import build_tool_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
+from focus_agent.core.token_usage import message_token_usage
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.observability.trajectory import extract_trajectory_steps
 from focus_agent.skills import SkillRegistry
@@ -48,8 +49,9 @@ class EvalRuntime:
     llm_judge: LLMJudge = field(default_factory=LLMJudge)
     trajectory_judge: TrajectoryJudge = field(default_factory=TrajectoryJudge)
     environment_judge: EnvironmentJudge = field(default_factory=EnvironmentJudge)
-    cost_per_1k_input: float = 0.0
-    cost_per_1k_output: float = 0.0
+    runtime_kind: str | None = None
+    cost_per_1k_input: float | None = None
+    cost_per_1k_output: float | None = None
 
 
 def build_default_runtime(
@@ -58,6 +60,9 @@ def build_default_runtime(
     tools: Iterable[Any] | None = None,
     model_factory: Callable[..., Any] | None = None,
     llm_judge: LLMJudge | None = None,
+    runtime_kind: str | None = None,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
 ) -> EvalRuntime:
     settings = settings or Settings()
     if tools is None:
@@ -72,6 +77,9 @@ def build_default_runtime(
         tool_registry=tool_registry,
         model_factory=model_factory,
         llm_judge=llm_judge or LLMJudge(),
+        runtime_kind=runtime_kind or ("fake" if model_factory is not None else "provider"),
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
     )
 
 
@@ -175,7 +183,6 @@ def _run_case_inner(
             state=state,
             before_state=before_state,
         )
-        passed = all(v.passed for v in verdicts)
 
         metrics = _build_metrics(
             case=case,
@@ -190,6 +197,10 @@ def _run_case_inner(
             attempt=attempt,
             attempts=attempts,
         )
+        acceptance_verdict = _evaluate_case_acceptance(case=case, metrics=metrics)
+        if acceptance_verdict is not None:
+            verdicts.append(acceptance_verdict)
+        passed = all(v.passed for v in verdicts)
         result_case_id = _result_case_id(
             case.id,
             model_label=model_label,
@@ -213,6 +224,16 @@ def _run_case_inner(
             attempt=attempt,
             attempts=attempts,
         )
+        metrics = _failure_metrics(
+            case=case,
+            runtime=runtime,
+            latency_ms=latency_ms,
+            model_label=model_label,
+            model_name=model_name or runtime.settings.model,
+            base_case_id=base_case_id or case.id,
+            attempt=attempt,
+            attempts=attempts,
+        )
         return EvalResult(
             case_id=result_case_id,
             passed=False,
@@ -226,18 +247,7 @@ def _run_case_inner(
                 )
             ],
             trajectory=[],
-            metrics={
-                "latency_ms": latency_ms,
-                "tool_calls": 0,
-                "llm_calls": 0,
-                "model_label": model_label,
-                "model": model_name or runtime.settings.model,
-                "base_case_id": base_case_id or case.id,
-                "attempt": attempt,
-                "attempts": attempts,
-                "capability": case.capability,
-                "risk_level": case.risk_level,
-            },
+            metrics=metrics,
             error=repr(exc),
             tags=list(case.tags),
         )
@@ -288,6 +298,17 @@ def _run_case_with_timeout(
             attempt=attempt,
             attempts=attempts,
         )
+        metrics = _failure_metrics(
+            case=case,
+            runtime=runtime,
+            latency_ms=latency_ms,
+            model_label=model_label,
+            model_name=model_name or runtime.settings.model,
+            base_case_id=base_case_id or case.id,
+            attempt=attempt,
+            attempts=attempts,
+        )
+        metrics["timeout_s"] = timeout_s
         return EvalResult(
             case_id=result_case_id,
             passed=False,
@@ -302,19 +323,7 @@ def _run_case_with_timeout(
                 )
             ],
             trajectory=[],
-            metrics={
-                "latency_ms": latency_ms,
-                "tool_calls": 0,
-                "llm_calls": 0,
-                "model_label": model_label,
-                "model": model_name or runtime.settings.model,
-                "base_case_id": base_case_id or case.id,
-                "attempt": attempt,
-                "attempts": attempts,
-                "capability": case.capability,
-                "risk_level": case.risk_level,
-                "timeout_s": timeout_s,
-            },
+            metrics=metrics,
             error=f"case timed out after {timeout_s:g}s",
             tags=list(case.tags),
         )
@@ -439,19 +448,33 @@ def _build_metrics(
 ) -> dict[str, Any]:
     llm_calls = int(state.get("llm_calls") or 0)
     tool_calls = len(trajectory)
-    # Token accounting: providers usage_metadata when available; otherwise zero.
+    # Token accounting is only authoritative when the provider reports both
+    # prompt and completion usage. Missing usage must not become a fake $0.
     input_tokens = 0
     output_tokens = 0
-    for msg in state.get("messages", []) or []:
-        usage = getattr(msg, "usage_metadata", None) or {}
-        if isinstance(usage, dict):
+    usage_messages = 0
+    messages = state.get("messages", []) or []
+    ai_messages = sum(isinstance(msg, AIMessage) for msg in messages)
+    for msg in messages:
+        usage = message_token_usage(msg)
+        if usage is not None and _has_complete_usage(msg):
             input_tokens += int(usage.get("input_tokens", 0) or 0)
             output_tokens += int(usage.get("output_tokens", 0) or 0)
+            usage_messages += 1
 
-    cost_usd = (
-        input_tokens / 1000.0 * runtime.cost_per_1k_input
-        + output_tokens / 1000.0 * runtime.cost_per_1k_output
+    prices_configured = (
+        runtime.cost_per_1k_input is not None and runtime.cost_per_1k_output is not None
     )
+    usage_complete = bool(usage_messages and usage_messages >= max(llm_calls, ai_messages))
+    cost_known = usage_complete and prices_configured
+    cost_usd = (
+        input_tokens / 1000.0 * float(runtime.cost_per_1k_input)
+        + output_tokens / 1000.0 * float(runtime.cost_per_1k_output)
+        if cost_known
+        else None
+    )
+    runtime_kind = _runtime_kind(runtime)
+    is_harness_stability = "harness" in case.tags and "stability" in case.tags
     cache_hits = sum(1 for step in trajectory if step.cache_hit)
     fallback_uses = sum(1 for step in trajectory if step.fallback_used)
     parallel_tool_calls = sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1)
@@ -463,13 +486,35 @@ def _build_metrics(
         for verdict in verdicts
         if verdict.kind == "environment"
     )
-    return {
+    metrics = {
         "latency_ms": latency_ms,
         "tool_calls": tool_calls,
         "llm_calls": llm_calls,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "input_tokens": input_tokens if usage_complete else None,
+        "output_tokens": output_tokens if usage_complete else None,
         "cost_usd": cost_usd,
+        "cost_status": "measured" if cost_known else "unknown",
+        "cost_unknown_reason": (
+            None
+            if cost_known
+            else "usage_metadata_missing"
+            if not usage_messages
+            else "usage_metadata_incomplete"
+            if not usage_complete
+            else "price_missing"
+        ),
+        "usage_messages": usage_messages,
+        "runtime_kind": runtime_kind,
+        "provider_evaluation": runtime_kind == "provider",
+        "model_quality_evidence": runtime_kind == "provider" and not is_harness_stability,
+        "eval_layer": (
+            "harness_stability"
+            if is_harness_stability
+            else "model_quality"
+            if runtime_kind == "provider"
+            else "fake_runtime"
+        ),
+        "acceptance_policy": dict(case.acceptance or {}),
         "cache_hits": cache_hits,
         "fallback_uses": fallback_uses,
         "parallel_tool_calls": parallel_tool_calls,
@@ -485,6 +530,154 @@ def _build_metrics(
         "capability": case.capability,
         "risk_level": case.risk_level,
     }
+    metrics["acceptance"] = _initial_acceptance_checks(case.acceptance, metrics)
+    return metrics
+
+
+def _runtime_kind(runtime: EvalRuntime) -> str:
+    configured = str(runtime.runtime_kind or "").strip().lower()
+    if configured in {"fake", "provider"}:
+        return configured
+    return "fake" if runtime.model_factory is not None else "provider"
+
+
+def _has_complete_usage(message: Any) -> bool:
+    input_keys = {"input_tokens", "prompt_tokens", "prompt_token_count"}
+    output_keys = {"output_tokens", "completion_tokens", "completion_token_count"}
+    seen_keys: set[str] = set()
+    for payload in _usage_payloads(message):
+        seen_keys.update(payload)
+    return bool(seen_keys & input_keys and seen_keys & output_keys)
+
+
+def _usage_payloads(message: Any) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for value in (
+        getattr(message, "usage_metadata", None),
+        getattr(message, "response_metadata", None),
+        getattr(message, "additional_kwargs", None),
+    ):
+        if not isinstance(value, Mapping):
+            continue
+        payloads.append(dict(value))
+        for key in ("token_usage", "usage", "usage_metadata"):
+            nested = value.get(key)
+            if isinstance(nested, Mapping):
+                payloads.append(dict(nested))
+    return payloads
+
+
+def _finite_number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number and abs(number) != float("inf") else None
+
+
+def _initial_acceptance_checks(
+    acceptance: Mapping[str, Any] | None,
+    metrics: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    checks: dict[str, dict[str, Any]] = {}
+    for key, raw_threshold in dict(acceptance or {}).items():
+        if key not in {"max_cost_usd", "max_p95_latency_ms", "min_success_rate"}:
+            continue
+        threshold = _finite_number(raw_threshold)
+        check: dict[str, Any] = {"threshold": raw_threshold}
+        if threshold is None:
+            check.update({"status": "invalid", "reason": "threshold_not_numeric"})
+        elif key == "max_cost_usd":
+            actual = metrics.get("cost_usd")
+            check["actual"] = actual
+            if actual is None:
+                check.update({"status": "unknown", "reason": metrics.get("cost_unknown_reason")})
+            else:
+                check["status"] = "pass" if float(actual) <= threshold else "fail"
+        else:
+            check.update({"status": "deferred", "scope": "suite"})
+        checks[key] = check
+    return checks
+
+
+def _evaluate_case_acceptance(
+    *,
+    case: EvalCase,
+    metrics: dict[str, Any],
+) -> JudgeVerdict | None:
+    checks = dict(metrics.get("acceptance") or {})
+    cost_check = checks.get("max_cost_usd")
+    if not isinstance(cost_check, dict):
+        return None
+    status = str(cost_check.get("status") or "unknown")
+    passed = status == "pass"
+    if status == "unknown":
+        reason = "max_cost_usd cannot be verified: billing evidence is unknown"
+    elif status == "invalid":
+        reason = "max_cost_usd threshold is invalid"
+    elif status == "fail":
+        reason = (
+            f"cost_usd={cost_check.get('actual')} exceeded "
+            f"max_cost_usd={cost_check.get('threshold')}"
+        )
+    else:
+        reason = "case acceptance checks passed"
+    return JudgeVerdict(
+        kind="acceptance",
+        passed=passed,
+        reasoning=reason,
+        confidence=1.0,
+        details={
+            "scope": "case",
+            "checks": checks,
+            "runtime_kind": metrics.get("runtime_kind"),
+            "provider_evaluation": metrics.get("provider_evaluation", False),
+        },
+    )
+
+
+def _failure_metrics(
+    *,
+    case: EvalCase,
+    runtime: EvalRuntime,
+    latency_ms: float,
+    model_label: str | None,
+    model_name: str,
+    base_case_id: str,
+    attempt: int,
+    attempts: int,
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {
+        "latency_ms": latency_ms,
+        "tool_calls": 0,
+        "llm_calls": 0,
+        "input_tokens": None,
+        "output_tokens": None,
+        "cost_usd": None,
+        "cost_status": "unknown",
+        "cost_unknown_reason": "runtime_failed",
+        "usage_messages": 0,
+        "runtime_kind": _runtime_kind(runtime),
+        "provider_evaluation": _runtime_kind(runtime) == "provider",
+        "model_quality_evidence": False,
+        "eval_layer": (
+            "harness_stability"
+            if "harness" in case.tags and "stability" in case.tags
+            else "model_quality"
+            if _runtime_kind(runtime) == "provider"
+            else "fake_runtime"
+        ),
+        "acceptance_policy": dict(case.acceptance or {}),
+        "model_label": model_label,
+        "model": model_name,
+        "base_case_id": base_case_id,
+        "attempt": attempt,
+        "attempts": attempts,
+        "capability": case.capability,
+        "risk_level": case.risk_level,
+    }
+    metrics["acceptance"] = _initial_acceptance_checks(case.acceptance, metrics)
+    return metrics
 
 
 def _has_trajectory_expectations(expected: dict[str, Any]) -> bool:

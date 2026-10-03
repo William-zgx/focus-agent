@@ -60,6 +60,16 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         help="Per-case timeout in seconds. Use <=0 to disable.",
     )
     parser.add_argument("--model", help="Override Settings.model for this run")
+    parser.add_argument(
+        "--cost-per-1k-input",
+        type=float,
+        help="Provider input-token price in USD per 1k tokens; omit to keep cost unknown.",
+    )
+    parser.add_argument(
+        "--cost-per-1k-output",
+        type=float,
+        help="Provider output-token price in USD per 1k tokens; omit to keep cost unknown.",
+    )
     parser.add_argument("--matrix", help="TOML/JSON model matrix file for cross-model eval")
     parser.add_argument(
         "--retries",
@@ -102,6 +112,8 @@ def _run_suite_command(argv: Sequence[str]) -> int:
         concurrency=args.concurrency,
         case_timeout=args.case_timeout,
         model=args.model,
+        cost_per_1k_input=args.cost_per_1k_input,
+        cost_per_1k_output=args.cost_per_1k_output,
         matrix=args.matrix,
         retries=args.retries,
         only_capability=args.only_capability,
@@ -125,6 +137,8 @@ def _execute_eval_cases(
     concurrency: int,
     case_timeout: float = 120.0,
     model: str | None = None,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
     matrix: str | None = None,
     retries: int | None = None,
     only_capability: str | None = None,
@@ -154,6 +168,8 @@ def _execute_eval_cases(
         concurrency=max(1, concurrency),
         timeout_s=case_timeout,
         retries=retries,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
     )
     summary = aggregate_metrics(results)
     baseline_summary = load_metric_summary(baseline) if baseline else None
@@ -193,6 +209,8 @@ def _execute_eval_cases(
         "case_timeout_s": case_timeout,
         "matrix": matrix,
         "retries": retries,
+        "cost_per_1k_input": cost_per_1k_input,
+        "cost_per_1k_output": cost_per_1k_output,
         "only_capability": only_capability,
         "risk_level": risk_level,
     }
@@ -478,13 +496,20 @@ def _execute_model_runs(
     concurrency: int,
     timeout_s: float,
     retries: int | None,
+    cost_per_1k_input: float | None,
+    cost_per_1k_output: float | None,
 ) -> list[EvalResult]:
     if not cases:
         return []
     if global_matrix:
         results: list[EvalResult] = []
         for variant in global_matrix:
-            runtime = _runtime_for_model(base_settings, variant["model"])
+            runtime = _runtime_for_model(
+                base_settings,
+                variant["model"],
+                cost_per_1k_input=cost_per_1k_input,
+                cost_per_1k_output=cost_per_1k_output,
+            )
             results.extend(
                 _run_suite_compat(
                     cases,
@@ -504,7 +529,12 @@ def _execute_model_runs(
         for case in cases:
             variants = _case_model_variants(case, default_model=base_settings.model)
             for variant in variants:
-                runtime = _runtime_for_model(base_settings, variant["model"])
+                runtime = _runtime_for_model(
+                    base_settings,
+                    variant["model"],
+                    cost_per_1k_input=cost_per_1k_input,
+                    cost_per_1k_output=cost_per_1k_output,
+                )
                 results.extend(
                     _run_suite_compat(
                         [case],
@@ -519,7 +549,12 @@ def _execute_model_runs(
                 )
         return results
 
-    runtime = _runtime_for_suite(cases=cases, base_settings=base_settings)
+    runtime = _runtime_for_suite(
+        cases=cases,
+        base_settings=base_settings,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
+    )
     return _run_suite_compat(
         cases,
         runtime=runtime,
@@ -530,16 +565,40 @@ def _execute_model_runs(
     )
 
 
-def _runtime_for_suite(*, cases: list[EvalCase], base_settings: Settings):
+def _runtime_for_suite(
+    *,
+    cases: list[EvalCase],
+    base_settings: Settings,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
+):
     if cases and all("harness" in case.tags and "stability" in case.tags for case in cases):
-        return build_harness_stability_runtime(settings=base_settings)
-    return build_default_runtime(settings=base_settings)
+        return build_harness_stability_runtime(
+            settings=base_settings,
+            cost_per_1k_input=cost_per_1k_input,
+            cost_per_1k_output=cost_per_1k_output,
+        )
+    return build_default_runtime(
+        settings=base_settings,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
+    )
 
 
-def _runtime_for_model(base_settings: Settings, model: str):
+def _runtime_for_model(
+    base_settings: Settings,
+    model: str,
+    *,
+    cost_per_1k_input: float | None = None,
+    cost_per_1k_output: float | None = None,
+):
     settings = Settings.from_env()
     settings.model = model or base_settings.model
-    return build_default_runtime(settings=settings)
+    return build_default_runtime(
+        settings=settings,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
+    )
 
 
 def _run_suite_compat(cases: list[EvalCase], **kwargs) -> list[EvalResult]:

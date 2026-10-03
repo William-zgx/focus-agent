@@ -274,6 +274,10 @@ class BranchDecisionServiceRuntimeMixin:
             update={
                 "source": "branch_decision",
                 "source_decision_id": event.decision_id,
+                "recommendation_user_visible": event.metadata.get(
+                    "recommendation_user_visible",
+                    event.mode == BranchDecisionMode.SUGGEST,
+                ),
                 "confidence": event.score,
                 "rationale": event.rationale,
             }
