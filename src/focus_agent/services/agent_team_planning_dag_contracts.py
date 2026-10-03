@@ -44,7 +44,9 @@ def _resource_claims_for_deliverable(
     *,
     sandbox_id: str | None = None,
 ) -> list[str]:
-    claims = list(deliverable.resource_claims or _resource_claims_for_scope(deliverable.write_scope))
+    claims = list(
+        deliverable.resource_claims or _resource_claims_for_scope(deliverable.write_scope)
+    )
     if sandbox_id and _deliverable_requires_sandbox(deliverable):
         claims.append(f"sandbox:{_sanitize_resource_identifier(sandbox_id)}")
     return _dedupe_values(claims)
@@ -66,7 +68,9 @@ def _deliverable_requires_sandbox(deliverable: MissionDeliverable) -> bool:
     }
     if any(marker in _SANDBOX_TASK_MARKERS for marker in task_markers):
         return True
-    capabilities = " ".join(str(item or "").strip().lower() for item in deliverable.capability_requirements)
+    capabilities = " ".join(
+        str(item or "").strip().lower() for item in deliverable.capability_requirements
+    )
     return any(marker in capabilities for marker in _SANDBOX_CAPABILITY_MARKERS)
 
 

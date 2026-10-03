@@ -100,8 +100,12 @@ def _feedback_text(item: Any) -> str:
         getattr(item, "feedback_reason", ""),
         getattr(item, "sentiment", ""),
         getattr(item, "category", ""),
-        json.dumps(getattr(item, "selected_memories", []) or [], ensure_ascii=False, sort_keys=True),
-        json.dumps(getattr(item, "excluded_memories", []) or [], ensure_ascii=False, sort_keys=True),
+        json.dumps(
+            getattr(item, "selected_memories", []) or [], ensure_ascii=False, sort_keys=True
+        ),
+        json.dumps(
+            getattr(item, "excluded_memories", []) or [], ensure_ascii=False, sort_keys=True
+        ),
         json.dumps(getattr(item, "drift_report", {}) or {}, ensure_ascii=False, sort_keys=True),
         json.dumps(getattr(item, "user_override", {}) or {}, ensure_ascii=False, sort_keys=True),
         json.dumps(getattr(item, "metadata", {}) or {}, ensure_ascii=False, sort_keys=True),

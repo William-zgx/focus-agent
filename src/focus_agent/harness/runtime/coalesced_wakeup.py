@@ -11,9 +11,11 @@ Typical usage::
 
     helper = CoalescedWakeupHelper()
 
+
     async def drain() -> None:
         # pull work off a queue and process it
         ...
+
 
     # called by producers whenever new work arrives:
     helper.wake()

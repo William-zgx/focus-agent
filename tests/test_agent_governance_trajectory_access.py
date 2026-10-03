@@ -56,21 +56,15 @@ def _trajectory_row(*, owner_user_id: str, thread_id: str) -> dict[str, Any]:
             "memory_curator_decision": {"enabled": True, "marker": marker},
             "agent_runs": [{"run_id": f"run-{marker}", "marker": marker}],
             "model_route_decision": {"enabled": True, "marker": marker},
-            "agent_failure_records": [
-                {"failure_id": f"failure-{marker}", "marker": marker}
-            ],
+            "agent_failure_records": [{"failure_id": f"failure-{marker}", "marker": marker}],
             "agent_review_queue": [{"item_id": f"review-{marker}", "marker": marker}],
             "context_budget_decision": {"enabled": True, "marker": marker},
-            "context_artifact_refs": [
-                {"artifact_id": f"context-{marker}", "marker": marker}
-            ],
+            "context_artifact_refs": [{"artifact_id": f"context-{marker}", "marker": marker}],
             "agent_task_ledger": {
                 "enabled": True,
                 "tasks": [{"task_id": f"task-{marker}", "marker": marker}],
             },
-            "delegated_artifacts": [
-                {"artifact_id": f"artifact-{marker}", "marker": marker}
-            ],
+            "delegated_artifacts": [{"artifact_id": f"artifact-{marker}", "marker": marker}],
             "critic_gate_result": {"enabled": True, "verdict": "pass", "marker": marker},
         },
     }
@@ -89,11 +83,7 @@ class _QueryFilteringTrajectoryRepository:
         self.queries.append(query)
         rows = self.rows
         if query.owner_user_id is not None:
-            rows = [
-                row
-                for row in rows
-                if row["_owner_user_id"] == query.owner_user_id
-            ]
+            rows = [row for row in rows if row["_owner_user_id"] == query.owner_user_id]
         if query.thread_id is not None:
             rows = [row for row in rows if row["thread_id"] == query.thread_id]
         if query.status is not None:

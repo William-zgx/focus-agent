@@ -88,8 +88,6 @@ def test_local_env_update_keeps_atomic_replace_and_existing_content(
         {"FLAG": True, "REMOVE": None, "ADDED": 3},
     )
 
-    assert path.read_text(encoding="utf-8") == (
-        "# keep\nKEEP=value\nFLAG=true\n\nADDED=3\n"
-    )
+    assert path.read_text(encoding="utf-8") == ("# keep\nKEEP=value\nFLAG=true\n\nADDED=3\n")
     assert replace_calls == [(tmp_file, path)]
     assert not tmp_file.exists()

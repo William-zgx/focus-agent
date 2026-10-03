@@ -11,8 +11,7 @@ def test_eval_workflow_missing_provider_key_policy_defaults() -> None:
     text = workflow.read_text(encoding="utf-8")
 
     assert (
-        "PROVIDER_EVAL_MISSING_KEY_POLICY: "
-        "${{ vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'skip' }}"
+        "PROVIDER_EVAL_MISSING_KEY_POLICY: ${{ vars.PROVIDER_EVAL_MISSING_KEY_POLICY || 'skip' }}"
     ) in text
 
 

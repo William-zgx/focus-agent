@@ -117,7 +117,9 @@ def tool_outcome_from_message(
     )
     fallback_group = _string_or_none(runtime_info.get("fallback_group"))
     fallback_used = bool(runtime_info.get("fallback_used") or fallback_group)
-    resolved_turn_id = _string_or_none(turn_id) or _string_or_none(runtime_info.get("turn_id")) or ""
+    resolved_turn_id = (
+        _string_or_none(turn_id) or _string_or_none(runtime_info.get("turn_id")) or ""
+    )
     resolved_human_turn_index = _int_or_none(human_turn_index)
     if resolved_human_turn_index is None:
         resolved_human_turn_index = _int_or_none(runtime_info.get("human_turn_index"))
@@ -130,7 +132,9 @@ def tool_outcome_from_message(
     )
     if status == "succeeded" and (fallback_used or prior_failed):
         status = "recovered"
-        recovery_of_tool_call_id = str(prior_failed.get("tool_call_id") or "") if prior_failed else ""
+        recovery_of_tool_call_id = (
+            str(prior_failed.get("tool_call_id") or "") if prior_failed else ""
+        )
     retryable = _is_retryable(error_category=error_category, message=error_message)
     attempt_index = _attempt_index(
         tool_call_id=tool_call_id,
@@ -255,7 +259,11 @@ def _classify_tool_message(
     if runtime_flags & _SKIPPED_RUNTIME_FLAGS:
         return "skipped", "skipped", _first_runtime_reason(runtime_info)
     if runtime_flags & _BLOCKED_RUNTIME_FLAGS:
-        return "blocked", _blocked_error_category(runtime_flags), _first_runtime_reason(runtime_info)
+        return (
+            "blocked",
+            _blocked_error_category(runtime_flags),
+            _first_runtime_reason(runtime_info),
+        )
 
     message_status = str(getattr(message, "status", "success") or "success").strip().lower()
     if message_status in {"error", "failed"}:
@@ -312,7 +320,9 @@ def _embedded_payload_failure(value: Any) -> tuple[str, str] | None:
     if failure is None:
         return None
     category, message = failure
-    if category == "business_error" and any(marker in message.lower() for marker in _NETWORK_MARKERS):
+    if category == "business_error" and any(
+        marker in message.lower() for marker in _NETWORK_MARKERS
+    ):
         category = "network"
     return category, message
 

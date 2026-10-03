@@ -50,9 +50,7 @@ class AgentMiddleware(Protocol):
     # These are optional. ``BaseAgentMiddleware`` provides no-op defaults
     # so concrete middleware classes do not need to implement them.
 
-    def on_tool_call(
-        self, ctx: Any, tool_name: str, args: dict
-    ) -> ToolCallInterception | None:
+    def on_tool_call(self, ctx: Any, tool_name: str, args: dict) -> ToolCallInterception | None:
         """Intercept a tool call before it is executed.
 
         Return a ``ToolCallInterception`` to block or patch the call;
@@ -84,9 +82,7 @@ class BaseAgentMiddleware:
     def wrap(self, handler: MiddlewareHandler) -> MiddlewareHandler:
         return handler
 
-    def on_tool_call(
-        self, ctx: Any, tool_name: str, args: dict
-    ) -> ToolCallInterception | None:
+    def on_tool_call(self, ctx: Any, tool_name: str, args: dict) -> ToolCallInterception | None:
         return None
 
     def on_tool_result(

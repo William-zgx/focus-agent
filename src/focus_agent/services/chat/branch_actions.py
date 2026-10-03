@@ -216,11 +216,7 @@ def build_branch_action_proposal_result(
         target_parent_thread_id=target_parent,
         suggested_branch_name=suggested_branch_name,
         suggested_branch_name_source=(
-            "explicit"
-            if explicit_branch_name
-            else "inferred"
-            if suggested_branch_name
-            else None
+            "explicit" if explicit_branch_name else "inferred" if suggested_branch_name else None
         ),
         reason="User requested a branch switch from chat.",
         handoff_message=_branch_handoff_text_from_message(message)

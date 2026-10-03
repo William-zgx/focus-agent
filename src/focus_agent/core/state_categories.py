@@ -203,9 +203,7 @@ def clear_transient_state(state: dict[str, Any]) -> dict[str, Any]:
     input mapping.
     """
     cleared: dict[str, Any] = {
-        key: value
-        for key, value in state.items()
-        if key not in TRANSIENT_FIELDS
+        key: value for key, value in state.items() if key not in TRANSIENT_FIELDS
     }
     for key, default in _TRANSIENT_DEFAULTS.items():
         cleared[key] = default

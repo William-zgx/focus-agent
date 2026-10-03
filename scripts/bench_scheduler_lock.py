@@ -61,7 +61,9 @@ def run_benchmark(*, sessions: int, iterations: int, hold_ms: float) -> dict[str
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark agent-team per-session scheduler locks.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark agent-team per-session scheduler locks."
+    )
     parser.add_argument("--sessions", type=int, default=10)
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--hold-ms", type=float, default=1.0)

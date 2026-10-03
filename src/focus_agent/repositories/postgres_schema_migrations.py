@@ -654,6 +654,8 @@ def _run_migration_v9(execute: Callable[..., object]) -> None:
           )
         """
     )
+
+
 _MIGRATIONS: tuple[tuple[int, Callable[[Callable[..., object]], None]], ...] = (
     (1, _run_migration_v1),
     (2, _run_migration_v2),

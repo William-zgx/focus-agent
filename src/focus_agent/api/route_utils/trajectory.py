@@ -171,7 +171,9 @@ def _build_trajectory_detail_response(
     return TrajectoryTurnDetailResponse.model_validate(payload)
 
 
-def _outcome_projection(plan_meta: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+def _outcome_projection(
+    plan_meta: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     task_outcome = plan_meta.get("task_outcome")
     tool_outcomes = plan_meta.get("tool_outcomes")
     return (

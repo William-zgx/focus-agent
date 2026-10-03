@@ -68,7 +68,9 @@ def test_pickle_load_rejects_bad_signature(
     monkeypatch.delenv(_VERIFY_SIGNATURE_ENV, raising=False)
     path = tmp_path / "checkpoint.pkl"
     local_persistence._atomic_pickle_dump(path, {"ok": True})
-    local_persistence._checkpoint_signature_path(path).write_text("bad-signature\n", encoding="utf-8")
+    local_persistence._checkpoint_signature_path(path).write_text(
+        "bad-signature\n", encoding="utf-8"
+    )
 
     caplog.set_level(logging.WARNING, logger="focus_agent.local_persistence")
 

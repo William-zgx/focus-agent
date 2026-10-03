@@ -162,6 +162,7 @@ class RunJournal(Protocol):
 
     async def snapshot(self, run_id: str) -> dict[str, Any]: ...
 
+
 class InMemoryRunJournal:
     """Small reusable harness run journal suitable for tests and single-process runs."""
 

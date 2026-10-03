@@ -72,7 +72,9 @@ def test_branch_decision_api_config_and_list() -> None:
     assert config_response.status_code == 200
     assert config_response.json()["enabled"] is True
     assert config_response.json()["recommendation_user_visible"] is False
-    assert config_response.json()["recommendation_diagnostics"]["shadow_records_events_only"] is True
+    assert (
+        config_response.json()["recommendation_diagnostics"]["shadow_records_events_only"] is True
+    )
     assert list_response.status_code == 200
     assert list_response.json()["items"][0]["decision_id"] == event.decision_id
 

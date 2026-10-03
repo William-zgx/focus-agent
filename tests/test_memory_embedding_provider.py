@@ -538,7 +538,9 @@ def test_readiness_reports_auto_selected_embedding_provider_metadata() -> None:
 
 def test_readiness_reports_zvec_fallback_without_failing_readyz() -> None:
     runtime = SimpleNamespace(
-        settings=Settings(agent_retrieval_backend="zvec", agent_retrieval_fallback_backend="postgres"),
+        settings=Settings(
+            agent_retrieval_backend="zvec", agent_retrieval_fallback_backend="postgres"
+        ),
         graph=object(),
         repo=object(),
         branch_service=object(),

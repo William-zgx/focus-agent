@@ -8,13 +8,15 @@ from langgraph.checkpoint.base import empty_checkpoint
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentSQLiteSaver
 
 _HMAC_KEY = "sqlite-migration-test-key-32-chars"
-_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / (
-    "migrate_checkpoint_pickle_to_sqlite.py"
+_SCRIPT_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / ("migrate_checkpoint_pickle_to_sqlite.py")
 )
 
 
 def _load_script_module():
-    spec = importlib.util.spec_from_file_location("migrate_checkpoint_pickle_to_sqlite", _SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "migrate_checkpoint_pickle_to_sqlite", _SCRIPT_PATH
+    )
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -97,7 +99,4 @@ def test_migrate_checkpoint_pickle_to_sqlite_preserves_parent_lineage(tmp_path, 
 
     assert migrated["checkpoint-1"].parent_config is None
     assert migrated["checkpoint-2"].parent_config is not None
-    assert (
-        migrated["checkpoint-2"].parent_config["configurable"]["checkpoint_id"]
-        == "checkpoint-1"
-    )
+    assert migrated["checkpoint-2"].parent_config["configurable"]["checkpoint_id"] == "checkpoint-1"
