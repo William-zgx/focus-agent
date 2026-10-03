@@ -27,8 +27,10 @@ import {
 	coercePolicyValue,
 	emptyModelProviderDraft,
 	emptyToolProviderDraft,
+	isChatModel,
 	nullableText,
 	splitList,
+	updateModelEntryDraft,
 	uniqueList,
 } from "./admin-config-draft-utils";
 import type {
@@ -216,7 +218,7 @@ export function AdminConfigPage() {
 				modelDraft.defaultModel,
 				modelDraft.helperModel,
 				...modelDraft.modelChoices,
-				...modelDraft.models.map((model) => model.id),
+				...modelDraft.models.filter(isChatModel).map((model) => model.id),
 			]),
 		[
 			modelDraft.defaultModel,
@@ -258,12 +260,7 @@ export function AdminConfigPage() {
 	}
 
 	function updateModelEntry(index: number, patch: Partial<ModelEntryDraft>) {
-		setModelDraft((current) => ({
-			...current,
-			models: current.models.map((model, modelIndex) =>
-				modelIndex === index ? { ...model, ...patch } : model,
-			),
-		}));
+		setModelDraft((current) => updateModelEntryDraft(current, index, patch));
 	}
 
 	function updateToolEntry(index: number, patch: Partial<ToolEntryDraft>) {
@@ -344,6 +341,7 @@ export function AdminConfigPage() {
 					return {
 						id,
 						label: nullableText(model.label),
+						protocol: model.protocol,
 						supports_thinking: model.supportsThinking,
 						default_thinking_enabled: model.supportsThinking
 							? model.defaultThinkingEnabled

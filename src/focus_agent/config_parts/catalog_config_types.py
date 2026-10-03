@@ -23,6 +23,7 @@ class ProviderConfig:
 class ConfiguredModel:
     id: str
     label: str | None = None
+    protocol: str = "chat"
     supports_thinking: bool | None = None
     default_thinking_enabled: bool | None = None
     request_kwargs: dict[str, object] = field(default_factory=dict)

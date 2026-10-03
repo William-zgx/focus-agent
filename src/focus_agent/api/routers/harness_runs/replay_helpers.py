@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from time import monotonic
 from typing import Any
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
+from focus_agent.branch_decision.budget import run_with_recommendation_deadline
 from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.engine.runtime import AppRuntime
@@ -210,7 +212,9 @@ async def _handle_branch_recommendation_for_run_async(
     try:
         return await asyncio.wait_for(
             call_in_daemon_thread(
+                run_with_recommendation_deadline,
                 _handle_branch_recommendation_for_run,
+                deadline=monotonic() + timeout,
                 wait_on_cancel=False,
                 **kwargs,
             ),

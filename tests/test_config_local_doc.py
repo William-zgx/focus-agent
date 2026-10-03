@@ -136,6 +136,39 @@ def test_load_model_catalog_document_rejects_duplicate_model_ids():
         raise AssertionError("expected duplicate model validation failure")
 
 
+def test_load_model_catalog_document_keeps_system_one_protocol_and_defaults_chat():
+    content = """
+[[models]]
+id = "openai:chat-model"
+
+[[models]]
+id = "system:branch-model"
+protocol = "system_one"
+"""
+
+    loaded = load_model_catalog_toml(content, source="test-models.toml")
+
+    assert loaded.models[0].protocol == "chat"
+    assert loaded.models[1].protocol == "system_one"
+
+
+def test_load_model_catalog_document_rejects_unknown_model_protocol():
+    content = """
+[[models]]
+id = "system:branch-model"
+protocol = "decision_api"
+"""
+
+    try:
+        load_model_catalog_toml(content, source="test-models.toml")
+    except ModelCatalogValidationError as exc:
+        assert "protocol" in str(exc)
+        assert "chat" in str(exc)
+        assert "system_one" in str(exc)
+    else:
+        raise AssertionError("expected unknown model protocol validation failure")
+
+
 def test_load_tool_catalog_document_reads_web_search_config(tmp_path):
     config_doc = tmp_path / "tools.toml"
     config_doc.write_text(

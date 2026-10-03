@@ -68,6 +68,7 @@ def _semantic_topic_relation_metadata(signals: list[Any]) -> dict[str, Any]:
         "semantic_relationship": relation.get("relationship"),
         "semantic_reason": relation.get("reason"),
         "semantic_model": relation.get("model"),
+        "semantic_diagnostics": relation.get("diagnostics") or {},
         "semantic_classifier_status": relation.get("status"),
     }
 
@@ -95,10 +96,12 @@ def _call_semantic_topic_relation_classifier(
     message: str,
     values: dict[str, Any],
     branch_meta: BranchMeta | None,
+    deadline: float | None = None,
 ) -> Any:
     callable_classifier = _semantic_topic_relation_callable(classifier)
     messages = list(values.get("messages", []) or [])
     kwargs = {
+        "deadline": deadline,
         "settings": settings,
         "message": message,
         "incoming_message": message,
@@ -189,6 +192,8 @@ def _normalize_semantic_topic_relation_result(result: Any) -> dict[str, Any]:
         else payload.get("relation", payload.get("semantic_relationship")),
         "reason": str(payload.get("reason") or payload.get("rationale") or ""),
         "model": payload.get("model") or payload.get("model_name"),
+        "decision_min_confidence": payload.get("decision_min_confidence"),
+        "diagnostics": payload.get("diagnostics") or {},
     }
 
 

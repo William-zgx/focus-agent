@@ -3240,6 +3240,30 @@ test("admin config page keeps policy classification in a focused helper", () => 
   assert.equal(pageSource.split("\n").length < 760, true);
 });
 
+test("switching an admin model to system_one clears chat model selections", () => {
+  const { updateModelEntryDraft } = loadFunctions(
+    "apps/web/src/pages/admin/admin-config-draft-utils.ts",
+    ["updateModelEntryDraft"],
+  );
+  const draft = {
+    defaultModel: "provider:chat",
+    helperModel: "provider:chat",
+    modelChoices: ["provider:chat", "provider:other"],
+    models: [
+      { id: "provider:chat", protocol: "chat" },
+      { id: "provider:other", protocol: "chat" },
+    ],
+  };
+
+  const updated = updateModelEntryDraft(draft, 0, { protocol: "system_one" });
+
+  assert.equal(updated.defaultModel, "");
+  assert.equal(updated.helperModel, "");
+  assert.deepEqual(updated.modelChoices, ["provider:other"]);
+  assert.equal(updated.models[0].protocol, "system_one");
+  assert.equal(updated.models[1].protocol, "chat");
+});
+
 test("Android local runtime clears bearer auth and keeps only device-local principal lookup", () => {
   const providerSource = readFileSync(
     path.join(repoRoot, "apps/web/src/shared/sdk/focus-agent-provider.tsx"),

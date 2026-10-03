@@ -81,6 +81,7 @@ def _model_payloads(
         ConfiguredModel(
             id=payload.id,
             label=payload.label,
+            protocol=payload.protocol,
             supports_thinking=payload.supports_thinking,
             default_thinking_enabled=payload.default_thinking_enabled,
             request_kwargs=dict(payload.request_kwargs),

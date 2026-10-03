@@ -218,7 +218,9 @@ def _semantic_topic_shift_confident(
         confidence = float(value.get("confidence") or 0.0)
     except (TypeError, ValueError):
         return False
-    if confidence < float(min_confidence):
+    required = value.get("decision_min_confidence")
+    threshold = float(required) if required is not None else float(min_confidence)
+    if confidence < threshold:
         return False
     return (
         _recommendation_action(str(value.get("recommended_action")))

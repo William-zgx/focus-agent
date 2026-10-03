@@ -58,8 +58,8 @@ export function ModelConfigPanel({
 			/>
 			<p className="fa-admin-config-help">
 				{isChineseUi
-					? "选择默认模型、助手模型、可用模型池，并维护多个 Provider。"
-					: "Choose default/helper models, selectable model choices, and multiple providers."}
+					? "选择默认模型、助手模型、可用模型池，并维护多个 Provider；决策模型仅用于专用策略。"
+					: "Choose default/helper models, selectable model choices, and multiple providers; decision models are reserved for dedicated policies."}
 			</p>
 			<ConfigSourceMeta isChineseUi={isChineseUi} source={source} />
 			<div className="fa-admin-form-grid is-two">
@@ -339,6 +339,29 @@ export function ModelConfigPanel({
 											onEntryChange(index, { label: event.target.value })
 										}
 									/>
+								</AdminField>
+								<AdminField label={isChineseUi ? "模型协议" : "Model protocol"}>
+									<select
+										disabled={disabled}
+										value={model.protocol}
+										onChange={(event) =>
+											onEntryChange(index, {
+												protocol:
+													event.target.value === "system_one"
+														? "system_one"
+														: "chat",
+											})
+										}
+									>
+										<option value="chat">
+											{isChineseUi ? "聊天模型" : "Chat"}
+										</option>
+										<option value="system_one">
+											{isChineseUi
+												? "决策模型（System One）"
+												: "Decision (System One)"}
+										</option>
+									</select>
 								</AdminField>
 								<AdminField label="Reasoning effort">
 									<input

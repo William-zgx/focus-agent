@@ -474,6 +474,8 @@ def _semantic_topic_relation_signal_value(value: dict[str, Any] | None) -> dict[
         "relationship": value.get("relationship"),
         "reason": str(value.get("reason") or ""),
         "model": value.get("model"),
+        "decision_min_confidence": value.get("decision_min_confidence"),
+        "diagnostics": value.get("diagnostics") or {},
     }
 
 

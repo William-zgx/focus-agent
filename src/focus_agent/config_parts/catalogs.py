@@ -50,6 +50,7 @@ DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
 _ToolConfigT = TypeVar("_ToolConfigT")
 _PROVIDER_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+_MODEL_PROTOCOLS = frozenset({"chat", "system_one"})
 _TOOL_METADATA_OVERLAY_KEYS = frozenset(
     {
         "allowed_roles",
@@ -530,10 +531,18 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
         if model_key in seen_model_ids:
             raise _catalog_error(source, f"models[{index}].id duplicates {model_key!r}.")
         seen_model_ids.add(model_key)
+        protocol = (_normalize_optional_string(item.get("protocol")) or "chat").lower()
+        if protocol not in _MODEL_PROTOCOLS:
+            allowed = ", ".join(sorted(_MODEL_PROTOCOLS))
+            raise _catalog_error(
+                source,
+                f"models[{index}].protocol must be one of: {allowed}.",
+            )
         model_entries.append(
             ConfiguredModel(
                 id=model_id,
                 label=_normalize_optional_string(item.get("label")),
+                protocol=protocol,
                 supports_thinking=_coerce_bool(item.get("supports_thinking")),
                 default_thinking_enabled=_coerce_bool(item.get("default_thinking_enabled")),
                 request_kwargs=_copy_toml_mapping(item.get("request_kwargs")),

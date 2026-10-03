@@ -257,6 +257,55 @@ UI/audit explanation:
   and diagnostic metadata so transcript cards can explain why a recommendation
   was blocked, skipped, shadowed, or visible.
 
+### Configurable semantic models
+
+The model catalog uses `protocol = "chat"` by default. Models with
+`protocol = "system_one"` use the provider's configured base URL plus `/systemone`
+and its existing environment/secret-provider API key. They remain in the admin
+catalog but cannot be selected as the main chat or helper model.
+
+The existing admin policy fields also support:
+
+| Environment variable | Default | Behavior |
+| --- | --- | --- |
+| `AGENT_BRANCH_RECOMMENDATION_SEMANTIC_MODEL` | empty | Primary model; empty uses the selected chat model, then the default model. |
+| `AGENT_BRANCH_RECOMMENDATION_SEMANTIC_FALLBACK_MODEL` | empty | One optional fallback after an error or invalid response. |
+| `AGENT_BRANCH_RECOMMENDATION_SEMANTIC_DECISION_MIN_CONFIDENCE` | `0.9` | Separate threshold for System One results. |
+| `AGENT_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS` | `15` | Shared time budget for primary and fallback, capped at 60 seconds. |
+
+For example, add the following provider and model to the configured model catalog,
+then set the primary or fallback model field to `codiv:openjev-0.1`:
+
+```toml
+[[providers]]
+id = "codiv"
+base_url_default = "https://api.codiv.ai/v1"
+api_key_env = "CODIV_API_KEY"
+
+[[models]]
+id = "codiv:openjev-0.1"
+label = "OpenJev decision model"
+protocol = "system_one"
+```
+
+Provider ID, endpoint, key variable, and model name are configurable; this example
+is not a built-in provider or a free-service availability guarantee. Keep the
+model out of `model_choices`, `default_model`, and `helper_model`. The same catalog
+can contain another provider or a privately hosted compatible service.
+
+A valid `continue_current` or low-confidence result does not trigger fallback.
+Both attempts share the recommendation deadline; expired inference results cannot
+promote a branch action. Rules still run first, and `shadow`/`suggest`, topology,
+rate limits, and user confirmation apply to both protocols. This configuration
+controls pre-turn new-branch recommendations, not navigation to existing branches
+or post-turn split/conclude/merge governance.
+
+System One confidence is a provider score, not calibrated accuracy. The `0.9`
+default is a conservative starting point; evaluate it in `shadow` mode on actual
+conversation samples before enabling suggestions. Events preserve raw confidence,
+probabilities, actual response model, attempt status/latency, and fallback usage in
+`metadata.semantic_diagnostics`; the event's business score remains separate.
+
 ## 6. Web UX
 
 The chat transcript renders pending Branch Actions as confirmation cards. A card

@@ -8,6 +8,8 @@ from typing import Protocol as Protocol
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
+from focus_agent.branch_decision.budget import recommendation_expired
+
 from ...core.branching import (
     BranchActionKind as BranchActionKind,
 )
@@ -458,7 +460,7 @@ class ChatService(
         except Exception:  # noqa: BLE001 - recommendation must never block a normal turn.
             logger.warning("pre-turn branch recommendation failed", exc_info=True)
             return None
-        if not isinstance(decision, dict):
+        if recommendation_expired() or not isinstance(decision, dict):
             return None
         promoted_action_id = str(decision.get("promoted_action_id") or "")
         if decision.get("status") != "promoted" or not promoted_action_id:
@@ -506,6 +508,8 @@ class ChatService(
                 for item in current_audit
             ):
                 update_values["branch_action_audit"] = [*current_audit, audit]
+        if recommendation_expired():
+            return None
         self.runtime.graph.update_state(
             {"configurable": {"thread_id": thread_id}},
             update_values,
