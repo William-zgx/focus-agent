@@ -1159,6 +1159,9 @@
       "FocusAgentUser",
       "ThreadStateResponse"
     ],
+    "apps/web/src/android-local-runtime/web-tool-execution.ts": [
+      "FocusAgentEvent"
+    ],
     "apps/web/src/app/shell/merge-review-modal-host.tsx": [
       "ThreadStateResponse"
     ],

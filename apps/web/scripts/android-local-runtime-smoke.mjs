@@ -267,6 +267,11 @@ const androidLocalRuntimeModules = [
 		specifier: "./admin-runtime",
 	},
 	{
+		outputName: "web-tool-execution.mjs",
+		sourcePath: "src/android-local-runtime/web-tool-execution.ts",
+		specifier: "./web-tool-execution",
+	},
+	{
 		outputName: "stream-runtime.mjs",
 		sourcePath: "src/android-local-runtime/stream-runtime.ts",
 		specifier: "./stream-runtime",

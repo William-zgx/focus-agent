@@ -18,7 +18,7 @@ from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_task_outcome
 from ...core.state import AgentState, append_agent_state_record
-from ...core.types import Plan
+from ...core.types import Plan  # noqa: F401
 from ...skills import SkillRegistry
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from ..graph_evidence import (
@@ -34,7 +34,7 @@ from ..graph_execution_contract import (
     verify_answer_against_evidence,
 )
 from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
-from ..graph_plan_nodes import _format_plan_block
+from ..graph_plan_nodes import _format_plan_block  # noqa: F401
 from ..graph_tool_result_fallback import (
     _should_replace_unfound_workspace_answer,
     _tool_result_synthesis_prompt,
@@ -84,6 +84,17 @@ from .agent_loop_helpers import (
     apply_skill_execution_plan,
     build_active_skill_execution_plan,
     skill_execution_policy_note,
+)
+from .agent_loop_prompt import (
+    _LIVE_WEB_SEARCH_START_NOTE,
+    _LIVE_WEB_TOOL_LIMIT_NOTE,
+    _apply_agent_definition,
+    _build_prompt_messages,
+    _compose_policy_note,
+    _context_overflow_execution_contract,
+    _context_overflow_response,
+    _root_thread_id,
+    _steer_block,
 )
 from .agent_loop_skill_helpers import _READ_ONLY_SKILL_TOOL_RE  # noqa: F401
 from .agent_loop_skill_helpers import (
@@ -232,35 +243,16 @@ def make_agent_loop_node(
 
         # Resolve AgentDefinition overrides (model / tools / system prompt).
         agent_def, agent_name = _resolve_agent_definition(agent_definition_registry, state)
-        agent_system_prompt_extra = ""
-        if agent_def is not None:
-            try:
-                if getattr(agent_def, "model", None):
-                    selected_model = str(agent_def.model)
-                agent_system_prompt_extra = str(
-                    getattr(agent_def, "system_prompt", "") or ""
-                ).strip()
-            except Exception:  # noqa: BLE001
-                _logger.debug("Failed to apply AgentDefinition '%s'", agent_name, exc_info=True)
-                agent_system_prompt_extra = ""
-
-        assembled = state.get("assembled_context", "")
-        if agent_system_prompt_extra and agent_system_prompt_extra not in assembled:
-            assembled = f"{agent_system_prompt_extra}\n\n{assembled}".strip()
+        selected_model, assembled = _apply_agent_definition(
+            agent_def,
+            agent_name,
+            selected_model=selected_model,
+            assembled=state.get("assembled_context", ""),
+        )
 
         # Drain the steer queue for this thread and collect any mid-turn guidance.
-        thread_id = None
-        try:
-            ctx = getattr(runtime, "context", None)
-            thread_id = getattr(ctx, "root_thread_id", None)
-        except Exception:  # noqa: BLE001
-            thread_id = None
-        steer_messages = _drain_steer_messages(run_manager, thread_id)
-        steer_block = ""
-        if steer_messages:
-            joined = "\n\n".join(m.strip() for m in steer_messages if str(m).strip())
-            if joined:
-                steer_block = f"[User guidance]\n{joined}"
+        thread_id = _root_thread_id(runtime)
+        steer_block = _steer_block(_drain_steer_messages(run_manager, thread_id))
         latest_user = _latest_human_message_text(state_messages)
         if not latest_user:
             latest_user = _latest_human_message_text(messages) or str(state.get("task_brief") or "")
@@ -389,62 +381,25 @@ def make_agent_loop_node(
             state_messages, max_rounds=8 if tool_policy == "live_web_research" else 4
         )
         if force_tool_free_answer and tool_policy == "live_web_research":
-            policy_note += (
-                "\nResearch has reached its tool limit. No more tools are available. "
-                "Now answer the original question using the evidence already collected across ALL "
-                "searches and page reads. Do not output tool calls or internal processing notices. "
-                "Cite the sources actually supporting your statements. If evidence is incomplete, "
-                "give the supported findings and clearly identify the unresolved parts; do not "
-                "pretend the research is complete."
-            )
-        if not force_tool_free_answer:
-            ledger_note = retrieval_ledger_note(collect_retrieval_ledger(state_messages))
-            if ledger_note:
-                policy_note = f"{policy_note}\n\n{ledger_note}".strip()
-        skill_policy_note = skill_execution_policy_note(tool_intent_plan.skill_execution_plan)
-        if skill_policy_note:
-            policy_note = f"{policy_note}\n\n{skill_policy_note}".strip()
-        # Efficiency guidance for multi-part questions: minimize tool calls by
-        # reusing one tool result to answer multiple sub-questions.
-        _multipart_note = (
-            "For multi-part questions (e.g. asking about status, history, and "
-            "branches at once), minimize tool calls:\n"
-            "- If one tool result can answer multiple sub-questions, use it once.\n"
-            "- Prefer the most specific tool (e.g. git_status covers both status and branches).\n"
-            "- If you have already called a tool whose output can answer a sub-question, "
-            "do not call another tool for that sub-question.\n"
-            "- If the user asks a simple question that one tool call can answer, "
-            "just call that tool directly -- do not follow the full multi-step workflow."
+            policy_note += _LIVE_WEB_TOOL_LIMIT_NOTE
+        ledger_note = (
+            ""
+            if force_tool_free_answer
+            else retrieval_ledger_note(collect_retrieval_ledger(state_messages))
         )
-        if _multipart_note not in (policy_note or ""):
-            policy_note = (
-                f"{policy_note}\n\n{_multipart_note}".strip() if policy_note else _multipart_note
-            )
-        plan = state.get("plan")
-        if isinstance(plan, Plan) and plan.steps:
-            plan_block = _format_plan_block(plan, state.get("current_step_id", ""))
-            if plan_block and plan_block not in assembled:
-                assembled = f"{assembled}\n\n{plan_block}".strip()
-        prompt_messages = [SystemMessage(content=assembled), *messages]
-        # Inject drained steer messages as an additional system-style block so
-        # they are visible to the LLM but don't replace any user message.
-        if steer_block:
-            try:
-                # Insert steer block right after the first system message so it
-                # sits near the top of context and is easy to attend to.
-                prompt_messages = [
-                    prompt_messages[0],
-                    SystemMessage(content=steer_block),
-                    *prompt_messages[1:],
-                ]
-            except Exception:  # noqa: BLE001
-                _logger.debug("Failed to inject steer block", exc_info=True)
-        if policy_note:
-            prompt_messages = [
-                prompt_messages[0],
-                SystemMessage(content=policy_note),
-                *prompt_messages[1:],
-            ]
+        policy_note = _compose_policy_note(
+            policy_note,
+            ledger_note,
+            skill_execution_policy_note(tool_intent_plan.skill_execution_plan),
+        )
+        prompt_messages = _build_prompt_messages(
+            assembled,
+            messages,
+            plan=state.get("plan"),
+            current_step_id=state.get("current_step_id", ""),
+            steer_block=steer_block,
+            policy_note=policy_note,
+        )
         context_request = build_context_request(
             prompt_messages,
             budget=context_budget,
@@ -471,15 +426,7 @@ def make_agent_loop_node(
             STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
         )
         if context_overflow:
-            response = AIMessage(
-                content=(
-                    "必需的会话上下文已超出可用预算，本次未调用模型。请缩短输入、调整预算或新建会话。"
-                    if any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text)
-                    else "The model was not invoked because the required conversation context "
-                    "exceeds the available prompt budget. Please shorten the request or start "
-                    "a new thread."
-                )
-            )
+            response = _context_overflow_response(tool_intent_text)
         elif force_tool_free_answer:
             fallback_answer = _fallback_answer_from_tool_results(fallback_messages)
             if tool_policy == "live_web_research":
@@ -571,14 +518,7 @@ def make_agent_loop_node(
                     ),
                     [
                         *prompt_messages,
-                        SystemMessage(
-                            content=(
-                                "Start the research now with concise, topic-specific search queries. "
-                                "Rephrase the user's conversational wording into searchable concepts. "
-                                "Use the verified current date and supported time_range filter for recency. "
-                                "If results are irrelevant, reformulate the query before giving up."
-                            )
-                        ),
+                        SystemMessage(content=_LIVE_WEB_SEARCH_START_NOTE),
                     ],
                     fallback_messages=fallback_messages,
                     known_tool_names=known_names,
@@ -778,12 +718,7 @@ def make_agent_loop_node(
         finalize_known_names = known_names
         finalize_temporal_anchor_required = temporal_anchor_required
         if context_overflow:
-            finalize_execution_contract = {
-                **execution_contract,
-                "status": "blocked",
-                "blocked_reason": "Required conversation context exceeds the available prompt budget.",
-                "blocked_reason_code": "required_context_overflow",
-            }
+            finalize_execution_contract = _context_overflow_execution_contract(execution_contract)
             finalize_tool_policy = ""
             finalize_available_tools = []
             finalize_known_names = []
