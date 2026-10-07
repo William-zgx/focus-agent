@@ -913,3 +913,15 @@ def test_recent_few_weeks_uses_rolling_thirty_day_window():
     )
 
     assert verification["status"] == "verified"
+
+
+def test_fresh_evidence_window_follows_the_requested_period():
+    from datetime import date
+
+    from focus_agent.engine.graph_execution_contract import _fresh_evidence_min_date
+
+    today = date(2026, 10, 7)
+    # An explicit year is the window, not "published today".
+    assert _fresh_evidence_min_date("LangGraph 2026 年的最新进展", today) == date(2026, 1, 1)
+    assert _fresh_evidence_min_date("最新的 Agent 框架进展", today) == date(2026, 9, 8)
+    assert _fresh_evidence_min_date("今天北京天气", today) == today

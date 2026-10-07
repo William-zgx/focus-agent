@@ -25,6 +25,7 @@ from .web_helpers import (
     _provider_error_record,
     _ReadableHTMLExtractor,
     _resolve_public_fetch_addresses,
+    _unsupported_search_time_range,
     _web_fetch_policy_violation,
     _WebSearchProviderError,
 )
@@ -70,7 +71,13 @@ def build_web_tools(
         include_domains: Any = None,
         exclude_domains: Any = None,
     ) -> tuple[str | None, list[str], list[str]]:
-        normalized_time_range = _normalize_search_time_range(time_range)
+        # Explicit dates ("2026-01-01") cannot be enforced as a provider window; searching
+        # unfiltered with a visible note costs less than failing the whole round.
+        normalized_time_range = (
+            None
+            if _unsupported_search_time_range(time_range)
+            else _normalize_search_time_range(time_range)
+        )
         normalized_include_domains = _normalize_search_domains(
             include_domains, field_name="include_domains"
         )
@@ -297,6 +304,7 @@ def build_web_tools(
         attempted_providers: list[str],
         errors: list[dict[str, Any]],
         fallback_used: bool,
+        requested_time_range: Any = None,
     ) -> dict[str, Any]:
         augmented = {
             **payload,
@@ -304,6 +312,15 @@ def build_web_tools(
             "attempted_providers": list(attempted_providers),
             "errors": list(errors),
         }
+        ignored_time_range = _unsupported_search_time_range(requested_time_range)
+        if ignored_time_range is not None:
+            augmented["time_range_ignored"] = {
+                "requested": ignored_time_range,
+                "note": (
+                    "time_range only accepts day, week, month or year, so this search ran "
+                    "without a time filter. Put explicit dates or years in the query instead."
+                ),
+            }
         filters = payload.get("search_filters")
         if isinstance(filters, dict):
             for key in ("time_range", "include_domains", "exclude_domains"):
@@ -759,6 +776,7 @@ def build_web_tools(
                 attempted_providers=attempted_providers,
                 errors=errors,
                 fallback_used=provider != primary_provider,
+                requested_time_range=time_range,
             )
             if query_truncated:
                 payload["query_truncated"] = True
@@ -829,6 +847,7 @@ def build_web_tools(
             attempted_providers=attempted_providers,
             errors=errors,
             fallback_used=True,
+            requested_time_range=args.get("time_range"),
         )
         if query_truncated:
             payload["query_truncated"] = True

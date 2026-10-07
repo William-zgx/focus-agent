@@ -38,6 +38,7 @@ from ..graph_turn_helpers import (
     _context_budget_from_state,
     _tool_call_signature,
 )
+from .retrieval_ledger import collect_retrieval_ledger, retrieval_key
 from .tool_result_hooks import (
     _apply_result_hooks,
     _ask_permission_result,
@@ -196,6 +197,7 @@ def make_tool_executor_node(
         tool_call_counts: dict[str, int] = _tool_call_counts_since_latest_human(
             state.get("messages", [])[:-1]
         )
+        retrieval_ledger = collect_retrieval_ledger(state.get("messages", [])[:-1])
         # Build extension context once for this batch (safe to reuse across calls)
         ext_ctx = None
         if services is not None and services.extension_registry is not None:
@@ -235,6 +237,31 @@ def make_tool_executor_node(
                 )
                 continue
             seen_tool_call_signatures.add(signature)
+            retrieved = retrieval_ledger.get(retrieval_key(tool_name, tool_args) or "")
+            if retrieved is not None:
+                messages_by_index[index] = build_tool_error_message(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=tool_args,
+                    error=(
+                        (
+                            f"This URL already failed earlier in this turn ({retrieved.error}); "
+                            "retrying will fail the same way. Use another source."
+                        )
+                        if retrieved.error
+                        else (
+                            "Already retrieved earlier in this turn "
+                            f"(tool call {retrieved.tool_call_id}); reuse that result. Read an "
+                            "unread source, search a different angle, or answer from the "
+                            "evidence collected."
+                        )
+                    ),
+                    runtime_info={
+                        "repeated_retrieval_suppressed": True,
+                        "previous_tool_call_id": retrieved.tool_call_id,
+                    },
+                )
+                continue
             authorized_args, authorization_error = authorize_memory_tool_args(
                 tool_name,
                 tool_args,

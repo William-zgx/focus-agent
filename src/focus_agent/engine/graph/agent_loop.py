@@ -117,6 +117,7 @@ from .policy import (
     build_tool_intent_plan,
 )
 from .policy_temporal import search_time_range
+from .retrieval_ledger import collect_retrieval_ledger, retrieval_ledger_note
 
 _logger = logging.getLogger(__name__)
 
@@ -396,6 +397,10 @@ def make_agent_loop_node(
                 "give the supported findings and clearly identify the unresolved parts; do not "
                 "pretend the research is complete."
             )
+        if not force_tool_free_answer:
+            ledger_note = retrieval_ledger_note(collect_retrieval_ledger(state_messages))
+            if ledger_note:
+                policy_note = f"{policy_note}\n\n{ledger_note}".strip()
         skill_policy_note = skill_execution_policy_note(tool_intent_plan.skill_execution_plan)
         if skill_policy_note:
             policy_note = f"{policy_note}\n\n{skill_policy_note}".strip()

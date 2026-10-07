@@ -39,7 +39,9 @@ _BLOCKED_RUNTIME_FLAGS = frozenset(
         "max_calls_per_turn_exceeded",
     }
 )
-_SKIPPED_RUNTIME_FLAGS = frozenset({"duplicate_tool_call_suppressed"})
+_SKIPPED_RUNTIME_FLAGS = frozenset(
+    {"duplicate_tool_call_suppressed", "repeated_retrieval_suppressed"}
+)
 _NETWORK_MARKERS = (
     "failed to fetch",
     "connection",

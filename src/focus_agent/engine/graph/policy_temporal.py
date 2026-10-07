@@ -8,12 +8,19 @@ from typing import Any
 from .policy_intent import requires_temporal_anchor as _requires_temporal_anchor
 from .policy_markers import _contains_any
 
+# Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
+_EXPLICIT_YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
+
+
+def explicit_years(text: str) -> list[int]:
+    """Calendar years written in the text, such as 2026 in "2026 年的最新进展"."""
+    return [int(year) for year in _EXPLICIT_YEAR.findall(str(text or ""))]
+
 
 def search_time_range(query: str) -> str | None:
     """Provider window for relative recency requests; explicit dates stay in the query."""
     lowered = query.lower()
-    # Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
-    if re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)", lowered):
+    if explicit_years(lowered):
         return None
     if _contains_any(lowered, ("今天", "today", "过去24小时", "last 24 hours")):
         return "day"
@@ -258,21 +265,26 @@ def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
         parts.append(
             f"绝对时间范围(近一周/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
         )
-    if not parts and _contains_any(
-        lowered,
-        (
-            "最近",
-            "近期",
-            "最新",
-            "近几周",
-            "过去几周",
-            "一个月",
-            "recent",
-            "latest",
-            "last few weeks",
-            "past few weeks",
-            "last month",
-        ),
+    # "2026 年的最新进展" already names its window; a last-month range would drop it.
+    if (
+        not parts
+        and not explicit_years(query)
+        and _contains_any(
+            lowered,
+            (
+                "最近",
+                "近期",
+                "最新",
+                "近几周",
+                "过去几周",
+                "一个月",
+                "recent",
+                "latest",
+                "last few weeks",
+                "past few weeks",
+                "last month",
+            ),
+        )
     ):
         window_start = anchor_date - timedelta(days=29)
         parts.append(

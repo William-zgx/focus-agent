@@ -13,7 +13,9 @@ from focus_agent.engine.graph.policy_temporal import (
 from focus_agent.engine.graph_builder import build_graph
 
 
-def _research_graph(monkeypatch, *, keep_searching=False, invalid_synthesis=False):
+def _research_graph(
+    monkeypatch, *, keep_searching=False, invalid_synthesis=False, repeat_query=False
+):
     invocations = []
     calls = []
 
@@ -37,7 +39,11 @@ def _research_graph(monkeypatch, *, keep_searching=False, invalid_synthesis=Fals
                         {
                             "id": f"search-{count}",
                             "name": "web_search",
-                            "args": {"query": f"Agent project evidence {count}"},
+                            "args": {
+                                "query": "Agent project evidence"
+                                if repeat_query
+                                else f"Agent project evidence {count}"
+                            },
                         }
                     ],
                 )
@@ -175,3 +181,36 @@ def test_search_time_range_keeps_explicit_years_unfiltered():
     assert search_time_range("latest 2024 policy") is None
     assert search_time_range("最新政策") == "month"
     assert search_time_range("最新政策 编号 120241") == "month"
+
+
+def test_repeated_identical_search_is_not_rerun_across_rounds(monkeypatch):
+    result, invocations, calls = _research_graph(
+        monkeypatch, keep_searching=True, repeat_query=True
+    )
+
+    assert calls == [("web_search", "Agent project evidence")]
+    later_prompts = [messages for enabled, messages in invocations[1:] if enabled]
+    assert any(
+        isinstance(message, SystemMessage)
+        and "Already retrieved in this turn" in message.content
+        and 'web_search "Agent project evidence"' in message.content
+        for message in later_prompts[0]
+    )
+    suppressed = [
+        message
+        for message in result["messages"]
+        if getattr(message, "artifact", None)
+        and message.artifact.get("runtime", {}).get("repeated_retrieval_suppressed")
+    ]
+    assert suppressed
+    assert "正文读取" in result["messages"][-1].content
+
+
+def test_explicit_year_is_not_rewritten_to_last_month():
+    args = _temporal_live_web_search_args(
+        {"query": "LangGraph 2026 年的最新进展"},
+        fallback_query="",
+        current_utc_time="2026-10-07T00:00:00Z",
+    )
+    assert "2026-09-08" not in args["query"]
+    assert "2026" in args["query"]

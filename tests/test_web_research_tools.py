@@ -154,10 +154,35 @@ def test_duckduckgo_applies_time_and_domain_filters_explicitly(monkeypatch):
     assert payload["results"][0]["published_date"] == "2026-10-02"
 
 
-def test_invalid_time_range_is_rejected_instead_of_ignored():
+def test_unsupported_time_range_searches_unfiltered_and_says_so(monkeypatch):
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeDDGS:
+        def __init__(self, **_kwargs: Any):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def text(self, query: str, **kwargs: Any):
+            calls.append((query, kwargs))
+            return [{"title": "News", "href": "https://example.com/n", "body": "2026 news"}]
+
+    monkeypatch.setitem(sys.modules, "ddgs", types.SimpleNamespace(DDGS=FakeDDGS))
     tools = _build_search_tools(provider="duckduckgo", client=object())
-    with pytest.raises(ValueError, match="time_range"):
-        tools["web_search"].invoke({"query": "news", "time_range": "quarter"})
+
+    # Models often pass absolute dates; failing here wasted a whole research round.
+    payload = json.loads(
+        tools["web_search"].invoke({"query": "news 2026", "time_range": "2026-01-01"})
+    )
+
+    assert "timelimit" not in calls[0][1]
+    assert payload["time_range_ignored"]["requested"] == "2026-01-01"
+    assert "query" in payload["time_range_ignored"]["note"]
+    assert payload["results"]
 
 
 def test_web_fetch_downloads_before_display_truncation_and_returns_scoped_continuation():
@@ -409,7 +434,7 @@ def test_default_web_fetch_fits_observation_cap_without_skipping_text():
         _WEB_FETCH_MAX_OBSERVATION_CHARS,
     )
 
-    body = "".join(f"<p>Paragraph {index} with \"quoted\" evidence.</p>" for index in range(400))
+    body = "".join(f'<p>Paragraph {index} with "quoted" evidence.</p>' for index in range(400))
     response = httpx.Response(
         200,
         content=f"<html><body><main>{body}</main></body></html>".encode(),

@@ -97,6 +97,14 @@ def _normalize_search_time_range(value: Any) -> str | None:
     return canonical
 
 
+def _unsupported_search_time_range(value: Any) -> str | None:
+    """Raw value of a time_range that is not a supported window, else None."""
+    if value is None or not str(value).strip():
+        return None
+    raw = str(value).strip()
+    return None if raw.lower() in _SEARCH_TIME_RANGES else raw
+
+
 def _ddgs_time_range(value: str | None) -> str | None:
     return {"day": "d", "week": "w", "month": "m", "year": "y"}.get(value or "")
 
