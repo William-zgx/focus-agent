@@ -43,8 +43,11 @@ import {
 	shouldUseCurrentTimeTool,
 	shouldUseWebFetch,
 	shouldUseWebSearch,
+	webFetchMaxChars,
+	webFetchOffset,
 	webFetchUrl,
 	webSearchQuery,
+	webSearchTimeRange,
 } from "./web-planning";
 import { runLocalWebSearch } from "./web-search";
 
@@ -220,6 +223,37 @@ export function streamRun(
 				const isChinese = /[\u3400-\u9fff]/.test(message);
 				const webSearchEnabled =
 					ctx.localToolEnabled("web_search") && shouldUseWebSearch(message);
+				const previousMessages = [...thread.messages]
+					.reverse()
+					.slice(message.trim() ? 1 : 0);
+				const previousTurnBoundary = previousMessages.findIndex(
+					(item) => item.type === "human",
+				);
+				const latestWebFetchContinuation = previousMessages
+					.slice(0, previousTurnBoundary < 0 ? undefined : previousTurnBoundary)
+					.find(
+						(item) =>
+							item.type === "tool" &&
+							item.name === "web_fetch" &&
+							item.status === "completed",
+					);
+				let previousFetch: LocalWebFetchResult | null = null;
+				if (latestWebFetchContinuation?.content) {
+					try {
+						const parsed = JSON.parse(
+							String(latestWebFetchContinuation.content),
+						);
+						if (
+							parsed &&
+							typeof parsed === "object" &&
+							typeof parsed.url === "string"
+						) {
+							previousFetch = parsed as LocalWebFetchResult;
+						}
+					} catch {
+						// Older local tool observations may not have been JSON encoded.
+					}
+				}
 				let currentUtcTimeResult: string | null = null;
 				if (
 					webSearchEnabled &&
@@ -296,39 +330,35 @@ export function streamRun(
 						},
 					});
 				}
-				const webFetchEnabled =
-					ctx.localToolEnabled("web_fetch") && shouldUseWebFetch(message);
-				const webFetchCallId = `${runId}:web-fetch`;
-				const webFetchTargetUrl = webFetchUrl(message);
-				let webFetchResult: LocalWebFetchResult | null = null;
-				if (webFetchEnabled) {
+				const executeWebFetch = async (
+					targetUrl: string,
+					args: Record<string, unknown>,
+					callId: string,
+					sequence: number,
+				): Promise<LocalWebFetchResult | null> => {
 					send({
-						id: `${runId}:fetch-tool-call-delta`,
+						id: `${callId}:call-delta`,
 						event: "tool.call.delta",
 						data: {
 							...baseData,
-							sequence: 4,
-							id: webFetchCallId,
+							sequence,
+							id: callId,
 							name: "web_fetch",
-							tool_call_id: webFetchCallId,
-							args_delta: JSON.stringify({ url: webFetchTargetUrl }),
-							raw: {
-								id: webFetchCallId,
-								name: "web_fetch",
-								args: { url: webFetchTargetUrl },
-							},
+							tool_call_id: callId,
+							args_delta: JSON.stringify(args),
+							raw: { id: callId, name: "web_fetch", args },
 						},
 					});
 					send({
-						id: `${runId}:fetch-tool-requested`,
+						id: `${callId}:requested`,
 						event: "tool.requested",
 						data: {
 							...baseData,
-							sequence: 4,
+							sequence,
 							node: "android-local-runtime",
 							tool_name: "web_fetch",
-							tool_call_id: webFetchCallId,
-							args: { url: webFetchTargetUrl },
+							tool_call_id: callId,
+							args,
 						},
 					});
 					appendRunMessage({
@@ -338,44 +368,45 @@ export function streamRun(
 						created_at: nowIso(),
 						tool_calls: [
 							{
-								id: webFetchCallId,
+								id: callId,
 								name: "web_fetch",
-								args: { url: webFetchTargetUrl },
+								args,
 								function: {
 									name: "web_fetch",
-									arguments: JSON.stringify({ url: webFetchTargetUrl }),
+									arguments: JSON.stringify(args),
 								},
 							},
 						],
 					});
 					try {
-						webFetchResult = await runLocalWebFetch(
-							webFetchTargetUrl,
+						const result = await runLocalWebFetch(
+							targetUrl,
 							runSignal,
+							typeof args.max_chars === "number" ? args.max_chars : undefined,
+							typeof args.offset === "number" ? args.offset : 0,
 						);
 						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
-							content: JSON.stringify(webFetchResult),
+							content: JSON.stringify(result),
 							created_at: nowIso(),
 							name: "web_fetch",
 							status: "completed",
-							tool_call_id: webFetchCallId,
+							tool_call_id: callId,
 						});
 						send({
-							id: `${runId}:fetch-tool-result`,
+							id: `${callId}:result`,
 							event: "tool.result",
 							data: {
 								...baseData,
-								sequence: 5,
+								sequence: sequence + 1,
 								tool_name: "web_fetch",
-								tool_call_id: webFetchCallId,
-								message:
-									webFetchResult.title ||
-									`web_fetch completed for ${webFetchTargetUrl}`,
-								output: webFetchResult,
+								tool_call_id: callId,
+								message: result.title || `web_fetch completed for ${targetUrl}`,
+								output: result,
 							},
 						});
+						return result;
 					} catch (error) {
 						abortIfRequested(runSignal);
 						const messageText =
@@ -383,37 +414,65 @@ export function streamRun(
 						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
 							type: "tool",
-							content: JSON.stringify({
-								error: messageText,
-								url: webFetchTargetUrl,
-							}),
+							content: JSON.stringify({ error: messageText, url: targetUrl }),
 							created_at: nowIso(),
 							name: "web_fetch",
 							status: "failed",
-							tool_call_id: webFetchCallId,
+							tool_call_id: callId,
 						});
 						send({
-							id: `${runId}:fetch-tool-error`,
+							id: `${callId}:error`,
 							event: "tool.error",
 							data: {
 								...baseData,
-								sequence: 5,
+								sequence: sequence + 1,
 								tool_name: "web_fetch",
-								tool_call_id: webFetchCallId,
+								tool_call_id: callId,
 								message: messageText,
-								output: {
-									error: messageText,
-									url: webFetchTargetUrl,
-								},
+								output: { error: messageText, url: targetUrl },
 							},
 						});
+						return null;
 					}
+				};
+				const webFetchTargetUrl =
+					webFetchUrl(message) || previousFetch?.url || "";
+				const webFetchEnabled =
+					ctx.localToolEnabled("web_fetch") &&
+					shouldUseWebFetch(message, previousFetch?.next_offset != null);
+				const webFetchCallId = `${runId}:web-fetch`;
+				const webFetchMaxCharsValue = webFetchMaxChars(message);
+				const webFetchOffsetValue =
+					webFetchOffset(message) ??
+					(webFetchUrl(message) ? 0 : (previousFetch?.next_offset ?? 0));
+				const webFetchArgs = {
+					url: webFetchTargetUrl,
+					...(webFetchMaxCharsValue
+						? { max_chars: webFetchMaxCharsValue }
+						: {}),
+					...(webFetchOffsetValue > 0 ? { offset: webFetchOffsetValue } : {}),
+				};
+				let webFetchResult: LocalWebFetchResult | null = null;
+				if (webFetchEnabled) {
+					webFetchResult = await executeWebFetch(
+						webFetchTargetUrl,
+						webFetchArgs,
+						webFetchCallId,
+						4,
+					);
 				}
 				const webSearchCallId = `${runId}:web-search`;
 				const webSearchQueryText = webSearchQuery(
 					message,
 					currentUtcTimeResult,
 				);
+				const webSearchTimeRangeValue = webSearchTimeRange(message);
+				const webSearchArgs = {
+					query: webSearchQueryText,
+					...(webSearchTimeRangeValue
+						? { time_range: webSearchTimeRangeValue }
+						: {}),
+				};
 				let webSearchResult: LocalWebSearchResult | null = null;
 				if (webSearchEnabled) {
 					send({
@@ -425,11 +484,11 @@ export function streamRun(
 							id: webSearchCallId,
 							name: "web_search",
 							tool_call_id: webSearchCallId,
-							args_delta: JSON.stringify({ query: webSearchQueryText }),
+							args_delta: JSON.stringify(webSearchArgs),
 							raw: {
 								id: webSearchCallId,
 								name: "web_search",
-								args: { query: webSearchQueryText },
+								args: webSearchArgs,
 							},
 						},
 					});
@@ -442,7 +501,7 @@ export function streamRun(
 							node: "android-local-runtime",
 							tool_name: "web_search",
 							tool_call_id: webSearchCallId,
-							args: { query: webSearchQueryText },
+							args: webSearchArgs,
 						},
 					});
 					appendRunMessage({
@@ -454,12 +513,10 @@ export function streamRun(
 							{
 								id: webSearchCallId,
 								name: "web_search",
-								args: { query: webSearchQueryText },
+								args: webSearchArgs,
 								function: {
 									name: "web_search",
-									arguments: JSON.stringify({
-										query: webSearchQueryText,
-									}),
+									arguments: JSON.stringify(webSearchArgs),
 								},
 							},
 						],
@@ -468,6 +525,10 @@ export function streamRun(
 						webSearchResult = await runLocalWebSearch(
 							webSearchQueryText,
 							runSignal,
+							{
+								time_range: webSearchTimeRange(message),
+								observed_at: currentUtcTimeResult ?? nowIso(),
+							},
 						);
 						appendRunMessage({
 							id: ctx.nextId("message", "local-message"),
@@ -492,6 +553,23 @@ export function streamRun(
 								output: webSearchResult,
 							},
 						});
+						// Search snippets are leads; read a source page before synthesis.
+						const primaryUrl =
+							webSearchResult.results.find((item) =>
+								/^https?:\/\//i.test(item.url),
+							)?.url || "";
+						if (
+							!webFetchResult &&
+							ctx.localToolEnabled("web_fetch") &&
+							primaryUrl
+						) {
+							webFetchResult = await executeWebFetch(
+								primaryUrl,
+								{ url: primaryUrl },
+								`${runId}:web-fetch-primary`,
+								6,
+							);
+						}
 					} catch (error) {
 						abortIfRequested(runSignal);
 						const messageText =

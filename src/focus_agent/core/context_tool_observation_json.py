@@ -39,11 +39,31 @@ def _truncate_json_payload(payload: Any, *, max_chars: int) -> str:
                 "hits",
                 "tool",
                 "artifact_ref",
+                "artifact_id",
                 "summary",
                 "reference",
                 "refs",
                 "truncated_by_context_policy",
                 "original_chars",
+                "url",
+                "final_url",
+                "title",
+                "published_at",
+                "published_date",
+                "observed_at",
+                "provider",
+                "time_range",
+                "total_chars",
+                "next_offset",
+                "continuation",
+                "content",
+                "content_chars",
+                "fetch_limited",
+                "source_type",
+                "offset",
+                "next_start_line",
+                "char_offset",
+                "next_char_offset",
             }
         }
         compact = _shrink_json_payload(compact, max_chars=max_chars)
@@ -104,7 +124,7 @@ def _shrink_json_payload(payload: dict[str, Any], *, max_chars: int) -> dict[str
     for key in ("refs",):
         value = compact.get(key)
         if isinstance(value, list):
-            compact[key] = [str(item)[: max(32, min(96, max_chars // 2))] for item in value[:4]]
+            compact[key] = [str(item) for item in value[:4]]
     for key in ("results", "hits", "items"):
         value = compact.get(key)
         if isinstance(value, list):
@@ -149,7 +169,11 @@ def _shrink_json_result_list(results: list[Any], *, max_chars: int) -> list[Any]
             compact_item: dict[str, Any] = {}
             for key, value in result.items():
                 if isinstance(value, str):
-                    compact_item[key] = _collapse_inline(value)[:120]
+                    compact_item[key] = (
+                        value
+                        if key in {"url", "final_url", "ref", "artifact_id"}
+                        else _collapse_inline(value)[:120]
+                    )
                 else:
                     compact_item[key] = value
             compact_results.append(compact_item)
@@ -163,7 +187,11 @@ def _shrink_json_result_list(results: list[Any], *, max_chars: int) -> list[Any]
                 slim_item: dict[str, Any] = {}
                 for key, value in compact_item.items():
                     if isinstance(value, str):
-                        slim_item[key] = value[: max(24, min(72, max_chars // 2))]
+                        slim_item[key] = (
+                            value
+                            if key in {"url", "final_url", "ref", "artifact_id"}
+                            else value[: max(24, min(72, max_chars // 2))]
+                        )
                     else:
                         slim_item[key] = value
                 compact_results[0] = slim_item

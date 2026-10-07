@@ -91,6 +91,23 @@ def _compact_structured_observation(
         "title",
         "content_type",
         "truncated",
+        "published_at",
+        "published_date",
+        "observed_at",
+        "provider",
+        "time_range",
+        "artifact_ref",
+        "artifact_id",
+        "total_chars",
+        "next_offset",
+        "continuation",
+        "content_chars",
+        "fetch_limited",
+        "source_type",
+        "offset",
+        "next_start_line",
+        "char_offset",
+        "next_char_offset",
     ):
         if key in payload:
             compact[key] = payload[key]
@@ -109,8 +126,11 @@ def _compact_structured_observation(
         )
 
     if "content" in payload:
-        compact["content"] = _trim_numbered_content(
-            str(payload.get("content") or ""), max_chars=max_chars // 2
+        content = str(payload.get("content") or "")
+        compact["content"] = (
+            _truncate_text(content, max_chars=max_chars // 2)
+            if tool_name == "web_fetch"
+            else _trim_numbered_content(content, max_chars=max_chars // 2)
         )
     if "diff" in payload:
         compact["diff"] = _trim_diff(str(payload.get("diff") or ""), max_chars=max_chars // 2)
@@ -129,9 +149,10 @@ def _compact_structured_observation(
         artifactize_for_prompt=artifactize_for_prompt,
     )
     if artifactize_for_prompt:
-        compact["artifact_ref"] = _tool_observation_ref(
-            tool_name=tool_name, tool_call_id=tool_call_id
-        )
+        if not (payload.get("artifact_ref") or payload.get("artifact_id")):
+            compact["artifact_ref"] = _tool_observation_ref(
+                tool_name=tool_name, tool_call_id=tool_call_id
+            )
         refs = _collect_artifact_like_refs(payload)
         if refs:
             compact["refs"] = refs[:6]
@@ -151,7 +172,11 @@ def _compact_result_list(
         if isinstance(result, dict):
             compact = {}
             ref = _artifact_like_ref_from_mapping(result) if artifactize_for_prompt else None
-            if artifactize_for_prompt and ref:
+            if (
+                artifactize_for_prompt
+                and ref
+                and not (result.get("url") or result.get("final_url"))
+            ):
                 compact["ref"] = ref
                 compact_results.append(compact)
                 rendered = json.dumps(
@@ -168,6 +193,12 @@ def _compact_result_list(
                 "title",
                 "url",
                 "final_url",
+                "published_at",
+                "published_date",
+                "observed_at",
+                "artifact_id",
+                "offset",
+                "chunk_index",
             ):
                 if key in result:
                     compact[key] = result[key]

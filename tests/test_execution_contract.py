@@ -762,3 +762,154 @@ def test_answer_verifier_flags_stale_temporal_evidence_for_refresh():
     assert verification["status"] == "unsupported"
     assert verification["repair_action"] == "refresh_stale_evidence"
     assert verification["stale_evidence"] is True
+
+
+def test_unknown_publication_date_keeps_answer_with_uncertainty():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "search-1",
+                    "name": "web_search",
+                    "args": {"query": "今天北京天气"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "query": "今天北京天气",
+                    "results": [
+                        {
+                            "title": "Beijing weather",
+                            "url": "https://weather.example/beijing",
+                            "content": "Beijing is sunny today.",
+                        }
+                    ],
+                }
+            ),
+            tool_call_id="search-1",
+        ),
+    ]
+    ledger = normalize_evidence_ledger(
+        messages,
+        observed_at="2026-05-14T00:00:00Z",
+        user_query="今天北京天气",
+    )
+    contract = evaluate_execution_contract(
+        build_execution_contract(
+            policy="live_web_research",
+            temporal_anchor_required=True,
+            available_tool_names=["web_search"],
+        ),
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=ledger,
+        available_tool_names=["web_search"],
+        observed_at="2026-05-14T00:00:00Z",
+        user_query="今天北京天气",
+    )
+
+    verification = verify_answer_against_evidence(
+        answer="北京今天晴朗。",
+        contract=contract,
+        evidence_ledger=ledger,
+    )
+
+    assert verification["status"] == "unsupported"
+    assert verification["repair_action"] == "answer_with_uncertainty"
+    assert verification["stale_evidence"] is False
+    assert verification["freshness_unknown"] is True
+
+
+def test_source_only_evidence_does_not_verify_answer():
+    contract = evaluate_execution_contract(
+        build_execution_contract(
+            policy="live_web_research",
+            available_tool_names=["web_search"],
+        ),
+        tool_results_seen=["web_search"],
+        evidence_ledger=[
+            {
+                "title": "Beijing weather",
+                "url": "https://weather.example/beijing",
+                "snippet": "",
+                "evidence_layer": "source",
+            }
+        ],
+        available_tool_names=["web_search"],
+    )
+
+    verification = verify_answer_against_evidence(
+        answer="北京天气见来源。",
+        contract=contract,
+        evidence_ledger=contract.get("evidence_ledger", [])
+        or [
+            {
+                "title": "Beijing weather",
+                "url": "https://weather.example/beijing",
+                "snippet": "",
+                "evidence_layer": "source",
+            }
+        ],
+    )
+
+    assert contract["status"] == "satisfied"
+    assert verification["status"] == "unsupported"
+    assert verification["repair_action"] == "fallback_to_tool_results"
+
+
+def test_recent_few_weeks_uses_rolling_thirty_day_window():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "search-1",
+                    "name": "web_search",
+                    "args": {"query": "最近几周 Agent 的进展"},
+                }
+            ],
+        ),
+        ToolMessage(
+            content=json.dumps(
+                {
+                    "query": "最近几周 Agent 的进展",
+                    "results": [
+                        {
+                            "title": "Agent progress",
+                            "url": "https://example.com/agent",
+                            "content": "The project shipped a new retrieval path.",
+                            "published_at": "2026-09-04",
+                        }
+                    ],
+                }
+            ),
+            tool_call_id="search-1",
+        ),
+    ]
+    ledger = normalize_evidence_ledger(
+        messages,
+        observed_at="2026-10-03T00:00:00Z",
+        user_query="最近几周 Agent 的进展",
+    )
+    contract = evaluate_execution_contract(
+        build_execution_contract(
+            policy="live_web_research",
+            temporal_anchor_required=True,
+            available_tool_names=["web_search"],
+        ),
+        tool_results_seen=tool_result_names(messages),
+        evidence_ledger=ledger,
+        available_tool_names=["web_search"],
+        observed_at="2026-10-03T00:00:00Z",
+        user_query="最近几周 Agent 的进展",
+    )
+
+    verification = verify_answer_against_evidence(
+        answer="该项目近期发布了新的检索路径。",
+        contract=contract,
+        evidence_ledger=ledger,
+    )
+
+    assert verification["status"] == "verified"

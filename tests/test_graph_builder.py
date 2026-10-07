@@ -643,7 +643,7 @@ def test_messages_for_model_repairs_dangling_tool_calls_before_provider_prompt()
     assert isinstance(messages[3], HumanMessage)
 
 
-def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
+def test_graph_forces_tool_free_answer_after_eight_web_rounds(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):
             self.owner = owner
@@ -698,7 +698,7 @@ def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
     @tool
     def web_search(query: str) -> str:
         """Search the web."""
-        return f'{{"query":"{query}","summary":"sunny"}}'
+        return f'{{"query":"{query}","summary":"北京 上海 sunny"}}'
 
     graph = build_graph(
         settings=Settings(),
@@ -722,11 +722,10 @@ def test_graph_forces_tool_free_answer_after_four_tool_rounds(monkeypatch):
     tool_enabled_calls = [item for item in fake_model.invocations if item["allow_tools"]]
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
 
-    # The first mandatory search is deterministic; the model then receives
-    # three follow-up tool opportunities before the four-round cap directly
-    # synthesizes the already-recorded tool evidence without another model call.
-    assert len(tool_enabled_calls) == 3
-    assert tool_free_calls == []
+    # The model chooses the first query and gets eight tool rounds total,
+    # followed by one quarantined synthesis call.
+    assert len(tool_enabled_calls) == 8
+    assert len(tool_free_calls) == 1
 
 
 def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_time(
@@ -831,11 +830,11 @@ def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_t
     assert isinstance(final_message, AIMessage)
     assert not final_message.tool_calls
     assert "2026-07-13T07:15:49.503263+00:00" in final_message.content
-    assert result.value["tool_intent_plan"]["tool_budget_exhausted_local_summary"] is True
-    assert not [item for item in fake_model.invocations if not item["allow_tools"]]
+    assert result.value["tool_intent_plan"]["tool_budget_exhausted_synthesis"] is True
+    assert len([item for item in fake_model.invocations if not item["allow_tools"]]) == 1
 
 
-def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
+def test_graph_rejects_tool_markup_without_repeated_synthesis(monkeypatch):
     class FakeRunnable:
         def __init__(self, owner, *, allow_tools: bool):
             self.owner = owner
@@ -890,7 +889,7 @@ def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
     @tool
     def web_search(query: str) -> str:
         """Search the web."""
-        return f'{{"query":"{query}","summary":"sunny"}}'
+        return f'{{"query":"{query}","summary":"北京 上海 sunny"}}'
 
     graph = build_graph(
         settings=Settings(),
@@ -912,7 +911,7 @@ def test_graph_retries_tool_free_answer_until_markup_is_gone(monkeypatch):
     assert "sunny" in final_messages[-1].content
 
     tool_free_calls = [item for item in fake_model.invocations if not item["allow_tools"]]
-    assert tool_free_calls == []
+    assert len(tool_free_calls) == 1
 
 
 def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypatch):
@@ -3650,7 +3649,7 @@ def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(tmp_path, m
     assert [item["status"] for item in outcomes] == ["failed", "succeeded", "blocked"]
     assert result.value["task_outcome"]["status"] == "blocked"
     assert result.value["task_outcome"]["repair_action_taken"] == "fallback_to_tool_results"
-    assert "Skill 主路径没有拿到可验证的业务结果" in final_answer
+    assert "部分工具未能完成" in final_answer
     assert not getattr(result.value["messages"][-1], "tool_calls", None)
 
 
@@ -4606,9 +4605,7 @@ def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monk
 
         def invoke(self, prompt_messages):
             self.owner.invocations.append(list(prompt_messages))
-            if self.allow_tools and not any(
-                isinstance(message, ToolMessage) for message in prompt_messages
-            ):
+            if not any(isinstance(message, ToolMessage) for message in prompt_messages):
                 return AIMessage(
                     content="",
                     tool_calls=[

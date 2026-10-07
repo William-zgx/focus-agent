@@ -180,8 +180,8 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
     "artifact_read": {
         "toolset": "artifact",
         "parallel_safe": True,
-        "intent_policies": ("workspace_lookup", "execution"),
-        "allowed_roles": ("executor", "critic", "memory_curator"),
+        "intent_policies": ("workspace_lookup", "live_web_research", "execution"),
+        "allowed_roles": ("planner", "executor", "critic", "memory_curator"),
     },
     "artifact_update": {
         "toolset": "artifact",

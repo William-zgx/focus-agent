@@ -172,6 +172,7 @@ def build_artifact_tools(
                     "title": _artifact_title_from_id(item.artifact_id),
                     "path": str(item.path),
                     "snippet": snippet,
+                    "offset": content.find(snippet),
                     "score": score,
                     "backend": "filesystem",
                 }
@@ -203,12 +204,14 @@ def build_artifact_tools(
             expected_hash = str(hit.fields.get("artifact_hash") or "")
             if expected_hash and expected_hash != artifact_content_hash(content):
                 continue
+            offset = content.find(hit.text)
             results.append(
                 {
                     "artifact_id": artifact_id,
                     "title": str(hit.fields.get("title") or _artifact_title_from_id(hit.source_id)),
                     "chunk_index": hit.fields.get("chunk_index"),
                     "snippet": hit.text[:600],
+                    **({"offset": offset} if offset >= 0 else {}),
                     "score": hit.score,
                     "backend": "zvec",
                 }
@@ -349,9 +352,24 @@ def build_artifact_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
 
-    @tool
-    def artifact_read(artifact_id: str, offset: int | None = None, limit: int | None = None) -> str:
-        """Read a saved text artifact, or a scoped tool-observation range."""
+    @tool(parse_docstring=True)
+    def artifact_read(
+        artifact_id: str,
+        offset: int | None = None,
+        limit: int | None = None,
+        query: str | None = None,
+    ) -> str:
+        """Read saved text using only artifact_id, offset, limit and query parameters.
+
+        Use a short phrase in the source language to locate passages in long pages.
+        Returned offsets refer to the original text and support further reading.
+
+        Args:
+            artifact_id: Existing artifact ID or tool-observation reference returned by a tool.
+            offset: One integer character position, starting at zero. Use next_offset to continue.
+            limit: Maximum number of text characters to return, for example 4000.
+            query: Optional case-insensitive literal phrase to find at or after offset.
+        """
         tool_name = "artifact_read"
         emit_tool_event(
             tool_name=tool_name,
@@ -361,6 +379,8 @@ def build_artifact_tools(
             limit=limit,
         )
         try:
+            if query is not None and not query.strip():
+                raise ValueError("query must not be empty")
             if isinstance(offset, bool) or (offset is not None and int(offset) != offset):
                 raise ValueError("offset must be a non-negative integer")
             if isinstance(limit, bool) or (limit is not None and int(limit) != limit):
@@ -434,18 +454,27 @@ def build_artifact_tools(
             if path.is_dir():
                 raise IsADirectoryError(artifact_id)
             content = store.load(read_artifact_id).decode("utf-8")
+            found = True
+            if query is not None:
+                match = re.compile(re.escape(query), re.IGNORECASE).search(
+                    content, requested_offset
+                )
+                found = match is not None
+                if match is not None:
+                    requested_offset = match.start()
             content_end = min(len(content), requested_offset + read_limit)
             payload = {
                 "artifact_id": artifact_id
                 if observation_ref is not None
                 else _artifact_id_for_path(path),
                 "path": str(path),
-                "content": content[requested_offset:content_end],
+                "content": content[requested_offset:content_end] if found else "",
                 "offset": requested_offset,
                 "limit": read_limit,
                 "total_chars": len(content),
-                "next_offset": content_end if content_end < len(content) else None,
-                "truncated": content_end < len(content),
+                "next_offset": content_end if found and content_end < len(content) else None,
+                "truncated": found and content_end < len(content),
+                **({"query": query, "found": found} if query is not None else {}),
             }
             result = json.dumps(payload, ensure_ascii=False)
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
@@ -460,6 +489,15 @@ def build_artifact_tools(
         **(getattr(artifact_read, "metadata", {}) or {}),
         "_focus_agent_save_tool_observation": _save_tool_observation,
     }
+
+    def _validate_artifact_read_args(args: dict[str, Any]) -> None:
+        unknown = args.keys() - artifact_read.args.keys()
+        if unknown:
+            raise ValueError(
+                f"Unknown arguments: {', '.join(sorted(unknown))}. "
+                f"Allowed arguments: {', '.join(artifact_read.args)}. "
+                "Pass one integer offset to continue reading."
+            )
 
     @tool
     def artifact_update(artifact_id: str, body: str, mode: str = "replace") -> str:
@@ -569,6 +607,7 @@ def build_artifact_tools(
             },
             "artifact_read": {
                 "parallel_safe": True,
+                "validator": _validate_artifact_read_args,
                 "max_observation_chars": 8000,
             },
             "artifact_update": {

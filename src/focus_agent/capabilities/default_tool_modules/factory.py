@@ -106,6 +106,21 @@ def get_default_tools(
             emit_tool_event=_emit_tool_event,
         )
     )
+    artifact_tools, artifact_runtime_metadata = build_artifact_tools(
+        artifact_dir=artifact_dir,
+        workspace_root=workspace_root,
+        settings=settings,
+        tool_catalog=tool_catalog,
+        artifact_store=artifact_store,
+        artifact_metadata_repository=artifact_metadata_repository,
+        memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
+        emit_tool_event=_emit_tool_event,
+        get_current_thread_id=_get_current_thread_id,
+    )
+    _merge_tool_group(artifact_tools, artifact_runtime_metadata)
+    artifact_read_metadata = getattr(artifact_tools.get("artifact_read"), "metadata", {}) or {}
+    save_tool_observation = artifact_read_metadata.get("_focus_agent_save_tool_observation")
     _merge_tool_group(
         *build_web_tools(
             web_search_config=web_search_config,
@@ -113,19 +128,7 @@ def get_default_tools(
             resolved_env=resolved_env,
             emit_tool_event=_emit_tool_event,
             urllib_parse_module=urllib_parse,
-        )
-    )
-    _merge_tool_group(
-        *build_artifact_tools(
-            artifact_dir=artifact_dir,
-            workspace_root=workspace_root,
-            settings=settings,
-            tool_catalog=tool_catalog,
-            artifact_store=artifact_store,
-            artifact_metadata_repository=artifact_metadata_repository,
-            memory_embedding_service=memory_embedding_service,
-            retrieval_index=retrieval_index,
-            emit_tool_event=_emit_tool_event,
+            save_tool_observation=save_tool_observation,
             get_current_thread_id=_get_current_thread_id,
         )
     )

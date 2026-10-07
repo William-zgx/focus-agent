@@ -565,7 +565,7 @@ def _live_web_repair_response(
             {
                 "id": f"live-web-repair-search-{_current_turn_index(state) + 1}",
                 "name": "web_search",
-                "args": {"query": query},
+                "args": {**search_args, "query": query},
             }
         ],
     )

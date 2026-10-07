@@ -43,6 +43,9 @@ def finalize_agent_loop_turn(
     evidence repair and update construction separate from prompt orchestration.
     """
 
+    fallback_reason = (getattr(response, "additional_kwargs", None) or {}).get(
+        "tool_result_fallback_reason"
+    )
     latest_turn_messages = hooks["_latest_turn_messages"]
     degraded_answer_from_tool_results = hooks["_degraded_answer_from_tool_results"]
     message_content_text = hooks["_message_content_text"]
@@ -85,6 +88,7 @@ def finalize_agent_loop_turn(
     completed_turn_messages = latest_turn_messages([*state_messages, response])
     if (
         not context_overflow
+        and tool_policy in {"workspace_lookup", "execution"}
         and not getattr(response, "tool_calls", None)
         and should_replace_unfound_workspace_answer(
             message_content_text(response),
@@ -231,10 +235,35 @@ def finalize_agent_loop_turn(
             skill_execution_repair_taken = "answer_with_uncertainty"
     if (
         tool_policy == "live_web_research"
+        and not force_tool_free_answer
         and not getattr(response, "tool_calls", None)
         and live_web_answer_needs_repair(answer_verification)
     ):
-        if str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
+        if str(answer_verification.get("repair_action") or "") == "answer_with_uncertainty":
+            chinese = any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text)
+            caveat = (
+                (
+                    "时效说明：来源的发布时间未能充分核实，无法确认以上信息全部符合所问时间范围。"
+                    if chinese
+                    else "Freshness note: publication dates could not be verified, so the findings may not all fall within the requested time window."
+                )
+                if answer_verification.get("freshness_unknown")
+                else (
+                    "以上仅基于已取得的有限证据。"
+                    if chinese
+                    else "These findings are based on the limited evidence retrieved."
+                )
+            )
+            response = response.model_copy(
+                update={"content": message_content_text(response) + ("\n\n" + caveat)}
+            )
+            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            answer_verification = {
+                **answer_verification,
+                "repair_action_taken": "answer_with_uncertainty",
+            }
+            live_web_repair_taken = "answer_with_uncertainty"
+        elif str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
             response = AIMessage(content=fallback_answer_from_tool_results(completed_turn_messages))
             completed_turn_messages = latest_turn_messages([*state_messages, response])
             answer_verification = verify_answer_against_evidence(
@@ -302,7 +331,7 @@ def finalize_agent_loop_turn(
             language_repair_taken = True
             language_repair_attempts = language_repair.attempts
     temporal_anchor_repair_taken = ""
-    if not force_tool_free_answer and not getattr(response, "tool_calls", None) and observed_at:
+    if not getattr(response, "tool_calls", None) and observed_at:
         temporal_anchor_repair = enforce_temporal_anchor(
             response=response,
             user_text=tool_intent_text,
@@ -317,6 +346,20 @@ def finalize_agent_loop_turn(
             response = temporal_anchor_repair.response
             completed_turn_messages = latest_turn_messages([*state_messages, response])
             temporal_anchor_repair_taken = temporal_anchor_repair.action
+    if tool_policy == "live_web_research" and not getattr(response, "tool_calls", None):
+        if force_tool_free_answer or fallback_reason:
+            reason = (
+                "Research reached its tool limit; the answer uses only the evidence collected."
+                if force_tool_free_answer
+                else f"Research synthesis degraded: {fallback_reason}."
+            )
+            answer_verification = {
+                **answer_verification,
+                "status": "unsupported",
+                "unsupported_claims": [*answer_verification.get("unsupported_claims", []), reason],
+                "repair_action_taken": "answer_with_uncertainty",
+            }
+            live_web_repair_taken = "answer_with_uncertainty"
     citation_refs = new_citation_refs(
         evidence_citation_refs,
         existing=list(state.get("citations", []) or []),
@@ -396,7 +439,11 @@ def finalize_agent_loop_turn(
     if context_overflow:
         intent_dumped["context_budget_exhausted"] = True
     elif force_tool_free_answer:
-        intent_dumped["tool_budget_exhausted_local_summary"] = True
+        intent_dumped[
+            "tool_budget_exhausted_synthesis"
+            if tool_policy == "live_web_research"
+            else "tool_budget_exhausted_local_summary"
+        ] = True
     turn_metadata: dict[str, Any] = {}
     if intent_dumped.get("skill_execution_plan"):
         turn_metadata["skill_execution_plan"] = intent_dumped["skill_execution_plan"]

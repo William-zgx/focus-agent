@@ -663,3 +663,67 @@ def test_assemble_context_dedupes_memory_lines_and_artifacts_with_prompt_prefere
     assert "branch:branch-1" not in slice_.memory_block
     assert slice_.artifact_block.count("Owner notes [markdown]") == 1
     assert "file:///tmp/owner-notes.md" in slice_.artifact_block
+
+
+def test_compacted_web_evidence_keeps_dates_and_full_text_continuation():
+    url = "https://example.com/" + "long-path/" * 20
+    search = json.loads(
+        trim_tool_observation(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "url": url,
+                            "title": "Release",
+                            "content": "Useful evidence " * 500,
+                            "published_at": "2026-10-01",
+                        }
+                    ],
+                }
+            ),
+            tool_name="web_search",
+            tool_call_id="search",
+            max_chars=1600,
+            artifactize_for_prompt=True,
+        )
+    )
+    assert search["results"][0]["url"] == url
+    assert search["results"][0]["published_at"] == "2026-10-01"
+    assert "Useful evidence" in search["results"][0]["content"]
+    reference = "tool-observation://web_fetch/full-page"
+    continuation = {
+        "tool": "artifact_read",
+        "args": {"artifact_id": reference, "offset": 300, "limit": 1000},
+    }
+    fetch = json.loads(
+        trim_tool_observation(
+            json.dumps(
+                {
+                    "url": url,
+                    "content": "Page " * 3000,
+                    "published_at": "2026-10-01",
+                    "artifact_ref": reference,
+                    "continuation": continuation,
+                }
+            ),
+            tool_name="web_fetch",
+            tool_call_id="preview",
+            max_chars=1600,
+            artifactize_for_prompt=True,
+        )
+    )
+    assert fetch["artifact_ref"] == reference
+    assert fetch["continuation"] == continuation
+    assert fetch["published_at"] == "2026-10-01"
+
+
+def test_temporal_anchor_preserves_foreign_language_source_excerpt():
+    excerpt = "A documented release adds asynchronous task execution and resumable sessions. " * 4
+    repair = enforce_temporal_anchor(
+        response=AIMessage(content="来源原文：" + excerpt),
+        user_text="最近几周有哪些进展？",
+        observed_at="2026-10-04T01:00:00+00:00",
+    )
+    assert repair is not None
+    assert repair.action == "prepend_verified_temporal_anchor"
+    assert excerpt.strip() in repair.response.content

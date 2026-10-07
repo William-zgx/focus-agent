@@ -26,7 +26,7 @@ from ...model_registry import default_thinking_enabled, supports_thinking_mode
 from ...observability.tracing import build_invoke_config
 from ...transport.stream_events import (
     extract_visible_text_delta,
-    sanitize_stream_visible_text,
+    sanitize_completed_visible_text,
 )
 from .branch_actions import (
     normalize_branch_actions,
@@ -91,7 +91,7 @@ def message_content_to_text(content: Any) -> str:
 
 
 def confirmed_visible_ai_text(content: Any) -> str:
-    return sanitize_stream_visible_text(message_content_to_text(content))
+    return sanitize_completed_visible_text(message_content_to_text(content))
 
 
 def json_safe(value: Any) -> Any:

@@ -956,7 +956,18 @@ def test_artifact_search_falls_back_to_filesystem(tmp_path):
 
     assert payload["results"][0]["artifact_id"] == "launch-plan.md"
     assert payload["results"][0]["backend"] == "filesystem"
-    assert "Zvec retrieval" in payload["results"][0]["snippet"]
+    hit = payload["results"][0]
+    assert "Zvec retrieval" in hit["snippet"]
+    page = json.loads(
+        tools["artifact_read"].invoke(
+            {
+                "artifact_id": hit["artifact_id"],
+                "offset": hit["offset"],
+                "limit": len(hit["snippet"]),
+            }
+        )
+    )
+    assert page["content"] == hit["snippet"]
 
 
 def test_artifact_search_filters_stale_index_chunks_after_update(tmp_path):

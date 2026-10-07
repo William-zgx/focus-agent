@@ -250,6 +250,67 @@ def _should_prefer_web_fetch(text: str) -> bool:
             "标题",
             "summary",
             "summarize",
+            "总结",
+            "摘要",
+            "引用",
+            "cite",
+            "quote",
+        ),
+    )
+
+
+def _remote_url_local_mutation_request(text: str) -> bool:
+    """Return whether handling a URL explicitly writes or runs something locally."""
+    if not _first_http_url(text):
+        return False
+    # URL slugs may contain action-like words. Only inspect the surrounding
+    # request, and require an explicit local execution target for run/execute.
+    text_without_urls = _HTTP_URL_RE.sub(" ", str(text or ""))
+    if _contains_any(
+        text_without_urls,
+        (
+            "保存",
+            "写入",
+            "写到",
+            "落盘",
+            "下载到本地",
+            "保存到本地",
+            "写入本地",
+            "上传",
+            "修改",
+            "删除",
+            "安装",
+            "save",
+            "write",
+            "persist",
+            "download to",
+            "save to",
+            "write to",
+            "upload",
+            "modify",
+            "delete",
+            "install",
+        ),
+    ):
+        return True
+    return _contains_any(
+        text_without_urls,
+        (
+            "本地脚本",
+            "本地命令",
+            "本地程序",
+            "本地执行",
+            "本地运行",
+            "执行本地",
+            "运行本地",
+            "local script",
+            "local command",
+            "local program",
+            "execute locally",
+            "run locally",
+            "download locally",
+            "save locally",
+            "write locally",
         ),
     )
 

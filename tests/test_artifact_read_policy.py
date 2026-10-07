@@ -55,3 +55,25 @@ def test_workspace_lookup_does_not_exempt_artifact_read_with_side_effects():
         )
         == []
     )
+
+
+def test_web_research_exposes_continuation_without_local_workspace_tools():
+    tools = [
+        SimpleNamespace(name=name, metadata={})
+        for name in (
+            "web_search",
+            "web_fetch",
+            "artifact_read",
+            "artifact_update",
+            "read_file",
+        )
+    ]
+    plan = policy.build_tool_intent_plan("请联网研究最近几周 Agent 的进展")
+    assert plan.policy == "live_web_research"
+    selected = policy._tools_for_policy(
+        plan.policy,
+        tools,
+        plan.normalized_text,
+        exposure=policy._turn_tool_exposure_from_intent_plan(plan),
+    )
+    assert {t.name for t in selected} == {"web_search", "web_fetch", "artifact_read"}

@@ -5,7 +5,10 @@ from typing import Any
 from fastapi import HTTPException
 
 from focus_agent.core.repo_call import has_repo_method
-from focus_agent.transport.stream_events import sanitize_stream_visible_text
+from focus_agent.transport.stream_events import (
+    sanitize_completed_visible_text,
+    sanitize_stream_visible_text,
+)
 
 _TOOL_RESULT_FALLBACK_VISIBLE_PREFIX = "我先根据已拿到的工具结果给出一个保守整理："
 
@@ -52,7 +55,7 @@ def _should_hide_completed_visible_text(text: str) -> bool:
 
 
 def _safe_completed_visible_text(text: str) -> str:
-    return sanitize_stream_visible_text(text)
+    return sanitize_completed_visible_text(text)
 
 
 def _json_safe(value: Any) -> Any:

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
+from ..core.context_tool_observation_references import _tool_observation_ref
 from .graph_evidence import relevant_web_tool_call_ids
 from .graph_tool_history_repair import _message_text
 
@@ -61,6 +62,7 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
     relevant_web_call_ids = relevant_web_tool_call_ids(latest_turn, user_query=latest_user)
     pending_calls: dict[str, str] = {}
     payloads: list[dict[str, Any]] = []
+    source_by_ref: dict[str, dict[str, Any]] = {}
     for message in latest_turn:
         if isinstance(message, AIMessage):
             for call in getattr(message, "tool_calls", None) or []:
@@ -72,9 +74,15 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
             continue
         if not isinstance(message, ToolMessage):
             continue
+        if str(getattr(message, "status", "")) == "error":
+            continue
         call_id = str(getattr(message, "tool_call_id", "") or "")
         tool_name = pending_calls.get(call_id, "")
-        if relevant_web_call_ids is not None and call_id not in relevant_web_call_ids:
+        if (
+            tool_name != "artifact_read"
+            and relevant_web_call_ids is not None
+            and call_id not in relevant_web_call_ids
+        ):
             continue
         parsed_payloads = []
         raw = _message_text(message)
@@ -83,15 +91,36 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
         except json.JSONDecodeError:
             pass
         prompt_payload = _prompt_observation_payload(message)
-        if prompt_payload is not None:
+        if not parsed_payloads and prompt_payload is not None:
             parsed_payloads.append(prompt_payload)
         for payload in parsed_payloads:
             if not isinstance(payload, dict):
+                continue
+            if payload.get("status") == "error" or payload.get("error"):
+                continue
+            if tool_name == "artifact_read":
+                source = source_by_ref.get(str(payload.get("artifact_id") or ""))
+                if source is None or not (source.get("url") or source.get("final_url")):
+                    continue
+                content = str(payload.get("content") or "")
+                try:
+                    nested = json.loads(content)
+                except json.JSONDecodeError:
+                    nested = None
+                if isinstance(nested, dict):
+                    content = str(nested.get("content") or content)
+                payloads.append({**source, "content": content, "offset": payload.get("offset", 0)})
                 continue
             if tool_name in {"web_search", "web_fetch"} or _looks_like_live_web_fallback_payload(
                 payload
             ):
                 payloads.append(payload)
+                source_by_ref[_tool_observation_ref(tool_name=tool_name, tool_call_id=call_id)] = (
+                    payload
+                )
+                for view in (payload, prompt_payload):
+                    if isinstance(view, dict) and view.get("artifact_ref"):
+                        source_by_ref[str(view["artifact_ref"])] = payload
     return payloads
 
 
@@ -128,16 +157,34 @@ def _web_payload_main_answer(
         if answer:
             return _truncate_inline(answer, max_chars=420)
         summary = str(payload.get("summary") or "").strip()
-        if summary and not _looks_like_internal_web_summary(summary):
+        if (
+            summary
+            and not payload.get("truncated_by_context_policy")
+            and not _looks_like_internal_web_summary(summary)
+        ):
             return _truncate_inline(summary, max_chars=420)
-    for payload in payloads:
-        result_text = _first_result_text(payload, prefer_chinese=chinese)
-        if result_text:
-            return _truncate_inline(result_text, max_chars=420)
-    for payload in payloads:
-        query = str(payload.get("query") or "").strip()
-        if query:
-            return f"查询：{_truncate_inline(query, max_chars=160)}"
+    excerpts: list[str] = []
+    seen: set[str] = set()
+    for payload in reversed(payloads):
+        for item in _payload_results(payload):
+            text = str(item.get("content") or item.get("snippet") or item.get("text") or "").strip()
+            url = str(item.get("url") or item.get("ref") or "").strip()
+            if not text or _looks_like_internal_web_summary(text) or (url or text) in seen:
+                continue
+            seen.add(url or text)
+            label = str(item.get("title") or url).strip()
+            source = f"[{label}]({url})" if url.startswith(("https://", "http://")) else label
+            excerpts.append(f"{source}：{_truncate_inline(text, max_chars=300)}")
+            break  # Keep coverage across searches instead of taking only the first query's hits.
+        if len(excerpts) >= 4:
+            break
+    if excerpts:
+        caveat = (
+            "以下仅为搜索摘要摘录，尚未完成原文核实："
+            if chinese
+            else "These are search excerpts; the source pages have not been verified:"
+        )
+        return caveat + "\n" + "\n".join(f"- {excerpt}" for excerpt in excerpts)
     return ""
 
 
@@ -147,6 +194,7 @@ def _looks_like_internal_web_summary(value: str) -> bool:
         normalized
         and (
             "compressed into" in normalized
+            or "compressed for prompt budgeting" in normalized
             or "artifact-like prompt reference" in normalized
             or "prompt reference" in normalized
         )
@@ -154,16 +202,17 @@ def _looks_like_internal_web_summary(value: str) -> bool:
 
 
 def _fetched_page_payloads(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        payload
-        for payload in payloads
-        if str(payload.get("final_url") or "").strip()
-        or (
-            str(payload.get("url") or "").strip()
-            and "content" in payload
-            and not isinstance(payload.get("results"), list)
-        )
-    ]
+    pages: dict[str, dict[str, Any]] = {}
+    for payload in payloads:
+        url = str(payload.get("final_url") or payload.get("url") or "").strip()
+        if not url or isinstance(payload.get("results"), list):
+            continue
+        previous = pages.get(url)
+        if previous is None or len(str(payload.get("content") or "")) > len(
+            str(previous.get("content") or "")
+        ):
+            pages[url] = payload
+    return list(pages.values())
 
 
 def _fetched_page_summary(payloads: list[dict[str, Any]], *, chinese: bool) -> str:
@@ -192,25 +241,7 @@ def _representative_fetch_excerpt(content: str) -> str:
     text = " ".join(str(content or "").split())
     if not text:
         return ""
-    lowered = text.lower()
-    for keyword in (
-        "experimental support",
-        "free-threaded",
-        "temporary redirect",
-        "must not",
-        "must use",
-        "same request method",
-        "same method",
-    ):
-        index = lowered.find(keyword)
-        if index < 0:
-            continue
-        start = max(
-            0,
-            max(text.rfind(marker, 0, index) for marker in (".", "。", "¶")) + 1,
-        )
-        return _truncate_inline(text[start : index + 360], max_chars=420)
-    return ""
+    return _truncate_inline(text, max_chars=600)
 
 
 def _looks_like_weather_query(user_query: str, payloads: list[dict[str, Any]]) -> bool:
@@ -275,7 +306,7 @@ def _first_result_text(payload: dict[str, Any], *, prefer_chinese: bool) -> str:
 def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
     sources: list[str] = []
     fetched_pages = _fetched_page_payloads(payloads)
-    source_payloads = fetched_pages or payloads
+    source_payloads = fetched_pages or list(reversed(payloads))
     for payload in source_payloads:
         title = _truncate_inline(str(payload.get("title") or "").strip(), max_chars=80)
         url = str(payload.get("final_url") or payload.get("url") or "").strip()
@@ -289,10 +320,18 @@ def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
     for payload in source_payloads:
         reference = str(payload.get("reference") or "").strip()
         if reference:
-            sources.extend(_reference_sources(reference))
+            sources.extend(
+                ref
+                for ref in _reference_sources(reference)
+                if ref.startswith(("https://", "http://"))
+            )
         refs = payload.get("refs")
         if isinstance(refs, list):
-            sources.extend(str(ref).strip() for ref in refs if str(ref).strip())
+            sources.extend(
+                str(ref).strip()
+                for ref in refs
+                if str(ref).strip().startswith(("https://", "http://"))
+            )
         for result in _payload_results(payload):
             title = _truncate_inline(str(result.get("title") or "").strip(), max_chars=80)
             url = str(result.get("url") or result.get("ref") or "").strip()

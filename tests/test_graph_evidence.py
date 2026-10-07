@@ -3,6 +3,7 @@ import json
 from langchain.messages import AIMessage, ToolMessage
 
 from focus_agent.engine.graph_evidence import (
+    EVIDENCE_LAYER_SNIPPET,
     TRUST_TIER_BACKGROUND,
     TRUST_TIER_HIGH,
     TRUST_TIER_LOW,
@@ -10,6 +11,7 @@ from focus_agent.engine.graph_evidence import (
     evidence_bundle_source_snippets,
     evidence_bundle_to_citation_refs,
     normalize_evidence_bundle,
+    normalize_evidence_ledger,
 )
 
 
@@ -94,6 +96,63 @@ def test_normalize_evidence_bundle_marks_recognized_news_medium():
     assert bundle[0]["trust_tier"] == TRUST_TIER_MEDIUM
 
 
+def test_search_results_are_snippets_and_keep_publication_and_observation_times():
+    ledger = normalize_evidence_ledger(
+        [
+            _tool_call("search-1", "web_search"),
+            _tool_message(
+                "search-1",
+                {
+                    "query": "market update",
+                    "provider": "duckduckgo",
+                    "results": [
+                        {
+                            "title": "Markets rise",
+                            "url": "https://www.reuters.com/markets/example",
+                            "content": "Reuters reported a broad market rally.",
+                            "published_at": "2026-05-13",
+                            "observed_at": "2026-05-13T12:00:00Z",
+                        }
+                    ],
+                },
+            ),
+        ],
+        observed_at="2026-05-14T00:00:00Z",
+    )
+
+    assert ledger[0]["evidence_layer"] == EVIDENCE_LAYER_SNIPPET
+    assert ledger[0]["published_at"] == "2026-05-13"
+    assert ledger[0]["observed_at"] == "2026-05-13T12:00:00Z"
+
+
+def test_context_truncated_web_payload_keeps_source_snippets_not_internal_summary():
+    messages = [
+        _tool_call("search-1", "web_search"),
+        _tool_message(
+            "search-1",
+            {
+                "query": "market update",
+                "truncated_by_context_policy": True,
+                "summary": "Prompt-only artifactized view.",
+                "results": [
+                    {
+                        "title": "Markets rise",
+                        "url": "https://www.reuters.com/markets/example",
+                        "content": "Representative result kept in the compact view.",
+                    }
+                ],
+            },
+        ),
+    ]
+
+    bundle = normalize_evidence_bundle(messages)
+    ledger = normalize_evidence_ledger(messages)
+    assert len(bundle) == len(ledger) == 1
+    assert ledger[0]["evidence_layer"] == "snippet"
+    assert bundle[0]["snippet"] == "Representative result kept in the compact view."
+    assert "Prompt-only" not in str(bundle)
+
+
 def test_empty_web_fetch_result_is_low_trust_not_strong_evidence():
     bundle = normalize_evidence_bundle(
         [
@@ -141,3 +200,32 @@ def test_monthly_climate_weather_pages_are_background_sources():
         "Average climate values and monthly weather outlooks. "
         "(https://weather.com/weather/monthly/l/New+York+NY)"
     ]
+
+
+def test_web_citation_preserves_long_url_and_ignores_failed_pages():
+    url = "https://example.com/" + "long-path/" * 80
+    messages = [
+        _tool_call("fetch", "web_fetch"),
+        _tool_message(
+            "fetch",
+            {
+                "url": url,
+                "content": "Source passage",
+                "truncated_by_context_policy": True,
+                "summary": "Internal processing notice",
+            },
+        ),
+        _tool_call("failed", "web_fetch"),
+        _tool_message(
+            "failed",
+            {"url": "https://example.com/blocked", "status": "error", "error": "Access denied"},
+        ),
+        _tool_call("search", "web_search"),
+        _tool_message(
+            "search", {"truncated_by_context_policy": True, "summary": "Internal notice"}
+        ),
+    ]
+    bundle = normalize_evidence_bundle(messages)
+    assert len(bundle) == 1
+    assert bundle[0]["url"] == url
+    assert evidence_bundle_to_citation_refs(bundle)[0]["uri"] == url

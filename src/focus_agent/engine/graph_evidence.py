@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -66,9 +66,26 @@ _PUBLISHED_AT_KEYS = (
     "published",
     "published_date",
     "publishedDate",
+    "publication_date",
+    "published_on",
+    "published_time",
     "date",
-    "last_updated",
-    "updated_at",
+)
+
+EVIDENCE_LAYER_BODY = "body"
+EVIDENCE_LAYER_SNIPPET = "snippet"
+EVIDENCE_LAYER_SUMMARY = "summary"
+EVIDENCE_LAYER_SOURCE = "source"
+
+_INTERNAL_SUMMARY_MARKERS = (
+    "compressed for prompt budgeting",
+    "compressed into an artifact-like prompt reference",
+    "artifact-like prompt reference",
+    "prompt reference",
+    "truncated by context policy",
+    "truncated_by_context_policy",
+    "tool output was compressed",
+    "output was compressed",
 )
 
 
@@ -81,8 +98,9 @@ class EvidenceItem:
     trust_tier: TrustTier
     published_at: str | None = None
     observed_at: str | None = None
+    evidence_layer: str = EVIDENCE_LAYER_BODY
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, *, include_evidence_layer: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "source_name": self.source_name,
             "url": self.url,
@@ -92,8 +110,11 @@ class EvidenceItem:
         }
         if self.published_at:
             payload["published_at"] = self.published_at
-        else:
-            payload["observed_at"] = self.observed_at or _now_iso()
+        # Retrieval time and publication time describe different events. Keep
+        # retrieval time even when the source supplies a publication date.
+        payload["observed_at"] = self.observed_at or _now_iso()
+        if include_evidence_layer:
+            payload["evidence_layer"] = self.evidence_layer
         return payload
 
 
@@ -178,7 +199,7 @@ def normalize_evidence_ledger(
         for item in items:
             ledger.append(
                 {
-                    **item.as_dict(),
+                    **item.as_dict(include_evidence_layer=True),
                     "id": f"ev-{len(ledger) + 1}",
                     "source_tool": tool_name,
                     "tool_call_id": tool_call_id,
@@ -188,7 +209,7 @@ def normalize_evidence_ledger(
     seen: set[tuple[str, str, str]] = set()
     for item in ledger:
         key = (
-            _clean_text(item.get("url")),
+            _clean_url(item.get("url")),
             _clean_text(item.get("title")),
             _clean_text(item.get("snippet")),
         )
@@ -249,7 +270,7 @@ def evidence_bundle_to_citation_refs(
     for item in evidence_bundle:
         if not isinstance(item, dict):
             continue
-        url = _clean_text(item.get("url"))
+        url = _clean_url(item.get("url"))
         label = _clean_text(item.get("title")) or _clean_text(item.get("source_name")) or url
         if not label:
             continue
@@ -283,7 +304,7 @@ def evidence_bundle_source_snippets(
             continue
         source_name = _clean_text(item.get("source_name"))
         title = _clean_text(item.get("title"))
-        url = _clean_text(item.get("url"))
+        url = _clean_url(item.get("url"))
         snippet = _clean_text(item.get("snippet"), max_chars=220)
         if not (source_name or title or url or snippet):
             continue
@@ -309,9 +330,13 @@ def _search_payload_items(
     for result in results:
         if not isinstance(result, dict):
             continue
-        url = _clean_text(result.get("url") or result.get("ref"))
+        if _is_internal_summary(result):
+            continue
+        url = _clean_url(result.get("url") or result.get("ref"))
         title = _clean_text(result.get("title"))
         snippet = _clean_text(result.get("content") or result.get("snippet"))
+        if _is_internal_summary(snippet):
+            snippet = ""
         source_name = _source_name(result, url=url)
         published_at = _published_at(result)
         items.append(
@@ -327,7 +352,8 @@ def _search_payload_items(
                     snippet=snippet,
                 ),
                 published_at=published_at,
-                observed_at=None if published_at else observed_at,
+                observed_at=_observed_at(result, fallback=observed_at),
+                evidence_layer=EVIDENCE_LAYER_SNIPPET if snippet else EVIDENCE_LAYER_SOURCE,
             )
         )
     return items
@@ -336,22 +362,27 @@ def _search_payload_items(
 def _search_summary_items(
     payload: dict[str, Any], *, observed_at: str | None
 ) -> list[EvidenceItem]:
-    snippet = _clean_text(
-        payload.get("answer") or payload.get("summary") or payload.get("reference")
-    )
+    if _is_internal_summary(payload):
+        return []
+    answer = _clean_text(payload.get("answer"))
+    summary = _clean_text(payload.get("summary"))
+    snippet = answer or summary
     if not snippet:
         return []
+    if _is_internal_summary(snippet):
+        return []
     title = _clean_text(payload.get("query")) or "web_search result"
-    source_name = _source_name(payload, url=_clean_text(payload.get("url") or ""))
+    source_name = _source_name(payload, url=_clean_url(payload.get("url") or ""))
     return [
         EvidenceItem(
             source_name=source_name or "web_search",
-            url=_clean_text(payload.get("url")),
+            url=_clean_url(payload.get("url")),
             title=title,
             snippet=snippet,
             trust_tier=TRUST_TIER_LOW,
             published_at=_published_at(payload),
-            observed_at=observed_at,
+            observed_at=_observed_at(payload, fallback=observed_at),
+            evidence_layer=EVIDENCE_LAYER_SUMMARY,
         )
     ]
 
@@ -365,6 +396,8 @@ def _raw_payload_item(
     raw = _clean_text(getattr(message, "content", ""), max_chars=1000)
     if not raw:
         return None
+    if _is_internal_summary(raw):
+        return None
     return EvidenceItem(
         source_name=tool_name or "web",
         url="",
@@ -372,13 +405,20 @@ def _raw_payload_item(
         snippet=raw,
         trust_tier=TRUST_TIER_LOW,
         observed_at=observed_at,
+        evidence_layer=EVIDENCE_LAYER_BODY,
     )
 
 
 def _fetch_payload_item(payload: dict[str, Any], *, observed_at: str | None) -> EvidenceItem | None:
-    url = _clean_text(payload.get("final_url") or payload.get("url"))
+    url = _clean_url(payload.get("final_url") or payload.get("url"))
     title = _clean_text(payload.get("title"))
-    snippet = _clean_text(payload.get("content") or payload.get("text") or payload.get("summary"))
+    snippet = _clean_text(
+        payload.get("content")
+        or payload.get("text")
+        or (payload.get("summary") if not _is_internal_summary(payload) else "")
+    )
+    if _is_internal_summary(snippet):
+        snippet = ""
     if not (url or title or snippet):
         return None
     source_name = _source_name(payload, url=url)
@@ -395,7 +435,8 @@ def _fetch_payload_item(payload: dict[str, Any], *, observed_at: str | None) -> 
             snippet=snippet,
         ),
         published_at=published_at,
-        observed_at=None if published_at else observed_at,
+        observed_at=_observed_at(payload, fallback=observed_at),
+        evidence_layer=EVIDENCE_LAYER_BODY if snippet else EVIDENCE_LAYER_SOURCE,
     )
 
 
@@ -502,7 +543,17 @@ def _tool_name_for_message(message: ToolMessage, *, call_names: dict[str, str]) 
 def _payload_relevance_text(payload: Any) -> str:
     if isinstance(payload, dict):
         parts: list[str] = []
-        for key in ("query", "answer", "summary", "reference", "url", "final_url", "title"):
+        for key in (
+            "query",
+            "answer",
+            "summary",
+            "reference",
+            "url",
+            "final_url",
+            "title",
+            "content",
+            "text",
+        ):
             value = payload.get(key)
             if value:
                 parts.append(_clean_text(value, max_chars=1000))
@@ -602,6 +653,8 @@ def _matches_query_terms(text: str, query_terms: set[str]) -> bool:
 
 
 def _tool_message_status(message: ToolMessage, payload: dict[str, Any]) -> str:
+    if str(payload.get("status") or "").lower() == "error" or payload.get("error"):
+        return "error"
     status = _clean_text(getattr(message, "status", "")) or _clean_text(payload.get("status"))
     return status.lower() or "success"
 
@@ -626,7 +679,25 @@ def _published_at(payload: dict[str, Any]) -> str | None:
         value = _clean_text(payload.get(key))
         if value:
             return value
+    for key in ("metadata", "meta"):
+        metadata = payload.get(key)
+        if isinstance(metadata, dict):
+            for nested_key in _PUBLISHED_AT_KEYS:
+                value = _clean_text(metadata.get(nested_key))
+                if value:
+                    return value
     return None
+
+
+def _observed_at(payload: Mapping[str, Any], *, fallback: str | None) -> str | None:
+    return _clean_text(payload.get("observed_at")) or fallback
+
+
+def _is_internal_summary(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return value.get("truncated_by_context_policy") is True
+    normalized = " ".join(str(value or "").split()).lower()
+    return bool(normalized) and any(marker in normalized for marker in _INTERNAL_SUMMARY_MARKERS)
 
 
 def _normalized_host(url: str) -> str:
@@ -635,6 +706,15 @@ def _normalized_host(url: str) -> str:
     parsed = urlparse(url if "://" in url else f"https://{url}")
     host = (parsed.hostname or "").strip().lower().rstrip(".")
     return host[4:] if host.startswith("www.") else host
+
+
+def _clean_url(value: Any) -> str:
+    url = str(value or "").strip()
+    try:
+        parsed = urlparse(url)
+        return url if parsed.scheme in {"http", "https"} and parsed.hostname else ""
+    except ValueError:
+        return ""
 
 
 def _clean_text(value: Any, *, max_chars: int = 500) -> str:
@@ -666,6 +746,10 @@ __all__ = [
     "TRUST_TIER_HIGH",
     "TRUST_TIER_LOW",
     "TRUST_TIER_MEDIUM",
+    "EVIDENCE_LAYER_BODY",
+    "EVIDENCE_LAYER_SNIPPET",
+    "EVIDENCE_LAYER_SUMMARY",
+    "EVIDENCE_LAYER_SOURCE",
     "evidence_bundle_source_snippets",
     "evidence_bundle_to_citation_refs",
     "normalize_evidence_bundle",

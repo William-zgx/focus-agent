@@ -182,9 +182,7 @@ def enforce_temporal_anchor(
     answer = str(getattr(response, "content", "") or "").strip()
     if getattr(response, "tool_calls", None) or not answer or not observed_at.strip():
         return None
-    if _has_conflicting_temporal_anchor(answer=answer, observed_at=observed_at) or (
-        _requires_chinese_output(user_text) and _is_english_dominant(answer)
-    ):
+    if _has_conflicting_temporal_anchor(answer=answer, observed_at=observed_at):
         return TemporalAnchorRepairResult(
             response=_temporal_anchor_fallback(
                 user_text=user_text,

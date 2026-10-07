@@ -81,6 +81,13 @@ _INTERNAL_TOOL_DELIBERATION_PREFIX_RE = re.compile(
 _INTERNAL_TOOL_REFERENCE_FRAGMENT_RE = re.compile(
     r"(?is)^\s*(?:和|与|及|、|,|，)?\s*web[_\s-]?(?:search|fetch)\s*[。.,，;；]?\s*$"
 )
+_COMPLETED_TOOL_OBSERVATION_REF_RE = re.compile(
+    r"(?is)(?:(?:artifact[_ -]?(?:read|ref)|refs?|reference)\s*[:=]?\s*)?"
+    r"tool-observation://[^\s<>\"'`]+"
+)
+_COMPLETED_TOOL_INVOCATION_RE = re.compile(
+    r"(?is)\b(?:artifact_read|web_fetch|web_search|search_code|read_file)\s*\("
+)
 _INTERNAL_FINAL_ANSWER_BOUNDARY_RE = re.compile(
     r"(?is)\b(?:"
     r"let['’]s\s+go|"
@@ -270,6 +277,22 @@ def sanitize_stream_visible_text(text: Any) -> str:
     ):
         return ""
     return suffix
+
+
+def sanitize_completed_visible_text(text: Any) -> str:
+    """Keep answer prose while removing embedded internal observation refs."""
+    value = text if isinstance(text, str) else ""
+    safe_text = sanitize_stream_visible_text(value)
+    if safe_text:
+        return safe_text
+    if "tool-observation://" not in value:
+        return ""
+    cleaned = _COMPLETED_TOOL_OBSERVATION_REF_RE.sub("", value)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n[ \t]*\n[ \t]*", "\n\n", cleaned)
+    if not cleaned.strip() or _COMPLETED_TOOL_INVOCATION_RE.search(cleaned):
+        return ""
+    return sanitize_stream_visible_text(cleaned)
 
 
 def safe_stream_visible_text_transition(

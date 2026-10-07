@@ -20,6 +20,7 @@ from focus_agent.transport.stream_events import (
     looks_like_stream_visible_text_artifact,
     map_custom_payload_to_event,
     safe_stream_visible_text_transition,
+    sanitize_completed_visible_text,
     sanitize_stream_metadata,
     stream_visibility_phase_from_metadata,
 )
@@ -41,6 +42,28 @@ class DummyMessage:
 def test_extract_visible_text_delta_from_string_content():
     chunk = DummyChunk(content="hello world")
     assert extract_visible_text_delta(chunk) == "hello world"
+
+
+def test_completed_visible_text_keeps_prose_after_removing_internal_observation_refs():
+    answer = (
+        "部分工具未能完成，以下根据已获取的来源整理：\n"
+        "Python 3.13 的自由线程模式仍处于实验阶段。\n"
+        "需要保留的不确定性：artifact_read: tool-observation://artifact_read/call-1"
+    )
+
+    visible = sanitize_completed_visible_text(answer)
+
+    assert "自由线程模式仍处于实验阶段" in visible
+    assert "tool-observation://" not in visible
+
+
+def test_completed_visible_text_still_hides_tool_invocation_text():
+    assert (
+        sanitize_completed_visible_text(
+            "Use artifact_read(artifact_id='tool-observation://read_file/call-1', offset=1)."
+        )
+        == ""
+    )
 
 
 def test_extract_visible_text_delta_from_content_blocks():

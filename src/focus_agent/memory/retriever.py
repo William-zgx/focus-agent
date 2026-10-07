@@ -233,11 +233,22 @@ class MemoryRetriever:
             if updated_at is not None:
                 payload["updated_at"] = updated_at
             record = MemoryRecord.model_validate(payload)
+            matched_terms = _matched_terms(query, record)
+            retrieval_score = float(getattr(raw, "score", 0.0) or 0.0)
+            # Some unindexed stores return recent records even for unrelated queries.
+            # Importance alone must not turn those records into relevant evidence.
+            if (
+                query.strip()
+                and not matched_terms
+                and retrieval_score <= 0
+                and record.kind.value not in {"user_preference", "user_profile"}
+            ):
+                continue
             hits.append(
                 MemorySearchHit(
                     record=record,
-                    score=float(getattr(raw, "score", 0.0) or 0.0),
-                    matched_terms=_matched_terms(query, record),
+                    score=retrieval_score,
+                    matched_terms=matched_terms,
                     namespace=record.namespace or namespace,
                 )
             )

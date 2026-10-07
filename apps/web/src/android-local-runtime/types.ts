@@ -71,8 +71,20 @@ export interface ResolvedLocalModelProvider {
 	provider: LocalModelProvider;
 }
 
+export type LocalWebSearchTimeRange = "day" | "week" | "month" | "year";
+
+export interface LocalWebSearchResultItem {
+	title: string;
+	url: string;
+	/** Search-provider text used to decide which primary page to read next. */
+	snippet: string;
+	published_at?: string | null;
+	observed_at?: string;
+}
+
 export interface LocalWebSearchResult {
-	answer: string;
+	/** Search providers do not author the answer; snippets are evidence leads. */
+	answer: string | null;
 	attempted_providers?: string[];
 	errors?: Array<{
 		category: string;
@@ -81,22 +93,43 @@ export interface LocalWebSearchResult {
 	}>;
 	fallback_used?: boolean;
 	query: string;
-	results: Array<{
-		title: string;
-		url: string;
-		snippet: string;
-	}>;
+	results: LocalWebSearchResultItem[];
+	observed_at: string;
+	search_filters?: {
+		time_range: LocalWebSearchTimeRange | null;
+		include_domains: string[];
+		exclude_domains: string[];
+		provider_time_range?: string | null;
+		provider_query?: string;
+		domain_filter_mode?: "native" | "query_operators" | "unsupported";
+	};
+	provider?: string;
 	source: string;
 }
 
 export interface LocalWebFetchResult {
 	content: string;
+	content_chars?: number;
 	content_type: string;
+	fetch_limited?: boolean;
 	final_url: string;
+	offset?: number;
+	next_offset?: number | null;
+	published_at?: string | null;
 	source: string;
+	shown_chars?: number;
 	title: string;
+	total_chars?: number;
 	truncated: boolean;
 	url: string;
+	observed_at?: string;
+	continuation?: {
+		available: boolean;
+		offset?: number;
+		limit?: number;
+		total_chars?: number;
+		hint: string;
+	};
 }
 
 export interface LocalArtifact {

@@ -8,6 +8,7 @@ from .stream_events import (
     extract_tool_results_from_updates,
     extract_visible_text_delta,
     map_custom_payload_to_event,
+    sanitize_completed_visible_text,
     sanitize_stream_metadata,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "extract_tool_results_from_updates",
     "extract_visible_text_delta",
     "map_custom_payload_to_event",
+    "sanitize_completed_visible_text",
     "sanitize_stream_metadata",
 ]

@@ -9,6 +9,38 @@ from .policy_intent import requires_temporal_anchor as _requires_temporal_anchor
 from .policy_markers import _contains_any
 
 
+def search_time_range(query: str) -> str | None:
+    """Provider window for relative recency requests; explicit dates stay in the query."""
+    lowered = query.lower()
+    if re.search(r"\b(?:19|20)\d{2}\b", lowered):
+        return None
+    if _contains_any(lowered, ("今天", "today", "过去24小时", "last 24 hours")):
+        return "day"
+    if _contains_any(
+        lowered,
+        ("本周", "这周", "近一周", "最近一周", "过去一周", "this week", "past week", "last 7 days"),
+    ):
+        return "week"
+    if _contains_any(
+        lowered,
+        (
+            "最近",
+            "近期",
+            "最新",
+            "近几周",
+            "过去几周",
+            "一个月",
+            "recent",
+            "latest",
+            "last few weeks",
+            "past few weeks",
+            "last month",
+        ),
+    ):
+        return "month"
+    return None
+
+
 def _temporal_live_web_search_args(
     preferred_args: Mapping[str, Any] | None,
     *,
@@ -22,10 +54,11 @@ def _temporal_live_web_search_args(
         base_query = str(fallback_query or "").strip()
     if not base_query:
         return {}
+    args = dict(preferred_args or {})
     if not current_utc_time or not _requires_temporal_anchor(base_query):
-        return {"query": base_query}
+        return {**args, "query": base_query}
     anchored_query = _anchor_relative_time_query(base_query, current_utc_time)
-    return {"query": anchored_query or base_query}
+    return {**args, "query": anchored_query or base_query}
 
 
 def _anchor_relative_time_query(query: str, current_utc_time: str) -> str:
@@ -146,7 +179,10 @@ def _strip_chinese_search_filler(query: str) -> str:
     text = query
     text = re.sub(r"\d{4}[-年]\d{1,2}[-月]\d{1,2}日?", " ", text)
     text = re.sub(
-        r"(?:今天|明天|昨天|本周|这周|近一周|最近一周|过去一周|最近|近期|当前|现在)", " ", text
+        r"(?:最近几周|过去几周|近几周|最近一个月|近一个月|过去一个月|"
+        r"今天|明天|昨天|本周|这周|近一周|最近一周|过去一周|最近|近期|最新|当前|现在)",
+        " ",
+        text,
     )
     text = re.sub(r"(?:在A股|于A股)", " A股 ", text, flags=re.IGNORECASE)
     text = re.sub(
@@ -220,6 +256,26 @@ def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
         window_start = anchor_date - timedelta(days=6)
         parts.append(
             f"绝对时间范围(近一周/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
+        )
+    if not parts and _contains_any(
+        lowered,
+        (
+            "最近",
+            "近期",
+            "最新",
+            "近几周",
+            "过去几周",
+            "一个月",
+            "recent",
+            "latest",
+            "last few weeks",
+            "past few weeks",
+            "last month",
+        ),
+    ):
+        window_start = anchor_date - timedelta(days=29)
+        parts.append(
+            f"绝对时间范围(近期/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
         )
     return list(dict.fromkeys(parts))
 

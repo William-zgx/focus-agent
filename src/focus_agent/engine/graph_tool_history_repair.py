@@ -120,14 +120,14 @@ def _count_tool_call_rounds_since_latest_human(messages: list[Any]) -> int:
     return rounds
 
 
-def _should_force_tool_free_answer(messages: list[Any]) -> bool:
+def _should_force_tool_free_answer(
+    messages: list[Any], *, max_rounds: int = _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS
+) -> bool:
     if not messages or not isinstance(messages[-1], ToolMessage):
         return False
     return _count_tool_call_rounds_since_latest_human(
         messages
-    ) >= _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS or _has_repeated_failed_tool_call(
-        messages, max_repetitions=2
-    )
+    ) >= max_rounds or _has_repeated_failed_tool_call(messages, max_repetitions=2)
 
 
 def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int) -> bool:

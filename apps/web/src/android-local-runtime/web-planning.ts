@@ -1,4 +1,28 @@
 import { containsAny } from "./local-text";
+import type { LocalWebSearchTimeRange } from "./types";
+
+/** Map relative recency language to the provider's bounded freshness window. */
+export function webSearchTimeRange(
+	message: string,
+): LocalWebSearchTimeRange | null {
+	const query = message.toLowerCase();
+	if (/\b(?:19|20)\d{2}\b/u.test(query)) return null;
+	if (/(今天|今日|过去24小时|最近24小时|today|last 24 hours)/u.test(query))
+		return "day";
+	if (
+		/(本周|这周|近一周|最近一周|过去一周|this week|past week|last 7 days)/u.test(
+			query,
+		)
+	)
+		return "week";
+	if (
+		/(最近|近期|最新|近几周|过去几周|一个月|recent|latest|last few weeks|past few weeks|last month)/u.test(
+			query,
+		)
+	)
+		return "month";
+	return null;
+}
 
 export function shouldUseWebSearch(message: string): boolean {
 	const compact = message.replace(/\s+/g, " ").trim();
@@ -229,8 +253,50 @@ export function webFetchUrl(message: string): string {
 	).replace(/[.,，。;；:：!?！？]+$/u, "");
 }
 
-export function shouldUseWebFetch(message: string): boolean {
-	if (!webFetchUrl(message)) return false;
+export function webFetchContinuationRequested(message: string): boolean {
+	return containsAny(message.toLowerCase(), [
+		"continue",
+		"next page",
+		"next part",
+		"more of the page",
+		"继续",
+		"下一页",
+		"后面的内容",
+		"剩余内容",
+		"继续读取",
+	]);
+}
+
+export function webFetchOffset(message: string): number | null {
+	const match = message.match(
+		/(?:offset|start|from|偏移|从)\s*[:=]?\s*(\d+)/iu,
+	);
+	if (!match) return null;
+	const offset = Number(match[1]);
+	return Number.isFinite(offset) && offset >= 0 ? Math.trunc(offset) : null;
+}
+
+export function webFetchMaxChars(message: string): number | null {
+	const match = message.match(
+		/(?:max_chars|max chars|limit|字符|chars?)\s*[:=]?\s*(\d+)/iu,
+	);
+	if (!match) return null;
+	const maxChars = Number(match[1]);
+	return Number.isFinite(maxChars) && maxChars > 0
+		? Math.trunc(maxChars)
+		: null;
+}
+
+export function shouldUseWebFetch(
+	message: string,
+	hasContinuation = false,
+): boolean {
+	if (
+		!webFetchUrl(message) &&
+		!(hasContinuation && webFetchContinuationRequested(message))
+	) {
+		return false;
+	}
 	const normalized = message.toLowerCase();
 	return containsAny(normalized, [
 		"web_fetch",
@@ -246,5 +312,6 @@ export function shouldUseWebFetch(message: string): boolean {
 		"网页",
 		"页面",
 		"链接",
+		...(hasContinuation ? ["continue", "next", "继续", "下一页"] : []),
 	]);
 }

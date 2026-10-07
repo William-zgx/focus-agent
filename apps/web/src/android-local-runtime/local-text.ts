@@ -99,15 +99,32 @@ export function afterCue(message: string, cues: string[]): string | null {
 function compactWebSearchSummary(result: LocalWebSearchResult): string {
 	const lines = result.results.slice(0, 3).map((item, index) => {
 		const url = item.url ? ` (${item.url})` : "";
-		return `${index + 1}. ${item.title}${url}: ${item.snippet}`;
+		const published = item.published_at
+			? ` [published ${item.published_at}]`
+			: " [publication date unavailable]";
+		return `${index + 1}. ${item.title}${url}${published}: ${item.snippet}`;
 	});
-	return [result.answer, ...lines].filter(Boolean).join("\n");
+	const filters = result.search_filters?.time_range
+		? `Freshness filter: ${result.search_filters.time_range}.`
+		: "";
+	return [filters, ...lines].filter(Boolean).join("\n");
 }
 
 function compactWebFetchSummary(result: LocalWebFetchResult): string {
+	const timing = [
+		result.published_at
+			? `published ${result.published_at}`
+			: "publication date unavailable",
+		result.observed_at ? `observed ${result.observed_at}` : "",
+	].filter(Boolean);
+	const continuation = result.truncated
+		? `\n[Page preview truncated${result.next_offset !== null && result.next_offset !== undefined ? `; continue at offset ${result.next_offset}` : ""}.]`
+		: "";
 	return [
 		result.title ? `${result.title} (${result.final_url})` : result.final_url,
+		timing.length ? timing.join("; ") : "",
 		result.content,
+		continuation,
 	]
 		.filter(Boolean)
 		.join("\n")
@@ -122,13 +139,13 @@ export function localReplyWithWebSearch(
 	const summary = compactWebSearchSummary(searchResult);
 	if (isChinese) {
 		return [
-			"我已在 Android 本地运行时执行网页搜索，并基于搜索结果给出回答。",
+			"我已在 Android 本地运行时执行网页搜索。以下是搜索摘要；结论应以已读取的来源正文为准。",
 			"",
 			summary || `搜索请求：${searchResult.query}`,
 		].join("\n");
 	}
 	return [
-		"I ran a web search in the Android local runtime and answered from the search results.",
+		"I ran a web search in the Android local runtime. These are search snippets; treat fetched source pages as the evidence for conclusions.",
 		"",
 		summary || `Search query: ${searchResult.query}`,
 	].join("\n");
@@ -142,7 +159,7 @@ export function localReplyWithWebFetch(
 	const summary = compactWebFetchSummary(fetchResult);
 	if (isChinese) {
 		return [
-			"我已在 Android 本地运行时抓取网页，并基于页面内容给出回答。",
+			"我已在 Android 本地运行时抓取网页，并保留了发布时间与观测时间。",
 			"",
 			summary || `抓取地址：${fetchResult.final_url}`,
 		].join("\n");

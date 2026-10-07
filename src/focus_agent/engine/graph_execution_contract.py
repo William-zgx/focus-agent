@@ -8,6 +8,12 @@ from typing import Any, Literal
 from langchain.messages import ToolMessage
 
 from . import graph_execution_facts as _execution_facts
+from .graph_evidence import (
+    EVIDENCE_LAYER_SOURCE,
+)
+from .graph_evidence import (
+    _is_internal_summary as _is_internal_evidence_summary,
+)
 
 skill_execution_evidence_facts = _execution_facts.skill_execution_evidence_facts
 _tool_message_counts_as_success = _execution_facts._tool_message_counts_as_success
@@ -204,6 +210,13 @@ def verify_answer_against_evidence(
             if isinstance(item, Mapping)
         ]
         stripped_answer = str(answer or "").strip()
+        if not stripped_answer:
+            return _verification(
+                "unsupported",
+                required_tools_satisfied=True,
+                unsupported_claims=["skill_execution answer is empty"],
+                repair_action="fallback_to_tool_results",
+            )
         if facts and stripped_answer and not _answer_mentions_skill_fact(stripped_answer, facts):
             return _verification(
                 "unsupported",
@@ -214,18 +227,42 @@ def verify_answer_against_evidence(
                 repair_action="fallback_to_tool_results",
             )
         return _verification("verified", required_tools_satisfied=True)
-    stale_reason = _stale_evidence_reason(contract or {}, evidence_ledger)
-    if stale_reason:
+    stripped_answer = str(answer or "").strip()
+    if not stripped_answer:
         return _verification(
             "unsupported",
             required_tools_satisfied=True,
-            unsupported_claims=[stale_reason],
-            repair_action="refresh_stale_evidence",
-            stale_evidence=True,
+            unsupported_claims=["live_web_research answer is empty"],
+            repair_action="fallback_to_tool_results",
         )
-    stripped_answer = str(answer or "").strip()
-    if not stripped_answer:
-        return _verification("verified", required_tools_satisfied=True)
+    if _looks_like_internal_summary_answer(stripped_answer):
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=["live_web_research answer exposes an internal tool-output summary"],
+            repair_action="fallback_to_tool_results",
+        )
+    freshness_reason, freshness_unknown = _freshness_issue(contract or {}, evidence_ledger)
+    if freshness_reason:
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=[freshness_reason],
+            repair_action=(
+                "answer_with_uncertainty" if freshness_unknown else "refresh_stale_evidence"
+            ),
+            stale_evidence=not freshness_unknown,
+            freshness_unknown=freshness_unknown,
+        )
+    if not any(_is_substantive_evidence(item) for item in evidence_ledger):
+        return _verification(
+            "unsupported",
+            required_tools_satisfied=True,
+            unsupported_claims=[
+                "live_web_research has no substantive body or answer evidence; sources alone are insufficient"
+            ],
+            repair_action="fallback_to_tool_results",
+        )
     if evidence_ledger and _is_low_information_live_answer(stripped_answer):
         return _verification(
             "unsupported",
@@ -280,6 +317,7 @@ def _verification(
     contradictions: Sequence[str] = (),
     repair_action: str = "",
     stale_evidence: bool = False,
+    freshness_unknown: bool = False,
 ) -> dict[str, Any]:
     return {
         "status": status,
@@ -289,30 +327,36 @@ def _verification(
         "contradictions": list(contradictions),
         "repair_action": repair_action,
         "stale_evidence": stale_evidence,
+        "freshness_unknown": freshness_unknown,
     }
 
 
-def _stale_evidence_reason(
+def _freshness_issue(
     contract: Mapping[str, Any],
     evidence_ledger: Sequence[Mapping[str, Any]],
-) -> str:
+) -> tuple[str, bool]:
     if str(contract.get("policy") or "") != "live_web_research":
-        return ""
+        return "", False
     query = str(contract.get("user_query") or "").strip()
     if not (bool(contract.get("temporal_anchor_required")) or _query_needs_fresh_evidence(query)):
-        return ""
+        return "", False
     observed_at = _parse_date(str(contract.get("observed_at") or ""))
     if observed_at is None:
-        return ""
+        return "", False
     min_fresh_date = _fresh_evidence_min_date(query, observed_at)
     stale_items: list[str] = []
+    undated_items: list[str] = []
     dated_items = 0
     fresh_items = 0
     for item in evidence_ledger:
-        if not isinstance(item, Mapping):
+        if not _is_substantive_evidence(item):
             continue
-        item_date = _parse_date(str(item.get("published_at") or item.get("observed_at") or ""))
+        item_date = _parse_date(str(item.get("published_at") or ""))
         if item_date is None:
+            label = str(
+                item.get("title") or item.get("source_name") or item.get("url") or "evidence"
+            )
+            undated_items.append(label)
             continue
         dated_items += 1
         if item_date >= min_fresh_date:
@@ -320,17 +364,35 @@ def _stale_evidence_reason(
             continue
         label = str(item.get("title") or item.get("source_name") or item.get("url") or "evidence")
         stale_items.append(f"{label} ({item_date.isoformat()})")
-    if dated_items and not fresh_items:
+    if fresh_items:
+        return "", False
+    if undated_items:
+        unknown_summary = "; ".join(
+            f"{label} (publication date unknown)" for label in undated_items[:3]
+        )
+        return (
+            "live_web_research evidence cannot satisfy the requested time window because "
+            "publication dates are unknown"
+            f" (required from {min_fresh_date.isoformat()}; evidence: {unknown_summary})",
+            True,
+        )
+    if dated_items:
         stale_summary = "; ".join(stale_items[:3])
         return (
             "live_web_research evidence is stale for the requested time window"
-            f" (fresh from {min_fresh_date.isoformat()}; stale evidence: {stale_summary})"
+            f" (fresh from {min_fresh_date.isoformat()}; stale evidence: {stale_summary})",
+            False,
         )
-    return ""
+    return "", False
 
 
 def _fresh_evidence_min_date(query: str, observed_at: date) -> date:
     lowered = query.lower()
+    if _contains_temporal_marker(
+        lowered,
+        ("近几周", "最近几周", "过去几周", "last few weeks", "past few weeks"),
+    ):
+        return observed_at - timedelta(days=29)
     if _contains_temporal_marker(
         lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")
     ):
@@ -356,13 +418,21 @@ def _query_needs_fresh_evidence(query: str) -> bool:
                 "本周",
                 "这周",
                 "近一周",
+                "近几周",
+                "过去几周",
+                "一个月",
                 "最近",
                 "近期",
+                "最新",
                 "today",
                 "tomorrow",
                 "yesterday",
                 "this week",
                 "recent",
+                "latest",
+                "last few weeks",
+                "past few weeks",
+                "last month",
                 "current",
                 "now",
             ),
@@ -419,7 +489,7 @@ def _detect_simple_event_contradiction(
         " ".join(
             str(item.get(key) or "")
             for item in evidence_ledger
-            if isinstance(item, Mapping)
+            if _is_substantive_evidence(item)
             for key in ("title", "snippet", "source_name")
         )
     )
@@ -466,6 +536,28 @@ def _is_low_information_live_answer(answer: str) -> bool:
         "是",
         "是的",
     }
+
+
+def _is_substantive_evidence(item: Mapping[str, Any] | Any) -> bool:
+    if not isinstance(item, Mapping):
+        return False
+    if str(item.get("evidence_layer") or "").strip().lower() == EVIDENCE_LAYER_SOURCE:
+        return False
+    if _is_internal_evidence_summary(item):
+        return False
+    snippet = str(item.get("snippet") or item.get("content") or item.get("body") or "").strip()
+    if not snippet or _is_internal_evidence_summary(snippet):
+        return False
+    normalized = _normalize_text(snippet)
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return False
+    if normalized.startswith("reference=") or normalized.startswith("refs="):
+        return False
+    return True
+
+
+def _looks_like_internal_summary_answer(answer: str) -> bool:
+    return _is_internal_evidence_summary(answer)
 
 
 def _denies_available_live_evidence(answer: str) -> bool:

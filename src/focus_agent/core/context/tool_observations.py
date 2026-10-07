@@ -176,6 +176,10 @@ def _tool_message_was_runtime_compacted(message: ToolMessage, *, max_chars: int)
     runtime = artifact.get("runtime")
     if not isinstance(runtime, dict):
         return False
+    if runtime.get("observation_existing_artifact"):
+        # Artifact pages were already bounded with a cursor at runtime. Keep
+        # that readable page unless the actual prompt budget requires shrinking.
+        return False
     if bool(runtime.get("observation_prompt_compacted")):
         return True
     original_chars = runtime.get("observation_original_chars")

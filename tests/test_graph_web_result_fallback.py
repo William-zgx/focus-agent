@@ -120,3 +120,139 @@ def test_graph_web_result_fallback_prefers_fetched_official_pages() -> None:
     assert "https://docs.python.org/3/whatsnew/3.13.html" in answer
     assert "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/307" in answer
     assert "Wikipedia" not in answer
+
+
+def test_compacted_search_summary_is_not_presented_as_source_evidence():
+    import json
+
+    messages = [HumanMessage(content="最近几周 Agent 有哪些进展？")]
+    for index in range(4):
+        messages.extend(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"id": str(index), "name": "web_search", "args": {"query": "Agent release"}}
+                    ],
+                ),
+                ToolMessage(
+                    tool_call_id=str(index),
+                    content=json.dumps(
+                        {
+                            "tool": "web_search",
+                            "query": "Agent release",
+                            "reference": "query=Agent release",
+                            "summary": "web_search output was compressed for prompt budgeting.",
+                            "truncated_by_context_policy": True,
+                            "results": [
+                                {
+                                    "url": f"https://example.com/{index}",
+                                    "title": f"Release {index}",
+                                    "content": f"Source snippet {index}",
+                                }
+                            ],
+                        }
+                    ),
+                ),
+            ]
+        )
+    answer = graph_web_result_fallback._fallback_web_answer_from_tool_results(messages)
+    assert "compressed" not in answer
+    assert "query=" not in answer
+    assert "https://example.com/3" in answer
+    assert "Source snippet 3" in answer
+
+
+def test_generic_page_body_survives_prompt_reference_and_duplicate_fetch():
+    import json
+
+    body = "城市公交在周末增加两条线路，每隔十五分钟发车。"
+    payload = {"url": "https://example.com/transit", "content": body}
+    messages = [
+        HumanMessage(content="公交线路有什么变化？"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "fetch", "name": "web_fetch", "args": {"url": payload["url"]}},
+                {"id": "again", "name": "web_fetch", "args": {"url": payload["url"]}},
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="fetch",
+            content=json.dumps(payload),
+            artifact={
+                "prompt_observation": json.dumps({"url": payload["url"], "content": ""}),
+            },
+        ),
+        ToolMessage(
+            tool_call_id="again",
+            content=json.dumps(
+                {
+                    "final_url": payload["url"],
+                    "content": "",
+                    "truncated_by_context_policy": True,
+                }
+            ),
+        ),
+    ]
+    answer = graph_web_result_fallback._fallback_web_answer_from_tool_results(messages)
+    assert answer.count(body) == 1
+    assert "未包含" not in answer
+    synthesis = graph_tool_result_fallback._tool_result_synthesis_prompt(messages)[1].content
+    assert body in synthesis
+    assert payload["url"] in synthesis
+    assert "fetched_page" in synthesis
+    assert "compressed" not in synthesis
+
+
+def test_synthesis_includes_web_continuation_with_original_source_only():
+    import json
+
+    source = "https://example.com/guide"
+    reference = "tool-observation://web_fetch/full-guide"
+    messages = [
+        HumanMessage(content="请读取 https://example.com/guide 并说明限制"),
+        AIMessage(
+            content="", tool_calls=[{"id": "fetch", "name": "web_fetch", "args": {"url": source}}]
+        ),
+        ToolMessage(
+            tool_call_id="fetch",
+            content=json.dumps(
+                {
+                    "url": source,
+                    "content": "Introduction",
+                    "artifact_ref": reference,
+                }
+            ),
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "read", "name": "artifact_read", "args": {"artifact_id": reference}},
+                {"id": "unrelated", "name": "artifact_read", "args": {"artifact_id": "local.txt"}},
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="read",
+            content=json.dumps(
+                {
+                    "artifact_id": reference,
+                    "offset": 20000,
+                    "content": "The recovered section lists the limitations.",
+                }
+            ),
+        ),
+        ToolMessage(
+            tool_call_id="unrelated",
+            content=json.dumps(
+                {
+                    "artifact_id": "local.txt",
+                    "content": "Unrelated local fact",
+                }
+            ),
+        ),
+    ]
+    prompt = graph_tool_result_fallback._tool_result_synthesis_prompt(messages)[1].content
+    assert "recovered section lists the limitations" in prompt
+    assert source in prompt
+    assert "Unrelated local fact" not in prompt

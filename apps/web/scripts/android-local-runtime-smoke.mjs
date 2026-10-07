@@ -124,6 +124,24 @@ globalThis.fetch = async (input, init) => {
 			},
 		);
 	}
+	if (url === "https://example.com/focus-agent-android") {
+		return new Response(
+			'<html><head><meta property="article:published_time" content="2026-10-02T09:00:00Z"><title>Focus Agent primary source</title></head><body><nav>Navigation noise</nav><div class="body" role="main">Primary source page content for Android local search.</div><footer>Footer noise</footer></body></html>',
+			{
+				headers: { "Content-Type": "text/html" },
+				status: 200,
+			},
+		);
+	}
+	if (url === "https://example.com/long-page") {
+		return new Response(
+			`<html><head><meta property="article:published_time" content="2026-09-30"></head><body><main>${"long-page-middle ".repeat(5000)}</main></body></html>`,
+			{
+				headers: { "Content-Type": "text/html" },
+				status: 200,
+			},
+		);
+	}
 	return originalFetch(input, init);
 };
 
@@ -985,6 +1003,18 @@ try {
 			importModule: false,
 			importOutputs: androidLocalRuntimeImportOutputs,
 		});
+	}
+	const { runLocalWebFetch } = await import(
+		pathToFileURL(resolve(smokeBuildDir, "web-fetch.mjs")).href
+	);
+	for (const limit of [1, 2, 27, 28, 29, 30]) {
+		const preview = await runLocalWebFetch(
+			"https://example.com/long-page",
+			undefined,
+			limit,
+		);
+		assert.ok(preview.content.length <= limit);
+		assert.ok(preview.next_offset > 0);
 	}
 	const {
 		androidAppUrlToInternalRoute,
@@ -2460,6 +2490,11 @@ try {
 		"temporal web_search queries should include the current UTC anchor",
 	);
 	assert.equal(
+		searchRequest?.data.args?.time_range,
+		"day",
+		"relative-day web_search should pass a provider freshness filter",
+	);
+	assert.equal(
 		searchRequest?.data.args?.query.includes("请联网查一下"),
 		false,
 		"web_search query should remove request wrapper text",
@@ -2475,12 +2510,44 @@ try {
 		),
 		"web_search result should be emitted with normalized DuckDuckGo HTML output",
 	);
+	const searchResultEvent = searchEvents.find(
+		(event) =>
+			event.event === "tool.result" && event.data.tool_name === "web_search",
+	);
+	assert.equal(
+		searchResultEvent?.data.output?.answer,
+		null,
+		"web_search should expose snippets instead of treating one as a final answer",
+	);
+	assertNonEmptyString(
+		searchResultEvent?.data.output?.observed_at,
+		"web_search observed_at",
+	);
+	assert.equal(
+		searchResultEvent?.data.output?.results?.[0]?.published_at,
+		null,
+		"search snippets must not invent a publication timestamp",
+	);
+	assert.ok(
+		searchEvents.some(
+			(event) =>
+				event.event === "tool.result" &&
+				event.data.tool_name === "web_fetch" &&
+				event.data.tool_call_id?.endsWith("web-fetch-primary") &&
+				event.data.output?.content.includes("Primary source page content") &&
+				!event.data.output.content.includes("Navigation noise") &&
+				!event.data.output.content.includes("Footer noise") &&
+				event.data.output?.published_at === "2026-10-02T09:00:00Z",
+		),
+		"web_search should read the primary result page and preserve published_at",
+	);
 	const searchReply = searchEvents.find(
 		(event) => event.event === "message.completed",
 	)?.data?.content;
 	assert.ok(
-		searchReply?.includes("我已在 Android 本地运行时执行网页搜索"),
-		"Android web_search replies should acknowledge the executed local web search",
+		searchReply?.includes("我已在 Android 本地运行时执行网页搜索") ||
+			searchReply?.includes("我已在 Android 本地运行时抓取网页"),
+		"Android web research replies should acknowledge local search or primary-page reading",
 	);
 	assert.equal(
 		searchReply?.includes("无法联网"),
@@ -2518,6 +2585,46 @@ try {
 				event.data.output?.content.includes("Fetched Android local runtime"),
 		),
 		"web_fetch result should be emitted with readable page content",
+	);
+	const longFetchEvents = await collectSse(
+		await focusFetch(
+			`http://focus-agent.local/v2/threads/${threadId}/runs/stream`,
+			jsonBody({
+				message:
+					"请读取 https://example.com/long-page 页面内容，max_chars: 120。",
+			}),
+		),
+	);
+	const longFetchResult = longFetchEvents.find(
+		(event) =>
+			event.event === "tool.result" && event.data.tool_name === "web_fetch",
+	)?.data.output;
+	assert.equal(longFetchResult?.truncated, true);
+	assert.equal(longFetchResult?.fetch_limited, false);
+	assert.ok(longFetchResult?.continuation?.available);
+	assert.ok(
+		longFetchResult?.content.includes("middle omitted"),
+		"long web_fetch output should identify the omitted middle",
+	);
+	assert.ok(
+		Number.isInteger(longFetchResult?.next_offset) &&
+			longFetchResult.next_offset > 0,
+		"long web_fetch output should expose a native continuation offset",
+	);
+	const continuationEvents = await collectSse(
+		await focusFetch(
+			`http://focus-agent.local/v2/threads/${threadId}/runs/stream`,
+			jsonBody({ message: "继续读取上一页的剩余内容。" }),
+		),
+	);
+	const continuationResult = continuationEvents.find(
+		(event) =>
+			event.event === "tool.result" && event.data.tool_name === "web_fetch",
+	)?.data.output;
+	assert.equal(continuationResult?.offset, longFetchResult?.next_offset);
+	assert.ok(
+		continuationResult?.content.includes("long-page-middle"),
+		"web_fetch continuation should read the next native offset",
 	);
 	const resumeEvents = await collectSse(
 		await focusFetch(

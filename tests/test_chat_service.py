@@ -1194,6 +1194,42 @@ def test_response_payload_repairs_trailing_tool_calls_without_interrupt():
     assert payload["messages"][2]["status"] == "error"
 
 
+def test_response_payload_keeps_completed_answer_with_internal_observation_warning():
+    class _Graph:
+        def get_state(self, _config):
+            return SimpleNamespace(
+                values={
+                    "messages": [
+                        HumanMessage(content="请总结页面。"),
+                        AIMessage(
+                            content=(
+                                "部分工具未能完成，以下根据已获取的来源整理：\n"
+                                "页面说明了关键限制。\n"
+                                "需要保留的不确定性：artifact_read: "
+                                "tool-observation://artifact_read/call-1"
+                            )
+                        ),
+                    ]
+                }
+            )
+
+    chat = ChatService(
+        ChatServicePorts(settings=Settings(), graph=_Graph(), repo=SimpleNamespace())
+    )
+
+    payload = chat._response_payload(
+        thread_id="thread-1",
+        user_id="owner-1",
+        context=RequestContext(user_id="owner-1", root_thread_id="thread-1"),
+        branch_meta=None,
+        interrupts=[],
+    )
+
+    assert "页面说明了关键限制" in payload["assistant_message"]
+    assert "tool-observation://" not in payload["assistant_message"]
+    assert payload["messages"][-1]["content"] == payload["assistant_message"]
+
+
 def test_response_payload_preserves_trailing_tool_calls_with_interrupt():
     class _Graph:
         def get_state(self, _config):

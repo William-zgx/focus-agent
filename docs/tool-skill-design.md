@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-09-28
+更新时间：2026-10-03
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -384,7 +384,7 @@ flowchart TD
     User["fresh or relative-time query"] --> Policy["ToolIntentPlan"]
     Policy --> Anchor{"temporal anchor required?"}
     Anchor -- "yes" --> Time["current_utc_time"]
-    Time --> SearchArgs["absolute-date search query"]
+    Time --> SearchArgs["model-selected query and date filters"]
     Anchor -- "no" --> SearchArgs
     SearchArgs --> Search["web_search / web_fetch"]
     Search --> Evidence["evidence ledger"]
@@ -397,6 +397,32 @@ flowchart TD
 
 Current rules:
 
+- The model formulates the first search query from the user’s intent and verified
+  time; the deterministic query is retained when the model omits a tool call.
+  Search discovers candidate sources; the research policy directs the model to
+  read primary pages, resolve evidence gaps, and cite claims inline. Search
+  snippets, source bodies, and provider summaries remain distinguishable in the
+  evidence ledger. Verification checks evidence availability and freshness; it
+  does not prove semantic entailment of every claim.
+- `web_search` accepts `time_range` (`day/week/month/year`), `include_domains`,
+  and `exclude_domains`. Tavily receives native filters; DDGS receives its time
+  filter and explicit `site:` expressions. Provider date metadata is retained.
+- `web_fetch` bounds decoded HTTP reads at 8 MiB, extracts readable HTML and
+  publication metadata, rejects binary/challenge pages, and previews long text
+  with a head/tail window. The omitted text is saved under the active thread;
+  `continuation.args` can be passed to `artifact_read`; its optional literal
+  `query` locates passages from an offset without scanning every preceding page.
+  HTML extraction prefers `main`, `article`, and `role="main"`. `fetch_limited` means even
+  the saved extraction is incomplete. Web research exposes this read tool without
+  exposing workspace writes.
+- Web research allows eight consecutive tool rounds, followed by one tool-free
+  model synthesis using a source digest, including recovered artifact passages
+  linked to their original URLs. Failed synthesis uses a bounded
+  source-snippet fallback. Both exhausted and failed synthesis paths report a
+  degraded outcome; internal context-compression notices never count as evidence.
+- Retrieval time is never substituted for publication time. Unknown publication
+  dates preserve the useful answer with a freshness caveat and an unverified
+  outcome, while known stale evidence uses the existing bounded refresh path.
 - Relative markers such as "today", "tomorrow", "yesterday", "this week",
   "今天", "明天", "昨天", and "本周" require a time anchor when
   `current_utc_time` is available.
@@ -411,6 +437,27 @@ Current rules:
 - The graph retries a stale/missing live-web answer once with `web_search`.
   If repair cannot produce reliable evidence, it returns an explicit
   uncertainty answer instead of unsupported realtime claims.
+
+The implementation adapts the discover/read/synthesize workflow, head/tail
+extraction with full-text continuation, and source-ledger concepts from
+[Hermes Agent](https://github.com/NousResearch/hermes-agent/tree/c225c4a04e8b517a357804ebb27367b0c961fd0e)
+(community main checked on 2026-10-04). The latest changes open managed fast
+search to guest accounts while retaining separate full-page extraction backends;
+they do not change the research loop. Focus Agent uses its existing tool,
+artifact, and access-policy boundaries.
+
+Android's local runtime also passes freshness filters, reads a result page before
+synthesis, and reports publication and observation times separately. Its offset
+continuation re-fetches the URL, so content can change between reads; it does not
+share the server's persisted page snapshot or pinned-DNS transport. Native HTTP
+responses are capped for extraction after the platform returns them.
+
+Related builtin retrieval follows the same principle: `read_file` provides
+line/character continuation, `artifact_search` returns source offsets for
+`artifact_read`, and `conversation_summary` can locate and page saved source
+messages separately from the rolling summary. Unindexed memory-store records
+without lexical matches or a positive retrieval score do not become relevant
+merely because of their importance; durable user preferences remain eligible.
 
 ## Tool Runtime Policy
 

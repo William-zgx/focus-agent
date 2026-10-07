@@ -60,6 +60,39 @@ class MultiHitStore:
         return self.hits.get(namespace_key, [])[:limit]
 
 
+def test_unindexed_store_does_not_promote_unrelated_memories_by_importance():
+    namespace = ("conversation", "root-1", "main")
+
+    def record(key, kind, summary, score=0):
+        return SimpleNamespace(
+            key=key,
+            namespace=namespace,
+            score=score,
+            value={
+                "kind": kind,
+                "scope": "root_thread",
+                "content": summary,
+                "summary": summary,
+                "importance": 1.0,
+            },
+        )
+
+    retriever = MemoryRetriever(
+        store=MultiHitStore(
+            {
+                namespace: [
+                    record("unrelated", "turn_summary", "快速排序算法和 Python 实现"),
+                    record("relevant", "turn_summary", "Agent release notes"),
+                    record("preference", "user_preference", "请用中文回答"),
+                    record("semantic", "turn_summary", "自主智能体新功能", score=0.8),
+                ]
+            }
+        )
+    )
+    hits = retriever._search_namespace(namespace, "Agent release", 8)
+    assert {hit.record.memory_id for hit in hits} == {"relevant", "preference", "semantic"}
+
+
 class QueryCapturingStore:
     def __init__(self, hit):
         self.hit = hit

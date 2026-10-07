@@ -35,7 +35,10 @@ from ..graph_execution_contract import (
 )
 from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
 from ..graph_plan_nodes import _format_plan_block
-from ..graph_tool_result_fallback import _should_replace_unfound_workspace_answer
+from ..graph_tool_result_fallback import (
+    _should_replace_unfound_workspace_answer,
+    _tool_result_synthesis_prompt,
+)
 from ..graph_turn_helpers import (
     _context_budget_from_state,
     _degraded_answer_from_tool_results,
@@ -113,6 +116,7 @@ from .policy import (
     _turn_tool_exposure_from_intent_plan,
     build_tool_intent_plan,
 )
+from .policy_temporal import search_time_range
 
 _logger = logging.getLogger(__name__)
 
@@ -293,6 +297,16 @@ def make_agent_loop_node(
                 fallback_query=tool_intent_text,
                 current_utc_time=current_utc_time_result,
             )
+            search_tool = next(
+                (tool for tool in all_tools if getattr(tool, "name", "") == "web_search"), None
+            )
+            search_parameters = getattr(search_tool, "args", {})
+            if (
+                isinstance(search_parameters, dict)
+                and "time_range" in search_parameters
+                and (time_range := search_time_range(tool_intent_text))
+            ):
+                anchored_args.setdefault("time_range", time_range)
             if anchored_args and anchored_args != tool_intent_plan.preferred_first_args:
                 tool_intent_plan = tool_intent_plan.model_copy(
                     update={"preferred_first_args": anchored_args}
@@ -370,6 +384,18 @@ def make_agent_loop_node(
         tool_protocol_repair_count = 0
         tool_protocol_repair_reason = ""
         policy_note = _tool_policy_note(tool_policy)
+        force_tool_free_answer = _should_force_tool_free_answer(
+            state_messages, max_rounds=8 if tool_policy == "live_web_research" else 4
+        )
+        if force_tool_free_answer and tool_policy == "live_web_research":
+            policy_note += (
+                "\nResearch has reached its tool limit. No more tools are available. "
+                "Now answer the original question using the evidence already collected across ALL "
+                "searches and page reads. Do not output tool calls or internal processing notices. "
+                "Cite the sources actually supporting your statements. If evidence is incomplete, "
+                "give the supported findings and clearly identify the unresolved parts; do not "
+                "pretend the research is complete."
+            )
         skill_policy_note = skill_execution_policy_note(tool_intent_plan.skill_execution_plan)
         if skill_policy_note:
             policy_note = f"{policy_note}\n\n{skill_policy_note}".strip()
@@ -436,7 +462,6 @@ def make_agent_loop_node(
             thinking_mode=selected_thinking_mode,
             settings=settings,
         )
-        force_tool_free_answer = _should_force_tool_free_answer(state_messages)
         terminal_stream_phase = (
             STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
         )
@@ -453,20 +478,34 @@ def make_agent_loop_node(
         elif force_tool_free_answer:
             fallback_answer = _fallback_answer_from_tool_results(fallback_messages)
             if tool_policy == "live_web_research":
-                if any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text):
-                    fallback_answer = f"以下为工具预算耗尽后的保守证据整理：\n{fallback_answer}"
-                else:
-                    fallback_answer = (
-                        "The following is a conservative evidence summary after the tool budget "
-                        f"was exhausted:\n{fallback_answer}"
+                try:
+                    response = quarantined_model_for(selected_model, selected_thinking_mode).invoke(
+                        _tool_result_synthesis_prompt(fallback_messages)
                     )
+                except Exception:  # noqa: BLE001 — keep already retrieved evidence on model failure
+                    _logger.warning("Web research synthesis failed", exc_info=True)
+                    response = AIMessage(content="")
+                if (
+                    getattr(response, "tool_calls", None)
+                    or not _message_content_text(response).strip()
+                    or _looks_like_textual_tool_call_artifact(
+                        response, known_tool_names=known_names
+                    )
+                ):
+                    response = AIMessage(content=fallback_answer)
+            else:
+                response = AIMessage(content=fallback_answer)
             if temporal_anchor_required and current_utc_time_result:
                 is_chinese_request = any(
                     "\u4e00" <= character <= "\u9fff" for character in tool_intent_text
                 )
                 time_label = "当前 UTC 时间" if is_chinese_request else "Verified current UTC time"
-                fallback_answer = f"{time_label}: {current_utc_time_result}\n\n{fallback_answer}"
-            response = AIMessage(content=fallback_answer)
+                response = response.model_copy(
+                    update={
+                        "content": f"{time_label}: {current_utc_time_result}\n\n"
+                        + _message_content_text(response)
+                    }
+                )
         elif (
             tool_policy == "live_web_research"
             and temporal_anchor_required
@@ -506,39 +545,49 @@ def make_agent_loop_node(
         elif (
             tool_policy == "live_web_research"
             and _has_tool_named(available_tools, "web_search")
-            and _live_web_contract_needs_search(state_messages)
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "web_search",
-                        "args": tool_intent_plan.preferred_first_args
-                        or {"query": tool_intent_text},
-                    }
-                ],
-            )
-        elif (
-            tool_policy == "live_web_research"
-            and _live_web_research_should_start_with_search_compat(
-                tool_intent_text,
-                state_messages,
-                available_tools,
-                exposure=tool_exposure,
+            and (
+                _live_web_contract_needs_search(state_messages)
+                or _live_web_research_should_start_with_search_compat(
+                    tool_intent_text, state_messages, available_tools, exposure=tool_exposure
+                )
             )
         ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "web_search",
-                        "args": tool_intent_plan.preferred_first_args
-                        or {"query": tool_intent_text},
-                    }
-                ],
-            )
+            # Let the model translate conversational intent into search terms.
+            # The deterministic query remains a fallback for models that skip tools.
+            try:
+                response = _invoke_with_tool_result_fallback(
+                    quarantined_model_with_tools_for(
+                        selected_model, selected_thinking_mode, available_tools
+                    ),
+                    [
+                        *prompt_messages,
+                        SystemMessage(
+                            content=(
+                                "Start the research now with concise, topic-specific search queries. "
+                                "Rephrase the user's conversational wording into searchable concepts. "
+                                "Use the verified current date and supported time_range filter for recency. "
+                                "If results are irrelevant, reformulate the query before giving up."
+                            )
+                        ),
+                    ],
+                    fallback_messages=fallback_messages,
+                    known_tool_names=known_names,
+                )
+            except Exception:  # noqa: BLE001 — search can still proceed with the planned query
+                _logger.warning("Search query planning failed", exc_info=True)
+                response = AIMessage(content="")
+            if not getattr(response, "tool_calls", None):
+                response = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
+                            "name": "web_search",
+                            "args": tool_intent_plan.preferred_first_args
+                            or {"query": tool_intent_text},
+                        }
+                    ],
+                )
         elif (
             tool_policy in {"workspace_lookup", "execution"}
             and tool_intent_plan.preferred_first_tool == "skills_search"

@@ -343,12 +343,13 @@ export function defaultAdminConfig(): FocusAgentAdminConfig {
 				localAdminTool(
 					"web_fetch",
 					"网页抓取",
-					"在 Android 本地运行时中抓取公开网页内容，并把可读正文作为工具上下文提供给模型。",
+					"在 Android 本地运行时中抓取公开网页内容，返回有界的正文窗口并支持 offset 续读。",
 					"web",
 					{
 						settings: {
-							default_max_chars: 5000,
-							max_chars_cap: 12000,
+							default_max_chars: 12000,
+							max_chars_cap: 50000,
+							continuation: "offset",
 						},
 					},
 				),
@@ -361,6 +362,8 @@ export function defaultAdminConfig(): FocusAgentAdminConfig {
 						settings: {
 							provider: "duckduckgo",
 							fallback_provider: null,
+							max_results: 5,
+							time_ranges: ["day", "week", "month", "year"],
 							api_key_env: null,
 							api_key_configured: false,
 						},
