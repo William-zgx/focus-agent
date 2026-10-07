@@ -12,7 +12,8 @@ from .policy_markers import _contains_any
 def search_time_range(query: str) -> str | None:
     """Provider window for relative recency requests; explicit dates stay in the query."""
     lowered = query.lower()
-    if re.search(r"\b(?:19|20)\d{2}\b", lowered):
+    # Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
+    if re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)", lowered):
         return None
     if _contains_any(lowered, ("今天", "today", "过去24小时", "last 24 hours")):
         return "day"

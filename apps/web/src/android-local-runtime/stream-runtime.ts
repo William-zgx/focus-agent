@@ -441,7 +441,12 @@ export function streamRun(
 					ctx.localToolEnabled("web_fetch") &&
 					shouldUseWebFetch(message, previousFetch?.next_offset != null);
 				const webFetchCallId = `${runId}:web-fetch`;
-				const webFetchMaxCharsValue = webFetchMaxChars(message);
+				// A bare "continue" keeps the page size the user chose earlier.
+				const webFetchMaxCharsValue =
+					webFetchMaxChars(message) ??
+					(webFetchUrl(message)
+						? null
+						: (previousFetch?.continuation?.limit ?? null));
 				const webFetchOffsetValue =
 					webFetchOffset(message) ??
 					(webFetchUrl(message) ? 0 : (previousFetch?.next_offset ?? 0));

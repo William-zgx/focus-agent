@@ -34,6 +34,8 @@ _WEB_FETCH_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _WEB_FETCH_MAX_REDIRECTS = 5
 _WEB_FETCH_MAX_BYTES = 8 * 1024 * 1024
 _WEB_FETCH_TRUNCATION_MARKER = "\n\n[... middle omitted ...]\n\n"
+_WEB_FETCH_MAX_OBSERVATION_CHARS = 7000
+_WEB_FETCH_MIN_DISPLAY_CHARS = 200
 _TAVILY_MAX_QUERY_CHARS = 400
 
 
@@ -924,19 +926,14 @@ def build_web_tools(
                     },
                     ensure_ascii=False,
                 )
-            window_budget = (
-                capped_chars
-                if len(content) <= capped_chars
-                else max(1, capped_chars - len(_WEB_FETCH_TRUNCATION_MARKER))
-            )
-            head, tail, truncated = _head_tail_text_window(content, window_budget)
-            continuation: dict[str, Any] | None = None
-            displayed_content = content
-            if truncated:
-                displayed_content = f"{head}{_WEB_FETCH_TRUNCATION_MARKER}{tail}"
-                if capped_chars <= len(_WEB_FETCH_TRUNCATION_MARKER):
-                    head, tail = content[:capped_chars], ""
-                    displayed_content = head
+            observed_at = datetime.now(UTC).isoformat()
+            saved_ref: list[str | None] = []
+
+            def save_full_content() -> str | None:
+                # Saved at most once, and only when the shown window omits text.
+                if saved_ref:
+                    return saved_ref[0]
+                artifact_ref = None
                 if callable(save_tool_observation):
                     observation_id = uuid.uuid4().hex
                     try:
@@ -959,53 +956,83 @@ def build_web_tools(
                         saved = None
                     if saved:
                         artifact_ref = f"tool-observation://{tool_name}/{observation_id}"
+                saved_ref.append(artifact_ref)
+                return artifact_ref
+
+            def build_payload(display_chars: int) -> dict[str, Any]:
+                window_budget = (
+                    display_chars
+                    if len(content) <= display_chars
+                    else max(1, display_chars - len(_WEB_FETCH_TRUNCATION_MARKER))
+                )
+                head, tail, truncated = _head_tail_text_window(content, window_budget)
+                continuation: dict[str, Any] | None = None
+                displayed_content = content
+                if truncated:
+                    displayed_content = f"{head}{_WEB_FETCH_TRUNCATION_MARKER}{tail}"
+                    if display_chars <= len(_WEB_FETCH_TRUNCATION_MARKER):
+                        head, tail = content[:display_chars], ""
+                        displayed_content = head
+                    artifact_ref = save_full_content()
+                    if artifact_ref:
                         continuation = {
                             "artifact_ref": artifact_ref,
                             "tool": "artifact_read",
                             "args": {
                                 "artifact_id": artifact_ref,
                                 "offset": len(head),
-                                "limit": capped_chars,
+                                "limit": display_chars,
                             },
                             "offset": len(head),
-                            "limit": capped_chars,
+                            "limit": display_chars,
                             "total_chars": len(content),
                             "hint": (
                                 "Call artifact_read using the supplied args "
                                 "to page through the omitted middle."
                             ),
                         }
-                if continuation is None:
-                    continuation = {
-                        "available": False,
-                        "total_chars": len(content),
-                        "hint": (
-                            "Full text was not saved in this runtime; call web_fetch again "
-                            "with a larger max_chars value to inspect more of the page."
-                        ),
-                    }
-            payload = {
-                "url": url,
-                "final_url": final_url,
-                "title": title,
-                "content_type": content_type,
-                "content": displayed_content,
-                "content_chars": len(content),
-                "shown_chars": len(displayed_content),
-                "truncated": truncated,
-                "fetch_limited": fetch_limited,
-                "observed_at": datetime.now(UTC).isoformat(),
-                "published_at": published_at,
-                "source_type": "page",
-            }
-            if continuation is not None:
-                payload["continuation"] = continuation
-                payload["total_chars"] = len(content)
-                artifact_ref = continuation.get("artifact_ref")
-                if artifact_ref:
-                    payload["artifact_ref"] = artifact_ref
-                    payload["next_offset"] = len(head)
-            result = json.dumps(payload, ensure_ascii=False)
+                    else:
+                        continuation = {
+                            "available": False,
+                            "total_chars": len(content),
+                            "hint": (
+                                "Full text was not saved in this runtime; call web_fetch again "
+                                "with a larger max_chars value to inspect more of the page."
+                            ),
+                        }
+                payload = {
+                    "url": url,
+                    "final_url": final_url,
+                    "title": title,
+                    "content_type": content_type,
+                    "content": displayed_content,
+                    "content_chars": len(content),
+                    "shown_chars": len(displayed_content),
+                    "truncated": truncated,
+                    "fetch_limited": fetch_limited,
+                    "observed_at": observed_at,
+                    "published_at": published_at,
+                    "source_type": "page",
+                }
+                if continuation is not None:
+                    payload["continuation"] = continuation
+                    payload["total_chars"] = len(content)
+                    if continuation.get("artifact_ref"):
+                        payload["artifact_ref"] = continuation["artifact_ref"]
+                        payload["next_offset"] = len(head)
+                return payload
+
+            # The observation is trimmed above _WEB_FETCH_MAX_OBSERVATION_CHARS, which
+            # would hide text that the continuation offset already skips. Shrink the
+            # shown window until the serialized payload fits, so nothing is lost.
+            display_chars = capped_chars
+            while True:
+                payload = build_payload(display_chars)
+                result = json.dumps(payload, ensure_ascii=False)
+                overflow = len(result) - _WEB_FETCH_MAX_OBSERVATION_CHARS
+                if overflow <= 0 or display_chars <= _WEB_FETCH_MIN_DISPLAY_CHARS:
+                    break
+                display_chars = max(_WEB_FETCH_MIN_DISPLAY_CHARS, display_chars - overflow - 64)
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
@@ -1041,7 +1068,7 @@ def build_web_tools(
                 "parallel_safe": True,
                 "timeout_seconds": 45,
                 "validator": _validate_web_fetch_args,
-                "max_observation_chars": 7000,
+                "max_observation_chars": _WEB_FETCH_MAX_OBSERVATION_CHARS,
             },
             "web_search": {
                 "parallel_safe": True,

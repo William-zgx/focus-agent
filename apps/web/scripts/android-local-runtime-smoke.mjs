@@ -1016,6 +1016,17 @@ try {
 		assert.ok(preview.content.length <= limit);
 		assert.ok(preview.next_offset > 0);
 	}
+	const { webFetchMaxChars, webFetchOffset, webSearchTimeRange } = await import(
+		pathToFileURL(resolve(smokeBuildDir, "web-planning.mjs")).href
+	);
+	const urlWithPaging = "读取 https://x.com/list?offset=40&limit=5";
+	assert.equal(webFetchOffset(urlWithPaging), null);
+	assert.equal(webFetchMaxChars(urlWithPaging), null);
+	assert.equal(webFetchOffset("从2023年开始的政策"), null);
+	assert.equal(webFetchOffset("offset: 300"), 300);
+	assert.equal(webFetchOffset("从第 500 个字符继续读"), 500);
+	assert.equal(webFetchMaxChars("max_chars：120"), 120);
+	assert.equal(webSearchTimeRange("2024年最新政策"), null);
 	const {
 		androidAppUrlToInternalRoute,
 		chatCompletionsUrl,

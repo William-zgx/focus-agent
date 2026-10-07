@@ -283,24 +283,38 @@ class _ReadableHTMLExtractor(HTMLParser):
         elif lowered == "title":
             self._in_title = False
         elif lowered == "a" and self._link_stack:
-            link = self._link_stack.pop()
-            text = _collapse_whitespace(" ".join(link["parts"]))
-            value = f"[{text}]({link['href']})" if text and link["href"] else text
-            if value:
-                if self._link_stack:
-                    self._append_to(self._link_stack[-1]["parts"], value)
-                else:
-                    self._append_to(self._fallback_text_parts, value)
-                    if self._content_depth:
-                        self._append_to(self._content_text_parts, value)
+            self._emit_link(self._link_stack.pop())
         if self._open_tags:
             for index in range(len(self._open_tags) - 1, -1, -1):
                 if self._open_tags[index][0] != lowered:
                     continue
                 popped = self._open_tags[index:]
                 del self._open_tags[index:]
+                # Links left open inside a closed ancestor end with it, so their
+                # text is not swallowed by the rest of the page.
+                if lowered != "a":
+                    for _ in range(sum(name == "a" for name, _ in popped)):
+                        if self._link_stack:
+                            self._emit_link(self._link_stack.pop())
                 self._content_depth -= sum(is_root for _, is_root in popped)
                 break
+
+    def _emit_link(self, link: dict[str, Any]) -> None:
+        text = _collapse_whitespace(" ".join(link["parts"]))
+        value = f"[{text}]({link['href']})" if text and link["href"] else text
+        if not value:
+            return
+        if self._link_stack:
+            self._append_to(self._link_stack[-1]["parts"], value)
+        else:
+            self._append_to(self._fallback_text_parts, value)
+            if self._content_depth:
+                self._append_to(self._content_text_parts, value)
+
+    def close(self) -> None:
+        super().close()
+        while self._link_stack:
+            self._emit_link(self._link_stack.pop())
 
     def handle_data(self, data: str) -> None:
         text = data.strip()
@@ -316,13 +330,16 @@ class _ReadableHTMLExtractor(HTMLParser):
 
     @property
     def text(self) -> str:
-        parts = self._content_text_parts or self._fallback_text_parts
-        return "\n".join(
-            line
-            for part in parts
-            for raw in part.splitlines()
-            if (line := _collapse_whitespace(raw))
+        # An empty main/article root (layout shell) must not hide the real body.
+        return _render_text_parts(self._content_text_parts) or _render_text_parts(
+            self._fallback_text_parts
         )
+
+
+def _render_text_parts(parts: list[str]) -> str:
+    return "\n".join(
+        line for part in parts for raw in part.splitlines() if (line := _collapse_whitespace(raw))
+    )
 
 
 _BINARY_CONTENT_TYPES = (

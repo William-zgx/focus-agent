@@ -378,3 +378,63 @@ def test_fetch_transport_stops_stream_after_decoded_byte_limit():
     assert len(response.content) == 100001
     assert body.consumed == 2
     assert body.closed
+
+
+def _extract(html: str) -> str:
+    from focus_agent.capabilities.default_tool_modules.web_helpers import (
+        _ReadableHTMLExtractor,
+    )
+
+    parser = _ReadableHTMLExtractor(base_url="https://example.com/")
+    parser.feed(html)
+    parser.close()
+    return parser.text
+
+
+def test_html_extractor_keeps_text_after_unclosed_link():
+    unclosed = _extract("<main><p>Intro <a href='/x'>link<p>Para two body</main>")
+    assert "Para two body" in unclosed
+    assert "https://example.com/x" in unclosed
+
+    closed_by_parent = _extract("<main><p>A <a href='/x'>link</p><p>B para</p></main>")
+    assert closed_by_parent == "A [link](https://example.com/x)\nB para"
+
+
+def test_html_extractor_falls_back_when_main_root_is_empty():
+    assert _extract("<div role=main><div></div></div><div><p>Real body</p></div>") == "Real body"
+
+
+def test_default_web_fetch_fits_observation_cap_without_skipping_text():
+    from focus_agent.capabilities.default_tool_modules.web import (
+        _WEB_FETCH_MAX_OBSERVATION_CHARS,
+    )
+
+    body = "".join(f"<p>Paragraph {index} with \"quoted\" evidence.</p>" for index in range(400))
+    response = httpx.Response(
+        200,
+        content=f"<html><body><main>{body}</main></body></html>".encode(),
+        headers={"content-type": "text/html; charset=utf-8"},
+    )
+    settings = Settings()
+    saved: list[dict[str, Any]] = []
+    tools, _ = build_web_tools(
+        web_search_config=settings.web_search,
+        tool_catalog=settings.tool_catalog,
+        resolved_env={},
+        emit_tool_event=lambda **_: None,
+        http_client=_FetchClient(response),
+        save_tool_observation=lambda **kwargs: saved.append(kwargs) or "saved",
+        get_current_thread_id=lambda: "thread-1",
+    )
+
+    result = tools["web_fetch"].invoke({"url": "https://93.184.216.34/long"})
+    payload = json.loads(result)
+
+    # Over the cap, the observation would be trimmed again after the tool returns,
+    # hiding text between the shown head and the continuation offset.
+    assert len(result) <= _WEB_FETCH_MAX_OBSERVATION_CHARS
+    assert len(saved) == 1
+    full_text = saved[0]["content"]
+    next_offset = payload["next_offset"]
+    assert payload["content"].startswith(full_text[:next_offset])
+    assert payload["continuation"]["args"]["offset"] == next_offset

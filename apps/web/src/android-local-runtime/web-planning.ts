@@ -267,9 +267,14 @@ export function webFetchContinuationRequested(message: string): boolean {
 	]);
 }
 
+/** URL query strings (`?offset=40&limit=5`) are not reading instructions. */
+function withoutUrls(message: string): string {
+	return message.replace(/https?:\/\/\S+/giu, " ");
+}
+
 export function webFetchOffset(message: string): number | null {
-	const match = message.match(
-		/(?:offset|start|from|偏移|从)\s*[:=]?\s*(\d+)/iu,
+	const match = withoutUrls(message).match(
+		/(?:\boffset\b|偏移量?|从第)\s*[:=：]?\s*(\d+)/iu,
 	);
 	if (!match) return null;
 	const offset = Number(match[1]);
@@ -277,8 +282,8 @@ export function webFetchOffset(message: string): number | null {
 }
 
 export function webFetchMaxChars(message: string): number | null {
-	const match = message.match(
-		/(?:max_chars|max chars|limit|字符|chars?)\s*[:=]?\s*(\d+)/iu,
+	const match = withoutUrls(message).match(
+		/(?:\bmax[_ ]chars\b|\blimit\b|\bchars?\b|字符)\s*[:=：]?\s*(\d+)/iu,
 	);
 	if (!match) return null;
 	const maxChars = Number(match[1]);

@@ -6,7 +6,10 @@ from langchain.tools import tool
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
-from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
+from focus_agent.engine.graph.policy_temporal import (
+    _temporal_live_web_search_args,
+    search_time_range,
+)
 from focus_agent.engine.graph_builder import build_graph
 
 
@@ -165,3 +168,10 @@ def test_recent_weeks_query_is_anchored_without_losing_search_filters():
     assert "2026-09-04" in args["query"] and "2026-10-03" in args["query"]
     assert args["time_range"] == "month"
     assert args["include_domains"] == ["example.com"]
+
+
+def test_search_time_range_keeps_explicit_years_unfiltered():
+    assert search_time_range("2024年最新政策") is None
+    assert search_time_range("latest 2024 policy") is None
+    assert search_time_range("最新政策") == "month"
+    assert search_time_range("最新政策 编号 120241") == "month"
