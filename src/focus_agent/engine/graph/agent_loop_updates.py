@@ -347,12 +347,13 @@ def finalize_agent_loop_turn(
             completed_turn_messages = latest_turn_messages([*state_messages, response])
             temporal_anchor_repair_taken = temporal_anchor_repair.action
     if tool_policy == "live_web_research" and not getattr(response, "tool_calls", None):
-        if force_tool_free_answer or fallback_reason:
-            reason = (
-                "Research reached its tool limit; the answer uses only the evidence collected."
-                if force_tool_free_answer
-                else f"Research synthesis degraded: {fallback_reason}."
-            )
+        if force_tool_free_answer and not fallback_reason:
+            # Reaching the round budget is normal for research: the forced tool-free
+            # synthesis is judged by the same evidence checks as any other answer.
+            # Only a failed synthesis (fallback_reason) degrades it.
+            answer_verification = {**answer_verification, "research_budget_exhausted": True}
+        elif fallback_reason:
+            reason = f"Research synthesis degraded: {fallback_reason}."
             answer_verification = {
                 **answer_verification,
                 "status": "unsupported",

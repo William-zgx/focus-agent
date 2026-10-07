@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 import socket
 from collections.abc import Mapping, Sequence
@@ -204,6 +205,13 @@ class _ReadableHTMLExtractor(HTMLParser):
         self._content_depth = 0
         self._open_tags: list[tuple[str, bool]] = []
         self.published_at: str | None = None
+        # Fallback dates when no <meta> publication date exists: JSON-LD
+        # datePublished (blogs, news) and the first <time datetime> element
+        # (GitHub releases, changelogs), preferring one inside the content root.
+        self._ld_json_parts: list[str] | None = None
+        self._ld_published_at: str | None = None
+        self._content_time_at: str | None = None
+        self._first_time_at: str | None = None
 
     def _append(self, value: str) -> None:
         if not value or self._skip_depth or self._in_title:
@@ -236,12 +244,20 @@ class _ReadableHTMLExtractor(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered = tag.lower()
+        attr_map = {str(key).lower(): value for key, value in attrs}
         if lowered in {"script", "style", "noscript", "svg"}:
+            if lowered == "script" and "ld+json" in str(attr_map.get("type") or "").lower():
+                self._ld_json_parts = []
             self._skip_depth += 1
             return
         if lowered == "title":
             self._in_title = True
-        attr_map = {str(key).lower(): value for key, value in attrs}
+        if lowered in {"time", "relative-time", "local-time"}:
+            moment = str(attr_map.get("datetime") or "").strip()
+            if moment:
+                self._first_time_at = self._first_time_at or moment
+                if self._content_depth:
+                    self._content_time_at = self._content_time_at or moment
         role_values = str(attr_map.get("role") or "").lower().split()
         is_content_root = lowered in {"main", "article"} or "main" in role_values
         if is_content_root:
@@ -249,7 +265,7 @@ class _ReadableHTMLExtractor(HTMLParser):
         if lowered not in self._VOID_TAGS:
             self._open_tags.append((lowered, is_content_root))
         if lowered == "meta" and str(
-            attr_map.get("property") or attr_map.get("name") or ""
+            attr_map.get("property") or attr_map.get("name") or attr_map.get("itemprop") or ""
         ).lower() in {
             "article:published_time",
             "datepublished",
@@ -288,6 +304,11 @@ class _ReadableHTMLExtractor(HTMLParser):
         lowered = tag.lower()
         if lowered in {"script", "style", "noscript", "svg"} and self._skip_depth:
             self._skip_depth -= 1
+            if lowered == "script" and self._ld_json_parts is not None:
+                self._ld_published_at = self._ld_published_at or _json_ld_published_at(
+                    "".join(self._ld_json_parts)
+                )
+                self._ld_json_parts = None
         elif lowered == "title":
             self._in_title = False
         elif lowered == "a" and self._link_stack:
@@ -323,8 +344,17 @@ class _ReadableHTMLExtractor(HTMLParser):
         super().close()
         while self._link_stack:
             self._emit_link(self._link_stack.pop())
+        self.published_at = (
+            self.published_at
+            or self._ld_published_at
+            or self._content_time_at
+            or self._first_time_at
+        )
 
     def handle_data(self, data: str) -> None:
+        if self._ld_json_parts is not None:
+            self._ld_json_parts.append(data)
+            return
         text = data.strip()
         if not text:
             return
@@ -342,6 +372,24 @@ class _ReadableHTMLExtractor(HTMLParser):
         return _render_text_parts(self._content_text_parts) or _render_text_parts(
             self._fallback_text_parts
         )
+
+
+def _json_ld_published_at(raw: str) -> str | None:
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    pending: list[Any] = [payload]
+    while pending:
+        node = pending.pop(0)
+        if isinstance(node, list):
+            pending.extend(node)
+        elif isinstance(node, dict):
+            value = node.get("datePublished")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            pending.extend(item for item in node.values() if isinstance(item, (dict, list)))
+    return None
 
 
 def _render_text_parts(parts: list[str]) -> str:

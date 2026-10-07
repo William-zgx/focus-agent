@@ -463,3 +463,37 @@ def test_default_web_fetch_fits_observation_cap_without_skipping_text():
     next_offset = payload["next_offset"]
     assert payload["content"].startswith(full_text[:next_offset])
     assert payload["continuation"]["args"]["offset"] == next_offset
+
+
+def _published_at(html: str) -> str | None:
+    from focus_agent.capabilities.default_tool_modules.web_helpers import (
+        _ReadableHTMLExtractor,
+    )
+
+    parser = _ReadableHTMLExtractor(base_url="https://example.com/")
+    parser.feed(html)
+    parser.close()
+    return parser.published_at
+
+
+def test_html_extractor_reads_publication_date_fallbacks():
+    json_ld = (
+        '<script type="application/ld+json">{"@graph": [{"@type": "WebPage"}, '
+        '{"@type": "BlogPosting", "datePublished": "2025-10-22T14:58:46Z"}]}</script>'
+        "<main><p>Body</p></main>"
+    )
+    assert _published_at(json_ld) == "2025-10-22T14:58:46Z"
+
+    releases = (
+        '<header><time datetime="2020-01-01T00:00:00Z">nav</time></header>'
+        '<main><relative-time datetime="2026-10-07T13:38:46Z">today</relative-time>'
+        "<p>Release notes</p></main>"
+    )
+    assert _published_at(releases) == "2026-10-07T13:38:46Z"
+
+    meta_wins = (
+        '<meta property="article:published_time" content="2026-04-15">'
+        '<main><time datetime="2026-10-01">updated</time></main>'
+    )
+    assert _published_at(meta_wins) == "2026-04-15"
+    assert _published_at("<main><p>No dates</p></main>") is None

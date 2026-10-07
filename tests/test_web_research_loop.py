@@ -136,16 +136,17 @@ def test_research_reads_source_after_four_rounds_before_synthesizing(monkeypatch
     assert not any(not enabled for enabled, _ in invocations)
 
 
-def test_research_budget_reserves_one_synthesis_and_records_degradation(monkeypatch):
+def test_research_budget_reserves_one_synthesis_without_degrading_a_good_answer(monkeypatch):
     result, invocations, calls = _research_graph(monkeypatch, keep_searching=True)
     synthesis = [messages for enabled, messages in invocations if not enabled]
     assert len(synthesis) == 1
     assert len(calls) == 8
     assert any(isinstance(m, SystemMessage) and "No more tools" in m.content for m in synthesis[0])
     assert "正文读取" in result["messages"][-1].content
-    assert result["task_outcome"]["status"] == "degraded_answer"
-    assert result["task_outcome"]["warnings"]
-    assert result["answer_verification"]["status"] != "verified"
+    # Like Hermes, exhausting the round budget is normal; the synthesized answer is
+    # judged by the usual evidence checks and only a failed synthesis degrades it.
+    assert result["answer_verification"]["research_budget_exhausted"] is True
+    assert result["task_outcome"]["status"] == "answered"
 
 
 def test_budget_synthesis_cannot_restart_tools_or_leak_internal_summary(monkeypatch):

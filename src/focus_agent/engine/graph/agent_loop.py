@@ -497,7 +497,12 @@ def make_agent_loop_node(
                         response, known_tool_names=known_names
                     )
                 ):
-                    response = AIMessage(content=fallback_answer)
+                    # A failed synthesis is the only way the budget limit degrades a
+                    # research answer; the marker carries that to the outcome.
+                    response = AIMessage(
+                        content=fallback_answer,
+                        additional_kwargs={"tool_result_fallback_reason": "model_synthesis_failed"},
+                    )
             else:
                 response = AIMessage(content=fallback_answer)
             if temporal_anchor_required and current_utc_time_result:
