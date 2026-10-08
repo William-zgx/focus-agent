@@ -256,3 +256,37 @@ def test_synthesis_includes_web_continuation_with_original_source_only():
     assert "recovered section lists the limitations" in prompt
     assert source in prompt
     assert "Unrelated local fact" not in prompt
+
+
+def test_synthesis_digest_keeps_every_fetched_page_whole():
+    import json as _json
+
+    from langchain.messages import AIMessage, HumanMessage, ToolMessage
+
+    from focus_agent.engine.graph_tool_result_fallback import _tool_result_synthesis_prompt
+
+    vendors = ["openai", "anthropic", "google", "mistral", "meta"]
+    messages = [HumanMessage(content="Compare the latest flagship model pricing of each vendor")]
+    for index, vendor in enumerate(vendors):
+        call_id = f"fetch-{index}"
+        url = f"https://{vendor}.example/pricing"
+        messages.append(
+            AIMessage(
+                content="",
+                tool_calls=[{"id": call_id, "name": "web_fetch", "args": {"url": url}}],
+            )
+        )
+        body = f"{vendor} flagship model pricing latest " * 300
+        messages.append(
+            ToolMessage(
+                content=_json.dumps({"url": url, "title": f"{vendor} pricing", "content": body}),
+                tool_call_id=call_id,
+            )
+        )
+
+    digest = _tool_result_synthesis_prompt(messages)[1].content
+
+    # The earliest page must survive even though later pages are long.
+    for vendor in vendors:
+        assert f"https://{vendor}.example/pricing" in digest
+    assert digest.count('"source_type": "fetched_page"') == len(vendors)

@@ -10,6 +10,7 @@ from langchain.messages import ToolMessage
 from . import graph_execution_facts as _execution_facts
 from .graph.policy_temporal import explicit_years
 from .graph_evidence import (
+    EVIDENCE_LAYER_BODY,
     EVIDENCE_LAYER_SOURCE,
 )
 from .graph_evidence import (
@@ -345,6 +346,10 @@ def _freshness_issue(
     if observed_at is None:
         return "", False
     min_fresh_date = _fresh_evidence_min_date(query, observed_at)
+    # For month-or-longer windows ("最新", "2026 年"), a page read in full this turn
+    # shows the source's current state even when it prints no publication date
+    # (product docs, pricing pages). Day/week questions still need dated evidence.
+    current_pages_count = (observed_at - min_fresh_date).days >= 28
     stale_items: list[str] = []
     undated_items: list[str] = []
     dated_items = 0
@@ -353,6 +358,9 @@ def _freshness_issue(
         if not _is_substantive_evidence(item):
             continue
         item_date = _parse_date(str(item.get("published_at") or ""))
+        if item_date is None and current_pages_count and _is_fetched_page_body(item):
+            fresh_items += 1
+            continue
         if item_date is None:
             label = str(
                 item.get("title") or item.get("source_name") or item.get("url") or "evidence"
@@ -385,6 +393,13 @@ def _freshness_issue(
             False,
         )
     return "", False
+
+
+def _is_fetched_page_body(item: Mapping[str, Any]) -> bool:
+    return (
+        str(item.get("source_tool") or "") == "web_fetch"
+        and str(item.get("evidence_layer") or "").strip().lower() == EVIDENCE_LAYER_BODY
+    )
 
 
 def _fresh_evidence_min_date(query: str, observed_at: date) -> date:

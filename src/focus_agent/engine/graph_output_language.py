@@ -19,6 +19,15 @@ _DATE_WITH_UTC_RE = re.compile(
     r"(?:[ T]*(?:\d{1,2}:\d{2}(?::\d{2})?)?)?\s*(?:UTC|协调世界时)",
     re.IGNORECASE,
 )
+# A "<date> UTC" is only a claim about the current time when it is phrased as one
+# ("截至 2026-10-08 UTC", "基于 2026-10-08 UTC 时间"); source dates such as
+# "Last updated 2026-10-07 UTC" or "发布于 2026-09-22 UTC" must not count.
+_CURRENT_TIME_CUE_RE = re.compile(
+    r"(?:截至|截止|当前|现在|今天|今日|此刻|如今|as\s+of|\bnow\b|\btoday\b|\bcurrent(?:ly)?\b)"
+    r"[^\n\d]{0,12}$",
+    re.IGNORECASE,
+)
+_TIME_NOUN_AFTER_UTC_RE = re.compile(r"^\s*(?:时间|time\b)", re.IGNORECASE)
 _CHINESE_OUTPUT_MARKERS = (
     "中文",
     "用中文",
@@ -121,7 +130,15 @@ def _has_conflicting_temporal_anchor(*, answer: str, observed_at: str) -> bool:
     expected = _observed_date(observed_at)
     if not expected:
         return False
-    date_matches = [*_ANCHOR_DATE_RE.finditer(answer), *_DATE_WITH_UTC_RE.finditer(answer)]
+    date_matches = [
+        *_ANCHOR_DATE_RE.finditer(answer),
+        *(
+            match
+            for match in _DATE_WITH_UTC_RE.finditer(answer)
+            if _CURRENT_TIME_CUE_RE.search(answer[max(0, match.start() - 24) : match.start()])
+            or _TIME_NOUN_AFTER_UTC_RE.match(answer[match.end() :])
+        ),
+    ]
     for match in date_matches:
         rendered = match.group(1).replace("/", "-")
         if (

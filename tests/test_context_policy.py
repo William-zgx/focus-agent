@@ -241,6 +241,34 @@ def test_temporal_anchor_guard_replaces_reversed_date_before_utc_marker():
     assert "2025-01-15" not in repair.response.content
 
 
+def test_temporal_anchor_guard_keeps_answers_that_quote_source_dates():
+    answer = (
+        "调研截至 2026-10-08 UTC。Gemini 文档页注明 Last updated 2026-10-07 UTC；"
+        "GPT-6 Sol 发布于 2026-09-22 UTC。"
+    )
+    repair = enforce_temporal_anchor(
+        response=AIMessage(content=answer),
+        user_text="请联网比较三家最新旗舰模型的发布时间。",
+        observed_at="2026-10-08T02:34:54.857113+00:00",
+    )
+
+    # Source and release dates are evidence, not a claim about the current time.
+    assert repair is None or repair.action != "answer_with_verified_temporal_anchor"
+    if repair is not None:
+        assert "Last updated 2026-10-07 UTC" in repair.response.content
+
+
+def test_temporal_anchor_guard_still_rejects_stale_as_of_claim():
+    repair = enforce_temporal_anchor(
+        response=AIMessage(content="截至 2025-01-15 UTC，Moonshot AI 发布了新的新闻。"),
+        user_text="请用中文总结今天的 Moonshot AI 新闻。",
+        observed_at="2026-07-13T06:21:13.595437+00:00",
+    )
+
+    assert repair is not None
+    assert repair.action == "answer_with_verified_temporal_anchor"
+
+
 def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
     system_text = "\n\n".join(
         [

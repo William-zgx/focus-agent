@@ -925,3 +925,31 @@ def test_fresh_evidence_window_follows_the_requested_period():
     assert _fresh_evidence_min_date("LangGraph 2026 年的最新进展", today) == date(2026, 1, 1)
     assert _fresh_evidence_min_date("最新的 Agent 框架进展", today) == date(2026, 9, 8)
     assert _fresh_evidence_min_date("今天北京天气", today) == today
+
+
+def test_undated_fetched_page_counts_as_current_for_long_windows_only():
+    from focus_agent.engine.graph_execution_contract import _freshness_issue
+
+    page = {
+        "source_tool": "web_fetch",
+        "evidence_layer": "body",
+        "title": "GPT-6 Astra model docs",
+        "url": "https://developers.openai.com/models/gpt-6-astra",
+        "snippet": "GPT-6 Astra has a 1,050,000 token context window.",
+    }
+    snippet = {**page, "source_tool": "web_search", "evidence_layer": "snippet"}
+
+    def issue(query: str, evidence: list[dict]) -> str:
+        contract = {
+            "policy": "live_web_research",
+            "user_query": query,
+            "temporal_anchor_required": True,
+            "observed_at": "2026-10-08T02:46:18Z",
+        }
+        return _freshness_issue(contract, evidence)[0]
+
+    # A page read in full today shows its current state for "2026 年最新".
+    assert issue("2026 年三家最新旗舰模型", [page]) == ""
+    # Undated search snippets and day-level questions still need dated evidence.
+    assert "publication dates are unknown" in issue("2026 年三家最新旗舰模型", [snippet])
+    assert "publication dates are unknown" in issue("今天的模型新闻", [page])

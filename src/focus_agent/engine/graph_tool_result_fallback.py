@@ -583,12 +583,17 @@ def _workspace_lookup_terms(text: str) -> set[str]:
     return terms
 
 
+# Digest size, and the page share: 15000 chars split across pages, 1200-5000 each.
+_SYNTHESIS_DIGEST_CHARS, _SYNTHESIS_PAGE_BUDGET = 18000, 15000
+
+
 def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
     latest_user = _latest_human_message_text(source_messages) or "请整理本轮工具结果。"
     payloads = _latest_relevant_web_payloads(_latest_turn_messages(source_messages), latest_user)
     evidence: list[str] = []
     seen: set[str] = set()
     passages: set[tuple[str, Any]] = set()
+    pages: list[dict[str, Any]] = []
     for payload in reversed(payloads):
         url = str(payload.get("final_url") or payload.get("url") or "")
         content = str(payload.get("content") or "")
@@ -596,18 +601,24 @@ def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
         if url and content and passage not in passages:
             seen.add(url)
             passages.add(passage)
-            evidence.append(
-                json.dumps(
-                    {
-                        "source_type": "fetched_page",
-                        "url": url,
-                        "title": payload.get("title"),
-                        "published_at": payload.get("published_at"),
-                        "content": content[:5000],
-                    },
-                    ensure_ascii=False,
-                )
+            pages.append(payload)
+    # Share the page budget across every page read this turn. A fixed per-page cap
+    # let the last few pages fill the digest and silently dropped earlier sources
+    # (e.g. all OpenAI pages in a three-vendor comparison).
+    page_chars = max(1200, min(5000, _SYNTHESIS_PAGE_BUDGET // max(1, len(pages))))
+    for payload in pages:
+        evidence.append(
+            json.dumps(
+                {
+                    "source_type": "fetched_page",
+                    "url": str(payload.get("final_url") or payload.get("url") or ""),
+                    "title": payload.get("title"),
+                    "published_at": payload.get("published_at"),
+                    "content": str(payload.get("content") or "")[:page_chars],
+                },
+                ensure_ascii=False,
             )
+        )
     for payload in reversed(payloads):
         for item in _payload_results(payload):
             url = str(item.get("url") or item.get("ref") or "")
@@ -628,7 +639,11 @@ def _tool_result_synthesis_prompt(source_messages: list[Any]) -> list[Any]:
                 )
             )
     snippets = evidence or _tool_result_snippets(source_messages)[:12]
-    digest = "\n".join(snippets)[:18000] or _TOOL_CALL_REPAIR_FALLBACK_TEXT
+    kept: list[str] = []  # whole entries only, so no source is cut mid-JSON
+    for snippet in snippets:
+        if sum(len(item) + 1 for item in kept) + len(snippet) < _SYNTHESIS_DIGEST_CHARS:
+            kept.append(snippet)
+    digest = "\n".join(kept) or _TOOL_CALL_REPAIR_FALLBACK_TEXT
     clock_calls = {
         str(call.get("id"))
         for message in _latest_turn_messages(source_messages)
