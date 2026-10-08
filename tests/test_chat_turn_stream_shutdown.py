@@ -1,10 +1,57 @@
 import asyncio
 import threading
+from types import SimpleNamespace
 
 import pytest
 
 from focus_agent.core import async_threads
-from focus_agent.services.chat import turns
+from focus_agent.services.chat import streaming, turns
+
+
+def test_stream_graph_chunks_delivers_fallback_after_model_timeout(monkeypatch):
+    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.1)
+    model_timeout = 0.05
+    fallback_delay = 0.08
+
+    class DelayedAsyncGraphStream:
+        def __init__(self):
+            self._first = True
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self._first:
+                self._first = False
+                await asyncio.sleep(fallback_delay)
+                return {"kind": "fallback"}
+            raise StopAsyncIteration
+
+        async def aclose(self):
+            return None
+
+    class Graph:
+        def astream(self, *_args, **_kwargs):
+            return DelayedAsyncGraphStream()
+
+    async def scenario():
+        chunks = []
+        async for _chunk in streaming.stream_graph_chunks(
+            graph=Graph(),
+            checkpointer=None,
+            settings=SimpleNamespace(
+                model_request_timeout_seconds=model_timeout,
+                sse_heartbeat_seconds=0.005,
+            ),
+            payload={},
+            config={},
+            context=None,
+        ):
+            if _chunk is not None:
+                chunks.append(_chunk)
+        return chunks
+
+    assert asyncio.run(scenario()) == [{"kind": "fallback"}]
 
 
 def test_call_in_daemon_thread_marks_worker_daemon(monkeypatch):

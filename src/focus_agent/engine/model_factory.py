@@ -4,6 +4,8 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from langgraph.config import get_stream_writer
+
 from ..config import Settings
 from ..harness.tools import tools_schema_fingerprint
 from ..model_registry import create_chat_model
@@ -19,6 +21,11 @@ class _TimeoutBoundModel:
         self._timeout_seconds = max(float(timeout_seconds), 0.001)
 
     def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        try:
+            get_stream_writer()({"event": "model", "stage": "start"})
+        except RuntimeError:
+            # Direct model calls do not have a LangGraph stream context.
+            pass
         completed = threading.Event()
         result: dict[str, Any] = {}
 

@@ -36,6 +36,17 @@ def _stream_shutdown_timeout_seconds() -> float:
     return float(_STREAM_SHUTDOWN_TIMEOUT_SECONDS)
 
 
+def _graph_stream_idle_timeout_seconds(settings: Any) -> float:
+    """Keep the graph watchdog finite while allowing model timeout cleanup."""
+    model_timeout = max(
+        float(getattr(settings, "model_request_timeout_seconds", 0.0) or 0.0),
+        0.0,
+    )
+    if model_timeout <= 0:
+        return 0.0
+    return model_timeout + max(_stream_shutdown_timeout_seconds(), 0.0)
+
+
 async def stream_graph_chunks(
     *,
     graph: Any,
@@ -69,10 +80,7 @@ async def stream_graph_chunks(
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: _next_graph_chunk(stream_iter),
         close_method="aclose",
-        idle_timeout_seconds=max(
-            float(getattr(settings, "model_request_timeout_seconds", 0.0) or 0.0),
-            0.0,
-        ),
+        idle_timeout_seconds=_graph_stream_idle_timeout_seconds(settings),
     ):
         yield chunk
 
@@ -97,10 +105,7 @@ async def stream_graph_chunks_via_sync_stream(
         heartbeat_interval=max(float(settings.sse_heartbeat_seconds), 0.0),
         next_chunk=lambda: _call_in_daemon_thread(next, stream_iter, _STREAM_END),
         close_method="close",
-        idle_timeout_seconds=max(
-            float(getattr(settings, "model_request_timeout_seconds", 0.0) or 0.0),
-            0.0,
-        ),
+        idle_timeout_seconds=_graph_stream_idle_timeout_seconds(settings),
     ):
         yield chunk
 

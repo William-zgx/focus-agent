@@ -1,13 +1,17 @@
+import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 from langchain.messages import AIMessage
+from langgraph.graph import END, START, StateGraph
 
 from focus_agent.config import Settings
 from focus_agent.engine.model_factory import (
     GraphModelFactory,
     ModelInvocationTimeoutError,
 )
+from focus_agent.services.chat import streaming, turns
 
 
 class _FakeModel:
@@ -62,3 +66,104 @@ def test_graph_model_factory_preserves_tool_binding_and_invoke_result():
     assert model.config == {"run_name": "focus_agent_model"}
     assert result.content == "completed"
     assert result.response_metadata["config"] == {"trace": "test"}
+
+
+def test_graph_stream_survives_serial_model_calls_with_progress(monkeypatch):
+    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    model_timeout = 0.05
+    model = _FakeModel(sleep_seconds=0.04)
+    factory = GraphModelFactory(
+        settings=Settings(model_request_timeout_seconds=model_timeout),
+        chat_model_factory=lambda *_args, **_kwargs: model,
+    )
+
+    builder = StateGraph(dict)
+
+    def model_node(_state):
+        model_for_node = factory.model_for("openai:fake", "")
+        first = model_for_node.invoke("first")
+        second = model_for_node.invoke("second")
+        return {"answer": f"{first.content}:{second.content}"}
+
+    builder.add_node("model_node", model_node)
+    builder.add_edge(START, "model_node")
+    builder.add_edge("model_node", END)
+    graph = builder.compile()
+
+    async def consume():
+        chunks = []
+        async for chunk in streaming.stream_graph_chunks(
+            graph=graph,
+            checkpointer=None,
+            settings=SimpleNamespace(
+                model_request_timeout_seconds=model_timeout,
+                sse_heartbeat_seconds=0.005,
+            ),
+            payload={},
+            config={},
+            context=None,
+        ):
+            chunks.append(chunk)
+        return chunks
+
+    chunks = asyncio.run(consume())
+    model_progress = [
+        chunk["data"]
+        for chunk in chunks
+        if isinstance(chunk, dict)
+        and chunk.get("type") == "custom"
+        and isinstance(chunk.get("data"), dict)
+        and chunk["data"].get("event") == "model"
+    ]
+    updates = [
+        chunk["data"]
+        for chunk in chunks
+        if isinstance(chunk, dict)
+        and chunk.get("type") == "updates"
+        and isinstance(chunk.get("data"), dict)
+    ]
+
+    assert len(model_progress) == 2
+    assert any(
+        update.get("model_node", {}).get("answer") == "completed:completed" for update in updates
+    )
+
+
+def test_graph_stream_still_times_out_for_single_unresponsive_model(monkeypatch):
+    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    model_timeout = 0.05
+    model = _FakeModel(sleep_seconds=0.2)
+    factory = GraphModelFactory(
+        settings=Settings(model_request_timeout_seconds=model_timeout),
+        chat_model_factory=lambda *_args, **_kwargs: model,
+    )
+
+    builder = StateGraph(dict)
+
+    def model_node(_state):
+        factory.model_for("openai:fake", "").invoke("blocked")
+        return {"answer": "unreachable"}
+
+    builder.add_node("model_node", model_node)
+    builder.add_edge(START, "model_node")
+    builder.add_edge("model_node", END)
+    graph = builder.compile()
+
+    async def consume():
+        async for _chunk in streaming.stream_graph_chunks(
+            graph=graph,
+            checkpointer=None,
+            settings=SimpleNamespace(
+                model_request_timeout_seconds=model_timeout,
+                sse_heartbeat_seconds=0.005,
+            ),
+            payload={},
+            config={},
+            context=None,
+        ):
+            pass
+
+    started = time.perf_counter()
+    with pytest.raises(ModelInvocationTimeoutError, match="exceeded 0.05 seconds"):
+        asyncio.run(consume())
+    assert time.perf_counter() - started < 0.15
