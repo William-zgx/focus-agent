@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from ..core.context_tool_observation_references import _tool_observation_ref
+from ..core.types import ContextBudget
 from .graph_evidence import relevant_web_tool_call_ids
 from .graph_tool_history_repair import _message_text
 
@@ -237,11 +238,26 @@ def _fetched_page_summary(payloads: list[dict[str, Any]], *, chinese: bool) -> s
     return "\n".join(lines)
 
 
-def _representative_fetch_excerpt(content: str) -> str:
+def _web_synthesis_char_budget(budget: ContextBudget | None, overhead: int) -> int:
+    budget = budget or ContextBudget()
+    tokens = min(
+        budget.recent_message_token_limit,
+        budget.prompt_token_limit - budget.output_token_reserve,
+    )
+    return max(0, tokens * budget.chars_per_token - overhead)
+
+
+def _representative_fetch_excerpt(content: str, *, max_chars: int = 600) -> str:
     text = " ".join(str(content or "").split())
-    if not text:
-        return ""
-    return _truncate_inline(text, max_chars=600)
+    if len(text) <= max_chars:
+        return text
+    marker = " [... middle omitted ...] "
+    if max_chars <= len(marker):
+        return marker[:max_chars]
+    budget = max_chars - len(marker)
+    # Keep the end too: availability and limitations often follow the introduction.
+    head_chars = budget // 2
+    return text[:head_chars] + marker + text[-(budget - head_chars) :]
 
 
 def _looks_like_weather_query(user_query: str, payloads: list[dict[str, Any]]) -> bool:

@@ -476,7 +476,11 @@ def _is_degraded_task(
     failed_outcomes: Sequence[Mapping[str, Any]],
     evidence_count: int,
 ) -> bool:
-    if repair_action in {"fallback_to_tool_results", "answer_with_uncertainty"}:
+    if repair_action in {
+        "fallback_to_tool_results",
+        "answer_with_uncertainty",
+        "answer_with_verified_temporal_anchor",
+    }:
         return True
     if contract_status not in {"satisfied", "not_required"}:
         return True

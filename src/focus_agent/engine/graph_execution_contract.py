@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 
 from langchain.messages import ToolMessage
 
 from . import graph_execution_facts as _execution_facts
-from .graph.policy_temporal import explicit_window_days, explicit_years
+from .graph.policy_intent_parsing import _should_prefer_web_fetch, requires_external_evidence
+from .graph.policy_temporal import fresh_evidence_min_date as _fresh_evidence_min_date
+from .graph.policy_temporal import requires_temporal_anchor
 from .graph_evidence import (
     EVIDENCE_LAYER_BODY,
     EVIDENCE_LAYER_SOURCE,
@@ -45,6 +47,7 @@ VerificationStatus = Literal["verified", "unsupported", "contradicted", "not_req
 def build_execution_contract(
     *,
     policy: str,
+    user_query: str = "",
     temporal_anchor_required: bool = False,
     available_tool_names: Sequence[str] = (),
     preferred_first_tool: str | None = None,
@@ -52,7 +55,7 @@ def build_execution_contract(
     required_web_tools: Sequence[str] = (),
     skill_execution_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a small per-turn execution contract from the current tool policy."""
+    """Keep original evidence requirements even if routing removes web tools."""
 
     normalized_policy = str(policy or "").strip()
     if normalized_policy == "execution" and isinstance(skill_execution_plan, Mapping):
@@ -85,6 +88,9 @@ def build_execution_contract(
                 "skill_execution_plan": dict(skill_execution_plan),
             }
 
+    if requires_external_evidence(user_query):
+        normalized_policy = "live_web_research"
+        temporal_anchor_required = temporal_anchor_required or requires_temporal_anchor(user_query)
     if normalized_policy != "live_web_research":
         return {
             "policy": normalized_policy or "direct_answer",
@@ -101,19 +107,20 @@ def build_execution_contract(
     explicit_required_web_tools = False
     for tool_name in required_web_tools:
         normalized_tool_name = str(tool_name).strip()
-        if normalized_tool_name in available and normalized_tool_name not in required_tools:
+        if normalized_tool_name and normalized_tool_name not in required_tools:
             required_tools.append(normalized_tool_name)
             explicit_required_web_tools = True
     if temporal_anchor_required and "current_utc_time" in available:
         required_tools.append("current_utc_time")
     if explicit_required_web_tools:
         pass
-    elif preferred_first_tool == "web_fetch" and "web_fetch" in available:
+    elif preferred_first_tool == "web_fetch" or _should_prefer_web_fetch(user_query):
         required_tools.append("web_fetch")
-    elif "web_search" in available:
+    else:
         required_tools.append("web_search")
     return {
         "policy": normalized_policy,
+        "user_query": user_query,
         "required_tools": required_tools,
         "required_evidence": True if required_evidence is None else bool(required_evidence),
         "temporal_anchor_required": bool(temporal_anchor_required),
@@ -349,7 +356,11 @@ def _freshness_issue(
     # For month-or-longer windows ("最新", "2026 年"), a page read in full this turn
     # shows the source's current state even when it prints no publication date
     # (product docs, pricing pages). Day/week questions still need dated evidence.
-    current_pages_count = (observed_at - min_fresh_date).days >= 28
+    current_pages_count = (observed_at - min_fresh_date).days >= 28 and not re.search(
+        r"发布日期|发布时间|发布于|事件日期|publication dates?|release dates?|published (?:on|at)",
+        query,
+        re.IGNORECASE,
+    )
     stale_items: list[str] = []
     undated_items: list[str] = []
     dated_items = 0
@@ -402,91 +413,8 @@ def _is_fetched_page_body(item: Mapping[str, Any]) -> bool:
     )
 
 
-def _fresh_evidence_min_date(query: str, observed_at: date) -> date:
-    lowered = query.lower()
-    if _contains_temporal_marker(
-        lowered,
-        ("近几周", "最近几周", "过去几周", "last few weeks", "past few weeks"),
-    ):
-        return observed_at - timedelta(days=29)
-    if _contains_temporal_marker(
-        lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")
-    ):
-        return observed_at - timedelta(days=6)
-    if re.search(r"(?<![a-z0-9_])recent(?:ly)?(?![a-z0-9_])", lowered):
-        return observed_at - timedelta(days=6)
-    if _contains_temporal_marker(lowered, ("本周", "这周", "this week")):
-        return observed_at - timedelta(days=observed_at.weekday())
-    if _contains_temporal_marker(lowered, ("昨天", "yesterday")):
-        return observed_at - timedelta(days=1)
-    if _contains_temporal_marker(lowered, ("今天", "today", "现在", "now", "当前", "current")):
-        return observed_at
-    window_days = explicit_window_days(lowered)  # "最近两个月" -> 60 days
-    if window_days:
-        return observed_at - timedelta(days=window_days - 1)
-    # "2026 年的最新进展" asks about that year, not about today.
-    named_years = [year for year in explicit_years(lowered) if year <= observed_at.year]
-    if named_years:
-        return date(max(named_years), 1, 1)
-    # Vague recency ("最新", "latest") matches the one-month search window.
-    if _contains_temporal_marker(
-        lowered, ("最近", "近期", "最新", "一个月", "latest", "last month")
-    ):
-        return observed_at - timedelta(days=29)
-    return observed_at
-
-
 def _query_needs_fresh_evidence(query: str) -> bool:
-    lowered = query.lower()
-    return bool(
-        _contains_temporal_marker(
-            lowered,
-            (
-                "今天",
-                "明天",
-                "昨天",
-                "本周",
-                "这周",
-                "近一周",
-                "近几周",
-                "过去几周",
-                "一个月",
-                "最近",
-                "近期",
-                "最新",
-                "today",
-                "tomorrow",
-                "yesterday",
-                "this week",
-                "recent",
-                "latest",
-                "last few weeks",
-                "past few weeks",
-                "last month",
-                "current",
-                "now",
-            ),
-        )
-    )
-
-
-def _contains_temporal_marker(lowered_text: str, markers: Sequence[str]) -> bool:
-    for marker in markers:
-        normalized = marker.strip().lower()
-        if not normalized:
-            continue
-        if re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", normalized):
-            pattern = (
-                r"(?<![a-z0-9_])"
-                + r"\s+".join(re.escape(part) for part in normalized.split())
-                + r"(?![a-z0-9_])"
-            )
-            if re.search(pattern, lowered_text):
-                return True
-            continue
-        if normalized in lowered_text:
-            return True
-    return False
+    return requires_temporal_anchor(query)
 
 
 def _parse_date(value: str) -> date | None:

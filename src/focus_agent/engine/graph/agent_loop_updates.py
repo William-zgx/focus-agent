@@ -346,6 +346,16 @@ def finalize_agent_loop_turn(
             response = temporal_anchor_repair.response
             completed_turn_messages = latest_turn_messages([*state_messages, response])
             temporal_anchor_repair_taken = temporal_anchor_repair.action
+            if temporal_anchor_repair.action == "answer_with_verified_temporal_anchor":
+                answer_verification = {
+                    **answer_verification,
+                    "status": "unsupported",
+                    "unsupported_claims": [
+                        *answer_verification.get("unsupported_claims", []),
+                        "The draft contradicted the current date and was replaced by an uncertainty answer.",
+                    ],
+                    "repair_action_taken": temporal_anchor_repair.action,
+                }
     if tool_policy == "live_web_research" and not getattr(response, "tool_calls", None):
         if force_tool_free_answer and not fallback_reason:
             # Reaching the round budget is normal for research: the forced tool-free

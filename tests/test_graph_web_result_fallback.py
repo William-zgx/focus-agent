@@ -276,7 +276,11 @@ def test_synthesis_digest_keeps_every_fetched_page_whole():
                 tool_calls=[{"id": call_id, "name": "web_fetch", "args": {"url": url}}],
             )
         )
-        body = f"{vendor} flagship model pricing latest " * 300
+        body = (
+            f"{vendor} announcement. "
+            + f"{vendor} flagship model pricing latest " * 300
+            + f"Availability: {vendor} is generally available in the API."
+        )
         messages.append(
             ToolMessage(
                 content=_json.dumps({"url": url, "title": f"{vendor} pricing", "content": body}),
@@ -284,9 +288,37 @@ def test_synthesis_digest_keeps_every_fetched_page_whole():
             )
         )
 
-    digest = _tool_result_synthesis_prompt(messages)[1].content
+    from focus_agent.core.types import ContextBudget
+
+    digest = _tool_result_synthesis_prompt(
+        messages, budget=ContextBudget(recent_message_token_limit=4500)
+    )[1].content
 
     # The earliest page must survive even though later pages are long.
     for vendor in vendors:
         assert f"https://{vendor}.example/pricing" in digest
+        assert f"{vendor} announcement." in digest
+        assert f"Availability: {vendor} is generally available in the API." in digest
+    assert "[... middle omitted ...]" in digest
     assert digest.count('"source_type": "fetched_page"') == len(vendors)
+
+
+def test_synthesis_keeps_middle_facts_when_pages_fit_context_budget():
+    import json
+
+    body = "Introduction. " * 250 + "Available now in the API." + "Reference. " * 250
+    messages = [
+        HumanMessage(content="What is available?"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "fetch", "name": "web_fetch", "args": {"url": "https://example.com/news"}}
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="fetch",
+            content=json.dumps({"url": "https://example.com/news", "content": body}),
+        ),
+    ]
+    prompt = graph_tool_result_fallback._tool_result_synthesis_prompt(messages)[1].content
+    assert body.strip() in prompt

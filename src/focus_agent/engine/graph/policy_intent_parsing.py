@@ -7,6 +7,7 @@ from .policy_markers import (
     _CODE_OR_FILE_REFERENCE_RE,
     _CODE_SEARCH_TOOL_INTENT_MARKERS,
     _LIVE_WEB_SEARCH_FIRST_MARKERS,
+    _NO_TOOL_INTENT_MARKERS,
     _contains_any,
     _skill_install_hits,
 )
@@ -15,6 +16,31 @@ _HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECAS
 _SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
 _WEB_SEARCH_QUERY_MAX_CHARS = 400
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
+
+
+def requires_external_evidence(text: str) -> bool:
+    """Explicit evidence requests survive later tool routing and skill overrides."""
+    if _contains_any(text, _NO_TOOL_INTENT_MARKERS):
+        return False
+    if _should_prefer_web_fetch(text):
+        return True
+    normalized = " ".join(text.split())
+    requests = re.finditer(
+        r"(?:给出|提供|引用|核对|核实|查证|附上|查一下|搜索).{0,24}"
+        r"(?:官方来源|官方公告|原始来源|一手来源)"
+        r"|\b(?:cite|provide|include|verify|check)\b.{0,40}\b(?:official|primary|original)\s+"
+        r"(?:sources?|announcements?|references?)\b",
+        normalized,
+        re.IGNORECASE,
+    )
+    return any(
+        not re.search(
+            r"(?:不要|不用|不必|无需|不需要|\bnot|\bdon't|\bwithout)\s*$",
+            normalized[: match.start()],
+            re.IGNORECASE,
+        )
+        for match in requests
+    )
 
 
 def _explicit_read_tool(text: str) -> str | None:

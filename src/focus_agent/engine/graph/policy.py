@@ -31,6 +31,7 @@ from .policy_intent_parsing import (
     _should_prefer_web_fetch,
     _ToolPolicy,
     _workspace_search_query,
+    requires_external_evidence,
 )
 from .policy_intent_parsing import (
     _first_http_url as _first_http_url,
@@ -75,6 +76,7 @@ from .policy_notes import (
     _WORKSPACE_TOOL_NOTE,
     _tool_policy_note,
 )
+from .policy_skill_markers import _explicit_skill_management_request
 from .policy_temporal import (
     _anchor_relative_time_query as _anchor_relative_time_query,
 )
@@ -92,6 +94,7 @@ from .policy_temporal import (
 )
 from .policy_temporal import (
     _temporal_live_web_search_args,
+    explicit_window_days,
 )
 from .policy_tools import (
     _live_web_research_should_start_with_search,
@@ -282,6 +285,8 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     file_browse_hits = _matched_markers(normalized, _FILE_BROWSE_INTENT_MARKERS)
     live_hits = _matched_markers(normalized, _LIVE_WEB_INTENT_MARKERS)
     fresh_external_hits = _matched_markers(normalized, _FRESH_EXTERNAL_INTENT_MARKERS)
+    if explicit_window_days(normalized):
+        fresh_external_hits = (*fresh_external_hits, "explicit_time_window")
     web_lookup_hits = _matched_markers(normalized, _WEB_LOOKUP_ACTION_MARKERS)
     if not web_lookup_hits:
         live_hits, fresh_external_hits = _filter_bare_current_hits(
@@ -382,6 +387,22 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     has_workspace_signal = workspace_score > 0
     has_strong_workspace_signal = bool(strong_workspace_hits)
     has_live_web_signal = live_web_score > 0
+
+    # Generic capability words are weak discovery hints, not a reason to deny
+    # web access for an external research task. Explicit local skill requests win.
+    explicit_skill_request = _explicit_skill_management_request(normalized)
+    if (fresh_external_hits or remote_url_read_request) and not explicit_skill_request:
+        skill_discovery_hits = ()
+    external_evidence_required = requires_external_evidence(normalized)
+    if external_evidence_required and not explicit_skill_request:
+        skill_discovery_hits = ()
+        if not has_strong_workspace_signal and not remote_url_local_mutation_request:
+            return _exposure(
+                "live_web_research",
+                confidence=0.95,
+                reason_codes=("explicit_external_evidence", "policy_live_web_research"),
+                preferred_first_tool="web_fetch" if remote_url_read_request else "web_search",
+            )
 
     reason_codes: list[str] = []
     if creative_hits:

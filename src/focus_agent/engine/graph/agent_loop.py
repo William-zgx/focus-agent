@@ -361,6 +361,7 @@ def make_agent_loop_node(
         )
         execution_contract = build_execution_contract(
             policy=tool_policy,
+            user_query=tool_intent_text,
             temporal_anchor_required=temporal_anchor_required,
             available_tool_names=known_names,
             preferred_first_tool=tool_intent_plan.preferred_first_tool,
@@ -432,7 +433,7 @@ def make_agent_loop_node(
             if tool_policy == "live_web_research":
                 try:
                     response = quarantined_model_for(selected_model, selected_thinking_mode).invoke(
-                        _tool_result_synthesis_prompt(fallback_messages)
+                        _tool_result_synthesis_prompt(fallback_messages, budget=context_budget)
                     )
                 except Exception:  # noqa: BLE001 — keep already retrieved evidence on model failure
                     _logger.warning("Web research synthesis failed", exc_info=True)

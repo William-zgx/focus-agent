@@ -488,6 +488,24 @@ def _published_at(html: str) -> str | None:
     return parser.published_at
 
 
+def test_article_body_is_not_replaced_by_related_article_cards():
+    from focus_agent.capabilities.default_tool_modules.web_helpers import _ReadableHTMLExtractor
+
+    parser = _ReadableHTMLExtractor(base_url="https://example.com/news/launch")
+    parser.feed("""<html><head><title>Safety platform launch</title></head><body>
+        <div class="article"><h1>Safety platform launch</h1>
+        <div class="article-date"><span>September 28, 2026</span></div>
+        <div class="article-body"><p>The platform controls agent network access.</p>
+        <a href="/docs">Read documentation</a></div></div>
+        <aside><article><h3>Unrelated share repurchase</h3></article></aside>
+        </body></html>""")
+    parser.close()
+    assert "controls agent network access" in parser.text
+    assert "[Read documentation](https://example.com/docs)" in parser.text
+    assert "Unrelated share repurchase" not in parser.text
+    assert parser.published_at == "2026-09-28"
+
+
 def test_html_extractor_reads_publication_date_fallbacks():
     json_ld = (
         '<script type="application/ld+json">{"@graph": [{"@type": "WebPage"}, '

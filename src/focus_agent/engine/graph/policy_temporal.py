@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from .policy_intent import requires_temporal_anchor as _requires_temporal_anchor
 from .policy_markers import _contains_any
 
 # Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
@@ -42,6 +41,36 @@ _EN_WINDOW = re.compile(
     r"\s+(day|week|month|year)s?\b",
     re.IGNORECASE,
 )
+_TEMPORAL_ANCHOR_MARKERS = (
+    "今天",
+    "明天",
+    "昨天",
+    "本周",
+    "这周",
+    "近一周",
+    "最近",
+    "近期",
+    "最新",
+    "近几周",
+    "过去几周",
+    "过去一周",
+    "现在",
+    "当前",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "this week",
+    "recent",
+    "recently",
+    "latest",
+    "last few weeks",
+    "past few weeks",
+    "last month",
+    "last 7 days",
+    "past week",
+    "now",
+    "current",
+)
 
 
 def _cn_number(value: str) -> int | None:
@@ -66,6 +95,13 @@ def explicit_window_days(text: str) -> int | None:
         unit = {"day": 1, "week": 7, "month": 30, "year": 365}[match.group(2).lower()]
         return count * unit
     return None
+
+
+def requires_temporal_anchor(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return explicit_window_days(lowered) is not None or _contains_any(
+        lowered, _TEMPORAL_ANCHOR_MARKERS
+    )
 
 
 def covering_time_range(days: int) -> str | None:
@@ -125,7 +161,7 @@ def _temporal_live_web_search_args(
     if not base_query:
         return {}
     args = dict(preferred_args or {})
-    if not current_utc_time or not _requires_temporal_anchor(base_query):
+    if not current_utc_time or not requires_temporal_anchor(base_query):
         return {**args, "query": base_query}
     anchored_query = _anchor_relative_time_query(base_query, current_utc_time)
     return {**args, "query": anchored_query or base_query}
@@ -305,10 +341,46 @@ def _parse_current_utc_time(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def fresh_evidence_min_date(query: str, observed_at: date) -> date:
+    lowered = query.lower()
+    window_days = explicit_window_days(lowered)  # "最近两个月" -> 60 days
+    if window_days:
+        return observed_at - timedelta(days=window_days - 1)
+    if _contains_any(
+        lowered,
+        ("近几周", "最近几周", "过去几周", "last few weeks", "past few weeks"),
+    ):
+        return observed_at - timedelta(days=29)
+    if _contains_any(lowered, ("近一周", "最近一周", "过去一周", "last 7 days", "past week")):
+        return observed_at - timedelta(days=6)
+    if re.search(r"(?<![a-z0-9_])recent(?:ly)?(?![a-z0-9_])", lowered):
+        return observed_at - timedelta(days=6)
+    if _contains_any(lowered, ("本周", "这周", "this week")):
+        return observed_at - timedelta(days=observed_at.weekday())
+    if _contains_any(lowered, ("昨天", "yesterday")):
+        return observed_at - timedelta(days=1)
+    if _contains_any(lowered, ("今天", "today", "现在", "now", "当前", "current")):
+        return observed_at
+    # "2026 年的最新进展" asks about that year, not about today.
+    named_years = [year for year in explicit_years(lowered) if year <= observed_at.year]
+    if named_years:
+        return date(max(named_years), 1, 1)
+    # Vague recency ("最新", "latest") matches the one-month search window.
+    if _contains_any(lowered, ("最近", "近期", "最新", "一个月", "latest", "last month")):
+        return observed_at - timedelta(days=29)
+    return observed_at
+
+
 def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
     lowered = query.lower()
     anchor_date = anchor.date()
     parts: list[str] = []
+    window_days = explicit_window_days(query)
+    if window_days and not explicit_years(query):
+        window_start = fresh_evidence_min_date(query, anchor_date)
+        return [
+            f"绝对时间范围(近{window_days}天/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
+        ]
     if _contains_any(query, ("今天", "today", "现在", "当前", "current", "now")):
         parts.append(f"绝对日期(今天/UTC)：{anchor_date.isoformat()}")
     if _contains_any(query, ("明天", "tomorrow")):
@@ -323,15 +395,9 @@ def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
         query,
         ("近一周", "最近一周", "过去一周", "last 7 days", "past week"),
     ) or re.search(r"(?<![a-z0-9_])recent(?:ly)?(?![a-z0-9_])", lowered):
-        window_start = anchor_date - timedelta(days=6)
+        window_start = fresh_evidence_min_date(query, anchor_date)
         parts.append(
             f"绝对时间范围(近一周/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
-        )
-    window_days = explicit_window_days(query)
-    if not parts and window_days and not explicit_years(query):
-        window_start = anchor_date - timedelta(days=window_days - 1)
-        parts.append(
-            f"绝对时间范围(近{window_days}天/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
         )
     # "2026 年的最新进展" already names its window; a last-month range would drop it.
     if (
@@ -354,7 +420,7 @@ def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
             ),
         )
     ):
-        window_start = anchor_date - timedelta(days=29)
+        window_start = fresh_evidence_min_date(query, anchor_date)
         parts.append(
             f"绝对时间范围(近期/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
         )

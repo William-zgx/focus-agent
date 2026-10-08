@@ -174,14 +174,37 @@ def _skill_discovery_hits(text: str) -> tuple[str, ...]:
         return tuple(dict.fromkeys((*tool_hits, *phrase_hits, *subject_hits, *action_hits)))
     if phrase_hits:
         return tuple(dict.fromkeys((*phrase_hits, *subject_hits, *action_hits)))
+    if subject_hits and _explicit_skill_management_request(text):
+        return tuple(dict.fromkeys((*subject_hits, *action_hits)))
     if subject_hits and action_hits:
         return tuple(dict.fromkeys((*subject_hits, *action_hits)))
     return ()
 
 
+def _explicit_skill_management_request(text: str) -> bool:
+    """Capability mentions alone do not identify this assistant's tool catalog."""
+    if _matched_markers(text, _SKILL_DISCOVERY_TOOL_MARKERS):
+        return True
+    if not _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS):
+        return False
+    return bool(
+        re.search(
+            r"(?:你|本地|内置|本系统|当前系统).{0,12}(?:能力|技能|skills?)"
+            r"|\b(?:your|installed|local)\s+(?:\w+\s+){0,3}(?:capabilit(?:y|ies)|skills?)\b"
+            r"|\b(?:capabilit(?:y|ies)|skills?)\b.{0,35}\b(?:to you|you have)\b",
+            text,
+            re.IGNORECASE,
+        )
+        or _matched_markers(text, _SKILL_EXECUTION_ACTION_MARKERS)
+        or _matched_markers(text, _SKILL_INSTALL_ACTION_MARKERS)
+    )
+
+
 def _skill_install_hits(text: str) -> tuple[str, ...]:
     tool_hits = _matched_markers(text, ("skill_install",))
-    action_hits = _matched_markers(text, _SKILL_INSTALL_ACTION_MARKERS)
+    # Installed-state descriptions are catalog queries, not installation commands.
+    action_text = re.sub(r"(?:已(?:经)?|不要|不用|无需|别)\s*安装", "", text)
+    action_hits = _matched_markers(action_text, _SKILL_INSTALL_ACTION_MARKERS)
     subject_hits = _matched_markers(text, _SKILL_DISCOVERY_SUBJECT_MARKERS)
     if not action_hits and not tool_hits:
         return ()

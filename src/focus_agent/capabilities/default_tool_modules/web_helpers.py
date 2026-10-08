@@ -221,12 +221,14 @@ class _ReadableHTMLExtractor(HTMLParser):
         self._base_url = base_url
         self.title_parts: list[str] = []
         self._content_text_parts: list[str] = []
+        self._article_body_parts: list[str] = []
         self._fallback_text_parts: list[str] = []
         self._link_stack: list[dict[str, Any]] = []
         self._skip_depth = 0
         self._in_title = False
         self._content_depth = 0
-        self._open_tags: list[tuple[str, bool]] = []
+        self._article_body_depth = 0
+        self._open_tags: list[tuple[str, bool, bool]] = []
         self.published_at: str | None = None
         # Fallback dates when no <meta> publication date exists: JSON-LD
         # datePublished (blogs, news) and the first <time datetime> element
@@ -235,6 +237,9 @@ class _ReadableHTMLExtractor(HTMLParser):
         self._ld_published_at: str | None = None
         self._content_time_at: str | None = None
         self._first_time_at: str | None = None
+        self._date_text_parts: list[str] | None = None
+        self._date_root_depth = 0
+        self._visible_published_at: str | None = None
 
     def _append(self, value: str) -> None:
         if not value or self._skip_depth or self._in_title:
@@ -245,6 +250,8 @@ class _ReadableHTMLExtractor(HTMLParser):
         self._append_to(self._fallback_text_parts, value)
         if self._content_depth:
             self._append_to(self._content_text_parts, value)
+        if self._article_body_depth:
+            self._append_to(self._article_body_parts, value)
 
     @staticmethod
     def _append_to(parts: list[str], value: str) -> None:
@@ -264,6 +271,8 @@ class _ReadableHTMLExtractor(HTMLParser):
         self._fallback_text_parts.append(value)
         if self._content_depth:
             self._content_text_parts.append(value)
+        if self._article_body_depth:
+            self._article_body_parts.append(value)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered = tag.lower()
@@ -285,8 +294,25 @@ class _ReadableHTMLExtractor(HTMLParser):
         is_content_root = lowered in {"main", "article"} or "main" in role_values
         if is_content_root:
             self._content_depth += 1
+        # Publishers often wrap the actual article in a div and reserve <article>
+        # for related-story cards. Prefer explicit body markup over those cards.
+        is_article_body = "articlebody" in str(
+            attr_map.get("itemprop") or ""
+        ).lower().split() or bool(
+            {"article-body", "entry-content", "post-content"}
+            & set(str(attr_map.get("class") or "").lower().split())
+        )
+        if is_article_body:
+            self._article_body_depth += 1
         if lowered not in self._VOID_TAGS:
-            self._open_tags.append((lowered, is_content_root))
+            self._open_tags.append((lowered, is_content_root, is_article_body))
+            if self._date_text_parts is None and (
+                str(attr_map.get("itemprop") or "").lower() == "datepublished"
+                or {"article-date", "entry-date", "post-date", "pubdate", "published"}
+                & set(str(attr_map.get("class") or "").lower().split())
+            ):
+                self._date_text_parts = []
+                self._date_root_depth = len(self._open_tags)
         if lowered == "meta" and str(
             attr_map.get("property") or attr_map.get("name") or attr_map.get("itemprop") or ""
         ).lower() in {
@@ -345,10 +371,19 @@ class _ReadableHTMLExtractor(HTMLParser):
                 # Links left open inside a closed ancestor end with it, so their
                 # text is not swallowed by the rest of the page.
                 if lowered != "a":
-                    for _ in range(sum(name == "a" for name, _ in popped)):
+                    for _ in range(sum(name == "a" for name, _, _ in popped)):
                         if self._link_stack:
                             self._emit_link(self._link_stack.pop())
-                self._content_depth -= sum(is_root for _, is_root in popped)
+                self._content_depth -= sum(is_root for _, is_root, _ in popped)
+                self._article_body_depth -= sum(is_body for _, _, is_body in popped)
+                if (
+                    self._date_text_parts is not None
+                    and len(self._open_tags) < self._date_root_depth
+                ):
+                    self._visible_published_at = self._visible_published_at or _visible_date(
+                        " ".join(self._date_text_parts)
+                    )
+                    self._date_text_parts = None
                 break
 
     def _emit_link(self, link: dict[str, Any]) -> None:
@@ -362,6 +397,8 @@ class _ReadableHTMLExtractor(HTMLParser):
             self._append_to(self._fallback_text_parts, value)
             if self._content_depth:
                 self._append_to(self._content_text_parts, value)
+            if self._article_body_depth:
+                self._append_to(self._article_body_parts, value)
 
     def close(self) -> None:
         super().close()
@@ -371,6 +408,7 @@ class _ReadableHTMLExtractor(HTMLParser):
             self.published_at
             or self._ld_published_at
             or self._content_time_at
+            or self._visible_published_at
             or self._first_time_at
         )
 
@@ -383,6 +421,8 @@ class _ReadableHTMLExtractor(HTMLParser):
             return
         if self._in_title:
             self.title_parts.append(text)
+        if self._date_text_parts is not None and not self._skip_depth:
+            self._date_text_parts.append(text)
         self._append(text)
 
     @property
@@ -392,9 +432,20 @@ class _ReadableHTMLExtractor(HTMLParser):
     @property
     def text(self) -> str:
         # An empty main/article root (layout shell) must not hide the real body.
-        return _render_text_parts(self._content_text_parts) or _render_text_parts(
-            self._fallback_text_parts
+        return (
+            _render_text_parts(self._article_body_parts)
+            or _render_text_parts(self._content_text_parts)
+            or _render_text_parts(self._fallback_text_parts)
         )
+
+
+def _visible_date(text: str) -> str | None:
+    for format_string in ("%B %d, %Y", "%b %d, %Y", "%d %B %Y", "%Y-%m-%d", "%Y年%m月%d日"):
+        try:
+            return datetime.strptime(text.strip(), format_string).date().isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 def _json_ld_published_at(raw: str) -> str | None:

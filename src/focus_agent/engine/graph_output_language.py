@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
@@ -140,11 +141,11 @@ def _has_conflicting_temporal_anchor(*, answer: str, observed_at: str) -> bool:
         ),
     ]
     for match in date_matches:
-        rendered = match.group(1).replace("/", "-")
-        if (
-            rendered != expected
-            and rendered.replace("年", "-").replace("月", "-").replace("日", "") != expected
-        ):
+        try:
+            rendered = date(*(int(part) for part in re.findall(r"\d+", match.group(1)))).isoformat()
+        except ValueError:
+            return True
+        if rendered != expected:
             return True
     return False
 

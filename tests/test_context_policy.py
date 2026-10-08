@@ -269,6 +269,18 @@ def test_temporal_anchor_guard_still_rejects_stale_as_of_claim():
     assert repair.action == "answer_with_verified_temporal_anchor"
 
 
+def test_temporal_anchor_guard_accepts_unpadded_chinese_current_date():
+    answer = "以当前时间 **2026年10月8日** 为准，最近几周有多项发布。"
+    repair = enforce_temporal_anchor(
+        response=AIMessage(content=answer),
+        user_text="最近几周有哪些进展？",
+        observed_at="2026-10-08T08:27:24.043614+00:00",
+    )
+    assert repair is None or repair.action != "answer_with_verified_temporal_anchor"
+    if repair is not None:
+        assert answer in repair.response.content
+
+
 def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
     system_text = "\n\n".join(
         [

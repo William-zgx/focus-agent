@@ -11,6 +11,18 @@ from focus_agent.core.runtime_outcome import (
 )
 
 
+def test_temporal_fallback_is_a_degraded_answer_even_after_verified_draft():
+    outcome = build_task_outcome(
+        user_goal="最近几周 Agent 的进展",
+        execution_contract={"policy": "live_web_research", "status": "satisfied"},
+        answer_verification={"status": "verified"},
+        evidence_ledger=[{"url": "https://example.com"}],
+        final_answer="返回材料不足以可靠确认具体结论。",
+        repair_action_taken="answer_with_verified_temporal_anchor",
+    )
+    assert outcome["status"] == "degraded_answer"
+
+
 def test_tool_outcome_classifies_approval_and_validation_as_blocked():
     approval = tool_outcome_from_message(
         ToolMessage(
