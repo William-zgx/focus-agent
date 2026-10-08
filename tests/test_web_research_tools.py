@@ -176,13 +176,25 @@ def test_unsupported_time_range_searches_unfiltered_and_says_so(monkeypatch):
 
     # Models often pass absolute dates; failing here wasted a whole research round.
     payload = json.loads(
-        tools["web_search"].invoke({"query": "news 2026", "time_range": "2026-01-01"})
+        tools["web_search"].invoke({"query": "news 2020", "time_range": "2020-01-01"})
     )
 
     assert "timelimit" not in calls[0][1]
-    assert payload["time_range_ignored"]["requested"] == "2026-01-01"
+    assert payload["time_range_ignored"]["requested"] == "2020-01-01"
     assert "query" in payload["time_range_ignored"]["note"]
     assert payload["results"]
+
+    # A recent date range is narrowed to the smallest covering provider window.
+    from datetime import date, timedelta
+
+    start = (date.today() - timedelta(days=60)).isoformat()
+    mapped = json.loads(
+        tools["web_search"].invoke(
+            {"query": "agent news", "time_range": f"{start}..{date.today().isoformat()}"}
+        )
+    )
+    assert calls[1][1]["timelimit"] == "y"
+    assert mapped["time_range_mapped"]["applied"] == "year"
 
 
 def test_web_fetch_downloads_before_display_truncation_and_returns_scoped_continuation():
@@ -497,3 +509,17 @@ def test_html_extractor_reads_publication_date_fallbacks():
     )
     assert _published_at(meta_wins) == "2026-04-15"
     assert _published_at("<main><p>No dates</p></main>") is None
+
+
+def test_date_range_time_range_maps_to_covering_window(monkeypatch):
+    from datetime import date, timedelta
+
+    from focus_agent.capabilities.default_tool_modules.web_helpers import _date_range_window
+
+    today = date.today()
+    sixty_days_ago = (today - timedelta(days=60)).isoformat()
+    week_ago = (today - timedelta(days=5)).isoformat()
+    assert _date_range_window(f"{sixty_days_ago}..{today.isoformat()}") == "year"
+    assert _date_range_window(f"{week_ago} to {today.isoformat()}") == "week"
+    assert _date_range_window("2020-01-01..2020-02-01") is None
+    assert _date_range_window("quarter") is None

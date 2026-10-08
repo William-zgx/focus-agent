@@ -68,3 +68,27 @@ def test_ledger_remembers_permanent_fetch_failures_but_not_transient_ones():
     assert "403" in entry.error
     assert retrieval_key("web_fetch", {"url": "https://example.com/slow"}) not in ledger
     assert "failed permanently" in retrieval_ledger_note(ledger)
+
+
+def test_ledger_labels_fetched_pages_and_their_continuations_with_dates():
+    page = (
+        '{"url": "https://blog.example/agents-week", "published_at": "2026-04-20T09:00:00Z", '
+        '"artifact_ref": "tool-observation://web_fetch/abc", "content": "Agents week"}'
+    )
+    messages = [
+        HumanMessage(content="最近两个月Agent领域的进展"),
+        _call("fetch", "web_fetch", {"url": "https://blog.example/agents-week"}),
+        ToolMessage(content=page, tool_call_id="fetch"),
+        _call(
+            "read",
+            "artifact_read",
+            {"artifact_id": "tool-observation://web_fetch/abc", "offset": 4000},
+        ),
+        ToolMessage(content='{"content": "more"}', tool_call_id="read"),
+    ]
+
+    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
+
+    assert "web_fetch https://blog.example/agents-week [published 2026-04-20]" in note
+    assert "offset=4000 [page published 2026-04-20]" in note
+    assert "outside the requested time window" in note

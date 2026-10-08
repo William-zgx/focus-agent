@@ -17,11 +17,73 @@ def explicit_years(text: str) -> list[int]:
     return [int(year) for year in _EXPLICIT_YEAR.findall(str(text or ""))]
 
 
+_CN_DIGITS = {
+    "一": 1,
+    "两": 2,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+_EN_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "twelve": 12,
+}  # fmt: skip
+_UNIT_DAYS = {"天": 1, "日": 1, "周": 7, "星期": 7, "月": 30, "年": 365}
+_CN_WINDOW = re.compile(
+    r"(?:最近|近|过去|这)\s*([一两二三四五六七八九十\d]+)\s*(?:个)?\s*(天|日|周|星期|月|年)"
+)
+_EN_WINDOW = re.compile(
+    r"(?:last|past|recent|previous)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)"
+    r"\s+(day|week|month|year)s?\b",
+    re.IGNORECASE,
+)
+
+
+def _cn_number(value: str) -> int | None:
+    if value.isdigit():
+        return int(value)
+    if "十" in value:
+        tens, _, ones = value.partition("十")
+        return _CN_DIGITS.get(tens, 1) * 10 + _CN_DIGITS.get(ones, 0)
+    return _CN_DIGITS.get(value)
+
+
+def explicit_window_days(text: str) -> int | None:
+    """Length of an explicit relative window: "最近两个月" -> 60, "past 3 weeks" -> 21."""
+    match = _CN_WINDOW.search(str(text or ""))
+    if match:
+        count = _cn_number(match.group(1))
+        return count * _UNIT_DAYS[match.group(2)] if count else None
+    match = _EN_WINDOW.search(str(text or ""))
+    if match:
+        raw = match.group(1).lower()
+        count = int(raw) if raw.isdigit() else _EN_NUMBERS[raw]
+        unit = {"day": 1, "week": 7, "month": 30, "year": 365}[match.group(2).lower()]
+        return count * unit
+    return None
+
+
+def covering_time_range(days: int) -> str | None:
+    """Smallest provider window (day/week/month/year) that covers ``days``."""
+    for limit, window in ((1, "day"), (7, "week"), (31, "month"), (366, "year")):
+        if days <= limit:
+            return window
+    return None
+
+
 def search_time_range(query: str) -> str | None:
     """Provider window for relative recency requests; explicit dates stay in the query."""
     lowered = query.lower()
     if explicit_years(lowered):
         return None
+    window_days = explicit_window_days(lowered)
+    if window_days:
+        return covering_time_range(window_days)
     if _contains_any(lowered, ("今天", "today", "过去24小时", "last 24 hours")):
         return "day"
     if _contains_any(
@@ -264,6 +326,12 @@ def _relative_date_parts(query: str, anchor: datetime) -> list[str]:
         window_start = anchor_date - timedelta(days=6)
         parts.append(
             f"绝对时间范围(近一周/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
+        )
+    window_days = explicit_window_days(query)
+    if not parts and window_days and not explicit_years(query):
+        window_start = anchor_date - timedelta(days=window_days - 1)
+        parts.append(
+            f"绝对时间范围(近{window_days}天/UTC)：{window_start.isoformat()} 至 {anchor_date.isoformat()}"
         )
     # "2026 年的最新进展" already names its window; a last-month range would drop it.
     if (

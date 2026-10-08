@@ -96,10 +96,29 @@ def _label(tool_name: str, args: Mapping[str, Any]) -> str:
     return f"{label} offset={args.get('offset') or 0}"
 
 
+def _payload(message: ToolMessage) -> Mapping[str, Any]:
+    try:
+        payload = json.loads(str(message.content or ""))
+    except (TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, Mapping) else {}
+
+
+def _published_at(message: ToolMessage) -> str:
+    return str(_payload(message).get("published_at") or "").strip()[:10]
+
+
+def _artifact_ref(message: ToolMessage) -> str:
+    return str(_payload(message).get("artifact_ref") or "").strip()
+
+
 def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEntry]:
     """Successful retrieval calls since the latest human message, keyed by identity."""
     calls: dict[str, tuple[str, Mapping[str, Any]]] = {}
     ledger: dict[str, RetrievalLedgerEntry] = {}
+    # Publication date per fetched page (and its saved full text), so the note can
+    # show that paging deeper into an out-of-window page is not worth a round.
+    published_by_ref: dict[str, str] = {}
     for message in _messages_since_latest_human(list(messages or [])):
         if isinstance(message, AIMessage):
             for call in getattr(message, "tool_calls", None) or ():
@@ -130,12 +149,24 @@ def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEn
             if tool_name != "web_fetch" or not _PERMANENT_FETCH_FAILURE.search(text):
                 continue
             error = " ".join(text.split())[:160]
+        label = _label(tool_name, args)
+        if tool_name == "web_fetch" and not error:
+            published = _published_at(message)
+            if published:
+                label += f" [published {published}]"
+                for ref in (str(args.get("url") or ""), _artifact_ref(message)):
+                    if ref:
+                        published_by_ref[ref] = published
+        elif tool_name == "artifact_read":
+            published = published_by_ref.get(str(args.get("artifact_id") or ""))
+            if published:
+                label += f" [page published {published}]"
         previous = ledger.get(key)
         if previous is None or (previous.error and not error):
             ledger[key] = RetrievalLedgerEntry(
                 tool_name=tool_name,
                 tool_call_id=call_id,
-                label=_label(tool_name, args),
+                label=label,
                 error=error,
             )
     return ledger
@@ -156,5 +187,6 @@ def retrieval_ledger_note(ledger: Mapping[str, RetrievalLedgerEntry]) -> str:
         "are above):\n"
         + "\n".join(lines)
         + "\nDo not repeat these. Read a source you have not read yet, search a genuinely "
-        "different angle, or answer from the evidence collected."
+        "different angle, or answer from the evidence collected. Do not keep paging through "
+        "a page whose publication date falls outside the requested time window."
     )

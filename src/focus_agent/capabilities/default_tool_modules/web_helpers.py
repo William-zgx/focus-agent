@@ -7,6 +7,7 @@ import json
 import re
 import socket
 from collections.abc import Mapping, Sequence
+from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from typing import Any
 from urllib import parse as stdlib_urllib_parse
@@ -96,6 +97,28 @@ def _normalize_search_time_range(value: Any) -> str | None:
         choices = ", ".join(("day", "week", "month", "year"))
         raise ValueError(f"time_range must be one of: {choices}.")
     return canonical
+
+
+def _date_range_window(value: str) -> str | None:
+    """Smallest provider window covering an explicit date range up to today.
+
+    Providers only filter by day/week/month/year, so "2026-08-08..2026-10-08"
+    becomes "year" (61 days). None when no date parses or the range starts over
+    a year ago.
+    """
+    starts = []
+    for raw in re.findall(r"\d{4}-\d{1,2}-\d{1,2}", value):
+        try:
+            starts.append(date.fromisoformat("-".join(part.zfill(2) for part in raw.split("-"))))
+        except ValueError:
+            continue
+    if not starts:
+        return None
+    days = (datetime.now(UTC).date() - min(starts)).days + 1
+    for limit, window in ((1, "day"), (7, "week"), (31, "month"), (366, "year")):
+        if days <= limit:
+            return window
+    return None
 
 
 def _unsupported_search_time_range(value: Any) -> str | None:

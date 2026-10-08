@@ -8,6 +8,7 @@ import httpx
 
 from .web_helpers import (
     _TAVILY_MAX_ATTEMPTS,
+    _date_range_window,
     _normalize_search_domains,
     _normalize_search_time_range,
     _provider_error_record,
@@ -39,9 +40,10 @@ def _validate_search_filters(
 ) -> tuple[str | None, list[str], list[str]]:
     # Explicit dates ("2026-01-01") cannot be enforced as a provider window; searching
     # unfiltered with a visible note costs less than failing the whole round.
+    unsupported_time_range = _unsupported_search_time_range(time_range)
     normalized_time_range = (
-        None
-        if _unsupported_search_time_range(time_range)
+        _date_range_window(unsupported_time_range)
+        if unsupported_time_range
         else _normalize_search_time_range(time_range)
     )
     normalized_include_domains = _normalize_search_domains(
@@ -102,7 +104,17 @@ def _augment_search_payload(
         "errors": list(errors),
     }
     ignored_time_range = _unsupported_search_time_range(requested_time_range)
-    if ignored_time_range is not None:
+    applied_window = _date_range_window(ignored_time_range) if ignored_time_range else None
+    if ignored_time_range is not None and applied_window:
+        augmented["time_range_mapped"] = {
+            "requested": ignored_time_range,
+            "applied": applied_window,
+            "note": (
+                "Exact date ranges are not supported; applied the smallest covering window. "
+                "Check each result's publication date against the requested range."
+            ),
+        }
+    elif ignored_time_range is not None:
         augmented["time_range_ignored"] = {
             "requested": ignored_time_range,
             "note": (

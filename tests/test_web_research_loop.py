@@ -215,3 +215,27 @@ def test_explicit_year_is_not_rewritten_to_last_month():
     )
     assert "2026-09-08" not in args["query"]
     assert "2026" in args["query"]
+
+
+def test_explicit_relative_windows_drive_search_and_freshness():
+    from datetime import date
+
+    from focus_agent.engine.graph.policy_temporal import explicit_window_days
+    from focus_agent.engine.graph_execution_contract import _fresh_evidence_min_date
+
+    assert explicit_window_days("最近两个月Agent领域的进展") == 60
+    assert explicit_window_days("过去3周的新闻") == 21
+    assert explicit_window_days("last 2 months of agent research") == 60
+    assert explicit_window_days("最新进展") is None
+    # A one-month filter would drop the first half of a two-month window.
+    assert search_time_range("最近两个月Agent领域的进展") == "year"
+    assert search_time_range("过去3周的新闻") == "month"
+    args = _temporal_live_web_search_args(
+        {"query": "最近两个月Agent领域的进展"},
+        fallback_query="",
+        current_utc_time="2026-10-08T03:00:00Z",
+    )
+    assert "2026-08-10" in args["query"]
+    assert _fresh_evidence_min_date("最近两个月agent领域的进展", date(2026, 10, 8)) == date(
+        2026, 8, 10
+    )

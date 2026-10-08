@@ -8,7 +8,7 @@ from typing import Any, Literal
 from langchain.messages import ToolMessage
 
 from . import graph_execution_facts as _execution_facts
-from .graph.policy_temporal import explicit_years
+from .graph.policy_temporal import explicit_window_days, explicit_years
 from .graph_evidence import (
     EVIDENCE_LAYER_BODY,
     EVIDENCE_LAYER_SOURCE,
@@ -421,6 +421,9 @@ def _fresh_evidence_min_date(query: str, observed_at: date) -> date:
         return observed_at - timedelta(days=1)
     if _contains_temporal_marker(lowered, ("今天", "today", "现在", "now", "当前", "current")):
         return observed_at
+    window_days = explicit_window_days(lowered)  # "最近两个月" -> 60 days
+    if window_days:
+        return observed_at - timedelta(days=window_days - 1)
     # "2026 年的最新进展" asks about that year, not about today.
     named_years = [year for year in explicit_years(lowered) if year <= observed_at.year]
     if named_years:
