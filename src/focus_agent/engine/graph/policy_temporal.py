@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from .lexicon import contains_cjk
+from .lexicon import FX_TERMS, MARKET_INDEX_TERMS, WEATHER_TERMS, contains_cjk
 from .policy_markers import _contains_any
 
 # Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
@@ -231,11 +231,11 @@ def _chinese_semantic_search_terms(query: str, *, location_scope: str) -> list[s
         terms.append("新闻")
         domain_term_count += 1
 
-    if _contains_any(query, ("天气", "气温", "降雨", "下雨", "预报")):
+    if _contains_any(query, WEATHER_TERMS):
         terms.append("天气")
         domain_term_count += 1
     if _contains_any(query, ("股价", "股票", "行情", "走势", "波动", "大盘", "沪指", "A股")):
-        is_index_query = _contains_any(query, ("大盘", "沪指", "上证", "深证", "创业板"))
+        is_index_query = _contains_any(query, MARKET_INDEX_TERMS)
         if is_index_query:
             terms.extend(["A股", "大盘", "表现"])
             domain_term_count += 3
@@ -246,7 +246,7 @@ def _chinese_semantic_search_terms(query: str, *, location_scope: str) -> list[s
                 terms.append("A股")
             terms.extend(["股价", "行情"])
             domain_term_count += 3
-    if _contains_any(query, ("汇率", "美元", "人民币", "日元", "欧元")):
+    if _contains_any(query, FX_TERMS):
         terms.append("汇率")
         domain_term_count += 1
 

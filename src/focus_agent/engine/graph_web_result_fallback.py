@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ..core.types import ContextBudget
-from .graph.lexicon import contains_cjk
+from .graph.lexicon import WEATHER_TERMS, contains_cjk
 from .graph_evidence import relevant_web_tool_call_ids
 from .graph_tool_history_repair import (
     _latest_human_message_text,
@@ -248,7 +248,7 @@ def _looks_like_weather_query(user_query: str, payloads: list[dict[str, Any]]) -
 
 
 def _contains_weather_marker(text: str) -> bool:
-    return any(marker in text for marker in ("天气", "气温", "预报", "降雨", "下雨"))
+    return any(marker in text for marker in WEATHER_TERMS)
 
 
 def _chinese_weather_summary_from_payloads(payloads: list[dict[str, Any]]) -> str:
