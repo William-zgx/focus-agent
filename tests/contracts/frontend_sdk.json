@@ -1231,6 +1231,14 @@
       "FocusAgentUserListResponse",
       "FocusAgentUserSessionListRequest"
     ],
+    "apps/web/src/features/agent-team/types.ts": [
+      "FocusAgentAgentTeamMergeReview",
+      "FocusAgentAgentTeamMergeReviewPreviewResponse",
+      "FocusAgentAgentTeamMergeReviewResponse",
+      "FocusAgentAgentTeamMergeReviewStatus",
+      "FocusAgentAgentTeamMergeReviewTask",
+      "FocusAgentAgentTeamMergeReviewTaskSummary"
+    ],
     "apps/web/src/features/branch-decisions/branch-decision-summary-panel.tsx": [
       "FocusAgentBranchDecisionEvent",
       "FocusAgentBranchDecisionSummary"

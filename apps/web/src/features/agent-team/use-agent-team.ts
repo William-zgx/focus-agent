@@ -603,7 +603,7 @@ export function useCreateAgentTeamMergeReview(sessionId: string | null) {
 	return useMutation<
 		AgentTeamMergeReviewResponse,
 		Error,
-		{ selected_task_ids?: string[]; rejected_task_ids?: string[] }
+		{ selected_task_ids?: string[]; excluded_task_ids?: string[] }
 	>({
 		mutationFn: (request) => {
 			if (!sessionId) throw new Error("Missing Agent Team session id.");
@@ -626,7 +626,7 @@ export function useUpdateAgentTeamMergeReview(sessionId: string | null) {
 		{
 			reviewId: string;
 			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
+			excluded_task_ids?: string[];
 		}
 	>({
 		mutationFn: ({ reviewId, ...request }) => {
@@ -647,21 +647,13 @@ export function usePreviewAgentTeamMergeReview(sessionId: string | null) {
 	return useMutation<
 		AgentTeamMergeReviewPreviewResponse,
 		Error,
-		{
-			reviewId: string;
-			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
-		}
+		{ reviewId: string }
 	>({
-		mutationFn: ({ reviewId, ...request }) => {
+		mutationFn: ({ reviewId }) => {
 			if (!sessionId) throw new Error("Missing Agent Team session id.");
 			if (!agentTeam.previewAgentTeamMergeReview)
 				throw missingSdkMethod("previewAgentTeamMergeReview");
-			return agentTeam.previewAgentTeamMergeReview(
-				sessionId,
-				reviewId,
-				request,
-			);
+			return agentTeam.previewAgentTeamMergeReview(sessionId, reviewId);
 		},
 		onSuccess: () => invalidateMergeReviewCache(queryClient, sessionId),
 	});
@@ -672,29 +664,23 @@ export function useApplyAgentTeamMergeReview(sessionId: string | null) {
 	const queryClient = useQueryClient();
 	const agentTeam = agentTeamClient(client);
 
-	return useMutation<
-		AgentTeamMergeReviewResponse,
-		Error,
+	return useMutation<AgentTeamMergeReviewResponse, Error, { reviewId: string }>(
 		{
-			reviewId: string;
-			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
-		}
-	>({
-		mutationFn: ({ reviewId, ...request }) => {
-			if (!sessionId) throw new Error("Missing Agent Team session id.");
-			if (!agentTeam.applyAgentTeamMergeReview)
-				throw missingSdkMethod("applyAgentTeamMergeReview");
-			return agentTeam.applyAgentTeamMergeReview(sessionId, reviewId, request);
+			mutationFn: ({ reviewId }) => {
+				if (!sessionId) throw new Error("Missing Agent Team session id.");
+				if (!agentTeam.applyAgentTeamMergeReview)
+					throw missingSdkMethod("applyAgentTeamMergeReview");
+				return agentTeam.applyAgentTeamMergeReview(sessionId, reviewId);
+			},
+			onSuccess: () => {
+				invalidateMergeReviewCache(queryClient, sessionId);
+				if (sessionId)
+					void queryClient.invalidateQueries({
+						queryKey: queryKeys.agentTeamSession(sessionId),
+					});
+			},
 		},
-		onSuccess: () => {
-			invalidateMergeReviewCache(queryClient, sessionId);
-			if (sessionId)
-				void queryClient.invalidateQueries({
-					queryKey: queryKeys.agentTeamSession(sessionId),
-				});
-		},
-	});
+	);
 }
 
 export function useRejectAgentTeamMergeReview(sessionId: string | null) {
@@ -709,7 +695,7 @@ export function useRejectAgentTeamMergeReview(sessionId: string | null) {
 				if (!agentTeam.rejectAgentTeamMergeReview)
 					throw missingSdkMethod("rejectAgentTeamMergeReview");
 				return agentTeam.rejectAgentTeamMergeReview(sessionId, reviewId, {
-					reason: "Rejected from Agent Team adoption workbench.",
+					rationale: "Rejected from Agent Team adoption workbench.",
 				});
 			},
 			onSuccess: () => invalidateMergeReviewCache(queryClient, sessionId),

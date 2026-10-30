@@ -1,3 +1,12 @@
+import type {
+	FocusAgentAgentTeamMergeReview,
+	FocusAgentAgentTeamMergeReviewPreviewResponse,
+	FocusAgentAgentTeamMergeReviewResponse,
+	FocusAgentAgentTeamMergeReviewStatus,
+	FocusAgentAgentTeamMergeReviewTask,
+	FocusAgentAgentTeamMergeReviewTaskSummary,
+} from "@focus-agent/web-sdk";
+
 export type AgentTeamSessionStatus =
 	| "planning"
 	| "running"
@@ -42,15 +51,15 @@ export type AgentTeamMergeDecisionAction =
 	| "discard"
 	| string;
 
-export type AgentTeamMergeReviewStatus =
-	| "draft"
-	| "ready"
-	| "approved"
-	| "applied"
-	| "rejected"
-	| "conflict"
-	| "error"
-	| string;
+export type AgentTeamMergeReviewStatus = FocusAgentAgentTeamMergeReviewStatus;
+export type AgentTeamMergeReviewTask = FocusAgentAgentTeamMergeReviewTask;
+export type AgentTeamMergeReviewTaskSummary =
+	FocusAgentAgentTeamMergeReviewTaskSummary;
+export type AgentTeamMergeReview = FocusAgentAgentTeamMergeReview;
+export type AgentTeamMergeReviewResponse =
+	FocusAgentAgentTeamMergeReviewResponse;
+export type AgentTeamMergeReviewPreviewResponse =
+	FocusAgentAgentTeamMergeReviewPreviewResponse;
 
 export interface AgentTeamMergeDecisionRequest {
 	apply?: boolean;
@@ -269,61 +278,6 @@ export interface AgentTeamMergeBundle {
 		| "split_followup"
 		| "discard"
 		| string;
-}
-
-export interface AgentTeamMergeReviewTask {
-	task_id: string;
-	title?: string | null;
-	role?: string | null;
-	selected: boolean;
-	adoptable?: boolean;
-	changed_files?: string[];
-	diff_summary?: string | null;
-	test_evidence?: string[];
-	risk_items?: string[];
-	workspace_status?: string | null;
-	workspace_branch?: string | null;
-	workspace_path?: string | null;
-	output_status?: AgentTeamFinalAnswerStatus | null;
-	placeholder?: boolean;
-	fake?: boolean;
-}
-
-export interface AgentTeamMergeReview {
-	review_id: string;
-	session_id: string;
-	status: AgentTeamMergeReviewStatus;
-	selected_task_ids?: string[];
-	rejected_task_ids?: string[];
-	task_reviews?: AgentTeamMergeReviewTask[];
-	changed_files?: string[];
-	diffstat?: string | null;
-	diff_summary?: string | null;
-	test_evidence?: string[];
-	risk_items?: string[];
-	conflict_files?: string[];
-	apply_target?: string | null;
-	last_error?: string | null;
-	created_at?: string;
-	updated_at?: string;
-	approved_at?: string | null;
-	applied_at?: string | null;
-	rejected_at?: string | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface AgentTeamMergeReviewResponse {
-	review: AgentTeamMergeReview;
-	events?: Array<Record<string, unknown>>;
-}
-
-export interface AgentTeamMergeReviewPreviewResponse {
-	review: AgentTeamMergeReview;
-	applicable: boolean;
-	diff?: string | null;
-	diffstat?: string | null;
-	conflict_files?: string[];
-	warnings?: string[];
 }
 
 export interface AgentTeamPlanningMetadata {
@@ -564,7 +518,7 @@ export interface AgentTeamClientContract {
 		sessionId: string,
 		request?: {
 			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
+			excluded_task_ids?: string[];
 			metadata?: Record<string, unknown> | null;
 		},
 	) => Promise<AgentTeamMergeReviewResponse>;
@@ -574,33 +528,23 @@ export interface AgentTeamClientContract {
 		request: {
 			status?: AgentTeamMergeReviewStatus | null;
 			selected_task_ids?: string[] | null;
-			rejected_task_ids?: string[] | null;
+			excluded_task_ids?: string[] | null;
 			metadata?: Record<string, unknown> | null;
 		},
 	) => Promise<AgentTeamMergeReviewResponse>;
 	previewAgentTeamMergeReview?: (
 		sessionId: string,
 		reviewId: string,
-		request?: {
-			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
-			max_diff_bytes?: number | null;
-		},
 	) => Promise<AgentTeamMergeReviewPreviewResponse>;
 	applyAgentTeamMergeReview?: (
 		sessionId: string,
 		reviewId: string,
-		request?: {
-			selected_task_ids?: string[];
-			rejected_task_ids?: string[];
-			apply_target?: string | null;
-			rationale?: string | null;
-		},
+		request?: { apply_target_path?: string | null },
 	) => Promise<AgentTeamMergeReviewResponse>;
 	rejectAgentTeamMergeReview?: (
 		sessionId: string,
 		reviewId: string,
-		request?: { reason?: string | null },
+		request?: { rationale?: string | null },
 	) => Promise<AgentTeamMergeReviewResponse>;
 	captureAgentTeamMergeReview?: (
 		sessionId: string,
