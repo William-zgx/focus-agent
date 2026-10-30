@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from focus_agent.api.routers.harness_runs import _produce_run_stream
+from focus_agent.api.routers.harness_runs.replay_streaming import _produce_run_stream
 from focus_agent.branch_decision import BranchDecisionService
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.branching import (

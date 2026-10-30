@@ -7,12 +7,8 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
-from .replay import (
-    HarnessRunCancelRequest,
-    HarnessRunResponse,
-    _harness_run_response,
-    _load_authorized_run_payload,
-)
+from .replay_helpers import _harness_run_response, _load_authorized_run_payload
+from .replay_models import HarnessRunCancelRequest, HarnessRunResponse
 
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 

@@ -10,13 +10,9 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
-from .replay import (
-    HarnessRunResponse,
-    _journal_method,
-    _json_safe,
-    _load_authorized_run_payload,
-    _run_event_streaming_response,
-)
+from ...route_utils.harness_run_helpers import _journal_method, _json_safe
+from .replay_helpers import _load_authorized_run_payload, _run_event_streaming_response
+from .replay_models import HarnessRunResponse
 
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
