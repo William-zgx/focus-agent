@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 
+from ..config_parts.env import parse_bool
 from .models import SkillDefinition
 
 _SEMANTIC_CANDIDATE_LIMIT = 3
@@ -67,10 +68,7 @@ _QUERY_ALIAS_MARKERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 
 
 def _semantic_enabled(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    return text in {"1", "true", "yes", "on"}
+    return parse_bool(value) is True
 
 
 def _tokens(value: str) -> tuple[str, ...]:

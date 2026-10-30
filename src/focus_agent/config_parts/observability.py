@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from .common import _coerce_bool, _split_csv
+from .common import _split_csv
+from .env import env_int, parse_bool
 
 
 def load_observability_config(
@@ -37,9 +38,9 @@ def load_observability_config(
     return {
         "langsmith_project": env.get("LANGSMITH_PROJECT", defaults.langsmith_project),
         "tracing_enabled": (
-            _coerce_bool(env.get("FOCUS_AGENT_TRACING_ENABLED"))
+            parse_bool(env.get("FOCUS_AGENT_TRACING_ENABLED"))
             if env.get("FOCUS_AGENT_TRACING_ENABLED") is not None
-            else _coerce_bool(env.get("OTEL_TRACING_ENABLED")) or defaults.tracing_enabled
+            else parse_bool(env.get("OTEL_TRACING_ENABLED")) or defaults.tracing_enabled
         ),
         "tracing_service_name": (
             env.get("OTEL_SERVICE_NAME")
@@ -67,16 +68,13 @@ def load_observability_config(
             or env.get("OTEL_EXPORTER_OTLP_PROTOCOL")
             or defaults.otel_exporter_otlp_protocol
         ),
-        "otel_exporter_otlp_timeout_ms": int(
-            env.get(
-                "OTEL_EXPORTER_OTLP_METRICS_TIMEOUT",
-                env.get(
-                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
-                    env.get(
-                        "OTEL_EXPORTER_OTLP_TIMEOUT",
-                        str(defaults.otel_exporter_otlp_timeout_ms),
-                    ),
-                ),
-            )
+        "otel_exporter_otlp_timeout_ms": env_int(
+            env,
+            "OTEL_EXPORTER_OTLP_METRICS_TIMEOUT",
+            env_int(
+                env,
+                "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                env_int(env, "OTEL_EXPORTER_OTLP_TIMEOUT", defaults.otel_exporter_otlp_timeout_ms),
+            ),
         ),
     }

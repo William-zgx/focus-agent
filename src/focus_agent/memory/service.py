@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from ..config_parts.env import env_bool
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
 from ..repositories.memory_repository import MemoryRepository
@@ -433,8 +434,7 @@ def _record_from_request(request: MemoryWriteRequest) -> MemoryRecord:
 
 
 def _memory_embedding_async_enabled() -> bool:
-    value = os.environ.get("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "true")
-    return value.strip().lower() not in {"0", "false", "no", "off"}
+    return env_bool(os.environ, "FOCUS_AGENT_MEMORY_EMBED_ASYNC", default=True)
 
 
 def _sanitize_request(request: MemoryWriteRequest) -> MemoryWriteRequest:

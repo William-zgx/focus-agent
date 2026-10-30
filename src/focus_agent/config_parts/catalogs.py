@@ -44,7 +44,8 @@ from .catalog_config_types import (
     WorkspaceTreeToolConfig,
     WriteTextArtifactToolConfig,
 )
-from .common import _coerce_bool, _normalize_optional_string, _split_csv
+from .common import _normalize_optional_string, _split_csv
+from .env import parse_bool
 
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
 DEFAULT_TOOL_CATALOG_DOC = ".focus_agent/tools.toml"
@@ -171,7 +172,7 @@ def _validate_provider_aliases(
 
 
 def _tool_enabled(raw: object, default: bool = True) -> bool:
-    coerced = _coerce_bool(raw)
+    coerced = parse_bool(raw)
     return default if coerced is None else coerced
 
 
@@ -543,8 +544,8 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
                 id=model_id,
                 label=_normalize_optional_string(item.get("label")),
                 protocol=protocol,
-                supports_thinking=_coerce_bool(item.get("supports_thinking")),
-                default_thinking_enabled=_coerce_bool(item.get("default_thinking_enabled")),
+                supports_thinking=parse_bool(item.get("supports_thinking")),
+                default_thinking_enabled=parse_bool(item.get("default_thinking_enabled")),
                 request_kwargs=_copy_toml_mapping(item.get("request_kwargs")),
                 thinking_enabled_request_kwargs=_copy_toml_mapping(
                     item.get("thinking_enabled_request_kwargs")
@@ -556,7 +557,7 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
                     item.get("thinking_disabled_model_name")
                 ),
                 reasoning_effort=_normalize_optional_string(item.get("reasoning_effort")),
-                no_temperature=_coerce_bool(item.get("no_temperature")),
+                no_temperature=parse_bool(item.get("no_temperature")),
                 thinking_enable_extra_body_type=_normalize_optional_string(
                     item.get("thinking_enable_extra_body_type")
                 ),

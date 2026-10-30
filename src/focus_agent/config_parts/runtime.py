@@ -4,7 +4,8 @@ from collections.abc import MutableMapping
 from typing import Any
 
 from .catalogs import ModelCatalogConfig, ToolCatalogConfig
-from .common import _env_bool, _split_csv
+from .common import _split_csv
+from .env import env_bool, env_float, env_int
 
 
 def load_runtime_config(
@@ -22,15 +23,10 @@ def load_runtime_config(
         "tool_catalog": tool_catalog,
         "web_search": tool_catalog.web_search,
         "resolved_env": dict(env),
-        "temperature": float(env.get("TEMPERATURE", str(defaults.temperature))),
+        "temperature": env_float(env, "TEMPERATURE", defaults.temperature),
         "model_request_timeout_seconds": max(
             1.0,
-            float(
-                env.get(
-                    "MODEL_REQUEST_TIMEOUT_SECONDS",
-                    str(defaults.model_request_timeout_seconds),
-                )
-            ),
+            env_float(env, "MODEL_REQUEST_TIMEOUT_SECONDS", defaults.model_request_timeout_seconds),
         ),
         "database_uri": env.get("DATABASE_URI") or None,
         "langgraph_api_url": env.get("LANGGRAPH_API_URL") or None,
@@ -38,28 +34,25 @@ def load_runtime_config(
         "artifact_dir": env.get("ARTIFACT_DIR", defaults.artifact_dir),
         "local_checkpoint_path": env.get("LOCAL_CHECKPOINT_PATH") or None,
         "local_store_path": env.get("LOCAL_STORE_PATH") or None,
-        "branch_max_depth": int(env.get("BRANCH_MAX_DEPTH", str(defaults.branch_max_depth))),
-        "skills_enabled": _env_bool(
+        "branch_max_depth": env_int(env, "BRANCH_MAX_DEPTH", defaults.branch_max_depth),
+        "skills_enabled": env_bool(
             env,
             "FOCUS_AGENT_SKILLS_ENABLED",
-            default=_env_bool(env, "SKILLS_ENABLED", default=defaults.skills_enabled),
+            default=env_bool(env, "SKILLS_ENABLED", default=defaults.skills_enabled),
         ),
-        "tool_max_parallel_workers": int(
-            env.get("TOOL_MAX_PARALLEL_WORKERS", str(defaults.tool_max_parallel_workers))
+        "tool_max_parallel_workers": env_int(
+            env, "TOOL_MAX_PARALLEL_WORKERS", defaults.tool_max_parallel_workers
         ),
-        "tool_pool_isolated": _env_bool(
+        "tool_pool_isolated": env_bool(
             env,
             "FOCUS_AGENT_TOOL_POOL_ISOLATED",
             default=defaults.tool_pool_isolated,
         ),
-        "background_worker_max_concurrency": int(
-            env.get(
-                "BACKGROUND_WORKER_MAX_CONCURRENCY",
-                str(defaults.background_worker_max_concurrency),
-            )
+        "background_worker_max_concurrency": env_int(
+            env, "BACKGROUND_WORKER_MAX_CONCURRENCY", defaults.background_worker_max_concurrency
         ),
-        "background_queue_max_size": int(
-            env.get("BACKGROUND_QUEUE_MAX_SIZE", str(defaults.background_queue_max_size))
+        "background_queue_max_size": env_int(
+            env, "BACKGROUND_QUEUE_MAX_SIZE", defaults.background_queue_max_size
         ),
         "background_job_backend": env.get(
             "BACKGROUND_JOB_BACKEND", defaults.background_job_backend
@@ -68,85 +61,71 @@ def load_runtime_config(
             "BACKGROUND_JOB_EXECUTION",
             defaults.background_job_execution,
         ),
-        "background_job_claim_ttl_seconds": float(
-            env.get(
-                "BACKGROUND_JOB_CLAIM_TTL_SECONDS",
-                str(defaults.background_job_claim_ttl_seconds),
-            )
+        "background_job_claim_ttl_seconds": env_float(
+            env, "BACKGROUND_JOB_CLAIM_TTL_SECONDS", defaults.background_job_claim_ttl_seconds
         ),
-        "background_job_retry_base_delay_seconds": float(
-            env.get(
-                "BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
-                str(defaults.background_job_retry_base_delay_seconds),
-            )
+        "background_job_retry_base_delay_seconds": env_float(
+            env,
+            "BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
+            defaults.background_job_retry_base_delay_seconds,
         ),
-        "background_job_retry_max_delay_seconds": float(
-            env.get(
-                "BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
-                str(defaults.background_job_retry_max_delay_seconds),
-            )
+        "background_job_retry_max_delay_seconds": env_float(
+            env,
+            "BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
+            defaults.background_job_retry_max_delay_seconds,
         ),
-        "background_job_old_pending_seconds": float(
-            env.get(
-                "BACKGROUND_JOB_OLD_PENDING_SECONDS",
-                str(defaults.background_job_old_pending_seconds),
-            )
+        "background_job_old_pending_seconds": env_float(
+            env, "BACKGROUND_JOB_OLD_PENDING_SECONDS", defaults.background_job_old_pending_seconds
         ),
-        "runtime_thread_lock_ttl_seconds": float(
-            env.get(
-                "RUNTIME_THREAD_LOCK_TTL_SECONDS",
-                str(defaults.runtime_thread_lock_ttl_seconds),
-            )
+        "runtime_thread_lock_ttl_seconds": env_float(
+            env, "RUNTIME_THREAD_LOCK_TTL_SECONDS", defaults.runtime_thread_lock_ttl_seconds
         ),
-        "runtime_thread_lock_heartbeat_seconds": float(
-            env.get(
-                "RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS",
-                str(defaults.runtime_thread_lock_heartbeat_seconds),
-            )
+        "runtime_thread_lock_heartbeat_seconds": env_float(
+            env,
+            "RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS",
+            defaults.runtime_thread_lock_heartbeat_seconds,
         ),
-        "db_pool_enabled": _env_bool(
+        "db_pool_enabled": env_bool(
             env,
             "FOCUS_AGENT_DB_POOL_ENABLED",
-            default=_env_bool(
+            default=env_bool(
                 env,
                 "POSTGRES_POOL_ENABLED",
                 default=defaults.postgres_pool_enabled,
             ),
         ),
-        "db_pool_max": int(
-            env.get(
-                "FOCUS_AGENT_DB_POOL_MAX",
-                env.get(
-                    "DB_POOL_MAX",
-                    env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.db_pool_max)),
-                ),
-            )
+        "db_pool_max": env_int(
+            env,
+            "FOCUS_AGENT_DB_POOL_MAX",
+            env_int(
+                env,
+                "DB_POOL_MAX",
+                env_int(env, "POSTGRES_POOL_MAX_SIZE", defaults.db_pool_max),
+            ),
         ),
-        "postgres_pool_enabled": _env_bool(
+        "postgres_pool_enabled": env_bool(
             env,
             "FOCUS_AGENT_DB_POOL_ENABLED",
-            default=_env_bool(
+            default=env_bool(
                 env,
                 "POSTGRES_POOL_ENABLED",
                 default=defaults.postgres_pool_enabled,
             ),
         ),
-        "postgres_pool_min_size": int(
-            env.get("POSTGRES_POOL_MIN_SIZE", str(defaults.postgres_pool_min_size))
+        "postgres_pool_min_size": env_int(
+            env, "POSTGRES_POOL_MIN_SIZE", defaults.postgres_pool_min_size
         ),
-        "postgres_pool_max_size": int(
-            env.get(
-                "FOCUS_AGENT_DB_POOL_MAX",
-                env.get(
-                    "DB_POOL_MAX",
-                    env.get("POSTGRES_POOL_MAX_SIZE", str(defaults.postgres_pool_max_size)),
-                ),
-            )
+        "postgres_pool_max_size": env_int(
+            env,
+            "FOCUS_AGENT_DB_POOL_MAX",
+            env_int(
+                env,
+                "DB_POOL_MAX",
+                env_int(env, "POSTGRES_POOL_MAX_SIZE", defaults.postgres_pool_max_size),
+            ),
         ),
-        "postgres_slow_query_threshold_ms": float(
-            env.get(
-                "POSTGRES_SLOW_QUERY_THRESHOLD_MS", str(defaults.postgres_slow_query_threshold_ms)
-            )
+        "postgres_slow_query_threshold_ms": env_float(
+            env, "POSTGRES_SLOW_QUERY_THRESHOLD_MS", defaults.postgres_slow_query_threshold_ms
         ),
         "skill_directories": (
             _split_csv(env.get("FOCUS_AGENT_SKILLS_DIRS"))
@@ -161,40 +140,36 @@ def load_runtime_config(
             )
             else defaults.skill_disabled_ids
         ),
-        "skill_semantic_match_enabled": _env_bool(
+        "skill_semantic_match_enabled": env_bool(
             env,
             "SKILL_SEMANTIC_MATCH_ENABLED",
             default=defaults.skill_semantic_match_enabled,
         ),
-        "skill_semantic_match_threshold": float(
-            env.get(
-                "SKILL_SEMANTIC_MATCH_THRESHOLD",
-                str(defaults.skill_semantic_match_threshold),
-            )
+        "skill_semantic_match_threshold": env_float(
+            env, "SKILL_SEMANTIC_MATCH_THRESHOLD", defaults.skill_semantic_match_threshold
         ),
-        "skill_selection_event_log_enabled": _env_bool(
+        "skill_selection_event_log_enabled": env_bool(
             env,
             "SKILL_SELECTION_EVENT_LOG_ENABLED",
             default=defaults.skill_selection_event_log_enabled,
         ),
         "workspace_root": env.get("WORKSPACE_ROOT", defaults.workspace_root),
-        "agent_team_merge_apply_enabled": _env_bool(
+        "agent_team_merge_apply_enabled": env_bool(
             env,
             "AGENT_TEAM_MERGE_APPLY_ENABLED",
             default=defaults.agent_team_merge_apply_enabled,
         ),
-        "agent_team_merge_review_max_diff_bytes": int(
-            env.get(
-                "AGENT_TEAM_MERGE_REVIEW_MAX_DIFF_BYTES",
-                str(defaults.agent_team_merge_review_max_diff_bytes),
-            )
+        "agent_team_merge_review_max_diff_bytes": env_int(
+            env,
+            "AGENT_TEAM_MERGE_REVIEW_MAX_DIFF_BYTES",
+            defaults.agent_team_merge_review_max_diff_bytes,
         ),
-        "feedback_capture_enabled": _env_bool(
+        "feedback_capture_enabled": env_bool(
             env,
             "FEEDBACK_CAPTURE_ENABLED",
             default=defaults.feedback_capture_enabled,
         ),
-        "context_memory_evidence_enabled": _env_bool(
+        "context_memory_evidence_enabled": env_bool(
             env,
             "CONTEXT_MEMORY_EVIDENCE_ENABLED",
             default=defaults.context_memory_evidence_enabled,

@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from focus_agent.config import Settings
+from focus_agent.config_parts.env import parse_bool
 from focus_agent.delegation.delegation_models import AgentTask
 from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
@@ -216,9 +217,7 @@ def _non_negative_int(value: Any, *, default: int) -> int:
 
 
 def _bool_value(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+    return parse_bool(value) is True
 
 
 def _optional_str(value: Any) -> str | None:

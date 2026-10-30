@@ -71,23 +71,6 @@ def _normalize_agent_delegation_execution_mode(value: object) -> str:
     return normalize_delegation_execution_mode(str(value or "observe"))
 
 
-def _coerce_bool(value: object) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-    return None
-
-
-def _env_bool(env: MutableMapping[str, str], name: str, *, default: bool) -> bool:
-    return env.get(name, "true" if default else "false").lower() in {"1", "true", "yes", "on"}
-
-
 def load_local_env_file(
     path: str | Path | None = None,
     *,

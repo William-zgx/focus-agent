@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from .common import _env_bool, _normalize_agent_delegation_execution_mode, _split_csv
+from .common import _normalize_agent_delegation_execution_mode, _split_csv
+from .env import env_bool, env_float, env_int
 
 
 def _optional_string_env(
@@ -16,10 +17,6 @@ def _optional_string_env(
         return None
     text = value.strip()
     return text or None
-
-
-def _float_env(env: MutableMapping[str, str], name: str, default: float) -> float:
-    return float(env.get(name, str(default)))
 
 
 def _normalize_embedding_provider(value: object) -> str:
@@ -98,7 +95,7 @@ def _embedding_backend_env(env: MutableMapping[str, str], defaults: Any) -> str:
         return _normalize_embedding_provider(env.get("AGENT_MEMORY_EMBEDDING_BACKEND"))
     if env.get("AGENT_MEMORY_EMBEDDING_PROVIDER") is not None:
         return _embedding_provider_env(env, defaults)
-    if _env_bool(
+    if env_bool(
         env,
         "AGENT_MEMORY_EMBEDDING_ENABLED",
         default=defaults.agent_memory_embedding_enabled,
@@ -110,13 +107,13 @@ def _embedding_backend_env(env: MutableMapping[str, str], defaults: Any) -> str:
 
 
 def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:
-    branch_recommendation_enabled = _env_bool(
+    branch_recommendation_enabled = env_bool(
         env,
         "AGENT_BRANCH_RECOMMENDATION_ENABLED",
         default=defaults.agent_branch_recommendation_enabled,
     )
     return {
-        "plan_act_reflect_enabled": _env_bool(
+        "plan_act_reflect_enabled": env_bool(
             env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
         ),
         "plan_scenes": (
@@ -124,11 +121,11 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             if env.get("PLAN_SCENES") is not None
             else defaults.plan_scenes
         ),
-        "plan_task_brief_min_chars": int(
-            env.get("PLAN_TASK_BRIEF_MIN_CHARS", str(defaults.plan_task_brief_min_chars))
+        "plan_task_brief_min_chars": env_int(
+            env, "PLAN_TASK_BRIEF_MIN_CHARS", defaults.plan_task_brief_min_chars
         ),
-        "plan_max_replans": int(env.get("PLAN_MAX_REPLANS", str(defaults.plan_max_replans))),
-        "agent_role_routing_enabled": _env_bool(
+        "plan_max_replans": env_int(env, "PLAN_MAX_REPLANS", defaults.plan_max_replans),
+        "agent_role_routing_enabled": env_bool(
             env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
         ),
         "agent_role_orchestrator_model": (
@@ -151,14 +148,9 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         ),
         "agent_role_max_parallel_runs": max(
             1,
-            int(
-                env.get(
-                    "AGENT_ROLE_MAX_PARALLEL_RUNS",
-                    str(defaults.agent_role_max_parallel_runs),
-                )
-            ),
+            env_int(env, "AGENT_ROLE_MAX_PARALLEL_RUNS", defaults.agent_role_max_parallel_runs),
         ),
-        "agent_team_skill_scout_enabled": _env_bool(
+        "agent_team_skill_scout_enabled": env_bool(
             env,
             "AGENT_TEAM_SKILL_SCOUT_ENABLED",
             default=defaults.agent_team_skill_scout_enabled,
@@ -168,7 +160,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         )
         .strip()
         .lower(),
-        "agent_team_v2_enabled": _env_bool(
+        "agent_team_v2_enabled": env_bool(
             env,
             "AGENT_TEAM_V2_ENABLED",
             default=defaults.agent_team_v2_enabled,
@@ -179,52 +171,52 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_team_execution_mode": _normalize_agent_team_execution_mode(
             env.get("AGENT_TEAM_EXECUTION_MODE", defaults.agent_team_execution_mode)
         ),
-        "agent_team_real_provider_enabled": _env_bool(
+        "agent_team_real_provider_enabled": env_bool(
             env,
             "AGENT_TEAM_REAL_PROVIDER_ENABLED",
             default=defaults.agent_team_real_provider_enabled,
         ),
-        "agent_team_durable_required": _env_bool(
+        "agent_team_durable_required": env_bool(
             env,
             "AGENT_TEAM_DURABLE_REQUIRED",
             default=defaults.agent_team_durable_required,
         ),
-        "agent_team_fencing_enabled": _env_bool(
+        "agent_team_fencing_enabled": env_bool(
             env,
             "AGENT_TEAM_FENCING_ENABLED",
             default=defaults.agent_team_fencing_enabled,
         ),
-        "agent_team_approval_resume_enabled": _env_bool(
+        "agent_team_approval_resume_enabled": env_bool(
             env,
             "AGENT_TEAM_APPROVAL_RESUME_ENABLED",
             default=defaults.agent_team_approval_resume_enabled,
         ),
-        "agent_team_cross_session_locks_enabled": _env_bool(
+        "agent_team_cross_session_locks_enabled": env_bool(
             env,
             "AGENT_TEAM_CROSS_SESSION_LOCKS_ENABLED",
             default=defaults.agent_team_cross_session_locks_enabled,
         ),
-        "agent_team_kill_switch_enabled": _env_bool(
+        "agent_team_kill_switch_enabled": env_bool(
             env,
             "AGENT_TEAM_KILL_SWITCH_ENABLED",
             default=defaults.agent_team_kill_switch_enabled,
         ),
-        "agent_team_legacy_write_enabled": _env_bool(
+        "agent_team_legacy_write_enabled": env_bool(
             env,
             "AGENT_TEAM_LEGACY_WRITE_ENABLED",
             default=defaults.agent_team_legacy_write_enabled,
         ),
-        "agent_team_global_tab_enabled": _env_bool(
+        "agent_team_global_tab_enabled": env_bool(
             env,
             "AGENT_TEAM_GLOBAL_TAB_ENABLED",
             default=defaults.agent_team_global_tab_enabled,
         ),
-        "agent_team_adoption_enabled": _env_bool(
+        "agent_team_adoption_enabled": env_bool(
             env,
             "AGENT_TEAM_ADOPTION_ENABLED",
             default=defaults.agent_team_adoption_enabled,
         ),
-        "agent_branch_decision_enabled": _env_bool(
+        "agent_branch_decision_enabled": env_bool(
             env,
             "AGENT_BRANCH_DECISION_ENABLED",
             default=defaults.agent_branch_decision_enabled,
@@ -232,33 +224,32 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_branch_decision_mode": _normalize_branch_decision_mode(
             env.get("AGENT_BRANCH_DECISION_MODE", defaults.agent_branch_decision_mode)
         ),
-        "agent_branch_decision_min_confidence": _float_env(
+        "agent_branch_decision_min_confidence": env_float(
             env,
             "AGENT_BRANCH_DECISION_MIN_CONFIDENCE",
             defaults.agent_branch_decision_min_confidence,
         ),
-        "agent_branch_decision_split_threshold": _float_env(
+        "agent_branch_decision_split_threshold": env_float(
             env,
             "AGENT_BRANCH_DECISION_SPLIT_THRESHOLD",
             defaults.agent_branch_decision_split_threshold,
         ),
-        "agent_branch_decision_conclude_threshold": _float_env(
+        "agent_branch_decision_conclude_threshold": env_float(
             env,
             "AGENT_BRANCH_DECISION_CONCLUDE_THRESHOLD",
             defaults.agent_branch_decision_conclude_threshold,
         ),
-        "agent_branch_decision_merge_candidate_threshold": _float_env(
+        "agent_branch_decision_merge_candidate_threshold": env_float(
             env,
             "AGENT_BRANCH_DECISION_MERGE_CANDIDATE_THRESHOLD",
             defaults.agent_branch_decision_merge_candidate_threshold,
         ),
         "agent_branch_decision_rate_limit_per_hour": max(
             0,
-            int(
-                env.get(
-                    "AGENT_BRANCH_DECISION_RATE_LIMIT_PER_HOUR",
-                    str(defaults.agent_branch_decision_rate_limit_per_hour),
-                )
+            env_int(
+                env,
+                "AGENT_BRANCH_DECISION_RATE_LIMIT_PER_HOUR",
+                defaults.agent_branch_decision_rate_limit_per_hour,
             ),
         ),
         "agent_branch_recommendation_enabled": branch_recommendation_enabled,
@@ -268,12 +259,12 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 defaults.agent_branch_recommendation_mode,
             )
         ),
-        "agent_branch_recommendation_min_confidence": _float_env(
+        "agent_branch_recommendation_min_confidence": env_float(
             env,
             "AGENT_BRANCH_RECOMMENDATION_MIN_CONFIDENCE",
             defaults.agent_branch_recommendation_min_confidence,
         ),
-        "agent_branch_recommendation_semantic_enabled": _env_bool(
+        "agent_branch_recommendation_semantic_enabled": env_bool(
             env,
             "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_ENABLED",
             default=branch_recommendation_enabled,
@@ -288,12 +279,12 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_FALLBACK_MODEL",
             defaults.agent_branch_recommendation_semantic_fallback_model,
         ),
-        "agent_branch_recommendation_semantic_decision_min_confidence": _float_env(
+        "agent_branch_recommendation_semantic_decision_min_confidence": env_float(
             env,
             "AGENT_BRANCH_RECOMMENDATION_SEMANTIC_DECISION_MIN_CONFIDENCE",
             defaults.agent_branch_recommendation_semantic_decision_min_confidence,
         ),
-        "agent_branch_recommendation_timeout_seconds": _float_env(
+        "agent_branch_recommendation_timeout_seconds": env_float(
             env,
             "AGENT_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS",
             defaults.agent_branch_recommendation_timeout_seconds,
@@ -334,12 +325,12 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         )
         .strip()
         .lower(),
-        "agent_memory_postgres_trigram_enabled": _env_bool(
+        "agent_memory_postgres_trigram_enabled": env_bool(
             env,
             "AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED",
             default=defaults.agent_memory_postgres_trigram_enabled,
         ),
-        "agent_memory_embedding_enabled": _env_bool(
+        "agent_memory_embedding_enabled": env_bool(
             env,
             "AGENT_MEMORY_EMBEDDING_ENABLED",
             default=defaults.agent_memory_embedding_enabled,
@@ -349,11 +340,8 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_memory_embedding_model": str(
             env.get("AGENT_MEMORY_EMBEDDING_MODEL") or defaults.agent_memory_embedding_model
         ).strip(),
-        "agent_memory_embedding_dimensions": int(
-            env.get(
-                "AGENT_MEMORY_EMBEDDING_DIMENSIONS",
-                str(defaults.agent_memory_embedding_dimensions),
-            )
+        "agent_memory_embedding_dimensions": env_int(
+            env, "AGENT_MEMORY_EMBEDDING_DIMENSIONS", defaults.agent_memory_embedding_dimensions
         ),
         "agent_memory_embedding_base_url": _optional_string_env(
             env,
@@ -372,19 +360,16 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         ),
         "agent_memory_embedding_batch_size": max(
             1,
-            int(
-                env.get(
-                    "AGENT_MEMORY_EMBEDDING_BATCH_SIZE",
-                    str(defaults.agent_memory_embedding_batch_size),
-                )
+            env_int(
+                env, "AGENT_MEMORY_EMBEDDING_BATCH_SIZE", defaults.agent_memory_embedding_batch_size
             ),
         ),
-        "agent_memory_embedding_auto_pull": _env_bool(
+        "agent_memory_embedding_auto_pull": env_bool(
             env,
             "AGENT_MEMORY_EMBEDDING_AUTO_PULL",
             default=defaults.agent_memory_embedding_auto_pull,
         ),
-        "agent_memory_embedding_pull_timeout_seconds": _float_env(
+        "agent_memory_embedding_pull_timeout_seconds": env_float(
             env,
             "AGENT_MEMORY_EMBEDDING_PULL_TIMEOUT_SECONDS",
             defaults.agent_memory_embedding_pull_timeout_seconds,
@@ -397,26 +382,26 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             .strip()
             .lower()
         ),
-        "agent_memory_vector_index_enabled": _env_bool(
+        "agent_memory_vector_index_enabled": env_bool(
             env,
             "AGENT_MEMORY_VECTOR_INDEX_ENABLED",
             default=defaults.agent_memory_vector_index_enabled,
         ),
         "agent_memory_pgvector_extension_mode": _pgvector_extension_mode_env(env, defaults),
-        "agent_memory_embedding_timeout_seconds": _float_env(
+        "agent_memory_embedding_timeout_seconds": env_float(
             env,
             "AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS",
             defaults.agent_memory_embedding_timeout_seconds,
         ),
-        "agent_memory_approval_for_shared_writes": _env_bool(
+        "agent_memory_approval_for_shared_writes": env_bool(
             env,
             "AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES",
             default=defaults.agent_memory_approval_for_shared_writes,
         ),
-        "agent_memory_curator_enabled": _env_bool(
+        "agent_memory_curator_enabled": env_bool(
             env, "AGENT_MEMORY_CURATOR_ENABLED", default=defaults.agent_memory_curator_enabled
         ),
-        "agent_memory_auto_promote_on_merge": _env_bool(
+        "agent_memory_auto_promote_on_merge": env_bool(
             env,
             "AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE",
             default=defaults.agent_memory_auto_promote_on_merge,
@@ -431,7 +416,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         )
         .strip()
         .lower(),
-        "agent_zvec_enabled": _env_bool(
+        "agent_zvec_enabled": env_bool(
             env,
             "AGENT_ZVEC_ENABLED",
             default=defaults.agent_zvec_enabled,
@@ -439,16 +424,16 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_zvec_data_dir": str(
             env.get("AGENT_ZVEC_DATA_DIR") or defaults.agent_zvec_data_dir
         ).strip(),
-        "agent_tool_router_enabled": _env_bool(
+        "agent_tool_router_enabled": env_bool(
             env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
         ),
-        "agent_tool_router_enforce": _env_bool(
+        "agent_tool_router_enforce": env_bool(
             env, "AGENT_TOOL_ROUTER_ENFORCE", default=defaults.agent_tool_router_enforce
         ),
-        "agent_delegation_enabled": _env_bool(
+        "agent_delegation_enabled": env_bool(
             env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
         ),
-        "agent_delegation_enforce": _env_bool(
+        "agent_delegation_enforce": env_bool(
             env, "AGENT_DELEGATION_ENFORCE", default=defaults.agent_delegation_enforce
         ),
         "agent_delegation_execution_mode": _normalize_agent_delegation_execution_mode(
@@ -457,7 +442,7 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 defaults.agent_delegation_execution_mode,
             )
         ),
-        "agent_model_router_enabled": _env_bool(
+        "agent_model_router_enabled": env_bool(
             env, "AGENT_MODEL_ROUTER_ENABLED", default=defaults.agent_model_router_enabled
         ),
         "agent_model_router_mode": (
@@ -466,24 +451,24 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
             == "enforce"
             else "observe"
         ),
-        "agent_self_repair_enabled": _env_bool(
+        "agent_self_repair_enabled": env_bool(
             env, "AGENT_SELF_REPAIR_ENABLED", default=defaults.agent_self_repair_enabled
         ),
-        "agent_review_queue_enabled": _env_bool(
+        "agent_review_queue_enabled": env_bool(
             env, "AGENT_REVIEW_QUEUE_ENABLED", default=defaults.agent_review_queue_enabled
         ),
-        "agent_task_ledger_enabled": _env_bool(
+        "agent_task_ledger_enabled": env_bool(
             env, "AGENT_TASK_LEDGER_ENABLED", default=defaults.agent_task_ledger_enabled
         ),
-        "agent_artifact_synthesis_enabled": _env_bool(
+        "agent_artifact_synthesis_enabled": env_bool(
             env,
             "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
             default=defaults.agent_artifact_synthesis_enabled,
         ),
-        "agent_critic_gate_enabled": _env_bool(
+        "agent_critic_gate_enabled": env_bool(
             env, "AGENT_CRITIC_GATE_ENABLED", default=defaults.agent_critic_gate_enabled
         ),
-        "agent_critic_gate_enforce": _env_bool(
+        "agent_critic_gate_enforce": env_bool(
             env, "AGENT_CRITIC_GATE_ENFORCE", default=defaults.agent_critic_gate_enforce
         ),
     }

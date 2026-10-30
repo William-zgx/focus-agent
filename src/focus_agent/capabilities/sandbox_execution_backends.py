@@ -7,6 +7,8 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from ..config_parts.env import env_bool
+
 if TYPE_CHECKING:
     from .sandbox_execution import SandboxExecutionRequest, SandboxExecutionResult
 
@@ -112,7 +114,7 @@ def default_sandbox_execution_service(
     backend = os.environ.get("FOCUS_AGENT_SANDBOX_BACKEND", "auto").strip().lower()
     image = os.environ.get("FOCUS_AGENT_SANDBOX_IMAGE", execution._DEFAULT_DOCKER_IMAGE).strip()
     resolved_allow_fallback = (
-        os.environ.get("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1") != "0"
+        env_bool(os.environ, "FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", default=True)
         if allow_fallback is None
         else bool(allow_fallback)
     )

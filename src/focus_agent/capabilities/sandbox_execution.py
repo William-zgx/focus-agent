@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ..config_parts.env import env_bool
 from . import sandbox_execution_backends as _backends
 from . import sandbox_runner as _runner
 from . import sandbox_snapshot as _snapshot
@@ -299,9 +300,8 @@ class DockerSandboxBackend:
         self._run_id_factory = run_id_factory or (lambda: uuid.uuid4().hex)
         self.run_ttl_seconds = max(0, int(run_ttl_seconds))
         if reuse_containers is None:
-            reuse_containers = docker_runner is None and (
-                os.environ.get("FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS", "1") != "0"
-            )
+            reuse_env = env_bool(os.environ, "FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS", default=True)
+            reuse_containers = docker_runner is None and reuse_env
         self.reuse_containers = bool(reuse_containers)
 
     def run(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:

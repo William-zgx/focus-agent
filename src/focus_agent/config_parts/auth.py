@@ -6,7 +6,8 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-from .common import _coerce_bool, _normalize_optional_string
+from .common import _normalize_optional_string
+from .env import parse_bool
 
 DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
 _INSECURE_AUTH_JWT_SECRETS = {
@@ -53,7 +54,7 @@ def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> Auth
     if kid is None or secret is None:
         return None
 
-    active = _coerce_bool(raw.get("active"))
+    active = parse_bool(raw.get("active"))
     if active is None:
         status = (_normalize_optional_string(raw.get("status")) or "active").lower()
         active = status not in {"disabled", "inactive", "retired", "revoked"}

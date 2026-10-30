@@ -3,14 +3,15 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from .common import _env_bool, _split_csv
+from .common import _split_csv
+from .env import env_bool, env_float, env_int
 
 
 def load_server_config(env: MutableMapping[str, str], defaults: Any) -> dict[str, object]:
     return {
         "api_host": env.get("API_HOST", defaults.api_host),
-        "api_port": int(env.get("API_PORT", str(defaults.api_port))),
-        "api_reload": _env_bool(env, "API_RELOAD", default=defaults.api_reload),
+        "api_port": env_int(env, "API_PORT", defaults.api_port),
+        "api_reload": env_bool(env, "API_RELOAD", default=defaults.api_reload),
         "app_version": env.get("APP_VERSION", defaults.app_version),
         "app_environment": (
             env.get("APP_ENVIRONMENT") or env.get("ENVIRONMENT") or defaults.app_environment
@@ -19,35 +20,29 @@ def load_server_config(env: MutableMapping[str, str], defaults: Any) -> dict[str
         "secret_provider": env.get("FOCUS_AGENT_SECRET_PROVIDER", defaults.secret_provider),
         "web_app_dist_dir": env.get("WEB_APP_DIST_DIR") or None,
         "web_app_dev_server_url": env.get("WEB_APP_DEV_SERVER_URL") or None,
-        "sse_heartbeat_seconds": float(
-            env.get("SSE_HEARTBEAT_SECONDS", str(defaults.sse_heartbeat_seconds))
+        "sse_heartbeat_seconds": env_float(
+            env, "SSE_HEARTBEAT_SECONDS", defaults.sse_heartbeat_seconds
         ),
         "cors_allowed_origins": _split_csv(env.get("CORS_ALLOWED_ORIGINS")),
-        "cors_allow_credentials": _env_bool(
+        "cors_allow_credentials": env_bool(
             env, "CORS_ALLOW_CREDENTIALS", default=defaults.cors_allow_credentials
         ),
-        "rate_limit_enabled": _env_bool(
+        "rate_limit_enabled": env_bool(
             env, "RATE_LIMIT_ENABLED", default=defaults.rate_limit_enabled
         ),
-        "rate_limit_per_minute": int(
-            env.get("RATE_LIMIT_PER_MINUTE", str(defaults.rate_limit_per_minute))
+        "rate_limit_per_minute": env_int(
+            env, "RATE_LIMIT_PER_MINUTE", defaults.rate_limit_per_minute
         ),
-        "rate_limit_chat_per_minute": int(
-            env.get("RATE_LIMIT_CHAT_PER_MINUTE", str(defaults.rate_limit_chat_per_minute))
+        "rate_limit_chat_per_minute": env_int(
+            env, "RATE_LIMIT_CHAT_PER_MINUTE", defaults.rate_limit_chat_per_minute
         ),
-        "metrics_trajectory_window_hours": int(
-            env.get(
-                "METRICS_TRAJECTORY_WINDOW_HOURS",
-                str(defaults.metrics_trajectory_window_hours),
-            )
+        "metrics_trajectory_window_hours": env_int(
+            env, "METRICS_TRAJECTORY_WINDOW_HOURS", defaults.metrics_trajectory_window_hours
         ),
-        "metrics_cache_ttl_seconds": int(
-            env.get("METRICS_CACHE_TTL_SECONDS", str(defaults.metrics_cache_ttl_seconds))
+        "metrics_cache_ttl_seconds": env_int(
+            env, "METRICS_CACHE_TTL_SECONDS", defaults.metrics_cache_ttl_seconds
         ),
-        "metrics_governance_recent_limit": int(
-            env.get(
-                "METRICS_GOVERNANCE_RECENT_LIMIT",
-                str(defaults.metrics_governance_recent_limit),
-            )
+        "metrics_governance_recent_limit": env_int(
+            env, "METRICS_GOVERNANCE_RECENT_LIMIT", defaults.metrics_governance_recent_limit
         ),
     }

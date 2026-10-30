@@ -7,6 +7,7 @@ from contextvars import copy_context
 
 from focus_agent.runtime.thread_pool import shared_thread_pool, tool_thread_pool
 
+from ..config_parts.env import env_bool
 from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, cache_key
 from .tool_events import emit_runtime_tool_event
@@ -143,7 +144,4 @@ def run_parallel_batch(
 
 
 def _tool_pool_isolated() -> bool:
-    value = os.environ.get(_TOOL_POOL_ISOLATED_ENV)
-    if value is None:
-        return True
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return env_bool(os.environ, _TOOL_POOL_ISOLATED_ENV, default=True)
