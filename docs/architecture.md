@@ -974,7 +974,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Branch service：`src/focus_agent/services/branches/service.py`
 - Branch decision service：`src/focus_agent/branch_decision/service.py`
 - Branch decision API：`src/focus_agent/api/routers/branch_decisions.py`
-- Branch naming / memory promotion：`src/focus_agent/services/branch_naming_policy.py`、`src/focus_agent/services/branch_memory_promotion.py`
+- Branch naming / memory promotion：`src/focus_agent/services/branches/actions.py`、`src/focus_agent/services/branches/merge.py`
 - Postgres schema：`src/focus_agent/repositories/postgres_schema.py`
 - Productivity API：`src/focus_agent/api/routers/productivity.py`
 - Productivity Service：`src/focus_agent/services/productivity.py`
