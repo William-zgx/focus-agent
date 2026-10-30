@@ -15,14 +15,14 @@ type AgentTeamTaskDisplayState = ReturnType<
 	typeof useAgentTeamWorkbenchViewModel
 >["taskDisplayStates"][number];
 
-export type TaskGraphNode = {
+type TaskGraphNode = {
 	index: number;
 	task: AgentTeamTask;
 	x: number;
 	y: number;
 };
 
-export type TaskGraph = {
+type TaskGraph = {
 	edges: Array<{ from: string; to: string }>;
 	height: number;
 	nodeById: Map<string, TaskGraphNode>;
@@ -225,7 +225,7 @@ export function taskOutputSummary(
 		task?.last_error;
 	if (summary?.trim()) return summary.trim();
 	if (!task) return isChineseUi ? "还没有任务产出。" : "No task output yet.";
-	if (task.status === "done" || task.status === "completed") {
+	if (task.status === "done") {
 		return isChineseUi
 			? "任务已完成，等待汇总。"
 			: "Task completed and ready for summary.";

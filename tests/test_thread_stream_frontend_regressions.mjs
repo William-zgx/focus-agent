@@ -273,6 +273,10 @@ function loadMessageTranscriptFunctions() {
       "utf8",
     ),
     readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-tool-calls.ts"),
+      "utf8",
+    ),
+    readFileSync(
       path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-builder.ts"),
       "utf8",
     ),
@@ -307,6 +311,13 @@ function loadMessageTranscriptFunctions() {
     "skillIdFromSkillPath",
     "collectSkillIdsFromCwd",
     "collectSkillIdsFromSkillPayload",
+    "toolCallId",
+    "toolCallName",
+    "toolCallRawArgsValue",
+    "toolCallArgsText",
+    "toolCallArgsValue",
+    "collectSkillIdsFromToolCall",
+    "collectSkillIdsFromToolMessage",
     "buildTranscriptItems",
   ];
   const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
@@ -3607,4 +3618,90 @@ test("Agent Team Inspector traps forward and reverse tab navigation", () => {
   assert.equal(resolveInspectorTabTarget(dialog, focusable, dialog, false), first);
   assert.equal(resolveInspectorTabTarget(dialog, focusable, dialog, true), last);
   assert.equal(resolveInspectorTabTarget(dialog, [], first, false), dialog);
+});
+
+test("SDK merge-review requests use backend request field names", async () => {
+  const { FocusAgentClient } = await loadBuiltSdk();
+  const schemas = JSON.parse(
+    readFileSync(path.join(repoRoot, "docs/api/openapi.json"), "utf8"),
+  ).components.schemas;
+  const review = {
+    review_id: "review-1",
+    session_id: "session-1",
+    user_id: "user-1",
+    status: "conflict",
+    selected_task_ids: ["task-a"],
+    excluded_task_ids: ["task-b"],
+    changed_files: ["src/a.ts"],
+    diffstat: " src/a.ts | 2 +-",
+    test_evidence: [],
+    risk_items: [],
+    conflict_files: ["src/a.ts"],
+    error_message: "patch does not apply",
+    metadata: { patch: "diff --git a/src/a.ts b/src/a.ts\n" },
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+  const requests = [];
+  const client = new FocusAgentClient({
+    baseUrl: "https://focus-agent.test",
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ review, events: [] }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  await client.createAgentTeamMergeReview("session-1", {
+    selected_task_ids: ["task-a"],
+    rejected_task_ids: ["task-b"],
+  });
+  await client.updateAgentTeamMergeReview("session-1", "review-1", {
+    selected_task_ids: ["task-a"],
+    rejected_task_ids: ["task-b"],
+  });
+  const preview = await client.previewAgentTeamMergeReview("session-1", "review-1", {
+    selected_task_ids: ["task-a"],
+  });
+  await client.applyAgentTeamMergeReview("session-1", "review-1", {
+    apply_target: "/repo",
+    selected_task_ids: ["task-a"],
+  });
+  await client.rejectAgentTeamMergeReview("session-1", "review-1", { reason: "not needed" });
+
+  const bodies = requests.map((request) =>
+    request.init.body === undefined ? undefined : JSON.parse(request.init.body),
+  );
+  const expected = [
+    [
+      "CreateAgentTeamMergeReviewRequest",
+      { selected_task_ids: ["task-a"], excluded_task_ids: ["task-b"] },
+    ],
+    [
+      "UpdateAgentTeamMergeReviewRequest",
+      { selected_task_ids: ["task-a"], excluded_task_ids: ["task-b"] },
+    ],
+    [null, undefined],
+    ["ApplyAgentTeamMergeReviewRequest", { apply_target_path: "/repo" }],
+    ["RejectAgentTeamMergeReviewRequest", { rationale: "not needed" }],
+  ];
+  assert.equal(requests.length, expected.length);
+  expected.forEach(([schemaName, body], index) => {
+    assert.deepEqual(bodies[index], body);
+    if (schemaName) {
+      const allowed = Object.keys(schemas[schemaName].properties);
+      for (const key of Object.keys(bodies[index])) {
+        assert.ok(allowed.includes(key), `${schemaName} has no field ${key}`);
+      }
+    }
+  });
+  assert.ok(requests[2].url.endsWith("/merge-review/review-1/preview"));
+
+  assert.equal(preview.applicable, false);
+  assert.deepEqual(preview.conflict_files, ["src/a.ts"]);
+  assert.deepEqual(preview.warnings, ["patch does not apply"]);
+  assert.equal(preview.diffstat, " src/a.ts | 2 +-");
+  assert.equal(preview.diff, "diff --git a/src/a.ts b/src/a.ts\n");
+  assert.equal(preview.review.review_id, "review-1");
 });

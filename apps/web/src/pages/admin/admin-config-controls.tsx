@@ -1,11 +1,11 @@
 import type { FocusAgentAdminConfigValue } from "@focus-agent/web-sdk";
 
-import { AdminField } from "./admin-page-sections";
 import {
 	localizedConfigOptionLabel,
 	localizedConfigValueCopy,
-	unknownToText,
-} from "./admin-config-draft-utils";
+} from "./admin-config-copy";
+import { AdminField } from "./admin-page-sections";
+import { unknownToText } from "./admin-config-draft-utils";
 import type { PolicyDraftValue } from "./admin-config-draft-utils";
 
 export function PolicyControl({

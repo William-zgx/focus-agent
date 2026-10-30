@@ -1,14 +1,7 @@
 /* Branch tree detail overlays and canvas sizing. */
-.fa-branch-detail-overlay {
-	width: min(228px, calc(100vw - 32px));
-}
 
 .fa-branch-node-detail {
 	width: 100%;
-	gap: 12px;
-	border-radius: 20px;
-	box-shadow: 0 26px 56px rgba(4, 10, 22, 0.24);
-	padding: 12px;
 }
 
 :where(.fa-branch-detail-overlay.active-card) .fa-branch-node-title {
@@ -17,10 +10,6 @@
 		var(--fa-branch-role-color) 82%,
 		var(--fa-text) 18%
 	);
-}
-
-.fa-branch-node-detail-head {
-	gap: 6px;
 }
 
 .fa-branch-node-badges {
@@ -37,7 +26,6 @@
 }
 
 .fa-tree-canvas {
-	min-height: 220px;
 	border-radius: 20px;
 	border: 1px solid
 		color-mix(in srgb, var(--fa-border) 82%, var(--fa-accent) 8%);

@@ -119,13 +119,13 @@ const SCENE_LABELS: Record<string, { zh: string; en: string }> = {
 	technical_deep_dive: { zh: "技术深挖", en: "Technical deep dive" },
 };
 
-export function humanizeKey(value?: string | null) {
+function humanizeKey(value?: string | null) {
 	const text = String(value || "").trim();
 	if (!text) return "—";
 	return text.replace(/[_-]+/g, " ");
 }
 
-export function labelFromMap(
+function labelFromMap(
 	value: string | null | undefined,
 	map: Record<string, { zh: string; en: string }>,
 	isChineseUi: boolean,

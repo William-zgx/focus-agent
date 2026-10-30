@@ -234,7 +234,9 @@ export function TaskDetail({
 				</section>
 				<section>
 					<h3>{isChineseUi ? "Output IDs" : "Output IDs"}</h3>
-					<FieldList items={taskOutputs.map((output) => output.output_id)} />
+					<FieldList
+						items={uniqueStrings(taskOutputs.map((output) => output.output_id))}
+					/>
 				</section>
 				<section>
 					<h3>{isChineseUi ? "原始 output payload" : "Raw output payload"}</h3>

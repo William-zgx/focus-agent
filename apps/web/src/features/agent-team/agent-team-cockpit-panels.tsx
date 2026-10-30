@@ -306,8 +306,7 @@ export function TaskDetail({
 							items={uniqueNonEmptyStrings([
 								...taskOutputs.map((output) => output.summary),
 								...taskArtifacts.map(
-									(artifact) =>
-										artifact.summary ?? artifact.title ?? artifact.uri,
+									(artifact) => artifact.summary ?? artifact.title,
 								),
 								task.verification_summary,
 							])}

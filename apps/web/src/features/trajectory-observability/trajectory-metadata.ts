@@ -6,7 +6,7 @@ import type {
 
 import { isRecord } from "./trajectory-search-utils";
 
-export function stringifyMetadataValue(value: unknown) {
+function stringifyMetadataValue(value: unknown) {
 	if (value === undefined || value === null) return "";
 	if (typeof value === "string") return value.trim();
 	if (typeof value === "number" || typeof value === "boolean")
@@ -20,7 +20,7 @@ export function stringifyMetadataValue(value: unknown) {
 	}
 }
 
-export function findNestedMetadataValue(
+function findNestedMetadataValue(
 	source: unknown,
 	aliases: readonly string[],
 	options?: { depth?: number; seen?: WeakSet<object> },
@@ -77,9 +77,7 @@ export function findStepRuntimeSignal(
 	return findNestedMetadataValue(step.runtime, aliases);
 }
 
-export function asRuntimeOutcome(
-	value: unknown,
-): FocusAgentRuntimeOutcome | null {
+function asRuntimeOutcome(value: unknown): FocusAgentRuntimeOutcome | null {
 	return isRecord(value) ? (value as FocusAgentRuntimeOutcome) : null;
 }
 

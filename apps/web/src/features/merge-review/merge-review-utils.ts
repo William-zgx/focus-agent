@@ -20,7 +20,7 @@ export type MergeReviewDraft = {
 	target: MergeTarget;
 };
 
-export function parseLineList(value: string) {
+function parseLineList(value: string) {
 	return value
 		.split("\n")
 		.map((item) => item.trim())

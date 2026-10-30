@@ -253,7 +253,7 @@ export function webFetchUrl(message: string): string {
 	).replace(/[.,，。;；:：!?！？]+$/u, "");
 }
 
-export function webFetchContinuationRequested(message: string): boolean {
+function webFetchContinuationRequested(message: string): boolean {
 	return containsAny(message.toLowerCase(), [
 		"continue",
 		"next page",

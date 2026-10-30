@@ -41,7 +41,7 @@ type BuildTrajectoryReviewViewModelArgs = {
 	statsOverview?: FocusAgentTrajectoryStatsRow;
 };
 
-export type TrajectoryReviewViewModel = {
+type TrajectoryReviewViewModel = {
 	correlationCoverage: number;
 	evidenceMode: EvidenceMode;
 	resultSummary: string;

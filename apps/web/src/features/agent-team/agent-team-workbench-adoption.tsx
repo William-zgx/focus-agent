@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
 	AgentTeamMergeReview,
 	AgentTeamMergeReviewTask,
+	AgentTeamMergeReviewTaskSummary,
 	AgentTeamSessionView,
 	AgentTeamTask,
 	AgentTeamTaskOutput,
@@ -57,7 +58,7 @@ export function AgentTeamAdoptionWorkbench({
 		() => new Set(selectedTaskIds),
 		[selectedTaskIds],
 	);
-	const rejectedTaskIds = rows
+	const excludedTaskIds = rows
 		.map((row) => row.task_id)
 		.filter((taskId) => !selectedSet.has(taskId));
 	const selectedRows = rows.filter((row) => selectedSet.has(row.task_id));
@@ -80,6 +81,9 @@ export function AgentTeamAdoptionWorkbench({
 		rejectReview.isPending ||
 		captureReview.isPending;
 	const canOperate = Boolean(latestReview) && selectedTaskIds.length > 0;
+	// Apply is gated on the status the backend last saved for the review.
+	const reviewBlocksApply =
+		latestReview?.status === "conflict" || latestReview?.status === "error";
 
 	const toggleTask = (row: AgentTeamMergeReviewTask) => {
 		if (row.fake || row.placeholder || row.adoptable === false) return;
@@ -89,32 +93,50 @@ export function AgentTeamAdoptionWorkbench({
 				: [...current, row.task_id],
 		);
 	};
+	const selectionRequest = {
+		selected_task_ids: selectedTaskIds,
+		excluded_task_ids: excludedTaskIds,
+	};
 	const createOrRefreshReview = () => {
-		const request = {
-			selected_task_ids: selectedTaskIds,
-			rejected_task_ids: rejectedTaskIds,
-		};
 		if (latestReview) {
-			updateReview.mutate({ reviewId: latestReview.review_id, ...request });
+			updateReview.mutate({
+				reviewId: latestReview.review_id,
+				...selectionRequest,
+			});
 			return;
 		}
-		createReview.mutate(request);
+		createReview.mutate(selectionRequest);
 	};
-	const previewSelected = () => {
-		if (!latestReview) return;
-		previewReview.mutate({
-			reviewId: latestReview.review_id,
-			selected_task_ids: selectedTaskIds,
-			rejected_task_ids: rejectedTaskIds,
+	// Preview and apply act on the review's saved selection, so save the
+	// on-screen selection first when it differs.
+	const syncSelection = async (review: AgentTeamMergeReview) => {
+		if (
+			sameTaskIds(review.selected_task_ids, selectedTaskIds) &&
+			sameTaskIds(review.excluded_task_ids ?? [], excludedTaskIds)
+		)
+			return;
+		await updateReview.mutateAsync({
+			reviewId: review.review_id,
+			...selectionRequest,
 		});
 	};
-	const applySelected = () => {
+	const previewSelected = async () => {
 		if (!latestReview) return;
-		applyReview.mutate({
-			reviewId: latestReview.review_id,
-			selected_task_ids: selectedTaskIds,
-			rejected_task_ids: rejectedTaskIds,
-		});
+		try {
+			await syncSelection(latestReview);
+		} catch {
+			return;
+		}
+		previewReview.mutate({ reviewId: latestReview.review_id });
+	};
+	const applySelected = async () => {
+		if (!latestReview) return;
+		try {
+			await syncSelection(latestReview);
+		} catch {
+			return;
+		}
+		applyReview.mutate({ reviewId: latestReview.review_id });
 	};
 	const rejectSelected = () => {
 		if (!latestReview) return;
@@ -149,7 +171,7 @@ export function AgentTeamAdoptionWorkbench({
 					</button>
 					<button
 						disabled={!canOperate || busy}
-						onClick={previewSelected}
+						onClick={() => void previewSelected()}
 						type="button"
 					>
 						{isChineseUi ? "冲突预检" : "Preview"}
@@ -159,9 +181,9 @@ export function AgentTeamAdoptionWorkbench({
 							!canOperate ||
 							busy ||
 							blockedSelectionCount > 0 ||
-							previewData?.applicable === false
+							reviewBlocksApply
 						}
-						onClick={applySelected}
+						onClick={() => void applySelected()}
 						type="button"
 					>
 						{isChineseUi ? "应用 Diff" : "Apply diff"}
@@ -328,7 +350,51 @@ function mergeReviewRows(
 	outputs: AgentTeamTaskOutput[],
 	review: AgentTeamMergeReview | null,
 ): AgentTeamMergeReviewTask[] {
-	if (review?.task_reviews?.length) return review.task_reviews;
+	const summaryByTask = new Map(
+		(review?.task_summaries ?? []).map((summary) => [summary.task_id, summary]),
+	);
+	return localMergeReviewRows(tasks, outputs).map((row) => {
+		const summary = summaryByTask.get(row.task_id);
+		return summary ? applyTaskSummary(row, summary) : row;
+	});
+}
+
+// The backend summary also counts uncommitted worktree changes and flags
+// fake or placeholder outputs, so it overrides the locally derived row.
+function applyTaskSummary(
+	row: AgentTeamMergeReviewTask,
+	summary: AgentTeamMergeReviewTaskSummary,
+): AgentTeamMergeReviewTask {
+	const changedFiles = summary.changed_files ?? row.changed_files;
+	const backendBlocked = summary.adoptable === false;
+	const adoptable =
+		changedFiles.length > 0 && !backendBlocked && !row.fake && !row.placeholder;
+	return {
+		...row,
+		adoptable,
+		selected: row.selected || adoptable,
+		changed_files: changedFiles,
+		test_evidence: summary.test_evidence ?? row.test_evidence,
+		risk_items: summary.risk_items ?? row.risk_items,
+		workspace_status: summary.workspace_status ?? row.workspace_status,
+		workspace_path: summary.workspace_path ?? row.workspace_path,
+		fake:
+			row.fake ||
+			(backendBlocked &&
+				summary.non_adoptable_reason === "fake_or_placeholder_output"),
+	};
+}
+
+function sameTaskIds(left: string[], right: string[]) {
+	if (left.length !== right.length) return false;
+	const rightSet = new Set(right);
+	return left.every((taskId) => rightSet.has(taskId));
+}
+
+function localMergeReviewRows(
+	tasks: AgentTeamTask[],
+	outputs: AgentTeamTaskOutput[],
+): AgentTeamMergeReviewTask[] {
 	const outputByTask = new Map(
 		outputs.map((output) => [output.task_id, output]),
 	);

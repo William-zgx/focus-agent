@@ -1,19 +1,18 @@
 import type { FocusAgentAdminConfigValue } from "@focus-agent/web-sdk";
 import type { FormEvent } from "react";
 
+import {
+	localizedConfigValueCopy,
+	localizedToolCopy,
+} from "./admin-config-copy";
 import { AdminField, AdminPanelHeader } from "./admin-page-sections";
 import {
 	ConfigActions,
 	ConfigSourceMeta,
 	PolicyControl,
-	ReadOnlyConfigValue,
 	ToggleControl,
 } from "./admin-config-controls";
-import {
-	localizedConfigValueCopy,
-	localizedToolCopy,
-	policyDraftValue,
-} from "./admin-config-draft-utils";
+import { policyDraftValue } from "./admin-config-draft-utils";
 import type {
 	PolicyDraft,
 	PolicyDraftValue,
@@ -276,40 +275,5 @@ export function PolicyConfigPanel({
 				pending={pending}
 			/>
 		</form>
-	);
-}
-
-export function SystemConfigPanel({
-	isChineseUi,
-	items,
-	source,
-}: {
-	isChineseUi: boolean;
-	items: FocusAgentAdminConfigValue[];
-	source?: { exists: boolean; path: string; writable: boolean };
-}) {
-	return (
-		<section className="fa-admin-panel fa-admin-config-panel">
-			<AdminPanelHeader
-				eyebrow={isChineseUi ? "Readonly" : "Readonly"}
-				status={null}
-				title={isChineseUi ? "基础配置" : "System Config"}
-			/>
-			<p className="fa-admin-config-help">
-				{isChineseUi
-					? "运行环境与敏感项只读展示；敏感值只显示是否已配置。"
-					: "Runtime and secret settings are read-only; secret values show configured state only."}
-			</p>
-			<ConfigSourceMeta isChineseUi={isChineseUi} source={source} />
-			<div className="fa-admin-config-list">
-				{items.map((item) => (
-					<ReadOnlyConfigValue
-						isChineseUi={isChineseUi}
-						item={item}
-						key={item.key}
-					/>
-				))}
-			</div>
-		</section>
 	);
 }

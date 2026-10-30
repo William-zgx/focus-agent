@@ -60,8 +60,12 @@ def test_create_page_no_longer_shows_fixed_role_template():
     assert "默认角色只是参考" not in create_text
     assert "Default roles are guidance" not in create_text
     assert "生成协作方案" in create_text
-    assert "planAgentTeamSession" in create_text
-    assert "dispatchAgentTeamSession" in create_text
+    assert "client.planAgentTeamSession(" in create_text
+    # The dispatch endpoint stays available on the SDK client; the create page
+    # no longer needs a fallback because planAgentTeamSession always exists.
+    assert "dispatchAgentTeamSession" in _read(
+        ROOT / "frontend-sdk" / "src" / "client" / "agent-team.ts"
+    )
     assert "生成方案中" in create_text
     assert "Step 1" not in create_text
     assert "Step 2" not in create_text
@@ -70,7 +74,13 @@ def test_create_page_no_longer_shows_fixed_role_template():
     assert "第二步" not in create_text
     assert "第三步" not in create_text
     assert "不绑定来源，直接创建独立 Mission" in create_text
-    assert "root_thread_id?: string | null" in _read(AGENT_TEAM_ROOT / "types.ts")
+    assert (
+        "export type AgentTeamCreateSessionRequest =\n\tFocusAgentAgentTeamCreateSessionRequest;"
+        in _read(AGENT_TEAM_ROOT / "types.ts")
+    )
+    assert "root_thread_id?: string | null" in _read(
+        ROOT / "frontend-sdk" / "src" / "types" / "agent-team.ts"
+    )
 
 
 def test_workbench_exposes_dynamic_planning_controls_and_metadata():
@@ -121,7 +131,11 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
 
 def test_task_surface_prefers_dynamic_plan_fields_over_roles():
     task_text = _read_task_surface_text()
-    types_text = _read(AGENT_TEAM_ROOT / "types.ts")
+    # Web Agent Team types alias the SDK types; the fields live in the SDK.
+    types_text = _read(ROOT / "frontend-sdk" / "src" / "types" / "agent-team.ts")
+    assert "export type AgentTeamTask = FocusAgentAgentTeamTask;" in _read(
+        AGENT_TEAM_ROOT / "types.ts"
+    )
 
     assert "taskTitle(task)" in task_text
     assert "taskSubtitle(task, isChineseUi)" in task_text

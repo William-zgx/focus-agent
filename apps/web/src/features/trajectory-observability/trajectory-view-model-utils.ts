@@ -14,7 +14,7 @@ import {
 import { findMetadataAcrossSources } from "./trajectory-metadata";
 import type { CorrelationSignal, SortMode } from "./trajectory-types";
 
-export function getDominantTool(trajectory: FocusAgentTrajectoryStep[]) {
+function getDominantTool(trajectory: FocusAgentTrajectoryStep[]) {
 	const counts = new Map<string, number>();
 	trajectory.forEach((step) => {
 		counts.set(step.tool, (counts.get(step.tool) ?? 0) + 1);
@@ -25,7 +25,7 @@ export function getDominantTool(trajectory: FocusAgentTrajectoryStep[]) {
 	);
 }
 
-export function getLongestStep(trajectory: FocusAgentTrajectoryStep[]) {
+function getLongestStep(trajectory: FocusAgentTrajectoryStep[]) {
 	if (!trajectory.length) return null;
 	return trajectory.reduce((current, next) =>
 		(next.duration_ms ?? 0) > (current.duration_ms ?? 0) ? next : current,

@@ -1,7 +1,7 @@
 import { FocusAgentRequestError } from "@focus-agent/web-sdk";
 
 export const THREAD_BUSY_RETRY_ATTEMPTS = 80;
-export const THREAD_BUSY_RETRY_DELAY_MS = 500;
+const THREAD_BUSY_RETRY_DELAY_MS = 500;
 
 export class ThreadBranchActionRetryCancelled extends Error {
 	constructor() {

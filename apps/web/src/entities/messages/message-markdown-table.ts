@@ -1,4 +1,4 @@
-export type MarkdownTableAlignment = "left" | "center" | "right" | null;
+type MarkdownTableAlignment = "left" | "center" | "right" | null;
 
 export function parseMarkdownTableRow(line: string): string[] | null {
 	const trimmed = line.trim();

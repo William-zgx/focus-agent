@@ -70,18 +70,29 @@ def test_create_page_exposes_cockpit_collaboration_modes():
 
 def test_workbench_uses_agent_team_cockpit_and_merge_decision_hook():
     workbench_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
-    hook_text = _read(AGENT_TEAM_ROOT / "use-agent-team.ts")
+    hook_text = _read(AGENT_TEAM_ROOT / "agent-team-mutations.ts")
     types_text = _read(AGENT_TEAM_ROOT / "types.ts")
+    sdk_types_text = _read(ROOT / "frontend-sdk" / "src" / "types" / "agent-team.ts")
 
     assert "AgentTeamCockpit" in workbench_text
     assert "useAgentTeamMergeDecision" in workbench_text
     assert "recordAgentTeamMergeDecision" in hook_text
-    assert "AgentTeamMergeDecisionRequest" in types_text
-    assert "AgentTeamMergeDecisionResponse" in types_text
-    assert "apply?: boolean" in types_text
-    assert "next_action?: AgentTeamMergeDecisionAction" in types_text
-    assert "approved?: boolean" in types_text
-    assert "action?: AgentTeamMergeDecisionAction" in types_text
+    assert (
+        "export type AgentTeamMergeDecisionRequest =\n\tFocusAgentAgentTeamMergeDecisionRequest;"
+        in types_text
+    )
+    assert (
+        "export type AgentTeamMergeDecisionResponse =\n\tFocusAgentAgentTeamMergeDecisionResponse;"
+        in types_text
+    )
+    assert (
+        "export type AgentTeamMergeDecisionAction = FocusAgentAgentTeamMergeNextAction;"
+        in types_text
+    )
+    assert "apply?: boolean" in sdk_types_text
+    assert "next_action?: FocusAgentAgentTeamMergeNextAction | null" in sdk_types_text
+    assert "approved?: boolean" in sdk_types_text
+    assert "action?: FocusAgentAgentTeamMergeNextAction" in sdk_types_text
     assert 'next_action: "merge"' in workbench_text
     assert "accepted_tasks: tasks.map" in workbench_text
     assert "branchDecisionThreadIdFromSessionData" in workbench_text

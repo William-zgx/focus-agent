@@ -1,38 +1,5 @@
 .fa-composer-model-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
 	min-width: 0;
-	flex: 1 1 auto;
-	order: 1;
-}
-
-.fa-composer-model-shell {
-	min-width: 220px;
-	max-width: 340px;
-	flex: 1 1 auto;
-}
-
-.fa-composer-select {
-	min-height: 34px;
-	padding: 8px 34px 8px 12px;
-	border-radius: 999px;
-	font-size: 12px;
-	background:
-		linear-gradient(180deg, rgba(37, 37, 48, 0.96), rgba(18, 18, 24, 0.96)),
-		radial-gradient(
-			circle at top right,
-			rgba(129, 140, 248, 0.08),
-			transparent 44%
-		);
-}
-
-.fa-thinking-toggle {
-	min-height: 34px;
-	padding: 0 12px;
-	border-radius: 999px;
-	font-size: 11px;
-	font-weight: 700;
 }
 
 .fa-thinking-toggle.is-active {
@@ -47,9 +14,6 @@
 }
 
 .fa-composer-icon-button {
-	width: 34px;
-	height: 34px;
-	min-width: 34px;
 	padding: 0;
 	display: inline-flex;
 	align-items: center;
@@ -85,11 +49,6 @@
 
 .fa-composer-icon-button.is-send {
 	border-color: rgba(129, 140, 248, 0.46);
-	background: linear-gradient(
-		135deg,
-		rgba(99, 102, 241, 0.98),
-		rgba(139, 92, 246, 0.98)
-	);
 	color: white;
 	box-shadow: 0 0 20px rgba(99, 102, 241, 0.36);
 }
@@ -125,12 +84,6 @@
 	display: block;
 }
 
-.fa-composer-note {
-	color: var(--fa-text-soft);
-	font-size: 11px;
-	line-height: 1.45;
-}
-
 .fa-thread-layout {
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
@@ -147,11 +100,6 @@
 	border: none;
 	background: transparent;
 	box-shadow: none;
-}
-
-.fa-thread-review-wrap {
-	display: grid;
-	gap: 10px;
 }
 
 .fa-shell-status-line,

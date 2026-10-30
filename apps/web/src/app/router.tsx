@@ -1,5 +1,4 @@
 import {
-	Link,
 	Outlet,
 	RouterProvider,
 	createRootRoute,
@@ -16,10 +15,9 @@ import {
 } from "@capacitor/core";
 import { Suspense, type ReactNode, lazy, useEffect, useMemo } from "react";
 
-import { ShellUiProvider, useShellUi } from "@/app/shell/shell-ui-context";
+import { ShellUiProvider } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { androidAppUrlToInternalRoute } from "@/android-local-runtime/helpers";
-import { useConversations } from "@/features/conversations/use-conversations";
 import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
 import { AdminConfigPage } from "@/pages/admin/admin-config-page";
@@ -33,10 +31,12 @@ import { MemoryConsolePage } from "@/pages/memory/memory-console-page";
 import { RegisterPage } from "@/pages/auth/register-page";
 import { TrajectoryPage } from "@/pages/observability/trajectory-page";
 import { ThreadPage } from "@/pages/thread/thread-page";
+import { HomePage } from "@/pages/home/home-page";
+import { NotFoundPage } from "@/pages/not-found/not-found-page";
 import { normalizeAuthReturnTo } from "@/pages/auth/return-to";
 import { appEnv } from "@/shared/config/env";
 import { useFocusAgent } from "@/shared/sdk/focus-agent-provider";
-import { EmptyState, Surface, Toast } from "@/shared/ui/primitives";
+import { Surface } from "@/shared/ui/primitives";
 
 interface CapacitorAppPlugin {
 	addListener(
@@ -88,7 +88,7 @@ export function shouldRedirectToSignIn(
 	return !useLocalRuntime && !isAuthRoute && ready && !hasPrincipal;
 }
 
-function RootLayout() {
+function useAuthRedirect() {
 	const navigate = useNavigate();
 	const { principal, ready } = useFocusAgent();
 	const pathname = useRouterState({
@@ -105,7 +105,6 @@ function RootLayout() {
 	const returnTo = isAuthRoute
 		? "/"
 		: normalizeAuthReturnTo(`${pathname}${search}`);
-	const isChineseBrowser = navigator?.language.toLowerCase().startsWith("zh");
 
 	useEffect(() => {
 		if (localRuntimeRedirectTarget) {
@@ -139,7 +138,38 @@ function RootLayout() {
 		returnTo,
 	]);
 
-	if (localRuntimeRedirectTarget || (!isAuthRoute && !ready)) {
+	return {
+		hasPrincipal: Boolean(principal),
+		isAuthRoute,
+		localRuntimeRedirectTarget,
+		ready,
+	};
+}
+
+// The only auth gate: non-auth routes render only once the session is ready
+// and a principal exists; auth routes always render.
+function AuthGate({
+	children,
+}: {
+	children: (isAuthRoute: boolean) => ReactNode;
+}) {
+	const { hasPrincipal, isAuthRoute, localRuntimeRedirectTarget, ready } =
+		useAuthRedirect();
+	const isChineseBrowser = navigator?.language.toLowerCase().startsWith("zh");
+
+	if (!isAuthRoute && !ready) {
+		return (
+			<div className="fa-route-state">
+				<RouteStateCard>
+					{isChineseBrowser
+						? "正在准备 Focus Agent 会话..."
+						: "Preparing Focus Agent session..."}
+				</RouteStateCard>
+			</div>
+		);
+	}
+
+	if (localRuntimeRedirectTarget) {
 		return (
 			<div className="fa-route-state">
 				<RouteStateCard>
@@ -151,7 +181,7 @@ function RootLayout() {
 		);
 	}
 
-	if (!isAuthRoute && !principal) {
+	if (!isAuthRoute && !hasPrincipal) {
 		return (
 			<div className="fa-route-state">
 				<RouteStateCard>
@@ -167,151 +197,23 @@ function RootLayout() {
 		);
 	}
 
-	if (isAuthRoute) {
-		return <Outlet />;
-	}
+	return <>{children(isAuthRoute)}</>;
+}
 
+function RootLayout() {
 	return (
-		<AppShell>
-			<Outlet />
-		</AppShell>
+		<AuthGate>
+			{(isAuthRoute) =>
+				isAuthRoute ? (
+					<Outlet />
+				) : (
+					<AppShell>
+						<Outlet />
+					</AppShell>
+				)
+			}
+		</AuthGate>
 	);
-}
-
-function NotFoundPage() {
-	const isChineseUi = navigator?.language.toLowerCase().startsWith("zh");
-
-	return (
-		<div className="fa-route-state">
-			<EmptyState
-				action={
-					<Link className="fa-route-state-link" to="/">
-						{isChineseUi ? "返回首页" : "Go back home"}
-					</Link>
-				}
-				className="fa-route-state-card"
-				title={isChineseUi ? "页面不存在" : "Page not found"}
-			/>
-		</div>
-	);
-}
-
-function HomePage() {
-	const navigate = useNavigate();
-	const { isChineseUi } = useShellUi();
-	const { data, isLoading } = useConversations();
-	const conversations = data?.conversations ?? [];
-	const firstActiveConversation =
-		conversations.find((item) => !item.is_archived) ?? conversations[0];
-
-	useEffect(() => {
-		if (isLoading || !firstActiveConversation) return;
-		void navigate({
-			to: "/c/$conversationId/t/$threadId",
-			params: {
-				conversationId: firstActiveConversation.root_thread_id,
-				threadId: firstActiveConversation.root_thread_id,
-			},
-			replace: true,
-		});
-	}, [firstActiveConversation, isLoading, navigate]);
-
-	return (
-		<div className="fa-thread-layout">
-			<section className="fa-chat-transcript">
-				<div className="fa-chat-history">
-					<div className="fa-chat-history-content">
-						<EmptyState
-							className="fa-chat-empty"
-							title={
-								isChineseUi
-									? "从这里开始聊天。只要 Agent 产生分支，左侧就会显示出来。"
-									: "Start chatting here. Branches appear on the left whenever the agent forks work."
-							}
-						/>
-					</div>
-				</div>
-			</section>
-
-			<section className="fa-composer-slot">
-				<Toast className="fa-inline-notice" tone="info">
-					{isChineseUi
-						? "在这里发送第一条消息。需要探索另一条路径时，再新建分支。"
-						: "Send the first message here. Create a branch only when you want to explore a separate path."}
-				</Toast>
-			</section>
-		</div>
-	);
-}
-
-function AuthGate({ children }: { children: ReactNode }) {
-	const navigate = useNavigate();
-	const { principal, ready } = useFocusAgent();
-	const pathname = useRouterState({
-		select: (state) => state.location.pathname,
-	});
-	const search = useRouterState({
-		select: (state) => state.location.searchStr,
-	});
-	const isAuthRoute = pathname === "/auth" || pathname.startsWith("/auth/");
-	const localRuntimeRedirectTarget = localRuntimeLegacyRouteTarget(
-		appEnv.useLocalRuntime,
-		pathname,
-	);
-	const returnTo = isAuthRoute
-		? "/"
-		: normalizeAuthReturnTo(`${pathname}${search}`);
-
-	useEffect(() => {
-		if (localRuntimeRedirectTarget) {
-			void navigate({
-				to: localRuntimeRedirectTarget,
-				replace: true,
-			});
-			return;
-		}
-		if (
-			shouldRedirectToSignIn(
-				appEnv.useLocalRuntime,
-				isAuthRoute,
-				ready,
-				Boolean(principal),
-			)
-		) {
-			void navigate({
-				to: "/auth/login",
-				search: { return_to: returnTo },
-				replace: true,
-			});
-		}
-	}, [
-		isAuthRoute,
-		localRuntimeRedirectTarget,
-		navigate,
-		principal,
-		ready,
-		returnTo,
-	]);
-
-	if (localRuntimeRedirectTarget || (!isAuthRoute && (!ready || !principal))) {
-		return (
-			<div className="fa-route-state">
-				<RouteStateCard>
-					{appEnv.useLocalRuntime
-						? "Unable to establish the device-local session."
-						: "Redirecting to sign in..."}
-				</RouteStateCard>
-			</div>
-		);
-	}
-
-	return <>{children}</>;
-}
-
-function protect(component: ReactNode) {
-	return function ProtectedRouteComponent() {
-		return <AuthGate>{component}</AuthGate>;
-	};
 }
 
 function lazyRoute(component: ReactNode) {
@@ -366,73 +268,73 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
-	component: protect(<HomePage />),
+	component: () => <HomePage />,
 });
 
 const threadRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/c/$conversationId/t/$threadId",
-	component: protect(<ThreadPage />),
+	component: () => <ThreadPage />,
 });
 
 const reviewRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/c/$conversationId/t/$threadId/review",
-	component: protect(<ThreadPage />),
+	component: () => <ThreadPage />,
 });
 
 const trajectoryRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/observability/trajectory",
-	component: protect(<TrajectoryPage />),
+	component: () => <TrajectoryPage />,
 });
 
 const observabilityOverviewRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/observability/overview",
-	component: protect(<TrajectoryPage />),
+	component: () => <TrajectoryPage />,
 });
 
 const agentRoleConsoleRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/agent/roles",
-	component: protect(<AgentRoleConsolePage />),
+	component: () => <AgentRoleConsolePage />,
 });
 
 const agentGovernanceConsoleRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/agent/governance",
-	component: protect(<AgentRoleConsolePage />),
+	component: () => <AgentRoleConsolePage />,
 });
 
 const agentMemoryRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/agent/memory",
-	component: protect(<MemoryConsolePage />),
+	component: () => <MemoryConsolePage />,
 });
 
 const adminUsersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/admin/users",
-	component: protect(<AdminUsersPage />),
+	component: () => <AdminUsersPage />,
 });
 
 const adminUserDetailRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/admin/users/$userId",
-	component: protect(<AdminUserDetailPage />),
+	component: () => <AdminUserDetailPage />,
 });
 
 const adminAuditEventsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/admin/audit-events",
-	component: protect(<AdminAuditEventsPage />),
+	component: () => <AdminAuditEventsPage />,
 });
 
 const adminConfigRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/admin/config",
-	component: protect(<AdminConfigPage />),
+	component: () => <AdminConfigPage />,
 });
 
 const authRoute = createRoute({
@@ -456,19 +358,19 @@ const registerRoute = createRoute({
 const accountProfileRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/account/profile",
-	component: protect(<AccountProfilePage />),
+	component: () => <AccountProfilePage />,
 });
 
 const accountSecurityRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/account/security",
-	component: protect(<AccountSecurityPage />),
+	component: () => <AccountSecurityPage />,
 });
 
 const accountSessionsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/account/sessions",
-	component: protect(<AccountSessionsPage />),
+	component: () => <AccountSessionsPage />,
 });
 
 const observabilityRoutes = appEnv.features.observability
@@ -494,27 +396,27 @@ const agentTeamRoutes =
 				const agentTeamRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/agent-team",
-					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
 				});
 				const agentTeamSessionRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/agent-team/$sessionId",
-					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
 				});
 				const agentTeamTasksRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/agent-team/$sessionId/tasks",
-					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
 				});
 				const agentTeamApprovalsRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/agent-team/$sessionId/approvals",
-					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
 				});
 				const agentTeamEvidenceRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/agent-team/$sessionId/evidence",
-					component: protect(lazyRoute(<LazyAgentTeamWorkbenchPage />)),
+					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
 				});
 				return [
 					agentTeamRoute,
@@ -538,12 +440,12 @@ const productivityRoutes =
 				const productivityNotesRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/productivity/notes",
-					component: protect(lazyRoute(<LazyProductivityPage mode="notes" />)),
+					component: () => lazyRoute(<LazyProductivityPage mode="notes" />),
 				});
 				const productivityTasksRoute = createRoute({
 					getParentRoute: () => rootRoute,
 					path: "/productivity/tasks",
-					component: protect(lazyRoute(<LazyProductivityPage mode="tasks" />)),
+					component: () => lazyRoute(<LazyProductivityPage mode="tasks" />),
 				});
 				return [productivityNotesRoute, productivityTasksRoute];
 			})();
@@ -572,9 +474,6 @@ const routeTree = rootRoute.addChildren([
 const router = createRouter({
 	routeTree,
 	basepath: appEnv.routerBasePath,
-	context: {
-		isAuthenticated: false,
-	},
 	defaultPreload: "intent",
 });
 
@@ -585,15 +484,6 @@ declare module "@tanstack/react-router" {
 }
 
 export function AppRouter() {
-	const { ready, principal } = useFocusAgent();
-	const isChineseBrowser = navigator?.language.toLowerCase().startsWith("zh");
-	const pathname =
-		typeof window !== "undefined" ? window.location.pathname : "";
-	const appPath =
-		appEnv.routerBasePath !== "/" && pathname.startsWith(appEnv.routerBasePath)
-			? pathname.slice(appEnv.routerBasePath.length) || "/"
-			: pathname;
-	const isAuthPath = appPath === "/auth" || appPath.startsWith("/auth/");
 	const fallbackShellUiContext = useMemo(
 		() => ({
 			languagePreference: "en" as const,
@@ -648,24 +538,9 @@ export function AppRouter() {
 		};
 	}, []);
 
-	if (!isAuthPath && !ready) {
-		return (
-			<div className="fa-route-state">
-				<RouteStateCard>
-					{isChineseBrowser
-						? "正在准备 Focus Agent 会话..."
-						: "Preparing Focus Agent session..."}
-				</RouteStateCard>
-			</div>
-		);
-	}
-
 	return (
 		<ShellUiProvider value={fallbackShellUiContext}>
-			<RouterProvider
-				router={router}
-				context={{ isAuthenticated: Boolean(principal) }}
-			/>
+			<RouterProvider router={router} />
 		</ShellUiProvider>
 	);
 }

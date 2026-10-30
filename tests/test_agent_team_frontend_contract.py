@@ -59,6 +59,20 @@ def _type_body(text: str, name: str) -> str:
     return match.group("body")
 
 
+def _assert_web_alias(web_types: str, name: str) -> None:
+    """The web type must be a direct alias of the SDK type with the FocusAgent prefix."""
+    assert re.search(
+        rf"export type {re.escape(name)} =\s*FocusAgent{re.escape(name)};", web_types
+    ), f"web type {name} must alias FocusAgent{name}"
+
+
+def _sdk_endpoint_method_names() -> set[str]:
+    text = _read(SDK_ROOT / "src" / "client" / "agent-team.ts")
+    match = re.search(r"export interface AgentTeamEndpoints \{(?P<body>.*?)\n\}", text, re.S)
+    assert match, "missing AgentTeamEndpoints interface"
+    return set(re.findall(r"^\s+(\w+):", match.group("body"), re.M))
+
+
 def _assert_interface_has_fields(body: str, fields: set[str]) -> None:
     for field in sorted(fields):
         assert re.search(rf"\b{re.escape(field)}\??:", body), f"missing TypeScript field {field}"
@@ -142,24 +156,19 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         _interface_body(sdk_types, "FocusAgentAgentTeamCreateSessionRequest"),
         session_request_fields,
     )
-    _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamCreateSessionRequest"),
-        session_request_fields,
-    )
+    _assert_web_alias(web_types, "AgentTeamCreateSessionRequest")
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamDispatchRequest"),
         dispatch_request_fields,
     )
-    _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamDispatchRequest"),
-        dispatch_request_fields,
-    )
+    _assert_web_alias(web_types, "AgentTeamDispatchRequest")
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamCreateTaskRequest"),
         task_create_fields,
     )
+    _assert_web_alias(web_types, "AgentTeamCreateTaskRequest")
     _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamCreateTaskRequest"),
+        _interface_body(sdk_types, "FocusAgentAgentTeamCreateTaskRequest"),
         {"role", "goal", "scope", "dependencies"},
     )
     _assert_interface_has_fields(
@@ -179,19 +188,13 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         _interface_body(sdk_types, "FocusAgentAgentTeamSession"),
         {"latest_merge_bundle", "merge_decision"},
     )
-    _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamSession"),
-        {"latest_merge_bundle", "merge_decision"},
-    )
+    _assert_web_alias(web_types, "AgentTeamSession")
 
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamTask"),
         {"agent_run_id", "delegated_task_id", "artifact_ids", "execution_status"},
     )
-    _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamTask"),
-        {"agent_run_id", "delegated_task_id", "artifact_ids", "execution_status"},
-    )
+    _assert_web_alias(web_types, "AgentTeamTask")
     _assert_interface_has_fields(
         _interface_body(sdk_types, "FocusAgentAgentTeamMergeBundle"),
         {
@@ -202,16 +205,7 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
             "source_output_ids",
         },
     )
-    _assert_interface_has_fields(
-        _interface_body(web_types, "AgentTeamMergeBundle"),
-        {
-            "execution_evidence",
-            "final_answer",
-            "final_answer_status",
-            "final_answer_warnings",
-            "source_output_ids",
-        },
-    )
+    _assert_web_alias(web_types, "AgentTeamMergeBundle")
 
     assert set(AgentTeamSessionListResponse.model_fields) == {"sessions", "items", "count"}
     assert set(AgentTeamTaskListResponse.model_fields) == {"tasks", "items", "count"}
@@ -229,6 +223,10 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
     assert old_bundle.final_answer_warnings == []
     assert old_bundle.source_output_ids == []
 
+    endpoint_methods = _sdk_endpoint_method_names()
+    client_ts = _read(SDK_ROOT / "src" / "client.ts")
+    assert "AgentTeamEndpoints" in client_ts
+    assert "applyAgentTeamEndpoints(FocusAgentClient)" in client_ts
     for method in [
         "createAgentTeamSession",
         "getAgentTeamSession",
@@ -237,7 +235,7 @@ def test_agent_team_sdk_and_web_contracts_share_api_shape():
         "createAgentTeamTask",
         "prepareAgentTeamMergeBundle",
     ]:
-        assert method in _interface_body(web_types, "AgentTeamClientContract")
+        assert method in endpoint_methods
         assert method in _sdk_client_text()
 
 
@@ -266,7 +264,12 @@ def test_agent_team_role_and_status_unions_match_sdk_and_web_contracts():
             sdk_types,
             "FocusAgentAgentTeamTaskRole",
         ) + _type_body(sdk_types, "FocusAgentAgentTeamTaskStatus")
-        assert f'"{literal}"' in web_types
+    _assert_web_alias(web_types, "AgentTeamSessionStatus")
+    _assert_web_alias(web_types, "AgentTeamTaskStatus")
+    _assert_web_alias(web_types, "AgentTeamTask")
+    assert "role: FocusAgentAgentTeamTaskRole;" in _interface_body(
+        sdk_types, "FocusAgentAgentTeamTask"
+    )
 
 
 def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():

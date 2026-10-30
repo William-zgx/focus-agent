@@ -214,7 +214,6 @@
 	word-break: break-word;
 }
 
-.fa-admin-create-panel textarea,
 .fa-admin-panel textarea {
 	resize: vertical;
 }
@@ -257,14 +256,6 @@
 	.fa-admin-console.has-drawer {
 		grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
 	}
-
-	:where(.fa-admin-console.has-drawer) .fa-admin-console-nav {
-		display: none;
-	}
-
-	:where(.fa-admin-console.has-drawer) .fa-admin-console-links {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
 }
 
 @media (max-width: 1220px) {
@@ -277,7 +268,6 @@
 		overflow-y: auto;
 	}
 
-	.fa-admin-console-nav,
 	.fa-admin-console-drawer {
 		height: auto;
 		max-height: none;
@@ -289,13 +279,6 @@
 		padding-right: 0;
 	}
 
-	.fa-admin-console-links {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
-	.fa-admin-grid,
-	.fa-admin-detail-grid,
-	.fa-admin-config-grid,
 	.fa-admin-config-action-grid,
 	.fa-admin-config-metric-grid,
 	.fa-admin-config-section-picker,
@@ -310,14 +293,6 @@
 	.fa-admin-form-grid.is-three {
 		grid-template-columns: minmax(0, 1fr);
 	}
-
-	.fa-admin-create-panel {
-		position: static;
-	}
-
-	.fa-admin-stat-stack {
-		justify-items: start;
-	}
 }
 
 @media (max-width: 900px) {
@@ -325,14 +300,11 @@
 		min-height: 0;
 	}
 
-	.fa-admin-console-nav,
 	.fa-admin-console-toolbar,
 	.fa-admin-console-drawer {
 		border-radius: 8px;
 	}
 
-	.fa-admin-console-links,
-	.fa-admin-metrics,
 	.fa-admin-drawer-tabs {
 		grid-template-columns: minmax(0, 1fr);
 	}
@@ -351,8 +323,7 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 
-	.fa-admin-panel,
-	.fa-admin-header {
+	.fa-admin-panel {
 		padding: 14px;
 	}
 }
@@ -480,60 +451,12 @@
 	gap: 12px;
 }
 
-.fa-observability-route-handoff {
-	display: grid;
-	gap: 12px;
-	padding: 14px 16px;
-	border: 1px solid var(--fa-border);
-	border-radius: 22px;
-	background:
-		linear-gradient(
-			180deg,
-			color-mix(in srgb, var(--fa-panel-2) 95%, transparent 5%),
-			color-mix(in srgb, var(--fa-panel-1) 96%, transparent 4%)
-		),
-		radial-gradient(
-			circle at top right,
-			color-mix(in srgb, var(--fa-accent) 6%, transparent 94%),
-			transparent 46%
-		);
-	box-shadow: var(--fa-shadow);
-}
-
-.fa-observability-workflow-strip {
-	display: grid;
-	grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr);
-	gap: 14px;
-}
-
-.fa-observability-workflow-card {
-	display: grid;
-	gap: 12px;
-	padding: 14px 16px;
-	border: 1px solid var(--fa-border);
-	border-radius: 22px;
-	background:
-		linear-gradient(
-			180deg,
-			color-mix(in srgb, var(--fa-panel-2) 95%, transparent 5%),
-			color-mix(in srgb, var(--fa-panel-1) 96%, transparent 4%)
-		),
-		radial-gradient(
-			circle at top right,
-			color-mix(in srgb, var(--fa-accent) 7%, transparent 93%),
-			transparent 44%
-		);
-	box-shadow: var(--fa-shadow);
-}
-
-.fa-observability-workflow-grid,
 .fa-observability-pivot-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 10px;
 }
 
-.fa-observability-workflow-stat,
 .fa-observability-pivot-button {
 	display: grid;
 	gap: 5px;
@@ -543,14 +466,12 @@
 	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
 }
 
-.fa-observability-workflow-stat span,
 .fa-observability-pivot-button span {
 	color: var(--fa-text-soft);
 	font-size: 0.74rem;
 	line-height: 1.4;
 }
 
-.fa-observability-workflow-stat strong,
 .fa-observability-pivot-button strong {
 	color: var(--fa-text);
 	line-height: 1.2;
@@ -592,138 +513,14 @@
 	padding-bottom: 14px;
 }
 
-.fa-observability-layout.is-workbench-route .fa-observability-topbar {
-	gap: 10px;
-	padding: 11px 14px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-topbar-copy,
-.fa-observability-layout.is-workbench-route .fa-observability-topbar-side {
-	gap: 6px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-topbar-copy h1 {
-	font-size: clamp(1.2rem, 1.3vw, 1.55rem);
-}
-
-.fa-observability-layout.is-workbench-route
-	.fa-observability-topbar-inline-note {
-	font-size: 0.82rem;
-	line-height: 1.35;
-}
-
 .fa-observability-layout.is-workbench-route .fa-observability-route-tabs {
 	margin-top: 2px;
 }
 
-.fa-observability-layout.is-workbench-route .fa-observability-inline-stats {
-	gap: 6px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-inline-stat {
-	padding: 8px 10px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-workflow-strip {
-	gap: 10px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-workflow-card {
-	gap: 10px;
-	padding: 11px 14px;
-}
-
-.fa-observability-layout.is-workbench-route .fa-observability-workflow-grid,
 .fa-observability-layout.is-workbench-route .fa-observability-pivot-grid {
 	gap: 8px;
 }
 
-.fa-observability-layout.is-workbench-route .fa-observability-workflow-stat,
 .fa-observability-layout.is-workbench-route .fa-observability-pivot-button {
 	padding: 9px 11px;
-}
-
-.fa-observability-overview-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 14px;
-}
-
-.fa-observability-overview-card {
-	display: grid;
-	gap: 12px;
-	padding: 14px 16px;
-	border: 1px solid var(--fa-border);
-	border-radius: 22px;
-	background:
-		linear-gradient(
-			180deg,
-			color-mix(in srgb, var(--fa-panel-2) 95%, transparent 5%),
-			color-mix(in srgb, var(--fa-panel-1) 96%, transparent 4%)
-		),
-		radial-gradient(
-			circle at top right,
-			color-mix(in srgb, var(--fa-accent) 8%, transparent 92%),
-			transparent 46%
-		);
-	box-shadow: var(--fa-shadow);
-}
-
-.fa-observability-overview-heading,
-.fa-observability-block-heading {
-	display: flex;
-	align-items: start;
-	justify-content: space-between;
-	gap: 10px;
-	flex-wrap: wrap;
-}
-
-.fa-observability-overview-heading p,
-.fa-observability-block-heading p {
-	margin: 0;
-	color: var(--fa-text-soft);
-	font-size: 0.76rem;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-}
-
-.fa-observability-overview-heading h2,
-.fa-observability-block-heading h3 {
-	margin: 4px 0 0;
-	font-size: 1rem;
-	line-height: 1.2;
-	letter-spacing: -0.03em;
-}
-
-.fa-observability-overview-metrics,
-.fa-observability-overview-strip {
-	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 8px;
-}
-
-.fa-observability-overview-metric,
-.fa-observability-overview-strip > div {
-	display: grid;
-	gap: 4px;
-	padding: 10px 12px;
-	border-radius: 16px;
-	border: 1px solid var(--fa-border-subtle);
-	background: color-mix(in srgb, var(--fa-panel-1) 80%, transparent 20%);
-}
-
-.fa-observability-overview-metric span,
-.fa-observability-overview-strip span,
-.fa-observability-list-label {
-	color: var(--fa-text-soft);
-	font-size: 0.72rem;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-}
-
-.fa-observability-overview-metric strong,
-.fa-observability-overview-strip strong {
-	color: var(--fa-text);
-	font-size: 1rem;
-	line-height: 1.15;
 }

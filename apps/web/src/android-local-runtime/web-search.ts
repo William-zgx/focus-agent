@@ -84,7 +84,7 @@ function normalizedSearchDomains(
 	return domains;
 }
 
-export interface LocalWebSearchOptions {
+interface LocalWebSearchOptions {
 	time_range?: LocalWebSearchTimeRange | string | null;
 	include_domains?: string[] | string | null;
 	exclude_domains?: string[] | string | null;

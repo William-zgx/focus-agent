@@ -1,75 +1,35 @@
 @media (max-width: 1220px) {
-	.fa-observability-workflow-strip,
-	.fa-observability-overview-grid,
-	.fa-observability-topbar,
-	.fa-observability-console.is-workbench,
-	.fa-observability-detail-grid.is-workbench,
-	.fa-observability-narrative-grid {
+	.fa-observability-detail-grid.is-workbench {
 		grid-template-columns: 1fr;
 	}
 
-	.fa-observability-overview-metrics,
-	.fa-observability-overview-strip,
-	.fa-observability-inline-stats,
-	.fa-observability-focus-stats,
 	.fa-observability-action-grid,
 	.fa-observability-action-summary,
 	.fa-observability-diff-grid,
-	.fa-observability-hero-grid,
-	.fa-observability-dual-list {
+	.fa-observability-hero-grid {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
-	.fa-observability-meta-grid,
 	.fa-observability-status-strip {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
 
 @media (max-width: 900px) {
-	.fa-observability-topbar,
 	.fa-observability-list-panel.is-explorer,
-	.fa-observability-detail-panel.is-investigation,
-	.fa-observability-detail-side.is-inspector {
+	.fa-observability-detail-panel.is-investigation {
 		padding: 14px;
 	}
 
-	.fa-observability-inline-stats,
 	.fa-observability-route-tabs,
 	.fa-observability-filters,
 	.fa-observability-hero-grid,
-	.fa-observability-focus-stats,
-	.fa-observability-meta-grid,
-	.fa-observability-workflow-grid,
 	.fa-observability-pivot-grid,
-	.fa-observability-overview-metrics,
-	.fa-observability-overview-strip,
-	.fa-observability-dual-list,
 	.fa-observability-action-grid,
 	.fa-observability-action-summary,
 	.fa-observability-diff-grid,
 	.fa-observability-status-strip {
 		grid-template-columns: 1fr;
-	}
-
-	.fa-observability-overview-heading,
-	.fa-observability-block-heading,
-	.fa-observability-section-intro,
-	.fa-observability-focus-top,
-	.fa-observability-toolbar-actions {
-		flex-direction: column;
-	}
-
-	.fa-observability-toolbar-actions {
-		align-items: stretch;
-	}
-
-	.fa-observability-focus-meta {
-		justify-content: flex-start;
-	}
-
-	.fa-observability-console.is-workbench {
-		gap: 12px;
 	}
 }
 
@@ -267,7 +227,6 @@
 .fa-sidebar-scroll {
 	min-height: 0;
 	overflow-y: auto;
-	padding: 18px;
 }
 
 .fa-sidebar-panel.is-global-shell .fa-sidebar-scroll {

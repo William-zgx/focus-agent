@@ -45,8 +45,6 @@
 
 	.fa-app-shell.is-sidebar-collapsed .fa-sidebar-panel {
 		display: grid;
-		transform: translateX(calc(-100% - 24px));
-		opacity: 0;
 		pointer-events: none;
 	}
 
@@ -55,8 +53,6 @@
 	}
 
 	.fa-workspace-sidebar-toggle {
-		top: 12px;
-		left: 12px;
 		min-width: 32px;
 		justify-content: center;
 		padding: 7px;

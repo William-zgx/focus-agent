@@ -1,12 +1,4 @@
-import type {
-	FocusAgentAdminSkillConfigEntry,
-	FocusAgentUpdateAdminModelConfigEntry,
-	FocusAgentUpdateAdminModelConfigRequest,
-	FocusAgentUpdateAdminModelProviderConfig,
-	FocusAgentUpdateAdminToolConfigEntry,
-	FocusAgentUpdateAdminToolConfigRequest,
-	FocusAgentUpdateAdminToolProviderConfig,
-} from "@focus-agent/web-sdk";
+import type { FocusAgentAdminSkillConfigEntry } from "@focus-agent/web-sdk";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -28,10 +20,11 @@ import {
 	emptyModelProviderDraft,
 	emptyToolProviderDraft,
 	isChatModel,
+	modelDraftToRequest,
 	nullableText,
-	splitList,
-	updateModelEntryDraft,
+	toolDraftToRequest,
 	uniqueList,
+	updateModelEntryDraft,
 } from "./admin-config-draft-utils";
 import type {
 	ConfigSection,
@@ -304,73 +297,13 @@ export function AdminConfigPage() {
 		event.preventDefault();
 		setFormError("");
 		try {
-			const providers: FocusAgentUpdateAdminModelProviderConfig[] =
-				modelDraft.providers.map((provider) => {
-					const id = provider.id.trim();
-					if (!id) {
-						throw new Error(
-							isChineseUi
-								? "Provider ID 不能为空。"
-								: "Provider ID is required.",
-						);
-					}
-					const requestProvider: FocusAgentUpdateAdminModelProviderConfig = {
-						id,
-						label: nullableText(provider.label),
-						backend_provider: nullableText(provider.backendProvider),
-						aliases: splitList(provider.aliases),
-						logo_slug: nullableText(provider.logoSlug),
-						logo_letter: nullableText(provider.logoLetter),
-						base_url_env: nullableText(provider.baseUrlEnv),
-						base_url_default: nullableText(provider.baseUrlDefault),
-						api_key_env: nullableText(provider.apiKeyEnv),
-					};
-					if (appEnv.useLocalRuntime && provider.apiKeyDefault.trim()) {
-						requestProvider.api_key_default = provider.apiKeyDefault.trim();
-					}
-					return requestProvider;
+			const request = modelDraftToRequest(modelDraft, isChineseUi);
+			if (appEnv.useLocalRuntime) {
+				request.providers?.forEach((provider, index) => {
+					const apiKey = modelDraft.providers[index]?.apiKeyDefault.trim();
+					if (apiKey) provider.api_key_default = apiKey;
 				});
-			const models: FocusAgentUpdateAdminModelConfigEntry[] =
-				modelDraft.models.map((model) => {
-					const id = model.id.trim();
-					if (!id) {
-						throw new Error(
-							isChineseUi ? "模型 ID 不能为空。" : "Model ID is required.",
-						);
-					}
-					return {
-						id,
-						label: nullableText(model.label),
-						protocol: model.protocol,
-						supports_thinking: model.supportsThinking,
-						default_thinking_enabled: model.supportsThinking
-							? model.defaultThinkingEnabled
-							: false,
-						request_kwargs: model.original.request_kwargs,
-						thinking_enabled_request_kwargs:
-							model.original.thinking_enabled_request_kwargs,
-						thinking_disabled_request_kwargs:
-							model.original.thinking_disabled_request_kwargs,
-						thinking_disabled_model_name:
-							model.original.thinking_disabled_model_name,
-						reasoning_effort: nullableText(model.reasoningEffort),
-						no_temperature: model.noTemperature,
-						thinking_enable_extra_body_type:
-							model.original.thinking_enable_extra_body_type,
-						thinking_disable_extra_body_type:
-							model.original.thinking_disable_extra_body_type,
-						thinking_disable_switch_model:
-							model.original.thinking_disable_switch_model,
-					};
-				});
-			const request: FocusAgentUpdateAdminModelConfigRequest = {
-				reason: nullableText(modelDraft.reason),
-				default_model: nullableText(modelDraft.defaultModel),
-				helper_model: nullableText(modelDraft.helperModel),
-				model_choices: uniqueList(modelDraft.modelChoices),
-				providers,
-				models,
-			};
+			}
 			await modelMutation.mutateAsync(request);
 		} catch (error) {
 			setFormError(
@@ -387,50 +320,7 @@ export function AdminConfigPage() {
 		event.preventDefault();
 		setFormError("");
 		try {
-			const tools: FocusAgentUpdateAdminToolConfigEntry[] = toolDraft.tools.map(
-				(tool) => ({
-					name: tool.name,
-					enabled: tool.enabled,
-					label: nullableText(tool.label),
-					description: nullableText(tool.description),
-					settings: tool.original.settings,
-					metadata: tool.original.metadata,
-				}),
-			);
-			const providers: FocusAgentUpdateAdminToolProviderConfig[] =
-				toolDraft.providers.map((provider) => {
-					const id = provider.id.trim();
-					if (!id) {
-						throw new Error(
-							isChineseUi
-								? "工具 Provider ID 不能为空。"
-								: "Tool provider ID is required.",
-						);
-					}
-					const order =
-						provider.order.trim().length === 0
-							? null
-							: Number.parseInt(provider.order, 10);
-					if (Number.isNaN(order)) {
-						throw new Error(
-							isChineseUi
-								? `${provider.id} 的顺序必须是整数。`
-								: `${provider.id} order must be an integer.`,
-						);
-					}
-					return {
-						id,
-						enabled: provider.enabled,
-						order,
-						metadata: provider.metadata,
-						overrides: splitList(provider.overrides),
-					};
-				});
-			const request: FocusAgentUpdateAdminToolConfigRequest = {
-				reason: nullableText(toolDraft.reason),
-				tools,
-				providers,
-			};
+			const request = toolDraftToRequest(toolDraft, isChineseUi);
 			await toolMutation.mutateAsync(request);
 		} catch (error) {
 			setFormError(

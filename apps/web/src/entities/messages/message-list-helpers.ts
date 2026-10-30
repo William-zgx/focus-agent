@@ -1,6 +1,5 @@
 import type {
 	FocusAgentBranchActionProposal,
-	FocusAgentToolEvent,
 	RunFailedPayload,
 } from "@focus-agent/web-sdk";
 
@@ -67,38 +66,6 @@ export function tokenUsageLabel(totalTokens: number, isChineseUi: boolean) {
 	return isChineseUi
 		? `本次回复 · ${formatTokenCount(totalTokens)} tokens`
 		: `Reply · ${formatTokenCount(totalTokens)} tokens`;
-}
-
-export function toolEventLabel(
-	event: FocusAgentToolEvent,
-	isChineseUi: boolean,
-) {
-	const toolName = String(
-		event.data.tool_name || event.data.event || "tool",
-	).trim();
-	switch (event.event) {
-		case "tool.requested":
-			return isChineseUi ? `准备调用 ${toolName}` : `Preparing ${toolName}`;
-		case "tool.result":
-			return isChineseUi ? `已完成 ${toolName}` : `Completed ${toolName}`;
-		case "tool.error":
-			return isChineseUi ? `${toolName} 执行失败` : `${toolName} failed`;
-		default:
-			return toolName;
-	}
-}
-
-export function toolEventTone(events: FocusAgentToolEvent[]) {
-	if (events.some((event) => event.event === "tool.error")) {
-		return "danger";
-	}
-	if (
-		events.length > 0 &&
-		events.every((event) => event.event === "tool.result")
-	) {
-		return "success";
-	}
-	return "warn";
 }
 
 export function codeCopyLabel(isChineseUi: boolean, copied: boolean) {

@@ -66,8 +66,8 @@ def test_agent_team_tabs_are_url_driven_and_lazy_loaded():
 
 
 def test_agent_team_queries_only_mount_on_active_team_tab_and_stop_when_leaving():
-    hooks = _read(AGENT_TEAM_ROOT / "use-agent-team.ts")
-    v2_hooks = _read(AGENT_TEAM_ROOT / "use-agent-team-v2.ts")
+    hooks = _read(AGENT_TEAM_ROOT / "agent-team-queries.ts")
+    hook_barrel = _read(AGENT_TEAM_ROOT / "use-agent-team.ts")
     mission = _read(AGENT_TEAM_ROOT / "agent-team-workbench.tsx")
     approvals = _read(AGENT_TEAM_ROOT / "agent-team-approvals-tab.tsx")
     evidence = _read(AGENT_TEAM_ROOT / "agent-team-evidence-tab.tsx")
@@ -85,11 +85,13 @@ def test_agent_team_queries_only_mount_on_active_team_tab_and_stop_when_leaving(
     assert "AgentTeamAdoptionWorkbench" not in mission
     assert "useAgentTeamToolApprovals(sessionId)" in approvals
     assert "AgentTeamAdoptionWorkbench" in evidence
-    assert 'from "./use-agent-team-v2"' in hooks
-    assert "useAgentTeamReadiness" in v2_hooks
-    assert "useAgentTeamEvidence" in v2_hooks
-    assert "enabled: canQuery" in v2_hooks
-    assert "refetchInterval: poll ? 1500 : false" in v2_hooks
+    assert 'from "./agent-team-queries"' in hook_barrel
+    assert "useAgentTeamReadiness" in hook_barrel
+    assert "useAgentTeamEvidence" in hook_barrel
+    assert "export function useAgentTeamReadiness" in hooks
+    assert "export function useAgentTeamEvidence" in hooks
+    assert "enabled: canQuery" in hooks
+    assert "refetchInterval: poll ? 1500 : false" in hooks
     assert "useAgentTeamEvidence(sessionId" in evidence
     assert "poll: shouldPollEvidence(view)" in evidence
     assert "useAgentTeamReadiness" in evidence

@@ -68,7 +68,6 @@
 
 .fa-conversation-switcher {
 	flex-basis: 110px;
-	max-width: 150px;
 }
 
 .fa-inline-rename-form.is-conversation {
@@ -84,21 +83,8 @@
 	font-size: 12px;
 }
 
-.fa-conversation-title-button {
-	height: 34px;
-	padding: 8px 10px;
-	border-radius: 11px;
-	font-size: 12px;
-}
-
 .fa-conversation-jump {
 	flex-basis: 34px;
-	min-width: 34px;
-}
-
-.fa-conversation-jump-select {
-	padding: 0;
-	color: transparent;
 }
 
 .fa-chat-toolbar-pill,
@@ -127,10 +113,6 @@
 }
 
 @media (max-width: 900px) {
-	.fa-header-card {
-		padding: 10px;
-	}
-
 	.fa-chat-header-top {
 		gap: 8px;
 	}

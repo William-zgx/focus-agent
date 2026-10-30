@@ -1,7 +1,3 @@
-.fa-admin-header {
-	min-height: auto;
-}
-
 .fa-admin-eyebrow {
 	margin: 0;
 	color: var(--fa-accent-text-muted);
@@ -10,22 +6,10 @@
 	text-transform: uppercase;
 }
 
-.fa-admin-stat-stack,
 .fa-admin-summary-grid,
 .fa-admin-event-list {
 	display: grid;
 	gap: 8px;
-}
-
-.fa-admin-stat-stack {
-	justify-items: end;
-}
-
-.fa-admin-stat-stack .fa-trajectory-overview-runtime {
-	min-width: 140px;
-	gap: 4px;
-	padding: 8px 10px;
-	border-radius: 8px;
 }
 
 .fa-admin-page-bar {
@@ -66,30 +50,6 @@
 	gap: 4px;
 }
 
-.fa-admin-page-bar .fa-admin-stat-stack {
-	grid-auto-flow: column;
-	grid-template-columns: auto auto;
-	align-items: center;
-}
-
-.fa-admin-page-bar .fa-admin-stat-stack .fa-trajectory-overview-runtime {
-	border-color: var(--fa-border-subtle);
-	background: color-mix(in srgb, var(--fa-panel-1) 60%, transparent 40%);
-	box-shadow: none;
-}
-
-.fa-admin-workspace-header {
-	border-radius: 14px;
-	gap: 12px;
-	padding: 12px 16px;
-}
-
-.fa-admin-workspace-header .fa-trajectory-workbench-header-copy,
-.fa-admin-workspace-header .fa-trajectory-workbench-heading,
-.fa-admin-workspace-header .fa-trajectory-workbench-header-side {
-	gap: 6px;
-}
-
 .fa-admin-workspace-heading h1 {
 	font-size: clamp(1rem, 1.08vw, 1.16rem);
 	line-height: 1.2;
@@ -103,26 +63,6 @@
 	letter-spacing: 0;
 	margin: 1px 0 0;
 	opacity: 0.85;
-}
-
-.fa-admin-grid {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-	gap: 14px;
-	align-items: start;
-}
-
-.fa-admin-detail-grid {
-	display: grid;
-	grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.74fr);
-	gap: 14px;
-	align-items: start;
-}
-
-.fa-admin-config-grid {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 10px;
 }
 
 .fa-admin-config-detail {
@@ -526,11 +466,6 @@
 	min-height: 0;
 }
 
-.fa-admin-create-panel {
-	position: sticky;
-	top: 0;
-}
-
 .fa-admin-filters {
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -539,17 +474,10 @@
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.fa-admin-mini-stats,
 .fa-admin-action-row,
 .fa-admin-chip-row {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	flex-wrap: wrap;
-}
-
-.fa-admin-mini-stats {
-	justify-content: flex-end;
-	color: var(--fa-text-muted);
-	font-size: 0.8rem;
 }

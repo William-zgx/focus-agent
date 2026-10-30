@@ -38,7 +38,7 @@ type BuildTrajectoryOverviewViewModelArgs = {
 	trajectoryRuntimeMessage?: string | null;
 };
 
-export type TrajectoryOverviewViewModel = {
+type TrajectoryOverviewViewModel = {
 	byModel: OverviewListItem[];
 	byScene: OverviewListItem[];
 	hottestTools: FocusAgentTrajectoryStatsRow[];

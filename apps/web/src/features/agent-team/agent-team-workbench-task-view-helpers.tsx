@@ -8,7 +8,6 @@ import {
 } from "./agent-team-workbench-task-output-utils";
 import {
 	compactTaskGoal,
-	isRecord,
 	isTaskDone,
 	isTaskQueued,
 	isTaskReady,
@@ -21,6 +20,7 @@ import type {
 	AgentTeamTask,
 	AgentTeamTaskOutput,
 } from "./types";
+import { isRecord } from "@/shared/records";
 
 export function shortText(value: string | null | undefined, fallback = "—") {
 	const normalized = value?.trim().replace(/\s+/g, " ");
@@ -71,7 +71,7 @@ export function taskResultSummary(
 			? "模拟回传：流程已完成，但没有生成真实任务结果。"
 			: "Simulated return: the flow completed, but no real task result was generated.";
 	}
-	if (task.status === "done" || task.status === "completed")
+	if (task.status === "done")
 		return isChineseUi
 			? "任务已完成，等待汇总结果。"
 			: "Task completed and ready for synthesis.";
@@ -139,7 +139,7 @@ export function taskAttentionItems(task: AgentTeamTask, isChineseUi: boolean) {
 		: [isChineseUi ? "暂无特别风险。" : "No special risks noted yet."];
 }
 
-export type UserTaskState =
+type UserTaskState =
 	| "waiting_dependency"
 	| "needs_attention"
 	| "failed"
@@ -163,7 +163,7 @@ export function userTaskState(
 		task.last_error
 	)
 		return "needs_attention";
-	if (task.status === "ready" || isTaskReady(task, tasks)) return "ready";
+	if (isTaskReady(task, tasks)) return "ready";
 	if (
 		(task.dependencies ?? []).length &&
 		unresolvedDependencies(task, tasks).length
@@ -288,10 +288,7 @@ function doneTaskIdSet(tasks: AgentTeamTask[]) {
 	return new Set(tasks.filter(isTaskDone).map((task) => task.task_id));
 }
 
-export function unresolvedDependencies(
-	task: AgentTeamTask,
-	tasks: AgentTeamTask[],
-) {
+function unresolvedDependencies(task: AgentTeamTask, tasks: AgentTeamTask[]) {
 	const doneIds = doneTaskIdSet(tasks);
 	return (task.dependencies ?? []).filter(
 		(dependency) => !doneIds.has(dependency),
@@ -332,7 +329,7 @@ export function taskRunAffordance({
 }) {
 	const state = userTaskState(task, tasks);
 	const waitingReason = dependencyWaitReason(task, tasks, isChineseUi);
-	const statusReady = task.status === "ready" || isTaskReady(task, tasks);
+	const statusReady = isTaskReady(task, tasks);
 
 	if (isPending) {
 		return {

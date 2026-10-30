@@ -1,4 +1,4 @@
-export type MissionPreset = {
+type MissionPreset = {
 	id: string;
 	title: string;
 	titleEn: string;
@@ -8,7 +8,7 @@ export type MissionPreset = {
 	goalEn: string;
 };
 
-export type MissionCollaborationMode = {
+type MissionCollaborationMode = {
 	id: string;
 	title: string;
 	titleEn: string;

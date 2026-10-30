@@ -175,16 +175,9 @@
 	}
 }
 
-.fa-chat-main-body .fa-composer-shell.fa-composer-input-shell {
-	grid-template-columns: minmax(0, 1fr) clamp(228px, 22vw, 252px);
-	align-items: stretch;
-}
-
 .fa-chat-main-body .fa-composer-footer-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) 100px 74px;
-	align-items: center;
-	gap: 4px;
 	width: 100%;
 	min-width: 0;
 }
@@ -192,10 +185,6 @@
 .fa-chat-main-body .fa-composer-model-row {
 	grid-column: 2;
 	justify-self: end;
-	width: 100px;
-	min-width: 100px;
-	max-width: 100px;
-	flex: 0 0 100px;
 	position: relative;
 	z-index: 1;
 }
@@ -208,26 +197,14 @@
 	max-width: none;
 }
 
-.fa-chat-main-body .fa-composer-model-trigger {
-	width: 100px;
-	min-width: 100px;
-	max-width: 100px;
-}
-
 .fa-chat-main-body .fa-composer-actions-row {
 	grid-column: 3;
 	justify-self: end;
-	width: 74px;
-	min-width: 74px;
-	max-width: 74px;
-	flex: 0 0 74px;
 	position: relative;
 	z-index: 2;
 }
 
 .fa-chat-main-body .fa-composer-inline-actions {
-	width: 74px;
-	min-width: 74px;
 	grid-template-columns: 34px 34px;
 }
 

@@ -6,7 +6,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-export function getSearchParams(search?: unknown) {
+function getSearchParams(search?: unknown) {
 	if (search instanceof URLSearchParams) {
 		return new URLSearchParams(search);
 	}

@@ -1,8 +1,5 @@
 .fa-app-shell {
 	display: grid;
-	grid-template-columns:
-		minmax(260px, var(--fa-sidebar-width, 320px))
-		16px minmax(0, 1fr);
 	min-height: 100vh;
 	height: 100vh;
 	gap: 0;
@@ -135,16 +132,4 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-}
-
-.fa-diagnostics-shell-chip,
-.fa-observability-shell-note {
-	align-self: center;
-	padding: 9px 13px;
-	border: 1px solid var(--fa-border-subtle);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--fa-panel-2) 86%, transparent 14%);
-	color: var(--fa-text-muted);
-	font-size: 0.8rem;
-	letter-spacing: 0.02em;
 }
