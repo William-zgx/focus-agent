@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
+    AgentTeamEvidenceLevel,
+    AgentTeamEvidenceVerdict,
     AgentTeamSession,
     AgentTeamSessionStatus,
     AgentTeamTask,
@@ -11,8 +13,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-
-from .agent_team_helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
+from focus_agent.services.agent_team_helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
 
 
 class AgentTeamSessionTaskMixin:
@@ -154,6 +155,7 @@ class AgentTeamSessionTaskMixin:
         with self._lock:
             self.repository.create_task(task)
             self._touch_session(session_id, status=AgentTeamSessionStatus.RUNNING)
+        self._index_agent_team_plan_best_effort(session_id)
         return task
 
     def list_tasks(self, *, session_id: str, user_id: str | None = None) -> list[AgentTeamTask]:
@@ -213,6 +215,17 @@ class AgentTeamSessionTaskMixin:
         started_at: str | None = None,
         finished_at: str | None = None,
         last_error: str | None = None,
+        task_run_id: str | None = None,
+        sandbox_id: str | None = None,
+        execution_profile: str | None = None,
+        execution_class: object | None = None,
+        evidence_level: object | None = None,
+        evidence_verdict: object | None = None,
+        evidence_summary: str | None = None,
+        revision_id: str | None = None,
+        row_version: int | None = None,
+        cancel_epoch: int | None = None,
+        deliverable: bool | None = None,
     ) -> AgentTeamTask:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -287,9 +300,32 @@ class AgentTeamSessionTaskMixin:
                 updates["finished_at"] = finished_at
             if last_error is not None:
                 updates["last_error"] = last_error
+            if task_run_id is not None:
+                updates["task_run_id"] = task_run_id
+            if sandbox_id is not None:
+                updates["sandbox_id"] = sandbox_id
+            if execution_profile is not None:
+                updates["execution_profile"] = execution_profile
+            if execution_class is not None:
+                updates["execution_class"] = execution_class
+            if evidence_level is not None:
+                updates["evidence_level"] = evidence_level
+            if evidence_verdict is not None:
+                updates["evidence_verdict"] = evidence_verdict
+            if evidence_summary is not None:
+                updates["evidence_summary"] = evidence_summary
+            if revision_id is not None:
+                updates["revision_id"] = revision_id
+            if row_version is not None:
+                updates["row_version"] = max(0, int(row_version))
+            if cancel_epoch is not None:
+                updates["cancel_epoch"] = max(0, int(cancel_epoch))
+            if deliverable is not None:
+                updates["deliverable"] = bool(deliverable)
             updated = task.model_copy(update=updates)
             self.repository.save_task(updated)
             self._refresh_session_status(updated.session_id)
+        self._index_agent_team_plan_best_effort(updated.session_id)
         return updated
 
     def record_task_output(
@@ -310,6 +346,17 @@ class AgentTeamSessionTaskMixin:
         workspace_status: str | None = None,
         risk_notes: list[str] | None = None,
         metadata: dict | None = None,
+        task_run_id: str | None = None,
+        sandbox_id: str | None = None,
+        execution_profile: str | None = None,
+        execution_class: object | None = None,
+        evidence_level: object | None = None,
+        evidence_verdict: object | None = None,
+        evidence_summary: str | None = None,
+        revision_id: str | None = None,
+        row_version: int | None = None,
+        cancel_epoch: int | None = None,
+        deliverable: bool | None = None,
     ) -> AgentTeamTaskOutput:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
@@ -329,6 +376,25 @@ class AgentTeamSessionTaskMixin:
                 workspace_status=workspace_status,
                 risk_notes=list(risk_notes or []),
                 metadata=dict(metadata or {}),
+                task_run_id=task_run_id,
+                sandbox_id=sandbox_id,
+                execution_profile=execution_profile,
+                execution_class=execution_class,
+                evidence_level=(
+                    evidence_level
+                    if evidence_level is not None
+                    else AgentTeamEvidenceLevel.SYNTHETIC
+                ),
+                evidence_verdict=(
+                    evidence_verdict
+                    if evidence_verdict is not None
+                    else AgentTeamEvidenceVerdict.UNKNOWN
+                ),
+                evidence_summary=evidence_summary,
+                revision_id=revision_id,
+                row_version=max(0, int(row_version)) if row_version is not None else 0,
+                cancel_epoch=max(0, int(cancel_epoch)) if cancel_epoch is not None else 0,
+                deliverable=bool(deliverable) if deliverable is not None else False,
                 created_at=_now(),
             )
             self.repository.add_task_output(output)
@@ -356,6 +422,7 @@ class AgentTeamSessionTaskMixin:
             )
             self.repository.save_task(updated)
             self._touch_session(updated.session_id)
+        self._index_agent_team_plan_best_effort(updated.session_id)
         return output
 
     def list_task_outputs(

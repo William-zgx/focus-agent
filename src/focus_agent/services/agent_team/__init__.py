@@ -3,6 +3,8 @@
 Backward compatibility is preserved by legacy shims under focus_agent.services.agent_team_*.py.
 """
 
+from ..agent_team_helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
+from ..agent_team_workspace import AgentTeamWorkspaceService
 from .planning import (
     AgentTeamPlanDraft,
     AgentTeamPlanningMixin,
@@ -28,14 +30,7 @@ from .planning import (
     plan_deliverables,
 )
 from .run import AgentTeamMergeMixin, AgentTeamRunMixin
-from .service import (
-    _DEFAULT_DISPATCH_TASKS,
-    _ROLE_TO_BRANCH_ROLE,
-    AgentTeamService,
-    AgentTeamWorkspaceService,
-    _dedupe,
-    _now,
-)
+from .service import _DEFAULT_DISPATCH_TASKS, AgentTeamService
 
 __all__ = [
     "AgentTeamService",

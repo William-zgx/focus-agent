@@ -8,6 +8,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
 )
 from focus_agent.core.branching import BranchRole
+from focus_agent.retrieval.agent_team import index_agent_team_plan
 
 
 def _now() -> str:
@@ -62,6 +63,27 @@ class AgentTeamHelperMixin:
         if len(summary) <= max_chars:
             return summary
         return f"{summary[: max_chars - 1].rstrip()}…"
+
+    def _index_agent_team_plan_best_effort(self, session_id: str) -> None:
+        if self.retrieval_index is None or self.memory_embedding_provider is None:
+            return
+        try:
+            session = self.repository.get_session(session_id)
+            tasks = self.repository.list_tasks(session_id=session_id)
+            outputs = [
+                output
+                for task in tasks
+                for output in self.repository.list_task_outputs(task_id=task.task_id)
+            ]
+            index_agent_team_plan(
+                retrieval_index=self.retrieval_index,
+                embedding_provider=self.memory_embedding_provider,
+                session=session,
+                tasks=tasks,
+                outputs=outputs,
+            )
+        except Exception:  # noqa: BLE001
+            return
 
     @staticmethod
     def _recommended_action(
