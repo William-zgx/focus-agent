@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -98,81 +98,100 @@ def _run_git_apply(*, workspace_root: Path, patch: str, check: bool) -> str:
     return completed.stdout.strip()
 
 
-def build_workspace_tools(
-    context: ToolBuildContext,
+def _trusted_skill_script_command_allowed(
+    command: list[str],
     *,
-    trusted_skill_collection_roots: Iterable[str | Path] = (),
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    working_dir: Path,
+    workspace_root: Path,
+    skill_collection_roots: Any,
+) -> bool:
+    if not _trusted_skill_python_interpreter_name(command[0]):
+        return False
+    if len(command) < 2:
+        return False
+    script_arg = command[1].strip()
+    if not script_arg or script_arg.startswith("-"):
+        return False
+    skill_root = _workspace_skill_root_for_path(
+        path=working_dir,
+        workspace_root=workspace_root,
+        skill_collection_roots=skill_collection_roots,
+    )
+    if skill_root is None:
+        return False
+    script_path = (
+        Path(script_arg).expanduser()
+        if Path(script_arg).is_absolute()
+        else working_dir / script_arg
+    ).resolve()
+    try:
+        script_relative = script_path.relative_to(working_dir)
+        script_path.relative_to(skill_root)
+        script_path.relative_to(workspace_root)
+    except ValueError:
+        return False
+    return (
+        script_relative.parts[:1] == ("scripts",)
+        and script_path.suffix == ".py"
+        and script_path.is_file()
+    )
+
+
+def _validate_search_code_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "query")
+
+
+def _validate_workspace_search_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "query")
+
+
+def _validate_apply_patch_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "patch")
+
+
+def _normalize_run_workspace_command_args(
+    args: dict[str, Any], *, workspace_root: Path
+) -> tuple[list[str], Path, str]:
+    normalized_command = normalize_command(args.get("command"))
+    working_dir = _resolve_workspace_command_cwd(
+        raw_cwd=args.get("cwd", "."), workspace_root=workspace_root
+    )
+    normalized_cwd = _coerce_relative_posix(working_dir, workspace_root)
+    args["command"] = normalized_command
+    args["cwd"] = normalized_cwd
+    return normalized_command, working_dir, normalized_cwd
+
+
+def _make_run_workspace_command_validator(
+    workspace_root: Path,
+) -> Callable[[dict[str, Any]], None]:
+    def _validate_run_workspace_command_args(args: dict[str, Any]) -> None:
+        _normalize_run_workspace_command_args(args, workspace_root=workspace_root)
+
+    return _validate_run_workspace_command_args
+
+
+def _line_matcher(query: str, *, literal: bool, case_sensitive: bool) -> Callable[[str], bool]:
+    if literal:
+        needle = query if case_sensitive else query.lower()
+
+        def literal_matcher(line: str) -> bool:
+            haystack = line if case_sensitive else line.lower()
+            return needle in haystack
+
+        return literal_matcher
+    pattern = re.compile(query, flags=0 if case_sensitive else re.IGNORECASE)
+
+    def regex_matcher(line: str) -> bool:
+        return bool(pattern.search(line))
+
+    return regex_matcher
+
+
+def build_list_files_tool(context: ToolBuildContext) -> Any:
     workspace_root = context.workspace_root
     tool_catalog = context.tool_catalog
     emit_tool_event = context.emit_tool_event
-    memory_embedding_service = context.memory_embedding_service
-    retrieval_index = context.retrieval_index
-    trusted_skill_collection_root_paths = _trusted_workspace_skill_collection_roots(
-        workspace_root=workspace_root,
-        configured_roots=trusted_skill_collection_roots,
-    )
-
-    def _trusted_skill_script_command_allowed(
-        command: list[str],
-        *,
-        working_dir: Path,
-    ) -> bool:
-        if not _trusted_skill_python_interpreter_name(command[0]):
-            return False
-        if len(command) < 2:
-            return False
-        script_arg = command[1].strip()
-        if not script_arg or script_arg.startswith("-"):
-            return False
-        skill_root = _workspace_skill_root_for_path(
-            path=working_dir,
-            workspace_root=workspace_root,
-            skill_collection_roots=trusted_skill_collection_root_paths,
-        )
-        if skill_root is None:
-            return False
-        script_path = (
-            Path(script_arg).expanduser()
-            if Path(script_arg).is_absolute()
-            else working_dir / script_arg
-        ).resolve()
-        try:
-            script_relative = script_path.relative_to(working_dir)
-            script_path.relative_to(skill_root)
-            script_path.relative_to(workspace_root)
-        except ValueError:
-            return False
-        return (
-            script_relative.parts[:1] == ("scripts",)
-            and script_path.suffix == ".py"
-            and script_path.is_file()
-        )
-
-    def _validate_search_code_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "query")
-
-    def _validate_workspace_search_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "query")
-
-    def _validate_apply_patch_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "patch")
-
-    def _normalize_run_workspace_command_args(args: dict[str, Any]) -> tuple[list[str], Path, str]:
-        normalized_command = normalize_command(args.get("command"))
-        working_dir = _resolve_workspace_command_cwd(
-            raw_cwd=args.get("cwd", "."), workspace_root=workspace_root
-        )
-        normalized_cwd = _coerce_relative_posix(working_dir, workspace_root)
-        args["command"] = normalized_command
-        args["cwd"] = normalized_cwd
-        return normalized_command, working_dir, normalized_cwd
-
-    def _validate_run_workspace_command_args(args: dict[str, Any]) -> None:
-        _normalize_run_workspace_command_args(args)
-
-    def _resolve_workspace_command_path(raw_path: str) -> Path:
-        return _resolve_workspace_path(raw_path=raw_path, workspace_root=workspace_root)
 
     @tool
     def list_files(path: str = ".", pattern: str = "**/*", max_results: int | None = None) -> str:
@@ -224,17 +243,13 @@ def build_workspace_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)
             raise
 
-    read_file = build_read_file_tool(
-        workspace_root=workspace_root,
-        tool_catalog=tool_catalog,
-        emit_tool_event=emit_tool_event,
-    )
+    return list_files
 
-    workspace_tree = build_workspace_tree_tool(
-        workspace_root=workspace_root,
-        tree_config=tool_catalog.workspace_tree,
-        emit_tool_event=emit_tool_event,
-    )
+
+def build_search_code_tool(context: ToolBuildContext) -> Any:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
 
     @tool
     def search_code(
@@ -272,20 +287,9 @@ def build_workspace_tools(
             normalized_query = query.strip()
             if not normalized_query:
                 raise ValueError("query must not be empty.")
-
-            matcher: Any
-            if literal:
-                needle = normalized_query if case_sensitive else normalized_query.lower()
-
-                def matcher(line: str) -> bool:
-                    haystack = line if case_sensitive else line.lower()
-                    return needle in haystack
-            else:
-                flags = 0 if case_sensitive else re.IGNORECASE
-                pattern = re.compile(normalized_query, flags=flags)
-
-                def matcher(line: str) -> bool:
-                    return bool(pattern.search(line))
+            matcher = _line_matcher(
+                normalized_query, literal=literal, case_sensitive=case_sensitive
+            )
 
             candidates = [root] if root.is_file() else _iter_workspace_files(root)
             matches: list[dict[str, Any]] = []
@@ -306,9 +310,9 @@ def build_workspace_tools(
                         "line_number": line_number,
                         "line": line,
                     }
-                    context = _search_result_context(lines, line_number=line_number)
-                    if context:
-                        item["context"] = context
+                    line_context = _search_result_context(lines, line_number=line_number)
+                    if line_context:
+                        item["context"] = line_context
                     matches.append(item)
                     if len(matches) >= capped_results:
                         truncated = True
@@ -336,6 +340,14 @@ def build_workspace_tools(
             )
             raise
 
+    return search_code
+
+
+def build_workspace_search_tool(context: ToolBuildContext) -> Any:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def workspace_search(query: str, limit: int | None = None) -> str:
         """Search workspace code and docs using the semantic retrieval index."""
@@ -352,11 +364,11 @@ def build_workspace_tools(
                 1,
                 min(requested_limit, tool_catalog.workspace_search.max_limit),
             )
-            provider = getattr(memory_embedding_service, "provider", None)
+            provider = getattr(context.memory_embedding_service, "provider", None)
             from ...retrieval.workspace import WorkspaceSemanticSearchService
 
             results = WorkspaceSemanticSearchService(
-                retrieval_index=retrieval_index,
+                retrieval_index=context.retrieval_index,
                 embedding_provider=provider,
                 workspace_root=workspace_root,
             ).search_workspace(query=normalized_query, limit=capped_limit)
@@ -377,6 +389,14 @@ def build_workspace_tools(
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query)
             raise
+
+    return workspace_search
+
+
+def build_codebase_stats_tool(context: ToolBuildContext) -> Any:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
 
     @tool
     def codebase_stats(path: str = ".", max_files: int | None = None) -> str:
@@ -446,6 +466,14 @@ def build_workspace_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), path=path)
             raise
 
+    return codebase_stats
+
+
+def build_apply_patch_tool(context: ToolBuildContext) -> Any:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def apply_patch(patch: str) -> str:
         """Apply a unified diff to text files under the workspace root."""
@@ -474,6 +502,21 @@ def build_workspace_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
 
+    return apply_patch
+
+
+def build_run_workspace_command_tool(
+    context: ToolBuildContext,
+    *,
+    trusted_skill_collection_root_paths: Any,
+) -> Any:
+    workspace_root = context.workspace_root
+    command_config = context.tool_catalog.run_workspace_command
+    emit_tool_event = context.emit_tool_event
+
+    def _resolve_workspace_command_path(raw_path: str) -> Path:
+        return _resolve_workspace_path(raw_path=raw_path, workspace_root=workspace_root)
+
     @tool
     def run_workspace_command(
         command: list[str],
@@ -485,7 +528,7 @@ def build_workspace_tools(
         tool_name = "run_workspace_command"
         args = {"command": command, "cwd": cwd}
         normalized_command, working_dir, normalized_cwd = _normalize_run_workspace_command_args(
-            args
+            args, workspace_root=workspace_root
         )
         emit_tool_event(
             tool_name=tool_name, stage="start", command=normalized_command, cwd=normalized_cwd
@@ -495,14 +538,14 @@ def build_workspace_tools(
                 raise FileNotFoundError(normalized_cwd)
             if not working_dir.is_dir():
                 raise NotADirectoryError(normalized_cwd)
-            allowed_commands = allowed_command_names(
-                tool_catalog.run_workspace_command.allowed_commands
-            )
+            allowed_commands = allowed_command_names(command_config.allowed_commands)
             if not workspace_command_allowed(
                 normalized_command, allowed_commands
             ) and not _trusted_skill_script_command_allowed(
                 normalized_command,
                 working_dir=working_dir,
+                workspace_root=workspace_root,
+                skill_collection_roots=trusted_skill_collection_root_paths,
             ):
                 raise ValueError(
                     "command is not allowlisted; pass argv for a supported test, lint, "
@@ -513,22 +556,18 @@ def build_workspace_tools(
                 normalized_command, resolve_path=_resolve_workspace_command_path
             )
             requested_timeout = (
-                tool_catalog.run_workspace_command.default_timeout_seconds
+                command_config.default_timeout_seconds
                 if timeout_seconds is None
                 else int(timeout_seconds)
             )
-            capped_timeout = max(
-                1,
-                min(requested_timeout, tool_catalog.run_workspace_command.max_timeout_seconds),
-            )
+            capped_timeout = max(1, min(requested_timeout, command_config.max_timeout_seconds))
             requested_output_chars = (
-                tool_catalog.run_workspace_command.max_output_chars
+                command_config.max_output_chars
                 if max_output_chars is None
                 else int(max_output_chars)
             )
             capped_output_chars = max(
-                100,
-                min(requested_output_chars, tool_catalog.run_workspace_command.max_output_chars),
+                100, min(requested_output_chars, command_config.max_output_chars)
             )
             sandbox_result = default_sandbox_execution_service().run(
                 SandboxExecutionRequest(
@@ -557,16 +596,41 @@ def build_workspace_tools(
             )
             raise
 
+    return run_workspace_command
+
+
+def build_workspace_tools(
+    context: ToolBuildContext,
+    *,
+    trusted_skill_collection_roots: Iterable[str | Path] = (),
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    trusted_skill_collection_root_paths = _trusted_workspace_skill_collection_roots(
+        workspace_root=workspace_root,
+        configured_roots=trusted_skill_collection_roots,
+    )
     return (
         {
-            "list_files": list_files,
-            "workspace_tree": workspace_tree,
-            "read_file": read_file,
-            "search_code": search_code,
-            "workspace_search": workspace_search,
-            "codebase_stats": codebase_stats,
-            "apply_patch": apply_patch,
-            "run_workspace_command": run_workspace_command,
+            "list_files": build_list_files_tool(context),
+            "workspace_tree": build_workspace_tree_tool(
+                workspace_root=workspace_root,
+                tree_config=tool_catalog.workspace_tree,
+                emit_tool_event=context.emit_tool_event,
+            ),
+            "read_file": build_read_file_tool(
+                workspace_root=workspace_root,
+                tool_catalog=tool_catalog,
+                emit_tool_event=context.emit_tool_event,
+            ),
+            "search_code": build_search_code_tool(context),
+            "workspace_search": build_workspace_search_tool(context),
+            "codebase_stats": build_codebase_stats_tool(context),
+            "apply_patch": build_apply_patch_tool(context),
+            "run_workspace_command": build_run_workspace_command_tool(
+                context,
+                trusted_skill_collection_root_paths=trusted_skill_collection_root_paths,
+            ),
         },
         {
             "list_files": {
@@ -625,7 +689,7 @@ def build_workspace_tools(
                 "requires_workspace_write": True,
                 "requires_approval": True,
                 "risk_level": "medium",
-                "validator": _validate_run_workspace_command_args,
+                "validator": _make_run_workspace_command_validator(workspace_root),
                 "max_observation_chars": 8000,
             },
         },
