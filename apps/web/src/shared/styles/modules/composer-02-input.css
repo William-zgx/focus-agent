@@ -27,17 +27,10 @@
 }
 
 .fa-composer-textarea {
-	min-height: 40px;
-	max-height: 136px;
-	height: 40px;
 	padding: 6px 2px;
-	resize: none;
 	border: none;
 	background: transparent;
 	color: var(--fa-text);
-	font-size: 13px;
-	line-height: 1.45;
-	overflow-y: auto;
 }
 
 .fa-composer-textarea::placeholder {
@@ -45,22 +38,10 @@
 }
 
 .fa-composer-footer-row {
-	display: flex;
-	align-items: center;
 	justify-content: flex-end;
-	gap: 8px;
 	flex-wrap: nowrap;
-}
-
-.fa-composer-actions-row {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	order: 2;
 }
 
 .fa-composer-inline-actions {
 	display: grid;
-	grid-template-columns: 34px 34px;
-	gap: 6px;
 }

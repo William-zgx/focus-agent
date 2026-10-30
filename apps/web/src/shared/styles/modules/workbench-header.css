@@ -3,28 +3,19 @@
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
-	gap: 16px;
 }
 
 .fa-chat-header-copy {
 	display: flex;
 	align-items: center;
-	gap: 12px;
 	min-width: 0;
 	justify-self: start;
-	max-width: min(100%, 440px);
 	overflow: hidden;
-}
-
-.fa-chat-header-copy:has(.fa-inline-rename-form.is-conversation) {
-	max-width: min(100%, 620px);
-	overflow: visible;
 }
 
 .fa-toolbar-cluster {
 	display: flex;
 	align-items: center;
-	gap: 10px;
 	min-width: 0;
 	flex-wrap: nowrap;
 }
@@ -41,31 +32,19 @@
 
 .fa-conversation-switcher {
 	position: relative;
-	display: flex;
-	align-items: center;
-	min-width: 108px;
-	max-width: min(150px, 16vw);
-	flex: 0 1 140px;
 }
 
 .fa-inline-rename-form.is-conversation {
 	flex: 1 1 360px;
 	min-width: 0;
-	max-width: none;
 }
 
 .fa-conversation-select {
 	min-width: 0;
-	padding: 10px 40px 10px 14px;
 	letter-spacing: 0.01em;
 	line-height: 1.2;
 	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.08);
 	cursor: pointer;
-}
-
-.fa-conversation-jump-select {
-	padding: 0;
-	color: transparent;
 }
 
 .fa-conversation-select:hover {
@@ -86,13 +65,11 @@
 	grid-auto-columns: max-content;
 	align-items: center;
 	justify-content: flex-end;
-	gap: 16px;
 	margin-left: auto;
 	min-width: 0;
 	width: 100%;
 	overflow-x: auto;
 	overflow-y: hidden;
-	padding-bottom: 2px;
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(
 			in srgb,
@@ -173,10 +150,6 @@
 }
 
 .fa-chat-header-actions.is-compact [data-compact-button="true"] {
-	width: 42px;
-	min-width: 42px;
-	height: 42px;
-	padding: 0;
 	gap: 0;
 	justify-content: center;
 	border-radius: 14px;
@@ -192,9 +165,6 @@
 }
 
 .fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming) {
-	width: 42px;
-	min-width: 42px;
-	padding: 0;
 	gap: 0;
 }
 
@@ -217,37 +187,6 @@
 	white-space: nowrap;
 }
 
-.fa-composer-footer-row {
-	width: clamp(168px, 18vw, 186px);
-	min-height: 34px;
-}
-
-.fa-composer-model-row {
-	order: 1;
-}
-
-.fa-composer-actions-row {
-	order: 2;
-}
-
-.fa-composer-model-shell {
-	min-width: 118px;
-	max-width: 156px;
-}
-
-.fa-composer-model-trigger {
-	min-height: 34px;
-	padding: 0 10px 0 6px;
-}
-
-.fa-composer-model-trigger-copy {
-	gap: 4px;
-}
-
-.fa-composer-model-trigger-label {
-	font-size: 10px;
-}
-
 .fa-composer-model-trigger-provider {
 	display: none;
 }
@@ -258,7 +197,6 @@
 
 .fa-thinking-toggle {
 	min-height: 34px;
-	padding: 0 12px;
 	font-size: 11px;
 	letter-spacing: 0.01em;
 	text-transform: none;
@@ -293,34 +231,20 @@
 		inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
-.fa-composer-shell.fa-composer-input-shell {
-	grid-template-columns: minmax(0, 1fr) auto;
-}
-
 .fa-composer-footer-row {
-	width: clamp(252px, 24vw, 304px);
-	gap: 5px;
 	flex-wrap: nowrap;
 }
 
 .fa-composer-model-row {
 	min-width: 0;
-	flex: 1 1 auto;
 }
 
 .fa-composer-model-controls {
-	gap: 5px;
 	min-width: 0;
 }
 
 .fa-composer-model-anchor {
 	min-width: 0;
-}
-
-.fa-composer-model-shell {
-	min-width: 124px;
-	max-width: 172px;
-	flex: 1 1 auto;
 }
 
 .fa-composer-model-trigger {
@@ -346,11 +270,6 @@
 	min-width: 92px;
 	padding: 0 12px;
 	white-space: nowrap;
-}
-
-.fa-composer-actions-row {
-	flex: 0 0 auto;
-	gap: 5px;
 }
 
 @media (max-width: 1180px) {

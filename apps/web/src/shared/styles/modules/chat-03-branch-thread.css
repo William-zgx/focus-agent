@@ -169,16 +169,6 @@
 	backdrop-filter: none;
 }
 
-.fa-chat-history {
-	padding: 16px;
-	background:
-		radial-gradient(
-			circle at top right,
-			rgba(99, 102, 241, 0.1),
-			transparent 28%
-		), linear-gradient(180deg, rgba(14, 14, 19, 0.92), rgba(11, 11, 16, 0.98));
-}
-
 .fa-branch-decision-summary + .fa-conversation-viewport .fa-chat-history {
 	padding-bottom: 56px;
 }
@@ -374,81 +364,30 @@
 	}
 }
 
-.fa-message-list {
-	gap: 18px;
-}
-
-.fa-message-stack {
-	gap: 9px;
-	max-width: min(740px, 88%);
-}
-
-.fa-message-role {
-	padding: 4px 10px;
-	font-size: 10px;
-	letter-spacing: 0.14em;
-}
-
-.fa-message-bubble {
-	padding: 16px 18px;
-}
-
-.fa-message-content {
-	font-size: 14px;
-	line-height: 1.72;
-}
-
 .fa-thread-layout {
 	display: grid;
-	grid-template-rows: minmax(0, 1fr) auto;
-	gap: 14px;
-	min-height: 0;
 }
 
 .fa-transcript-panel {
 	flex: 1 1 auto;
 	min-width: 0;
-	display: flex;
 	flex-direction: column;
-	background:
-		linear-gradient(180deg, rgba(18, 18, 26, 0.98), rgba(10, 10, 15, 0.98)),
-		radial-gradient(
-			circle at top right,
-			rgba(99, 102, 241, 0.14),
-			transparent 40%
-		);
 }
 
 .fa-chat-header-top {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	align-items: center;
-	gap: 16px;
 }
 
 .fa-chat-header-copy {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	min-width: auto;
 	flex: 0 0 auto;
-	max-width: none;
 }
 
 .fa-chat-header-actions {
 	display: grid;
-	grid-auto-flow: column;
-	grid-auto-columns: max-content;
-	align-items: center;
 	justify-content: flex-end;
-	gap: 16px;
-	margin-left: auto;
 	min-width: 0;
 	width: 100%;
-	overflow-x: auto;
-	overflow-y: hidden;
-	padding-bottom: 2px;
-	scrollbar-width: thin;
 	scrollbar-color: rgba(129, 140, 248, 0.32) transparent;
 }
 
@@ -510,21 +449,11 @@
 
 .fa-chat-toolbar-button.is-primary {
 	border-color: rgba(129, 140, 248, 0.44);
-	background: linear-gradient(
-		135deg,
-		rgba(99, 102, 241, 0.98),
-		rgba(139, 92, 246, 0.98)
-	);
 	color: white;
 	box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
 }
 
 .fa-chat-toolbar-button.is-primary:hover {
-	background: linear-gradient(
-		135deg,
-		rgba(115, 119, 248, 0.98),
-		rgba(149, 103, 248, 0.98)
-	);
 	box-shadow: 0 0 28px rgba(99, 102, 241, 0.36);
 }
 
@@ -540,33 +469,8 @@
 	text-overflow: ellipsis;
 }
 
-.fa-chat-header-actions.is-compact [data-compact-button="true"] {
-	width: 42px;
-	min-width: 42px;
-	height: 42px;
-	padding: 0;
-	gap: 0;
-	justify-content: center;
-}
-
-.fa-chat-header-actions.is-compact
-	.fa-focus-branches-button:not(.is-renaming)
-	.fa-toolbar-text {
-	display: inline;
-}
-
-.fa-chat-header-actions.is-compact .fa-focus-branches-button:not(.is-renaming) {
-	width: auto;
-	min-width: auto;
-	padding: 8px 12px;
-	gap: 8px;
-}
-
 .fa-conversation-icon-button {
-	width: 42px;
-	min-width: 42px;
 	justify-content: center;
-	padding: 0;
 }
 
 .fa-ask-user-question-card {

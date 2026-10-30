@@ -3,7 +3,7 @@ import { relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const defaultRoots = ["src/shared/styles", "src"];
-const defaultMaxLines = 16330;
+const defaultMaxLines = 15520;
 const defaultMaxModules = 63;
 
 function parseArgs(argv) {

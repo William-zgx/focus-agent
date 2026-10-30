@@ -25,7 +25,6 @@
 
 .fa-chat-main-body .fa-chat-history {
 	min-height: 0;
-	padding: 18px;
 }
 
 :root[data-theme="light"] .fa-chat-main-body .fa-chat-transcript {
@@ -61,18 +60,6 @@
 	background: transparent;
 }
 
-@media (max-width: 900px) {
-	.fa-chat-main-body .fa-chat-history {
-		padding: 18px 16px;
-	}
-}
-
 .fa-chat-panel {
 	gap: 12px;
-}
-
-@media (max-width: 900px) {
-	.fa-chat-panel.is-workspace-shell {
-		padding-top: 50px;
-	}
 }

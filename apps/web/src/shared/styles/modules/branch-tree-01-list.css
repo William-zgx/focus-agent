@@ -5,15 +5,12 @@
 
 .fa-tree-card {
 	display: grid;
-	gap: 14px;
-	padding: 16px;
 	min-width: 0;
 }
 
 .fa-tree-toolbar {
 	display: flex;
 	align-items: center;
-	gap: 8px;
 	flex-wrap: wrap;
 }
 
@@ -128,7 +125,6 @@
 .fa-tree-legend {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 5px;
 }
 
 .fa-tree-legend-item {
@@ -140,7 +136,6 @@
 	border: 1px solid
 		color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
 	background: color-mix(in srgb, var(--fa-accent) 10%, var(--fa-panel-2) 90%);
-	color: var(--fa-text);
 	font-size: 9px;
 	font-weight: 700;
 	letter-spacing: 0.06em;
@@ -152,7 +147,6 @@
 	width: 7px;
 	height: 7px;
 	border-radius: 999px;
-	background: #818cf8;
 	box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.12);
 }
 
@@ -178,10 +172,8 @@
 }
 
 .fa-tree-canvas {
-	min-height: 220px;
 	display: block;
 	min-width: 0;
-	border-radius: 18px;
 	border: 1px solid rgba(129, 140, 248, 0.08);
 	background:
 		radial-gradient(
@@ -190,7 +182,6 @@
 			transparent 36%
 		), linear-gradient(180deg, rgba(20, 20, 28, 0.96), rgba(12, 12, 17, 0.98));
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-	padding: 10px;
 	overflow: auto;
 }
 
@@ -288,10 +279,6 @@
 
 .fa-tree-legend-item.is-role-writeup {
 	--fa-legend-color: #34d399;
-}
-
-.fa-tree-canvas {
-	padding: 16px;
 }
 
 .fa-tree-node-actions .fa-branch-action-button {

@@ -1,7 +1,3 @@
-.fa-agent-team-simple-shell {
-	gap: 12px;
-}
-
 .fa-agent-team-simple-hero,
 .fa-agent-team-simple-panel,
 .fa-agent-team-simple-step {
@@ -12,12 +8,7 @@
 
 .fa-agent-team-simple-hero {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
-	gap: 16px;
-	align-items: center;
 	min-width: 0;
-	padding: 18px;
-	border-radius: 24px;
 	background:
 		radial-gradient(
 			circle at top right,
@@ -46,15 +37,6 @@
 	font-weight: 800;
 }
 
-.fa-agent-team-simple-hero h1 {
-	margin: 0;
-	color: var(--fa-text);
-	font-size: clamp(1.45rem, 2.2vw, 2rem);
-	line-height: 1.08;
-	letter-spacing: -0.03em;
-	overflow-wrap: anywhere;
-}
-
 .fa-agent-team-simple-hero p,
 .fa-agent-team-simple-panel p,
 .fa-agent-team-simple-panel small {
@@ -64,36 +46,18 @@
 	overflow-wrap: anywhere;
 }
 
-.fa-agent-team-simple-meta {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 7px;
-	align-items: center;
-}
-
 .fa-agent-team-simple-meta > span:not(.fa-agent-team-pill) {
-	display: inline-flex;
-	align-items: center;
-	min-height: 24px;
-	padding: 3px 8px;
 	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 72%, transparent);
-	border-radius: 999px;
 	background: color-mix(in srgb, var(--fa-panel-2) 48%, transparent);
-	color: var(--fa-text-muted);
-	font-size: 0.72rem;
 }
 
 .fa-agent-team-simple-progress {
-	height: 7px;
 	overflow: hidden;
-	border-radius: 999px;
 	background: color-mix(in srgb, var(--fa-panel-2) 62%, transparent);
 }
 
 .fa-agent-team-simple-progress span {
-	display: block;
 	height: 100%;
-	border-radius: inherit;
 	background: linear-gradient(
 		90deg,
 		var(--fa-accent),
@@ -101,56 +65,25 @@
 	);
 }
 
-.fa-agent-team-simple-hero-action {
-	align-content: center;
-}
-
-.fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button {
-	min-height: 44px;
-}
-
 .fa-agent-team-simple-steps {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 10px;
 }
 
 .fa-agent-team-simple-step {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	gap: 8px;
-	align-items: center;
 	min-width: 0;
-	padding: 12px;
-	border-radius: 18px;
 }
 
 .fa-agent-team-simple-step > span {
 	display: grid;
-	place-items: center;
-	min-width: 42px;
-	height: 26px;
-	padding: 0 8px;
-	border: 1px solid var(--fa-border-subtle);
-	border-radius: 999px;
-	color: var(--fa-text-muted);
-	font-size: 0.68rem;
-	font-weight: 900;
 }
 
 .fa-agent-team-simple-task-index {
 	display: grid;
-	place-items: center;
-	min-width: 44px;
-	height: 24px;
-	padding: 0 8px;
 	border: 1px solid
 		color-mix(in srgb, var(--fa-accent) 24%, var(--fa-border-subtle));
-	border-radius: 999px;
 	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1));
-	color: var(--fa-text-muted);
-	font-size: 0.66rem;
-	font-weight: 900;
 }
 
 .fa-agent-team-simple-step.is-active,
@@ -181,42 +114,28 @@
 
 .fa-agent-team-simple-panel {
 	align-content: start;
-	padding: 14px;
-	border-radius: 20px;
 }
 
 .fa-agent-team-simple-panel-header {
-	display: flex;
-	gap: 10px;
-	align-items: flex-start;
-	justify-content: space-between;
 	min-width: 0;
 }
 
 .fa-agent-team-simple-panel-header > div {
 	display: grid;
-	gap: 3px;
 	min-width: 0;
 }
 
 .fa-agent-team-simple-tasks {
 	display: grid;
-	gap: 9px;
 }
 
 .fa-agent-team-simple-task {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	gap: 10px;
 	width: 100%;
 	min-width: 0;
-	padding: 12px;
 	border: 1px solid color-mix(in srgb, var(--fa-border-subtle) 78%, transparent);
-	border-radius: 16px;
 	background: color-mix(in srgb, var(--fa-panel-2) 36%, transparent);
-	color: var(--fa-text);
-	cursor: pointer;
-	text-align: left;
 }
 
 .fa-agent-team-simple-task:hover,
@@ -227,10 +146,6 @@
 		var(--fa-border-subtle)
 	);
 	background: color-mix(in srgb, var(--fa-accent) 7%, var(--fa-panel-2));
-}
-
-.fa-agent-team-simple-task.is-selected {
-	box-shadow: inset 3px 0 0 var(--fa-accent);
 }
 
 .fa-agent-team-simple-task.is-recommended:not(.is-selected) {
@@ -258,18 +173,12 @@
 }
 
 .fa-agent-team-simple-task-copy > div:first-child {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	align-items: center;
-	justify-content: space-between;
 	min-width: 0;
 }
 
 .fa-agent-team-simple-task-copy p {
 	display: -webkit-box;
 	overflow: hidden;
-	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
 }
 
@@ -310,18 +219,6 @@
 		var(--fa-status-success-text) 44%,
 		var(--fa-border-subtle)
 	);
-}
-
-.fa-agent-team-simple-link-button {
-	width: fit-content;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: var(--fa-text-muted);
-	cursor: pointer;
-	font: inherit;
-	font-size: 0.82rem;
-	text-decoration: underline;
 }
 
 @media (max-width: 760px) {

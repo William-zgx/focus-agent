@@ -25,7 +25,6 @@
 
 .fa-thread-layout {
 	grid-template-columns: minmax(0, 1fr) 340px;
-	flex: 1 1 auto;
 }
 
 .fa-transcript-panel,
@@ -34,8 +33,6 @@
 }
 
 .fa-transcript-panel {
-	grid-template-rows: auto minmax(0, 1fr) auto;
-	min-height: 0;
 	overflow: hidden;
 }
 
@@ -120,12 +117,9 @@
 .fa-message-role {
 	display: inline-flex;
 	align-items: center;
-	width: fit-content;
-	border-radius: 999px;
 	border: 1px solid
 		color-mix(in srgb, var(--fa-accent) 18%, var(--fa-border) 82%);
 	background: color-mix(in srgb, var(--fa-accent) 12%, var(--fa-panel-2) 88%);
-	color: var(--fa-accent-text);
 }
 
 .fa-message-role.is-user {
@@ -137,17 +131,14 @@
 .fa-message-role.is-system {
 	border-color: color-mix(in srgb, var(--fa-danger) 24%, var(--fa-border) 76%);
 	background: color-mix(in srgb, var(--fa-danger) 12%, var(--fa-panel-2) 88%);
-	color: var(--fa-role-system-text);
 }
 
 .fa-message-role.is-reasoning {
 	border-color: color-mix(in srgb, #a855f7 22%, var(--fa-border) 78%);
 	background: color-mix(in srgb, #a855f7 12%, var(--fa-panel-2) 88%);
-	color: var(--fa-role-reasoning-text);
 }
 
 .fa-message-role.is-streaming {
 	border-color: color-mix(in srgb, #818cf8 24%, var(--fa-border) 76%);
 	background: color-mix(in srgb, #818cf8 12%, var(--fa-panel-2) 88%);
-	color: var(--fa-role-streaming-text);
 }

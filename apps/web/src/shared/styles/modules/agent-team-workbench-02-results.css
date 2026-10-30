@@ -89,7 +89,6 @@
 	width: 100%;
 	min-width: 0;
 	gap: 14px;
-	overflow-x: clip;
 }
 
 .fa-agent-team-guided-layout *,

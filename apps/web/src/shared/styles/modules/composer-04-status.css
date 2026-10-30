@@ -1,24 +1,5 @@
 .fa-composer-model-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
 	min-width: 0;
-	flex: 1 1 auto;
-	order: 1;
-}
-
-.fa-composer-model-shell {
-	min-width: 220px;
-	max-width: 340px;
-	flex: 1 1 auto;
-}
-
-.fa-thinking-toggle {
-	min-height: 34px;
-	padding: 0 12px;
-	border-radius: 999px;
-	font-size: 11px;
-	font-weight: 700;
 }
 
 .fa-thinking-toggle.is-active {
@@ -33,9 +14,6 @@
 }
 
 .fa-composer-icon-button {
-	width: 34px;
-	height: 34px;
-	min-width: 34px;
 	padding: 0;
 	display: inline-flex;
 	align-items: center;
@@ -71,11 +49,6 @@
 
 .fa-composer-icon-button.is-send {
 	border-color: rgba(129, 140, 248, 0.46);
-	background: linear-gradient(
-		135deg,
-		rgba(99, 102, 241, 0.98),
-		rgba(139, 92, 246, 0.98)
-	);
 	color: white;
 	box-shadow: 0 0 20px rgba(99, 102, 241, 0.36);
 }

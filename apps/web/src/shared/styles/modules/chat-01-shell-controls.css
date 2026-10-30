@@ -4,7 +4,6 @@
 	position: relative;
 	border-radius: 30px;
 	padding: 18px;
-	gap: 16px;
 	overflow: hidden;
 }
 
@@ -74,11 +73,6 @@
 	box-shadow: var(--fa-shadow);
 }
 
-.fa-header-card {
-	border-radius: 24px;
-	padding: 16px 18px;
-}
-
 .fa-chat-header-top {
 	justify-content: space-between;
 }
@@ -94,8 +88,6 @@
 }
 
 .fa-conversation-toolbar {
-	flex: 1 1 auto;
-	justify-content: space-between;
 	gap: 14px;
 }
 
@@ -103,7 +95,6 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	flex: 0 0 auto;
 }
 
 .fa-chat-logo-toggle {
@@ -134,7 +125,6 @@
 			rgba(139, 92, 246, 0.24),
 			transparent 48%
 		);
-	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
 .fa-brand-mark svg {
@@ -199,10 +189,6 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 34px;
-	min-width: 34px;
-	height: 34px;
-	padding: 0;
 	border-radius: 11px;
 	border: 1px solid rgba(255, 255, 255, 0.08);
 	background: linear-gradient(
@@ -234,18 +220,11 @@
 
 .fa-conversation-switcher {
 	position: relative;
-	min-width: 180px;
-	max-width: min(320px, 34vw);
-	flex: 1 1 240px;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
 }
 
 .fa-conversation-jump {
 	position: relative;
 	flex: 0 0 36px;
-	min-width: 36px;
 }
 
 .fa-conversation-select {
@@ -266,17 +245,10 @@
 }
 
 .fa-conversation-select {
-	border-radius: 14px;
-	padding: 11px 38px 11px 14px;
-	font-size: 13px;
 	font-weight: 700;
-	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.12);
 }
 
 .fa-conversation-jump-select {
-	height: 39px;
-	padding: 0;
-	color: transparent;
 	cursor: pointer;
 }
 
@@ -324,11 +296,6 @@
 		rgba(44, 44, 58, 0.98),
 		rgba(25, 25, 34, 0.98)
 	);
-}
-
-.fa-toolbar-secondary {
-	padding: 10px 12px;
-	font-size: 13px;
 }
 
 .fa-toolbar-primary,
@@ -386,9 +353,7 @@
 }
 
 .fa-inline-rename-form.is-conversation {
-	flex: 1 1 300px;
 	min-width: 0;
-	max-width: none;
 	white-space: nowrap;
 }
 

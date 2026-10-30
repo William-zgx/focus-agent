@@ -1,7 +1,5 @@
 .fa-observability-layout {
 	display: grid;
-	gap: 16px;
-	min-height: 0;
 }
 
 .fa-observability-hero {
@@ -283,15 +281,11 @@
 	min-height: 0;
 	overflow: auto;
 	display: grid;
-	gap: 8px;
 }
 
 .fa-observability-turn-card {
 	display: grid;
-	gap: 6px;
-	padding: 13px 14px;
 	border: 1px solid var(--fa-border-subtle);
-	border-radius: 18px;
 	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
 	color: inherit;
 	text-align: left;
@@ -405,7 +399,6 @@
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	gap: 10px;
-	padding: 12px 12px 12px 10px;
 	border-left: 2px solid var(--fa-border);
 	border-radius: 16px;
 	background: color-mix(in srgb, var(--fa-panel-2) 74%, transparent 26%);

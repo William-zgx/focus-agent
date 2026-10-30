@@ -70,7 +70,6 @@
 }
 
 .fa-agent-team-layout.is-create {
-	grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
 	align-items: start;
 	min-height: auto;
 }
@@ -203,11 +202,6 @@
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 18px;
 	background: color-mix(in srgb, var(--fa-panel-2) 82%, transparent 18%);
-	box-shadow: var(--fa-message-shadow);
-}
-
-.fa-agent-team-guide.is-compact {
-	padding: 10px 12px;
 }
 
 .fa-agent-team-guide-heading {
@@ -294,9 +288,7 @@
 	gap: 10px;
 	padding: 12px;
 	border: 1px solid var(--fa-border-subtle);
-	border-radius: 18px;
 	background: color-mix(in srgb, var(--fa-panel-2) 86%, transparent 14%);
-	box-shadow: var(--fa-message-shadow);
 }
 
 .fa-agent-team-panel-header,
@@ -395,7 +387,6 @@
 	display: grid;
 	gap: 8px;
 	width: 100%;
-	padding: 10px;
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 14px;
 	background: color-mix(in srgb, var(--fa-panel-1) 88%, transparent 12%);
@@ -483,7 +474,6 @@
 .fa-agent-team-detail section {
 	display: grid;
 	gap: 6px;
-	padding: 10px;
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 14px;
 	background: color-mix(in srgb, var(--fa-panel-1) 78%, transparent 22%);
@@ -523,10 +513,6 @@
 	border: 1px solid var(--fa-border-subtle);
 	border-radius: 14px;
 	background: color-mix(in srgb, var(--fa-panel-2) 78%, transparent 22%);
-}
-
-.fa-agent-team-merge-card {
-	grid-column: 1 / -1;
 }
 
 .fa-agent-team-merge-grid {

@@ -1,8 +1,5 @@
 .fa-app-shell {
 	display: grid;
-	grid-template-columns:
-		minmax(260px, var(--fa-sidebar-width, 320px))
-		16px minmax(0, 1fr);
 	min-height: 100vh;
 	height: 100vh;
 	gap: 0;

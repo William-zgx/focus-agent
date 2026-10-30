@@ -1,23 +1,9 @@
 .fa-message-bubble {
-	border: 1px solid var(--fa-border);
-	box-shadow: var(--fa-message-shadow);
 	word-break: break-word;
 }
 
 .fa-message-bubble.is-user {
 	position: relative;
-	color: #f8fbff;
-	border-color: rgba(167, 139, 250, 0.42);
-	background:
-		radial-gradient(
-			circle at top left,
-			rgba(255, 255, 255, 0.24),
-			transparent 34%
-		),
-		linear-gradient(135deg, rgba(129, 140, 248, 0.98), rgba(139, 92, 246, 0.96));
-	box-shadow:
-		0 12px 24px rgba(99, 102, 241, 0.28),
-		inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .fa-message-bubble.is-assistant,
@@ -34,21 +20,12 @@
 }
 
 .fa-message-bubble.is-system {
-	color: #fff1f2;
-	border-color: rgba(244, 63, 94, 0.28);
 	border-radius: 22px 22px 22px 8px;
 	background: rgba(244, 63, 94, 0.12);
 }
 
 .fa-message-bubble.is-reasoning {
-	color: #fdf4ff;
-	border-color: rgba(217, 70, 239, 0.22);
 	border-radius: 22px 22px 22px 8px;
-	background: rgba(168, 85, 247, 0.12);
-}
-
-.fa-message-content {
-	white-space: pre-wrap;
 }
 
 .fa-composer-card {
@@ -57,62 +34,16 @@
 
 .fa-composer-shell {
 	display: grid;
-	gap: 10px;
-	padding: 12px;
-	border-radius: 24px;
-	border: 1px solid rgba(129, 140, 248, 0.18);
-	background:
-		linear-gradient(180deg, rgba(28, 28, 38, 0.98), rgba(13, 13, 18, 0.96)),
-		radial-gradient(
-			circle at top right,
-			rgba(139, 92, 246, 0.14),
-			transparent 44%
-		);
-	box-shadow: var(--fa-shadow);
-}
-
-.fa-composer-textarea-row {
-	display: flex;
-	align-items: stretch;
 }
 
 .fa-composer-textarea {
 	width: 100%;
-	min-height: 76px;
-	max-height: 160px;
-	resize: vertical;
-	border: none;
-	background: transparent;
-	color: white;
-	font-size: 13px;
-	line-height: 1.6;
 	outline: none;
 }
 
-.fa-composer-footer-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-	flex-wrap: wrap;
-}
-
 .fa-composer-model-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
 	min-width: 0;
 	flex-wrap: wrap;
-}
-
-.fa-composer-model-row {
-	flex: 1 1 auto;
-}
-
-.fa-composer-model-shell {
-	min-width: 220px;
-	max-width: 320px;
-	flex: 1 1 260px;
 }
 
 .fa-thinking-toggle.is-active {
@@ -206,7 +137,6 @@
 
 .fa-message-row {
 	display: grid;
-	gap: 8px;
 }
 
 .fa-message-row.user,
@@ -227,7 +157,6 @@
 
 .fa-message-head {
 	display: grid;
-	gap: 0;
 	justify-items: start;
 	width: 100%;
 }
@@ -242,15 +171,6 @@
 .fa-message-row.user .fa-message-meta,
 .fa-message-row.is-user .fa-message-meta {
 	letter-spacing: 0.11em;
-}
-
-.fa-message-bubble {
-	border-radius: 20px;
-	line-height: 1.55;
-}
-
-.fa-message-bubble.is-user {
-	border-radius: 22px 22px 8px 22px;
 }
 
 .fa-message-bubble.is-assistant,

@@ -9,19 +9,13 @@
 		), linear-gradient(180deg, rgba(14, 14, 19, 0.94), rgba(11, 11, 16, 0.98));
 }
 
-.fa-message-list {
-	gap: 16px;
-}
-
 .fa-message-row {
 	gap: 8px;
 }
 
 .fa-message-head {
-	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
 }
 
 .fa-message-stack {

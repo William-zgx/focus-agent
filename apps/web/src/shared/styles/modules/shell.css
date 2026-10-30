@@ -227,7 +227,6 @@
 .fa-sidebar-scroll {
 	min-height: 0;
 	overflow-y: auto;
-	padding: 18px;
 }
 
 .fa-sidebar-panel.is-global-shell .fa-sidebar-scroll {

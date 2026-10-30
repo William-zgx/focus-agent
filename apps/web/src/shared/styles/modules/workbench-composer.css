@@ -122,40 +122,20 @@
 }
 
 .fa-composer-model-row {
-	display: flex;
-	align-items: stretch;
 	justify-content: flex-end;
-	gap: 6px;
 	min-width: 0;
-	flex: 1 1 0;
-	order: 1;
 }
 
 .fa-composer-model-controls {
-	display: flex;
-	align-items: stretch;
-	gap: 6px;
 	min-width: 0;
-	width: auto;
-	flex: 1 1 auto;
 }
 
 .fa-composer-model-anchor {
 	position: relative;
-	flex: 1 1 auto;
-	width: auto;
-	max-width: none;
 	min-width: 0;
 }
 
-.fa-composer-model-shell {
-	min-width: 220px;
-	max-width: 340px;
-	flex: 1 1 auto;
-}
-
 .fa-composer-model-trigger {
-	padding: 0 10px 0 6px;
 	background: linear-gradient(
 		180deg,
 		color-mix(in srgb, var(--fa-panel-2) 96%, var(--fa-accent) 4%),
@@ -164,19 +144,11 @@
 }
 
 .fa-composer-model-trigger-copy {
-	display: flex;
 	min-width: 0;
-	flex: 1 1 auto;
-	align-items: center;
-	gap: 4px;
 }
 
 .fa-composer-model-trigger-provider {
 	display: none;
-}
-
-.fa-composer-model-trigger-icon {
-	transform: rotate(-90deg);
 }
 
 .fa-composer-model-trigger[aria-expanded="true"]
@@ -188,20 +160,15 @@
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	flex: 0 0 auto;
 }
 
 .fa-thinking-toggle {
-	min-height: 26px;
-	padding: 0 11px;
 	border-radius: 999px;
 	border: 1px solid color-mix(in srgb, var(--fa-border) 74%, transparent);
 	background: color-mix(in srgb, var(--fa-panel-3) 86%, transparent);
 	color: color-mix(in srgb, var(--fa-text) 84%, var(--fa-text-muted) 16%);
 	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-	font-size: 11px;
 	font-weight: 700;
-	letter-spacing: 0.01em;
 }
 
 .fa-thinking-toggle:hover {
@@ -251,8 +218,6 @@
 }
 
 .fa-composer-shell.fa-composer-input-shell {
-	grid-template-columns: minmax(0, 1fr) auto;
-	align-items: center;
 	column-gap: 10px;
 }
 
@@ -265,36 +230,13 @@
 .fa-composer-footer-row {
 	grid-column: 2;
 	grid-row: 1;
-	display: flex;
-	align-items: center;
 	justify-content: flex-end;
-	gap: 6px;
 	min-width: 0;
-	width: clamp(178px, 19vw, 192px);
 	height: auto;
 }
 
-.fa-composer-model-row {
-	flex: 1 1 0;
-	width: auto;
-}
-
-.fa-composer-model-controls {
-	flex-direction: row;
-	width: auto;
-	flex: 1 1 auto;
-}
-
-.fa-composer-model-anchor {
-	width: auto;
-	flex: 1 1 auto;
-}
-
 .fa-composer-model-shell {
-	width: auto;
 	min-width: 0;
-	max-width: none;
-	flex: 1 1 auto;
 }
 
 .fa-composer-model-thinking-toggle {
@@ -307,14 +249,7 @@
 }
 
 .fa-composer-actions-row {
-	width: auto;
-	flex: 0 0 auto;
 	justify-content: flex-end;
-}
-
-.fa-chat-main-body .fa-composer-model-shell {
-	min-width: 210px;
-	max-width: 340px;
 }
 
 @media (max-width: 900px) {
@@ -330,8 +265,6 @@
 	.fa-composer-footer-row {
 		grid-column: 1;
 		grid-row: 2;
-		flex-direction: column;
-		align-items: stretch;
 		height: auto;
 	}
 

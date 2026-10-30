@@ -5,31 +5,18 @@
 	overflow-x: visible;
 }
 
-.fa-agent-team-layout {
-	overflow: visible;
-}
-
 .fa-agent-team-simple-shell {
 	display: grid;
-	gap: 10px;
 	min-width: 0;
 }
 
 .fa-agent-team-simple-main {
 	display: grid;
-	gap: 10px;
 	min-width: 0;
 }
 
 .fa-agent-team-simple-hero {
 	grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
-	gap: 12px;
-	padding: 14px;
-	border-radius: 18px;
-}
-
-.fa-agent-team-simple-hero h1 {
-	font-size: clamp(1.18rem, 1.8vw, 1.55rem);
 }
 
 .fa-agent-team-simple-hero p {
@@ -37,50 +24,24 @@
 }
 
 .fa-agent-team-simple-hero-action {
-	padding: 12px;
 	border: 1px solid
 		color-mix(in srgb, var(--fa-accent) 36%, var(--fa-border-subtle));
-	border-radius: 16px;
 	background: color-mix(in srgb, var(--fa-accent) 8%, var(--fa-panel-1));
-}
-
-.fa-agent-team-simple-hero-action > span {
-	color: var(--fa-accent);
-	font-size: 0.72rem;
-	font-weight: 800;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
 }
 
 .fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button {
 	width: 100%;
-	min-height: 52px;
-	font-size: 1rem;
 }
 
 .fa-agent-team-simple-meta > span:not(.fa-agent-team-pill):nth-child(n + 3) {
 	display: none;
 }
 
-.fa-agent-team-simple-steps {
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 8px;
-}
-
-.fa-agent-team-simple-step {
-	padding: 9px 10px;
-	border-radius: 14px;
-	box-shadow: none;
-}
-
 .fa-agent-team-simple-step > span {
 	width: 24px;
-	height: 24px;
 }
 
 .fa-agent-team-simple-panel {
-	padding: 12px;
-	border-radius: 16px;
 	box-shadow: none;
 }
 
@@ -102,8 +63,6 @@
 
 .fa-agent-team-simple-task {
 	grid-template-columns: auto minmax(0, 1fr);
-	padding: 10px;
-	border-radius: 14px;
 }
 
 .fa-agent-team-simple-task-copy small {
@@ -129,12 +88,10 @@
 
 .fa-agent-team-simple-detail-body {
 	display: grid;
-	gap: 10px;
 	margin-top: 10px;
 }
 
 .fa-agent-team-simple-link-button {
-	justify-self: start;
 	margin-left: 2px;
 }
 
