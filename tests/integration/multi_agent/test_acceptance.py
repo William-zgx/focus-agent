@@ -5,8 +5,6 @@ import time
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langchain.tools import tool
 
-from focus_agent.agent_execution import FakeDelegatedRunExecutor
-from focus_agent.agent_execution_types import SubagentRunResult
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
@@ -16,6 +14,8 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.core.request_context import RequestContext
+from focus_agent.delegation.execution import FakeDelegatedRunExecutor
+from focus_agent.delegation.execution_types import SubagentRunResult
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue
 from focus_agent.multi_agent.contracts import AgentMessageType, LockMode

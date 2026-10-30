@@ -6,6 +6,8 @@ import re
 from collections.abc import MutableMapping
 from pathlib import Path
 
+from ..delegation.execution_modes import normalize_delegation_execution_mode
+
 DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
 
@@ -66,8 +68,6 @@ def _normalize_optional_string(value: object) -> str | None:
 
 
 def _normalize_agent_delegation_execution_mode(value: object) -> str:
-    from ..agent_execution import normalize_delegation_execution_mode
-
     return normalize_delegation_execution_mode(str(value or "observe"))
 
 

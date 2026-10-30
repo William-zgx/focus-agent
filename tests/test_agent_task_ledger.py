@@ -1,18 +1,18 @@
-from focus_agent.agent_delegation import AgentTask, build_agent_delegation_plan
-from focus_agent.agent_execution import (
+from focus_agent.config import Settings
+from focus_agent.delegation.delegation import AgentTask, build_agent_delegation_plan
+from focus_agent.delegation.execution import (
     FakeDelegatedRunExecutor,
     SubagentRegistry,
     run_delegated_tasks,
 )
-from focus_agent.agent_roles import AgentRole
-from focus_agent.agent_task_ledger import (
+from focus_agent.delegation.roles import AgentRole
+from focus_agent.delegation.task_ledger import (
     apply_critic_retry_tasks,
     build_agent_task_ledger,
     build_delegated_artifacts,
     evaluate_critic_gate,
     synthesize_delegated_artifacts,
 )
-from focus_agent.config import Settings
 
 
 def test_task_ledger_default_off_is_legacy_safe():

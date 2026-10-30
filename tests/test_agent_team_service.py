@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from focus_agent.agent_roles import AgentRole
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
     AgentTeamMergeBundle,
@@ -17,6 +16,7 @@ from focus_agent.core.agent_team import (
     agent_role_for_team_task_role,
 )
 from focus_agent.core.branching import BranchRole
+from focus_agent.delegation.roles import AgentRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.services.agent_team import AgentTeamService

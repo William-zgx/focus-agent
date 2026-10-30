@@ -410,7 +410,7 @@ threads, and confirm branch tree routes work when opened from a child thread id.
 
 ```bash
 uv run pytest tests/test_auth.py tests/test_auth_accounts_api.py tests/test_admin_users_api.py tests/test_user_service.py tests/test_config_security.py tests/test_auth_ownership.py tests/test_csrf_middleware.py
-uv run ruff check src/focus_agent/auth.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
+uv run ruff check src/focus_agent/security/tokens.py src/focus_agent/config.py tests/test_auth.py tests/test_config_security.py tests/test_auth_ownership.py
 ```
 
 This focused suite covers HS256 issuer/audience/TTL checks, expired or rotated

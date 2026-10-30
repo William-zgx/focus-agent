@@ -3,14 +3,14 @@ from __future__ import annotations
 from threading import Event, Thread
 from typing import Any
 
-from focus_agent.agent_delegation_models import AgentArtifact, AgentTask
-from focus_agent.agent_execution_types import SubagentConfig, SubagentRunResult
-from focus_agent.agent_roles import AgentRole
 from focus_agent.core.agent_team import (
     AgentTeamTask,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.delegation.delegation_models import AgentArtifact, AgentTask
+from focus_agent.delegation.execution_types import SubagentConfig, SubagentRunResult
+from focus_agent.delegation.roles import AgentRole
 from focus_agent.repositories.agent_team_repository import InMemoryAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
 from focus_agent.services.agent_team_workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus

@@ -5,8 +5,8 @@ from typing import Any
 
 from pydantic import Field
 
-from ..agent_roles import AgentRole, normalize_agent_role
 from ..core.types import StateModel
+from ..delegation.roles import AgentRole, normalize_agent_role
 from .tool_registry import ToolRegistry, ToolRuntimeMeta
 
 

@@ -162,7 +162,7 @@ These rules are regression-sensitive:
 
 ## 6. Role Routing
 
-Role routing lives in `src/focus_agent/agent_roles.py`.
+Role routing lives in `src/focus_agent/delegation/roles.py`.
 
 Inputs:
 
@@ -255,7 +255,7 @@ Conflict output stays explicit through `needs_review`; the system should not sil
 
 ## 9. Delegation, Model Router, Self Repair, Review Queue
 
-These records are exposed through the compatibility facade in `src/focus_agent/agent_delegation.py`; the planning, routing, repair, and shared models now live in `src/focus_agent/agent_delegation_*.py`.
+These records are exposed through `src/focus_agent/delegation/delegation.py`; the planning, routing, repair, and shared models live in `src/focus_agent/delegation/delegation_*.py`.
 
 Delegation converts route decisions into:
 
@@ -367,7 +367,7 @@ The report export uses the `ownership.audit.report` tool name and keeps the aggr
 
 ## 11. Context Engineering
 
-Context Engineering lives in `src/focus_agent/agent_context_engineering.py`.
+Context Engineering lives in `src/focus_agent/delegation/context_engineering.py`.
 
 It records:
 
@@ -380,7 +380,7 @@ The purpose is not to create prettier summaries. It is to keep the prompt surfac
 
 ## 12. Task Ledger, Artifact Synthesis, Critic Gate
 
-Task Ledger and Critic Gate live in `src/focus_agent/agent_task_ledger.py`.
+Task Ledger and Critic Gate live in `src/focus_agent/delegation/task_ledger.py`.
 
 Task Ledger records:
 

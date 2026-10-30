@@ -5,7 +5,8 @@ from threading import Lock
 
 from langchain.messages import AIMessage
 
-from focus_agent.agent_delegation import (
+from focus_agent.config import Settings
+from focus_agent.delegation.delegation import (
     AgentTask,
     apply_review_decision,
     build_agent_delegation_plan,
@@ -14,14 +15,13 @@ from focus_agent.agent_delegation import (
     build_review_queue,
     build_self_repair_preview,
 )
-from focus_agent.agent_execution import (
+from focus_agent.delegation.execution import (
     FakeDelegatedRunExecutor,
     SubagentRegistry,
     executor_for_mode,
     run_delegated_tasks,
 )
-from focus_agent.agent_roles import AgentRole, build_role_route_plan
-from focus_agent.config import Settings
+from focus_agent.delegation.roles import AgentRole, build_role_route_plan
 
 
 class RecordingFakeModel:

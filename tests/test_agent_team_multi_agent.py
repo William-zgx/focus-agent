@@ -3,15 +3,15 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
-from focus_agent.agent_delegation_models import AgentArtifact, AgentTask
-from focus_agent.agent_execution_types import SubagentConfig, SubagentRunResult
-from focus_agent.agent_roles import AgentRole
 from focus_agent.config import Settings
 from focus_agent.core.agent_team import (
     AgentTeamFinalAnswerStatus,
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.delegation.delegation_models import AgentArtifact, AgentTask
+from focus_agent.delegation.execution_types import SubagentConfig, SubagentRunResult
+from focus_agent.delegation.roles import AgentRole
 from focus_agent.multi_agent.contracts import LockMode
 from focus_agent.multi_agent.message_bus import InMemoryAgentMessageBus
 from focus_agent.multi_agent.resource_lock import InMemoryResourceLockManager
