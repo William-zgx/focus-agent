@@ -11,7 +11,7 @@ from langchain.tools import tool
 
 from ..config import Settings
 from ..skills import SkillRegistry
-from ..skills.registry import (
+from ..skills.registry_rendering import (
     render_skill_install_json,
     render_skill_sources_json,
     render_skill_view_json,

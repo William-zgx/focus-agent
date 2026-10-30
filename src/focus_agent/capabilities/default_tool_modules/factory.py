@@ -10,7 +10,12 @@ from langgraph.config import get_config
 from ...config import Settings
 from ...storage import LocalArtifactStore
 from .artifact import build_artifact_tools
-from .common import _apply_tool_metadata, build_utility_tools
+from .common import (
+    _apply_tool_metadata,
+    _emit_tool_event,
+    _make_display_event_emitter,
+    build_utility_tools,
+)
 from .conversation import build_conversation_tools
 from .git import build_git_tools
 from .memory import build_memory_tools
@@ -65,15 +70,13 @@ def get_default_tools(
     tool_catalog = settings.tool_catalog
     web_search_config = settings.web_search
     tool_configs = {**tool_catalog.by_name, "web_search": web_search_config}
-    _base_emit_tool_event = __getattr__("_emit_tool_event")
 
     tool_display_names = {tool_name: config.label for tool_name, config in tool_configs.items()}
 
-    def _emit_tool_event(*, tool_name: str, stage: str, **payload: Any) -> None:
-        display_name = tool_display_names.get(tool_name)
-        if display_name:
-            payload.setdefault("display_name", display_name)
-        _base_emit_tool_event(tool_name=tool_name, stage=stage, **payload)
+    _emit_display_tool_event = _make_display_event_emitter(
+        base_emit_tool_event=_emit_tool_event,
+        tool_display_names=tool_display_names,
+    )
 
     grouped_tools: dict[str, Any] = {}
     grouped_runtime_metadata: dict[str, dict[str, Any]] = {}
@@ -85,12 +88,12 @@ def get_default_tools(
         grouped_tools.update(tools_by_name)
         grouped_runtime_metadata.update(runtime_metadata_by_name)
 
-    _merge_tool_group(*build_utility_tools(emit_tool_event=_emit_tool_event))
+    _merge_tool_group(*build_utility_tools(emit_tool_event=_emit_display_tool_event))
     _merge_tool_group(
         *build_workspace_tools(
             workspace_root=workspace_root,
             tool_catalog=tool_catalog,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
             trusted_skill_collection_roots=(
                 *settings.skill_directories,
                 settings.skill_install_directory,
@@ -103,7 +106,7 @@ def get_default_tools(
         *build_git_tools(
             workspace_root=workspace_root,
             tool_catalog=tool_catalog,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
         )
     )
     artifact_tools, artifact_runtime_metadata = build_artifact_tools(
@@ -115,7 +118,7 @@ def get_default_tools(
         artifact_metadata_repository=artifact_metadata_repository,
         memory_embedding_service=memory_embedding_service,
         retrieval_index=retrieval_index,
-        emit_tool_event=_emit_tool_event,
+        emit_tool_event=_emit_display_tool_event,
         get_current_thread_id=_get_current_thread_id,
     )
     _merge_tool_group(artifact_tools, artifact_runtime_metadata)
@@ -126,7 +129,7 @@ def get_default_tools(
             web_search_config=web_search_config,
             tool_catalog=tool_catalog,
             resolved_env=resolved_env,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
             urllib_parse_module=urllib_parse,
             save_tool_observation=save_tool_observation,
             get_current_thread_id=_get_current_thread_id,
@@ -139,7 +142,7 @@ def get_default_tools(
             memory_embedding_service=memory_embedding_service,
             retrieval_index=retrieval_index,
             tool_catalog=tool_catalog,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
             get_current_thread_id=_get_current_thread_id,
         )
     )
@@ -147,14 +150,14 @@ def get_default_tools(
         *build_conversation_tools(
             checkpointer=checkpointer,
             tool_catalog=tool_catalog,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
             get_current_thread_id=_get_current_thread_id,
         )
     )
     _merge_tool_group(
         *build_productivity_tools(
             productivity_repository=productivity_repository,
-            emit_tool_event=_emit_tool_event,
+            emit_tool_event=_emit_display_tool_event,
             get_current_thread_id=_get_current_thread_id,
             get_current_user_id=_get_current_user_id,
         )
@@ -182,34 +185,3 @@ def get_default_tools(
             tools.append(tool_obj)
 
     return tools
-
-
-_COMPAT_HELPER_MODULES = {
-    "_emit_tool_event": ".common",
-    "_coerce_relative_posix": ".common",
-    "_collapse_whitespace": ".common",
-    "_looks_binary": ".common",
-    "_make_display_event_emitter": ".common",
-    "_read_text_file": ".common",
-    "_require_non_empty_text_arg": ".common",
-    "_run_git_command": ".git",
-    "_ReadableHTMLExtractor": ".web",
-    "_is_blocked_fetch_host": ".web",
-    "_normalize_search_result": ".web",
-    "_TEXT_FILE_SUFFIX_TO_LANGUAGE": ".workspace",
-    "_SKIP_DIR_NAMES": ".workspace",
-    "_format_numbered_lines": ".workspace",
-    "_iter_workspace_files": ".workspace",
-    "_language_for_path": ".workspace",
-    "_matches_glob_pattern": ".workspace",
-    "_resolve_workspace_path": ".workspace",
-}
-
-
-def __getattr__(name: str) -> Any:
-    module_name = _COMPAT_HELPER_MODULES.get(name)
-    if module_name is None:
-        raise AttributeError(name)
-    from importlib import import_module
-
-    return getattr(import_module(module_name, package=__package__), name)

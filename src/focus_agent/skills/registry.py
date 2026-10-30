@@ -26,33 +26,6 @@ from .registry_matching import (
     _skill_semantic_vector,
 )
 from .registry_paths import _normalize_skill_id, bundled_skills_dir
-from .registry_rendering import (
-    _install_result_to_dict as _install_result_to_dict,
-)
-from .registry_rendering import (
-    _search_result_to_dict as _search_result_to_dict,
-)
-from .registry_rendering import (
-    render_skill_install_json as render_skill_install_json,
-)
-from .registry_rendering import (
-    render_skill_sources_json as render_skill_sources_json,
-)
-from .registry_rendering import (
-    render_skill_view_json as render_skill_view_json,
-)
-from .registry_rendering import (
-    render_skills_list_json as render_skills_list_json,
-)
-from .registry_rendering import (
-    render_skills_refresh_index_json as render_skills_refresh_index_json,
-)
-from .registry_rendering import (
-    render_skills_search_json as render_skills_search_json,
-)
-from .registry_sources import (
-    _parse_source_location as _parse_source_location,
-)
 from .registry_sources import (
     _search_result_from_skill,
     _source_definitions_from_settings,

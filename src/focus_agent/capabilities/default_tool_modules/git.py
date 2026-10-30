@@ -9,7 +9,7 @@ from typing import Any
 from langchain.tools import tool
 
 from .common import _coerce_relative_posix
-from .workspace import _resolve_workspace_path
+from .workspace_paths import _resolve_workspace_path
 
 
 def _run_git_command(*, workspace_root: Path, args: list[str]) -> str:

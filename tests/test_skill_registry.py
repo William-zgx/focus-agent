@@ -24,9 +24,8 @@ from focus_agent.config_parts.catalogs import ToolProviderConfig
 from focus_agent.core.types import PromptMode
 from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.skills.models import SkillSourceDefinition
-from focus_agent.skills.registry import (
-    SkillRegistry,
-    bundled_skills_dir,
+from focus_agent.skills.registry import SkillRegistry, bundled_skills_dir
+from focus_agent.skills.registry_rendering import (
     render_skill_install_json,
     render_skill_sources_json,
     render_skill_view_json,
