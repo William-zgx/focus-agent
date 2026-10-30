@@ -1,6 +1,5 @@
 import type {
 	FocusAgentBranchActionProposal,
-	FocusAgentToolEvent,
 	RunFailedPayload,
 } from "@focus-agent/web-sdk";
 

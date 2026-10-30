@@ -10,7 +10,6 @@ import {
 	ConfigActions,
 	ConfigSourceMeta,
 	PolicyControl,
-	ReadOnlyConfigValue,
 	ToggleControl,
 } from "./admin-config-controls";
 import { policyDraftValue } from "./admin-config-draft-utils";

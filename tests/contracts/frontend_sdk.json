@@ -1179,7 +1179,6 @@
     ],
     "apps/web/src/entities/messages/message-list-helpers.ts": [
       "FocusAgentBranchActionProposal",
-      "FocusAgentToolEvent",
       "RunFailedPayload"
     ],
     "apps/web/src/entities/messages/message-list-message-row.tsx": [
