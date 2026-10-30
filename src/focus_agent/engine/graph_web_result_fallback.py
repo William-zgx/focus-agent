@@ -5,9 +5,6 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain.messages import ToolMessage
-
-from ..core.context_tool_observation_references import _tool_observation_ref
 from ..core.types import ContextBudget
 from .graph.lexicon import contains_cjk
 from .graph_evidence import relevant_web_tool_call_ids
@@ -16,7 +13,13 @@ from .graph_tool_history_repair import (
     _latest_turn_messages,
     _truncate_inline,
 )
-from .graph_tool_messages import iter_tool_results, tool_message_json
+from .graph_tool_messages import (
+    artifact_source_refs,
+    iter_tool_results,
+    prompt_observation_json,
+    tool_message_failed,
+    tool_message_json,
+)
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -49,7 +52,7 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
     payloads: list[dict[str, Any]] = []
     source_by_ref: dict[str, dict[str, Any]] = {}
     for message, tool_name, _args in iter_tool_results(latest_turn):
-        if str(getattr(message, "status", "")) == "error":
+        if tool_message_failed(message):
             continue
         call_id = str(getattr(message, "tool_call_id", "") or "")
         if (
@@ -62,13 +65,13 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
         parsed = tool_message_json(message)
         if parsed is not None:
             parsed_payloads.append(parsed)
-        prompt_payload = _prompt_observation_payload(message)
+        prompt_payload = prompt_observation_json(message)
         if not parsed_payloads and prompt_payload is not None:
             parsed_payloads.append(prompt_payload)
         for payload in parsed_payloads:
             if not isinstance(payload, dict):
                 continue
-            if payload.get("status") == "error" or payload.get("error"):
+            if tool_message_failed(message, payload):
                 continue
             if tool_name == "artifact_read":
                 source = source_by_ref.get(str(payload.get("artifact_id") or ""))
@@ -87,12 +90,13 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
                 payload
             ):
                 payloads.append(payload)
-                source_by_ref[_tool_observation_ref(tool_name=tool_name, tool_call_id=call_id)] = (
-                    payload
-                )
-                for view in (payload, prompt_payload):
-                    if isinstance(view, dict) and view.get("artifact_ref"):
-                        source_by_ref[str(view["artifact_ref"])] = payload
+                for ref in artifact_source_refs(
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    payload=payload,
+                    prompt_payload=prompt_payload,
+                ):
+                    source_by_ref[ref] = payload
     return payloads
 
 
@@ -352,19 +356,6 @@ def _looks_like_web_observation_payload(payload: Any) -> bool:
     )
 
 
-def _prompt_observation_payload(message: ToolMessage) -> Any | None:
-    artifact = getattr(message, "artifact", None)
-    if not isinstance(artifact, dict):
-        return None
-    prompt_observation = artifact.get("prompt_observation")
-    if not isinstance(prompt_observation, str) or not prompt_observation.strip():
-        return None
-    try:
-        return json.loads(prompt_observation)
-    except json.JSONDecodeError:
-        return None
-
-
 __all__ = [
     "_fallback_web_answer_from_tool_results",
     "_latest_relevant_web_payloads",
@@ -383,5 +374,4 @@ __all__ = [
     "_payload_results",
     "_source_domain",
     "_looks_like_web_observation_payload",
-    "_prompt_observation_payload",
 ]

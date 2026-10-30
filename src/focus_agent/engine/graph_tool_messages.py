@@ -8,6 +8,20 @@ from typing import Any
 
 from langchain.messages import ToolMessage
 
+from ..core.context_tool_observation_references import _tool_observation_ref
+from ..core.runtime_outcome import payload_failure
+
+PUBLISHED_AT_KEYS = (
+    "published_at",
+    "published",
+    "published_date",
+    "publishedDate",
+    "publication_date",
+    "published_on",
+    "published_time",
+    "date",
+)
+
 
 def _tool_calls(message: Any) -> Iterator[tuple[str, Mapping[str, Any]]]:
     for call in getattr(message, "tool_calls", None) or ():
@@ -69,4 +83,77 @@ def tool_message_json(message: Any) -> Any:
         return None
 
 
-__all__ = ["iter_tool_results", "tool_call_names_by_id", "tool_message_json"]
+def prompt_observation_json(message: Any) -> Any | None:
+    """Return the JSON prompt view saved on a tool message artifact, if any."""
+
+    artifact = getattr(message, "artifact", None)
+    if not isinstance(artifact, Mapping):
+        return None
+    prompt_observation = artifact.get("prompt_observation")
+    if not isinstance(prompt_observation, str) or not prompt_observation.strip():
+        return None
+    try:
+        return json.loads(prompt_observation)
+    except ValueError:
+        return None
+
+
+def tool_message_failed(message: Any, payload: Any = None) -> bool:
+    """Single rule for "this tool result is a failure" across the research path.
+
+    A result fails when the transport marked it ``status="error"`` or when its
+    JSON payload reports a failure (``status`` error/failed, ``error`` set,
+    ``ok``/``success`` false, ``timed_out``, non-zero ``exit_code``, or an
+    embedded failing command payload). ``payload`` may be passed when the
+    caller already parsed the message.
+    """
+
+    status = str(getattr(message, "status", "") or "").strip().lower()
+    if status in {"error", "failed"}:
+        return True
+    if payload is None:
+        payload = tool_message_json(message)
+    return payload_failure(payload) is not None
+
+
+def payload_published_at(payload: Any) -> str | None:
+    """Return the first publication date found on a payload or its metadata."""
+
+    if not isinstance(payload, Mapping):
+        return None
+    for source in (payload, payload.get("metadata"), payload.get("meta")):
+        if not isinstance(source, Mapping):
+            continue
+        for key in PUBLISHED_AT_KEYS:
+            value = " ".join(str(source.get(key) or "").split())
+            if value:
+                return value
+    return None
+
+
+def artifact_source_refs(
+    *, tool_name: str, tool_call_id: str, payload: Any, prompt_payload: Any = None
+) -> list[str]:
+    """Refs under which an ``artifact_read`` call can later name this fetched page.
+
+    Covers the prompt-only observation ref and any ``artifact_ref`` the tool or
+    its prompt view advertised for continuation.
+    """
+
+    refs = [_tool_observation_ref(tool_name=tool_name, tool_call_id=tool_call_id)]
+    for view in (payload, prompt_payload):
+        if isinstance(view, Mapping) and view.get("artifact_ref"):
+            refs.append(str(view["artifact_ref"]))
+    return list(dict.fromkeys(refs))
+
+
+__all__ = [
+    "PUBLISHED_AT_KEYS",
+    "artifact_source_refs",
+    "iter_tool_results",
+    "payload_published_at",
+    "prompt_observation_json",
+    "tool_call_names_by_id",
+    "tool_message_failed",
+    "tool_message_json",
+]

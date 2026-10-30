@@ -10,6 +10,7 @@ from ..core.branch_messages import branch_context_messages, branch_fork_message_
 from ..core.state import AgentState
 from ..core.tool_call_protocol import repair_dangling_tool_call_messages
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
+from .graph_tool_messages import tool_message_failed
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 4
 
@@ -152,7 +153,7 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
         signature = call_signatures.get(call_id)
         if not signature:
             continue
-        if not _tool_message_is_failure(message):
+        if not tool_message_failed(message):
             if streak_signature == signature:
                 streak_signature = ""
                 streak_count = 0
@@ -184,31 +185,6 @@ def _failure_streak_signature(call: dict[str, Any]) -> str:
         sort_keys=True,
         default=str,
     )
-
-
-def _tool_message_is_failure(message: ToolMessage) -> bool:
-    if str(getattr(message, "status", "") or "").strip().lower() == "error":
-        return True
-    content = _message_text(message)
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(payload, dict):
-        return False
-    if str(payload.get("status") or "").strip().lower() == "error":
-        return True
-    exit_code = payload.get("exit_code")
-    if isinstance(exit_code, int) and exit_code != 0:
-        return True
-    if isinstance(exit_code, str):
-        try:
-            return int(exit_code) != 0
-        except ValueError:
-            return False
-    if payload.get("timed_out") is True:
-        return True
-    return False
 
 
 def _message_text(message: Any) -> str:

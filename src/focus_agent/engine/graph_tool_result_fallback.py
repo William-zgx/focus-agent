@@ -22,13 +22,12 @@ from .graph_tool_history_repair import (
     _message_text,
     _truncate_inline,
 )
-from .graph_tool_messages import tool_message_json
+from .graph_tool_messages import prompt_observation_json, tool_message_json
 from .graph_web_result_fallback import (
     _fallback_web_answer_from_tool_results,
     _latest_relevant_web_payloads,
     _looks_like_web_observation_payload,
     _payload_results,
-    _prompt_observation_payload,
     _representative_fetch_excerpt,
     _web_synthesis_char_budget,
 )
@@ -290,7 +289,7 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
             continue
         raw = _message_text(message)
         payload = tool_message_json(message)
-        prompt_payload = _prompt_observation_payload(message)
+        prompt_payload = prompt_observation_json(message)
 
         call_id = str(getattr(message, "tool_call_id", "") or "")
         call = pending_calls.pop(call_id, None)

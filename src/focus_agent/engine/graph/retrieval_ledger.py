@@ -17,8 +17,15 @@ from urllib.parse import urlsplit, urlunsplit
 
 from langchain.messages import ToolMessage
 
-from ..graph_tool_history_repair import _messages_since_latest_human, _tool_message_is_failure
-from ..graph_tool_messages import iter_tool_results, tool_message_json
+from ..graph_tool_history_repair import _messages_since_latest_human
+from ..graph_tool_messages import (
+    artifact_source_refs,
+    iter_tool_results,
+    payload_published_at,
+    prompt_observation_json,
+    tool_message_failed,
+    tool_message_json,
+)
 
 _LEDGER_NOTE_MAX_ENTRIES = 20
 # Fetch failures that will not change on retry within the same turn.
@@ -103,11 +110,7 @@ def _payload(message: ToolMessage) -> Mapping[str, Any]:
 
 
 def _published_at(message: ToolMessage) -> str:
-    return str(_payload(message).get("published_at") or "").strip()[:10]
-
-
-def _artifact_ref(message: ToolMessage) -> str:
-    return str(_payload(message).get("artifact_ref") or "").strip()
+    return str(payload_published_at(_payload(message)) or "")[:10]
 
 
 def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEntry]:
@@ -124,7 +127,7 @@ def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEn
         if key is None:
             continue
         error = ""
-        if _tool_message_is_failure(message):
+        if tool_message_failed(message):
             # Transient failures (timeouts, 5xx) may succeed on retry; only remember
             # fetches that will fail the same way again.
             text = str(message.content or "")
@@ -136,9 +139,15 @@ def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEn
             published = _published_at(message)
             if published:
                 label += f" [published {published}]"
-                for ref in (str(args.get("url") or ""), _artifact_ref(message)):
-                    if ref:
-                        published_by_ref[ref] = published
+                for ref in artifact_source_refs(
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    payload=_payload(message),
+                    prompt_payload=prompt_observation_json(message),
+                ):
+                    published_by_ref[ref] = published
+                if args.get("url"):
+                    published_by_ref[str(args["url"])] = published
         elif tool_name == "artifact_read":
             published = published_by_ref.get(str(args.get("artifact_id") or ""))
             if published:

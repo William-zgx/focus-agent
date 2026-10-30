@@ -9,7 +9,12 @@ from urllib.parse import urlparse
 
 from langchain.messages import AIMessage, ToolMessage
 
-from .graph_tool_messages import tool_call_names_by_id, tool_message_json
+from .graph_tool_messages import (
+    payload_published_at,
+    tool_call_names_by_id,
+    tool_message_failed,
+    tool_message_json,
+)
 
 TrustTier = str
 
@@ -61,17 +66,6 @@ _WEATHER_BACKGROUND_DOMAINS = {
     "weatherbase.com",
     "wunderground.com",
 }
-
-_PUBLISHED_AT_KEYS = (
-    "published_at",
-    "published",
-    "published_date",
-    "publishedDate",
-    "publication_date",
-    "published_on",
-    "published_time",
-    "date",
-)
 
 EVIDENCE_LAYER_BODY = "body"
 EVIDENCE_LAYER_SNIPPET = "snippet"
@@ -150,7 +144,7 @@ def normalize_evidence_bundle(
             if item is not None:
                 items.append(item)
             continue
-        if _tool_message_status(message, payload) == "error":
+        if tool_message_failed(message, payload):
             continue
         if tool_name == "web_search":
             items.extend(_search_payload_items(payload, observed_at=observed_at))
@@ -190,7 +184,7 @@ def normalize_evidence_ledger(
                 observed_at=observed_at,
             )
             items = [item] if item is not None else []
-        elif _tool_message_status(message, payload) == "error":
+        elif tool_message_failed(message, payload):
             continue
         elif tool_name == "web_search":
             items = _search_payload_items(payload, observed_at=observed_at)
@@ -339,7 +333,7 @@ def _search_payload_items(
         if _is_internal_summary(snippet):
             snippet = ""
         source_name = _source_name(result, url=url)
-        published_at = _published_at(result)
+        published_at = payload_published_at(result)
         items.append(
             EvidenceItem(
                 source_name=source_name,
@@ -381,7 +375,7 @@ def _search_summary_items(
             title=title,
             snippet=snippet,
             trust_tier=TRUST_TIER_LOW,
-            published_at=_published_at(payload),
+            published_at=payload_published_at(payload),
             observed_at=_observed_at(payload, fallback=observed_at),
             evidence_layer=EVIDENCE_LAYER_SUMMARY,
         )
@@ -423,7 +417,7 @@ def _fetch_payload_item(payload: dict[str, Any], *, observed_at: str | None) -> 
     if not (url or title or snippet):
         return None
     source_name = _source_name(payload, url=url)
-    published_at = _published_at(payload)
+    published_at = payload_published_at(payload)
     return EvidenceItem(
         source_name=source_name,
         url=url,
@@ -638,31 +632,9 @@ def _matches_query_terms(text: str, query_terms: set[str]) -> bool:
     return any(term and term in haystack for term in query_terms)
 
 
-def _tool_message_status(message: ToolMessage, payload: dict[str, Any]) -> str:
-    if str(payload.get("status") or "").lower() == "error" or payload.get("error"):
-        return "error"
-    status = _clean_text(getattr(message, "status", "")) or _clean_text(payload.get("status"))
-    return status.lower() or "success"
-
-
 def _source_name(payload: dict[str, Any], *, url: str) -> str:
     source = _clean_text(payload.get("source_name") or payload.get("source") or payload.get("site"))
     return source or _normalized_host(url)
-
-
-def _published_at(payload: dict[str, Any]) -> str | None:
-    for key in _PUBLISHED_AT_KEYS:
-        value = _clean_text(payload.get(key))
-        if value:
-            return value
-    for key in ("metadata", "meta"):
-        metadata = payload.get(key)
-        if isinstance(metadata, dict):
-            for nested_key in _PUBLISHED_AT_KEYS:
-                value = _clean_text(metadata.get(nested_key))
-                if value:
-                    return value
-    return None
 
 
 def _observed_at(payload: Mapping[str, Any], *, fallback: str | None) -> str | None:

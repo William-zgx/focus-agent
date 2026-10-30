@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain.messages import ToolMessage
 
-from .graph_tool_messages import iter_tool_results, tool_message_json
+from .graph_tool_messages import iter_tool_results, tool_message_failed, tool_message_json
 
 
 def skill_execution_evidence_facts(
@@ -44,7 +44,7 @@ def _tool_message_counts_as_success(message: ToolMessage, tool_name: str) -> boo
         return _run_workspace_command_payload_succeeded(message)
     if tool_name == "run_skill_entrypoint":
         return _run_skill_entrypoint_payload_succeeded(message)
-    return True
+    return not tool_message_failed(message)
 
 
 def _run_workspace_command_payload_succeeded(message: ToolMessage) -> bool:
