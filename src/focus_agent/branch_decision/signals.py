@@ -10,6 +10,8 @@ from focus_agent.services.branch_actions import (
     latest_pending_branch_action,
 )
 
+from .service_helpers import _message_text, _semantic_recommended_action
+
 _SPLIT_HINTS = (
     "branch",
     "split",
@@ -479,18 +481,6 @@ def _semantic_topic_relation_signal_value(value: dict[str, Any] | None) -> dict[
     }
 
 
-def _semantic_recommended_action(value: Any) -> BranchDecisionAction:
-    raw = str(value or "").strip()
-    for action in {
-        BranchDecisionAction.CONTINUE_CURRENT,
-        BranchDecisionAction.FORK_CHILD_BRANCH,
-        BranchDecisionAction.FORK_SIBLING_BRANCH,
-    }:
-        if raw == action.value:
-            return action
-    return BranchDecisionAction.CONTINUE_CURRENT
-
-
 def _recent_message_shape(*, messages: list[Any], recent_text: str) -> dict[str, Any]:
     compact = _compact(recent_text)
     has_question = "?" in recent_text or "？" in recent_text
@@ -550,24 +540,6 @@ def _message_type(message: Any) -> str:
     else:
         raw_type = getattr(message, "type", None)
     return str(raw_type or "").strip().lower()
-
-
-def _message_text(message: Any) -> str:
-    if isinstance(message, dict):
-        content = message.get("content")
-    else:
-        content = getattr(message, "content", "")
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(str(item.get("text") or item.get("content") or ""))
-            elif item is not None:
-                parts.append(str(item))
-        return " ".join(part for part in parts if part).strip()
-    if isinstance(content, dict):
-        return str(content.get("text") or content.get("content") or "")
-    return str(content or "")
 
 
 def _compact(text: str) -> str:

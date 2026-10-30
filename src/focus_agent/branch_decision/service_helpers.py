@@ -312,3 +312,21 @@ def _recommendation_diagnostics(
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _message_text(message: Any) -> str:
+    if isinstance(message, dict):
+        content = message.get("content")
+    else:
+        content = getattr(message, "content", "")
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(str(item.get("text") or item.get("content") or ""))
+            elif item is not None:
+                parts.append(str(item))
+        return " ".join(part for part in parts if part).strip()
+    if isinstance(content, dict):
+        return str(content.get("text") or content.get("content") or "").strip()
+    return str(content or "").strip()

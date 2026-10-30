@@ -13,6 +13,7 @@ from focus_agent.config import Settings
 from focus_agent.model_registry import model_protocol
 
 from .budget import recommendation_deadline
+from .service_helpers import _message_text, _selected_model_from_values
 
 SemanticBranchAction = Literal[
     "continue_current",
@@ -414,24 +415,6 @@ def _message_role(message: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _message_text(message: Any) -> str:
-    if isinstance(message, dict):
-        content = message.get("content")
-    else:
-        content = getattr(message, "content", "")
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(str(item.get("text") or item.get("content") or ""))
-            elif item is not None:
-                parts.append(str(item))
-        return " ".join(part for part in parts if part).strip()
-    if isinstance(content, dict):
-        return str(content.get("text") or content.get("content") or "").strip()
-    return str(content or "").strip()
-
-
 def _response_text(response: Any) -> str:
     content = (
         response.get("content")
@@ -447,15 +430,6 @@ def _response_text(response: Any) -> str:
                 parts.append(str(item))
         return "\n".join(part for part in parts if part).strip()
     return str(content or "").strip()
-
-
-def _selected_model_from_values(values: dict[str, Any]) -> str | None:
-    for key in ("selected_model", "model", "model_id"):
-        value = values.get(key)
-        text = str(value or "").strip()
-        if text:
-            return text
-    return None
 
 
 def _parse_json_payload(text: str) -> dict[str, Any]:
