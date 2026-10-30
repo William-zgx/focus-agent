@@ -557,6 +557,32 @@ async function recordAgentTeamMergeDecision(
   );
 }
 
+function mergeReviewSelectionBody(
+  request: FocusAgentAgentTeamCreateMergeReviewRequest | FocusAgentAgentTeamUpdateMergeReviewRequest,
+): Record<string, unknown> {
+  return {
+    selected_task_ids: request.selected_task_ids,
+    excluded_task_ids: request.excluded_task_ids ?? request.rejected_task_ids,
+    title: request.title,
+    metadata: request.metadata,
+  };
+}
+
+function mergeReviewPreviewResponse(
+  response: FocusAgentAgentTeamMergeReviewResponse,
+): FocusAgentAgentTeamMergeReviewPreviewResponse {
+  const { review } = response;
+  const patch = review.metadata?.patch;
+  return {
+    ...response,
+    applicable: review.status !== "conflict" && review.status !== "error",
+    diff: typeof patch === "string" ? patch : null,
+    diffstat: review.diffstat ?? null,
+    conflict_files: review.conflict_files ?? [],
+    warnings: review.error_message ? [review.error_message] : [],
+  };
+}
+
 async function createAgentTeamMergeReview(
   this: FocusAgentEndpointContext,
   sessionId: string,
@@ -567,7 +593,7 @@ async function createAgentTeamMergeReview(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify(mergeReviewSelectionBody(request)),
     },
     true,
   );
@@ -598,27 +624,33 @@ async function updateAgentTeamMergeReview(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ ...mergeReviewSelectionBody(request), status: request.status }),
     },
     true,
   );
 }
 
+/**
+ * Previews the review's saved selection. The backend endpoint takes no body, so
+ * update the review first when the selection changes. `applicable`, `diff`,
+ * `diffstat`, `conflict_files` and `warnings` are derived from the returned review.
+ * `request` is accepted for compatibility and ignored.
+ */
 async function previewAgentTeamMergeReview(
   this: FocusAgentEndpointContext,
   sessionId: string,
   reviewId: string,
   request: FocusAgentAgentTeamMergeReviewPreviewRequest = {},
 ): Promise<FocusAgentAgentTeamMergeReviewPreviewResponse> {
-  return this.requestJson<FocusAgentAgentTeamMergeReviewPreviewResponse>(
+  const response = await this.requestJson<FocusAgentAgentTeamMergeReviewResponse>(
     `/v1/agent-team/sessions/${encodeURIComponent(sessionId)}/merge-review/${encodeURIComponent(reviewId)}/preview`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      headers: {},
     },
     true,
   );
+  return mergeReviewPreviewResponse(response);
 }
 
 async function applyAgentTeamMergeReview(
@@ -632,7 +664,7 @@ async function applyAgentTeamMergeReview(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ apply_target_path: request.apply_target_path ?? request.apply_target }),
     },
     true,
   );
@@ -649,7 +681,7 @@ async function rejectAgentTeamMergeReview(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ rationale: request.rationale ?? request.reason }),
     },
     true,
   );
