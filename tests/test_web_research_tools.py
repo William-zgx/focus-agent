@@ -273,6 +273,69 @@ def test_web_fetch_does_not_render_pdf_as_replacement_text():
     assert "PDF" in payload["error"]
 
 
+def _runtime_web_fetch(response: httpx.Response, url: str):
+    from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
+    from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
+    from focus_agent.core.types import ContextBudget
+
+    settings = Settings()
+    tools, runtime_metadata = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
+        web_search_config=settings.web_search,
+        resolved_env={},
+        http_client=_FetchClient(response),
+    )
+    tool_obj = tools["web_fetch"]
+    tool_obj.metadata = {**(tool_obj.metadata or {}), **runtime_metadata["web_fetch"]}
+    return execute_tool_calls(
+        [
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="fetch-1",
+                tool_name="web_fetch",
+                args={"url": url},
+                tool=tool_obj,
+                runtime=ToolRuntimeMeta.from_tool(tool_obj),
+            )
+        ],
+        context_budget=ContextBudget(),
+    )[0].message
+
+
+@pytest.mark.parametrize(
+    ("body", "headers"),
+    [
+        (b"%PDF-1.7\x00garbled binary", {"content-type": "application/pdf"}),
+        (
+            b"<html><head><title>Just a moment...</title></head><body></body></html>",
+            {"content-type": "text/html"},
+        ),
+    ],
+)
+def test_web_fetch_error_payload_marks_tool_message_error(body, headers):
+    url = "https://93.184.216.34/page"
+    message = _runtime_web_fetch(httpx.Response(200, content=body, headers=headers), url)
+
+    payload = json.loads(str(message.content))
+    assert payload["status"] == "error"
+    assert payload["error"]
+    assert message.status == "error"
+
+
+def test_web_fetch_readable_page_keeps_tool_message_success():
+    response = httpx.Response(
+        200, content=b"plain readable text", headers={"content-type": "text/plain"}
+    )
+    message = _runtime_web_fetch(response, "https://93.184.216.34/page")
+
+    assert json.loads(str(message.content))["content"] == "plain readable text"
+    assert message.status == "success"
+
+
 def test_default_web_fetch_continuation_reads_full_text_in_same_thread(tmp_path, monkeypatch):
     from focus_agent.capabilities.default_tool_modules import common, factory
     from focus_agent.capabilities.default_tool_modules import web as web_module
