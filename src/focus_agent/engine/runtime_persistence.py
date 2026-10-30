@@ -293,7 +293,11 @@ def _create_agent_team_repository(
             connection_provider=connection_provider,
         )
     else:
-        repository = runtime_mod.InMemoryAgentTeamRepository()
+        # Local mode shares BRANCH_DB_PATH with the other app-state repositories so
+        # Agent Team sessions, tasks and v2 run records survive an API restart.
+        from ..repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
+
+        repository = SQLiteAgentTeamRepository(str(Path(settings.branch_db_path).expanduser()))
     runtime_mod._setup_component_if_available(repository)
     return repository
 

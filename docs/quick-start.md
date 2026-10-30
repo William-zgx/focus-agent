@@ -190,11 +190,10 @@ checks, backfill targets, and multi-replica notes.
 ## 5. Local Persistence
 
 When the API binary runs without `DATABASE_URI`, local app-state is durable by
-default: branch, conversation, thread-access, user, and productivity
-repositories share `BRANCH_DB_PATH` (default
-`.focus_agent/branches.sqlite3`). Agent Team remains an in-memory local
-fallback, and local mode still has no Postgres trajectory recorder or artifact
-metadata repository.
+default: branch, conversation, thread-access, user, productivity, and Agent
+Team (sessions, tasks, and v2 run records) repositories share `BRANCH_DB_PATH`
+(default `.focus_agent/branches.sqlite3`). Local mode still has no Postgres
+trajectory recorder or artifact metadata repository.
 
 The local fallback also uses SQLite for both LangGraph checkpoints and the
 local store by default. The default files are

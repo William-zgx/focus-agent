@@ -303,10 +303,11 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
             self.path = Path(path)
             self.__class__.instances.append(self)
 
-    class _FakeInMemoryAgentTeamRepository:
-        instances: list[_FakeInMemoryAgentTeamRepository] = []
+    class _FakeSQLiteAgentTeamRepository:
+        instances: list[_FakeSQLiteAgentTeamRepository] = []
 
-        def __init__(self):
+        def __init__(self, path: str):
+            self.path = Path(path)
             self.__class__.instances.append(self)
 
     class _FakeSQLiteUserRepository:
@@ -339,7 +340,8 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
         _FakeSQLiteProductivityRepository,
     )
     monkeypatch.setattr(
-        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
+        "focus_agent.repositories.sqlite_agent_team_repository.SQLiteAgentTeamRepository",
+        _FakeSQLiteAgentTeamRepository,
     )
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
@@ -360,7 +362,8 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
         assert isinstance(runtime.user_service.repository, _FakeSQLiteUserRepository)
         assert isinstance(runtime.productivity_repository, _FakeSQLiteProductivityRepository)
         assert runtime.productivity_repository.path == tmp_path / "branches.sqlite3"
-        assert isinstance(runtime.agent_team_service.repository, _FakeInMemoryAgentTeamRepository)
+        assert isinstance(runtime.agent_team_service.repository, _FakeSQLiteAgentTeamRepository)
+        assert runtime.agent_team_service.repository.path == tmp_path / "branches.sqlite3"
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
         assert runtime.memory_repository is None
@@ -399,9 +402,6 @@ def test_create_runtime_selects_explicit_sqlite_persistence_backend(monkeypatch,
     class _FakeInMemoryBranchRepository:
         pass
 
-    class _FakeInMemoryAgentTeamRepository:
-        pass
-
     class _FakeInMemoryUserRepository:
         pass
 
@@ -410,9 +410,6 @@ def test_create_runtime_selects_explicit_sqlite_persistence_backend(monkeypatch,
     monkeypatch.setattr(runtime_mod, "PersistentSQLiteSaver", _FakeSQLiteSaver)
     monkeypatch.setattr(runtime_persistence_mod, "PersistentSQLiteStore", _FakeSQLiteStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(
-        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
-    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -567,12 +564,6 @@ def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch,
         def __init__(self):
             self.__class__.instances.append(self)
 
-    class _FakeInMemoryAgentTeamRepository:
-        instances: list[_FakeInMemoryAgentTeamRepository] = []
-
-        def __init__(self):
-            self.__class__.instances.append(self)
-
     class _FakeInMemoryUserRepository:
         instances: list[_FakeInMemoryUserRepository] = []
 
@@ -587,9 +578,6 @@ def test_create_runtime_auto_loads_registered_builtin_tool_provider(monkeypatch,
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(
-        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
-    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -721,12 +709,6 @@ def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
         def __init__(self):
             self.__class__.instances.append(self)
 
-    class _FakeInMemoryAgentTeamRepository:
-        instances: list[_FakeInMemoryAgentTeamRepository] = []
-
-        def __init__(self):
-            self.__class__.instances.append(self)
-
     class _FakeInMemoryUserRepository:
         instances: list[_FakeInMemoryUserRepository] = []
 
@@ -737,9 +719,6 @@ def test_create_runtime_ensures_runtime_directories(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime_mod, "PersistentInMemorySaver", _FakeLocalSaver)
     monkeypatch.setattr(runtime_mod, "PersistentInMemoryStore", _FakeLocalStore)
     monkeypatch.setattr(runtime_mod, "InMemoryBranchRepository", _FakeInMemoryBranchRepository)
-    monkeypatch.setattr(
-        runtime_mod, "InMemoryAgentTeamRepository", _FakeInMemoryAgentTeamRepository
-    )
     monkeypatch.setattr(runtime_mod, "InMemoryUserRepository", _FakeInMemoryUserRepository)
 
     branch_db_path = tmp_path / "runtime" / "db" / "branches.sqlite3"

@@ -621,7 +621,7 @@ Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使�
 未配置 `DATABASE_URI` 且直接裸跑 API 二进制时，runtime 使用：
 
 - SQLite branch / conversation / thread-access repository
-- In-memory Agent Team repository
+- SQLite Agent Team repository (sessions, tasks, v2 run records)
 - SQLite user and productivity repositories
 - SQLite-backed LangGraph checkpointer
 - SQLite-backed LangGraph store
@@ -629,9 +629,9 @@ Harness run journal 的接口保持 async。SQLite 和 Postgres journal 仍使�
 - no trajectory recorder
 - no artifact metadata repository
 
-branch、conversation、thread access、用户和 productivity 数据统一写入
+branch、conversation、thread access、用户、productivity 和 Agent Team 数据统一写入
 `BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`），因此直接重启裸跑 API
-不会丢失这些 app-state。Agent Team 仍保留 in-memory fallback；trajectory 和
+不会丢失这些 app-state；trajectory 和
 artifact metadata 也不会在该模式下获得 Postgres durability。已持久化的
 checkpoint、journal 或 workspace copy 不能单独保证任务进程重启后继续执行；
 跨进程 claim/retry 只对已接入具体 job handler 的 Agent Team v2 或 durable
@@ -813,7 +813,7 @@ make web-dev
 - Artifact 正文通过 `ArtifactStore` protocol 访问，默认 local implementation 仍在文件系统；生产多节点需要共享文件系统或对象存储实现。
 - Agent governance 多数能力默认 observe/off，enforce 面需要基于 trajectory 逐步扩大。
 - Context window 已有发送栏用量、手动/自动压缩、工具观察 artifactization 和 128k 默认预算，但 token 估算当前仍以确定性裁剪和近似预算为主。
-- Local fallback persistence 只适合本地，不适合生产多副本；裸跑 API 且无 `DATABASE_URI` 时 Agent Team 仍可能走 in-memory repository，trajectory/artifact metadata 也不具备 Postgres durability。
+- Local fallback persistence 只适合本地，不适合生产多副本；裸跑 API 且无 `DATABASE_URI` 时 trajectory/artifact metadata 不具备 Postgres durability。
 - Agent Team v2 执行受 feature flag 保护；工作台 UI 可见、v1 API 可用，**不等于** v2 runtime ready 或真实执行已上线。
 - Android local runtime 与 server-backed Web 是并行集成模型，能力集合有意裁剪（例如部分 workbench/productivity 在 Android build flag 下关闭），不能假设与 Web 全量对等。
 - 1.x 兼容 facade（约 169 项）仍在；读代码时需区分 re-export 与真正实现路径。

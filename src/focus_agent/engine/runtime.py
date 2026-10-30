@@ -28,7 +28,6 @@ from ..memory.embedding import (
 )
 from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
-from ..repositories.agent_team_repository import InMemoryAgentTeamRepository  # noqa: F401
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.in_memory_branch_repository import (
     InMemoryBranchRepository as InMemoryBranchRepository,

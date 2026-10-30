@@ -76,7 +76,8 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
             self.kwargs = kwargs
 
     class _AgentTeamRepository:
-        def __init__(self):
+        def __init__(self, path: str):
+            self.path = path
             self.setup_calls = 0
 
         def setup(self):
@@ -100,7 +101,10 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
             self.repository = repository
 
     monkeypatch.setattr(runtime, "BranchService", _BranchService)
-    monkeypatch.setattr(runtime, "InMemoryAgentTeamRepository", _AgentTeamRepository)
+    monkeypatch.setattr(
+        "focus_agent.repositories.sqlite_agent_team_repository.SQLiteAgentTeamRepository",
+        _AgentTeamRepository,
+    )
     monkeypatch.setattr(runtime, "AgentTeamService", _AgentTeamService)
     monkeypatch.setattr(runtime, "UserService", _UserService)
     monkeypatch.setattr(runtime, "BranchDecisionService", _BranchDecisionService)
