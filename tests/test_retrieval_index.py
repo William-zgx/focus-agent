@@ -96,3 +96,28 @@ def test_artifact_content_indexes_chunks_with_hash_metadata():
     assert hits[0].fields["artifact_id"] == "notes.md"
     assert hits[0].fields["thread_id"] == "thread-1"
     assert hits[0].fields["artifact_hash"]
+
+
+def test_artifact_indexing_embeds_chunks_in_batches():
+    class _RecordingEmbeddingProvider:
+        def __init__(self):
+            self.calls = []
+
+        def embed(self, texts):
+            self.calls.append(len(texts))
+            return [[1.0, 0.0, 0.0] for _ in texts]
+
+    provider = _RecordingEmbeddingProvider()
+    index = InMemoryRetrievalIndex()
+
+    chunk_count = index_artifact_content(
+        retrieval_index=index,
+        embedding_provider=provider,
+        artifact_id="big.md",
+        title="Big",
+        content="x" * (1200 * 70),
+    )
+
+    assert chunk_count == 70
+    assert provider.calls == [64, 6]
+    assert index.stats()["collections"] == {"focus_artifact_chunks": 70}

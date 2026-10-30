@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
+from .embedded import embedded_search, upsert_embedded_document
 from .failure_cases import index_failure_case_from_trajectory
-from .index import RetrievalDocument, RetrievalIndex, RetrievalSearchHit
+from .index import RetrievalIndex, RetrievalSearchHit
 
 
 def index_trajectory_record(
@@ -53,13 +53,11 @@ def search_trajectory(
     query: str,
     limit: int = 5,
 ) -> list[RetrievalSearchHit]:
-    if retrieval_index is None or embedding_provider is None:
-        return []
-    vector = embedding_provider.embed([query])[0]
-    return retrieval_index.search(
+    return embedded_search(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_provider,
         collection="focus_trajectory",
         query=query,
-        vector=vector,
         limit=limit,
     )
 
@@ -76,19 +74,14 @@ def _upsert_text(
     if not text.strip():
         return
     try:
-        retrieval_index.upsert(
-            RetrievalDocument(
-                collection="focus_trajectory",
-                doc_id=doc_id,
-                source_id=source_id,
-                text=text,
-                vector=embedding_provider.embed([text])[0],
-                fields={
-                    **fields,
-                    "source_type": "trajectory",
-                    "content_hash": hashlib.sha256(text.encode()).hexdigest(),
-                },
-            )
+        upsert_embedded_document(
+            retrieval_index=retrieval_index,
+            embedding_provider=embedding_provider,
+            collection="focus_trajectory",
+            doc_id=doc_id,
+            source_id=source_id,
+            text=text,
+            fields={**fields, "source_type": "trajectory"},
         )
     except Exception:  # noqa: BLE001
         return

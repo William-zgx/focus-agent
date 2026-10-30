@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
-from .index import RetrievalDocument, RetrievalIndex, RetrievalSearchHit
+from .embedded import embedded_search, upsert_embedded_document
+from .index import RetrievalIndex, RetrievalSearchHit
 
 
 def index_governance_feedback(
@@ -21,23 +21,21 @@ def index_governance_feedback(
     text = _feedback_text(item)
     if not text.strip():
         return False
-    retrieval_index.upsert(
-        RetrievalDocument(
-            collection="focus_governance_feedback",
-            doc_id=f"governance:{source_kind}:{source_id}",
-            source_id=source_id,
-            text=text,
-            vector=embedding_provider.embed([text])[0],
-            fields={
-                "source_type": "governance_feedback",
-                "source_kind": source_kind,
-                "user_id": str(getattr(item, "user_id", "") or ""),
-                "feedback": str(getattr(item, "feedback", "") or ""),
-                "sentiment": str(getattr(item, "sentiment", "") or ""),
-                "category": str(getattr(item, "category", "") or ""),
-                "content_hash": hashlib.sha256(text.encode()).hexdigest(),
-            },
-        )
+    upsert_embedded_document(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_provider,
+        collection="focus_governance_feedback",
+        doc_id=f"governance:{source_kind}:{source_id}",
+        source_id=source_id,
+        text=text,
+        fields={
+            "source_type": "governance_feedback",
+            "source_kind": source_kind,
+            "user_id": str(getattr(item, "user_id", "") or ""),
+            "feedback": str(getattr(item, "feedback", "") or ""),
+            "sentiment": str(getattr(item, "sentiment", "") or ""),
+            "category": str(getattr(item, "category", "") or ""),
+        },
     )
     return True
 
@@ -61,15 +59,13 @@ class GovernanceFeedbackRetrievalService:
         user_id: str | None = None,
         limit: int = 5,
     ) -> list[RetrievalSearchHit]:
-        if self.retrieval_index is None or self.embedding_provider is None:
-            return []
-        filters = {"user_id": user_id} if user_id else None
-        hits = self.retrieval_index.search(
+        hits = embedded_search(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.embedding_provider,
             collection="focus_governance_feedback",
             query=query,
-            vector=self.embedding_provider.embed([query])[0],
             limit=limit,
-            filters=filters,
+            filters={"user_id": user_id} if user_id else None,
         )
         return [
             hit

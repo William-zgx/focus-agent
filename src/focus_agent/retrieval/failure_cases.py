@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
-from .index import RetrievalDocument, RetrievalIndex, RetrievalSearchHit
+from .embedded import embedded_search, upsert_embedded_document
+from .index import RetrievalIndex, RetrievalSearchHit
 
 
 def index_failure_case_from_trajectory(
@@ -16,39 +16,29 @@ def index_failure_case_from_trajectory(
     if retrieval_index is None or embedding_provider is None:
         return False
     status = str(getattr(record, "status", "") or "").lower()
-    has_step_error = any(
-        str(getattr(step, "error", "") or "").strip()
-        for step in getattr(record, "trajectory", []) or []
-    )
-    if (
-        status not in {"failed", "error"}
-        and not has_step_error
-        and not getattr(record, "error", None)
-    ):
+    if not _is_failure_record(record, status=status):
         return False
     turn_id = str(getattr(record, "id", "") or "")
     if not turn_id:
         return False
     text = _failure_text(record)
-    retrieval_index.upsert(
-        RetrievalDocument(
-            collection="focus_failure_cases",
-            doc_id=f"failure:{turn_id}",
-            source_id=turn_id,
-            text=text,
-            vector=embedding_provider.embed([text])[0],
-            fields={
-                "source_type": "failure_case",
-                "turn_id": turn_id,
-                "root_thread_id": str(getattr(record, "root_thread_id", "") or ""),
-                "thread_id": str(getattr(record, "thread_id", "") or ""),
-                "status": status,
-                "workspace_root": str(
-                    (getattr(record, "plan_meta", {}) or {}).get("workspace_root") or ""
-                ),
-                "content_hash": hashlib.sha256(text.encode()).hexdigest(),
-            },
-        )
+    upsert_embedded_document(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_provider,
+        collection="focus_failure_cases",
+        doc_id=f"failure:{turn_id}",
+        source_id=turn_id,
+        text=text,
+        fields={
+            "source_type": "failure_case",
+            "turn_id": turn_id,
+            "root_thread_id": str(getattr(record, "root_thread_id", "") or ""),
+            "thread_id": str(getattr(record, "thread_id", "") or ""),
+            "status": status,
+            "workspace_root": str(
+                (getattr(record, "plan_meta", {}) or {}).get("workspace_root") or ""
+            ),
+        },
     )
     return True
 
@@ -73,17 +63,16 @@ class FailureCaseRetrievalService:
         workspace_root: str | None = None,
         limit: int = 5,
     ) -> list[RetrievalSearchHit]:
-        if self.retrieval_index is None or self.embedding_provider is None:
-            return []
         filters = {}
         if root_thread_id:
             filters["root_thread_id"] = root_thread_id
         if workspace_root:
             filters["workspace_root"] = workspace_root
-        hits = self.retrieval_index.search(
+        hits = embedded_search(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.embedding_provider,
             collection="focus_failure_cases",
             query=query,
-            vector=self.embedding_provider.embed([query])[0],
             limit=limit,
             filters=filters,
         )
@@ -100,6 +89,14 @@ class FailureCaseRetrievalService:
             )
             if hit is not None
         ]
+
+
+def _is_failure_record(record: Any, *, status: str) -> bool:
+    has_step_error = any(
+        str(getattr(step, "error", "") or "").strip()
+        for step in getattr(record, "trajectory", []) or []
+    )
+    return status in {"failed", "error"} or has_step_error or bool(getattr(record, "error", None))
 
 
 def _failure_text(record: Any) -> str:
@@ -140,15 +137,7 @@ def _hydrate_failure_hit(
     if workspace_root and record_workspace != workspace_root:
         return None
     status = str(getattr(record, "status", "") or "").lower()
-    has_step_error = any(
-        str(getattr(step, "error", "") or "").strip()
-        for step in getattr(record, "trajectory", []) or []
-    )
-    if (
-        status not in {"failed", "error"}
-        and not has_step_error
-        and not getattr(record, "error", None)
-    ):
+    if not _is_failure_record(record, status=status):
         return None
     return RetrievalSearchHit(
         doc_id=hit.doc_id,

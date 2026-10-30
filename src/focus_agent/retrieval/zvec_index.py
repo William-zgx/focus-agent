@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .index import RetrievalDocument, RetrievalSearchHit
+from .index import RetrievalDocument, RetrievalSearchHit, matches_filters
 
 
 class ZvecRetrievalIndex:
@@ -147,7 +147,7 @@ class ZvecRetrievalIndex:
             doc_id = str(getattr(doc, "id", "") or "")
             fields = _doc_fields(doc)
             metadata = _json_dict(fields.get("metadata_json"))
-            if not _matches_filters(metadata, filters):
+            if not matches_filters(metadata, filters):
                 continue
             score = float(getattr(doc, "score", 0.0) or 0.0)
             existing = docs_by_id.get(doc_id)
@@ -215,21 +215,6 @@ def _json_dict(value: object) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return dict(parsed) if isinstance(parsed, Mapping) else {}
-
-
-def _matches_filters(
-    fields: Mapping[str, object],
-    filters: Mapping[str, object] | None,
-) -> bool:
-    for key, expected in dict(filters or {}).items():
-        actual = fields.get(key)
-        if isinstance(actual, (list, tuple)):
-            actual = tuple(str(item) for item in actual)
-        if isinstance(expected, (list, tuple)):
-            expected = tuple(str(item) for item in expected)
-        if actual != expected:
-            return False
-    return True
 
 
 def _raise_if_bad_status(status: object) -> None:

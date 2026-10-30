@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any
 
-from .index import RetrievalDocument, RetrievalIndex, RetrievalSearchHit
+from .embedded import embedded_search, upsert_embedded_document
+from .index import RetrievalIndex, RetrievalSearchHit
 
 
 def index_branch_decision_event(
@@ -21,25 +21,23 @@ def index_branch_decision_event(
     decision_id = str(getattr(event, "decision_id", "") or "")
     if not decision_id:
         return False
-    retrieval_index.upsert(
-        RetrievalDocument(
-            collection="focus_branch_context",
-            doc_id=f"branch:{decision_id}",
-            source_id=decision_id,
-            text=text,
-            vector=embedding_provider.embed([text])[0],
-            fields={
-                "source_type": "branch_context",
-                "decision_id": decision_id,
-                "user_id": str(getattr(event, "user_id", "") or ""),
-                "root_thread_id": str(getattr(event, "root_thread_id", "") or ""),
-                "source_thread_id": str(getattr(event, "source_thread_id", "") or ""),
-                "branch_id": str(getattr(event, "branch_id", "") or ""),
-                "action": _value(getattr(event, "action", "")),
-                "status": _value(getattr(event, "status", "")),
-                "content_hash": hashlib.sha256(text.encode()).hexdigest(),
-            },
-        )
+    upsert_embedded_document(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_provider,
+        collection="focus_branch_context",
+        doc_id=f"branch:{decision_id}",
+        source_id=decision_id,
+        text=text,
+        fields={
+            "source_type": "branch_context",
+            "decision_id": decision_id,
+            "user_id": str(getattr(event, "user_id", "") or ""),
+            "root_thread_id": str(getattr(event, "root_thread_id", "") or ""),
+            "source_thread_id": str(getattr(event, "source_thread_id", "") or ""),
+            "branch_id": str(getattr(event, "branch_id", "") or ""),
+            "action": _value(getattr(event, "action", "")),
+            "status": _value(getattr(event, "status", "")),
+        },
     )
     return True
 
@@ -64,8 +62,6 @@ class BranchContextRetrievalService:
         root_thread_id: str | None,
         limit: int = 5,
     ) -> list[RetrievalSearchHit]:
-        if self.retrieval_index is None or self.embedding_provider is None:
-            return []
         filters = {
             key: value
             for key, value in {
@@ -74,10 +70,11 @@ class BranchContextRetrievalService:
             }.items()
             if value
         }
-        hits = self.retrieval_index.search(
+        hits = embedded_search(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.embedding_provider,
             collection="focus_branch_context",
             query=query,
-            vector=self.embedding_provider.embed([query])[0],
             limit=limit,
             filters=filters,
         )

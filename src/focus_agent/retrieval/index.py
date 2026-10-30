@@ -66,7 +66,7 @@ class InMemoryRetrievalIndex:
         scored: list[RetrievalSearchHit] = []
         query_terms = _terms(query)
         for (doc_collection, _), document in self._docs.items():
-            if doc_collection != collection or not _matches_filters(document.fields, filters):
+            if doc_collection != collection or not matches_filters(document.fields, filters):
                 continue
             score = _text_score(query_terms, document.text)
             if vector is not None and document.vector is not None:
@@ -92,7 +92,7 @@ class InMemoryRetrievalIndex:
         return {"backend": "memory", "collections": counts, "documents": len(self._docs)}
 
 
-def _matches_filters(
+def matches_filters(
     fields: Mapping[str, object],
     filters: Mapping[str, object] | None,
 ) -> bool:

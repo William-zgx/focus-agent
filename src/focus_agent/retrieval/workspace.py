@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -9,7 +8,13 @@ from typing import Any
 
 from ..capabilities.workspace_files import WORKSPACE_SKIP_DIR_NAMES, language_for_path
 from .artifacts import artifact_chunks
-from .index import RetrievalDocument, RetrievalIndex
+from .embedded import (
+    content_hash,
+    embed_texts_batched,
+    embedded_search,
+    upsert_embedded_document,
+)
+from .index import RetrievalIndex
 
 WORKSPACE_CHUNKS_COLLECTION = "focus_workspace_chunks"
 _DEFAULT_MAX_FILE_BYTES = 512_000
@@ -104,29 +109,30 @@ def index_workspace_file(
     root = workspace_root.expanduser().resolve()
     file_path = _resolve_under_root(root, path)
     relative_path = file_path.relative_to(root).as_posix()
-    file_hash = hashlib.sha256(content.encode()).hexdigest()
-    indexed = 0
-    for chunk_index, chunk in enumerate(artifact_chunks(content)):
-        retrieval_index.upsert(
-            RetrievalDocument(
-                collection=WORKSPACE_CHUNKS_COLLECTION,
-                doc_id=f"workspace:{hashlib.sha256(relative_path.encode()).hexdigest()}:{chunk_index}",
-                source_id=relative_path,
-                text=chunk,
-                vector=embedding_provider.embed([chunk])[0],
-                fields={
-                    "source_type": "workspace_file",
-                    "path": relative_path,
-                    "language": language_for_path(file_path),
-                    "chunk_index": chunk_index,
-                    "file_hash": file_hash,
-                    "content_hash": hashlib.sha256(chunk.encode()).hexdigest(),
-                    "size_bytes": file_path.stat().st_size if file_path.exists() else len(content),
-                },
-            )
+    file_hash = content_hash(content)
+    path_hash = content_hash(relative_path)
+    size_bytes = file_path.stat().st_size if file_path.exists() else len(content)
+    chunks = artifact_chunks(content)
+    vectors = embed_texts_batched(embedding_provider, chunks)
+    for chunk_index, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
+        upsert_embedded_document(
+            retrieval_index=retrieval_index,
+            embedding_provider=embedding_provider,
+            collection=WORKSPACE_CHUNKS_COLLECTION,
+            doc_id=f"workspace:{path_hash}:{chunk_index}",
+            source_id=relative_path,
+            text=chunk,
+            vector=vector,
+            fields={
+                "source_type": "workspace_file",
+                "path": relative_path,
+                "language": language_for_path(file_path),
+                "chunk_index": chunk_index,
+                "file_hash": file_hash,
+                "size_bytes": size_bytes,
+            },
         )
-        indexed += 1
-    return indexed
+    return len(chunks)
 
 
 class WorkspaceSemanticSearchService:
@@ -142,12 +148,11 @@ class WorkspaceSemanticSearchService:
         self.workspace_root = workspace_root.expanduser().resolve()
 
     def search_workspace(self, *, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        if self.retrieval_index is None or self.embedding_provider is None:
-            return []
-        hits = self.retrieval_index.search(
+        hits = embedded_search(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.embedding_provider,
             collection=WORKSPACE_CHUNKS_COLLECTION,
             query=query,
-            vector=self.embedding_provider.embed([query])[0],
             limit=limit,
         )
         results: list[dict[str, Any]] = []
@@ -159,7 +164,7 @@ class WorkspaceSemanticSearchService:
             except Exception:  # noqa: BLE001
                 continue
             expected_hash = str(hit.fields.get("file_hash") or "")
-            if expected_hash and expected_hash != hashlib.sha256(content.encode()).hexdigest():
+            if expected_hash and expected_hash != content_hash(content):
                 continue
             results.append(
                 {

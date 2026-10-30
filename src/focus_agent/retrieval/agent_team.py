@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .index import RetrievalDocument, RetrievalIndex
+from .embedded import embedded_search, upsert_embedded_document
+from .index import RetrievalIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,23 +31,21 @@ def index_agent_team_plan(
     if not session_id:
         return False
     text = _plan_text(session=session, tasks=tasks, outputs=outputs or [])
-    retrieval_index.upsert(
-        RetrievalDocument(
-            collection="focus_agent_team_plans",
-            doc_id=f"agent-team:{session_id}",
-            source_id=session_id,
-            text=text,
-            vector=embedding_provider.embed([text])[0],
-            fields={
-                "source_type": "agent_team_plan",
-                "session_id": session_id,
-                "user_id": str(getattr(session, "user_id", "") or ""),
-                "root_thread_id": str(getattr(session, "root_thread_id", "") or ""),
-                "status": _value(getattr(session, "status", "")),
-                "plan_hash": str(getattr(session, "plan_hash", "") or ""),
-                "content_hash": hashlib.sha256(text.encode()).hexdigest(),
-            },
-        )
+    upsert_embedded_document(
+        retrieval_index=retrieval_index,
+        embedding_provider=embedding_provider,
+        collection="focus_agent_team_plans",
+        doc_id=f"agent-team:{session_id}",
+        source_id=session_id,
+        text=text,
+        fields={
+            "source_type": "agent_team_plan",
+            "session_id": session_id,
+            "user_id": str(getattr(session, "user_id", "") or ""),
+            "root_thread_id": str(getattr(session, "root_thread_id", "") or ""),
+            "status": _value(getattr(session, "status", "")),
+            "plan_hash": str(getattr(session, "plan_hash", "") or ""),
+        },
     )
     return True
 
@@ -72,15 +70,14 @@ class AgentTeamPlanRetrievalService:
         root_thread_id: str | None = None,
         limit: int = 5,
     ) -> list[AgentTeamPlanHit]:
-        if self.retrieval_index is None or self.embedding_provider is None:
-            return []
         filters = {"user_id": user_id}
         if root_thread_id:
             filters["root_thread_id"] = root_thread_id
-        hits = self.retrieval_index.search(
+        hits = embedded_search(
+            retrieval_index=self.retrieval_index,
+            embedding_provider=self.embedding_provider,
             collection="focus_agent_team_plans",
             query=query,
-            vector=self.embedding_provider.embed([query])[0],
             limit=limit,
             filters=filters,
         )
