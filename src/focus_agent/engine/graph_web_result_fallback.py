@@ -9,6 +9,7 @@ from langchain.messages import ToolMessage
 
 from ..core.context_tool_observation_references import _tool_observation_ref
 from ..core.types import ContextBudget
+from .graph.lexicon import contains_cjk
 from .graph_evidence import relevant_web_tool_call_ids
 from .graph_tool_history_repair import (
     _latest_human_message_text,
@@ -24,7 +25,7 @@ def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
     payloads = _latest_relevant_web_payloads(latest_turn, latest_user)
     if not payloads:
         return ""
-    chinese = bool(re.search(r"[\u4e00-\u9fff]", latest_user))
+    chinese = contains_cjk(latest_user)
     main = _web_payload_main_answer(payloads, user_query=latest_user, chinese=chinese)
     if not main:
         return ""
@@ -250,7 +251,7 @@ def _chinese_weather_summary_from_payloads(payloads: list[dict[str, Any]]) -> st
     for payload in payloads:
         for result in _payload_results(payload):
             content = str(result.get("content") or result.get("snippet") or "").strip()
-            if not content or not re.search(r"[\u4e00-\u9fff]", content):
+            if not content or not contains_cjk(content):
                 continue
             if not (_contains_weather_marker(content) or "最高气温" in content):
                 continue

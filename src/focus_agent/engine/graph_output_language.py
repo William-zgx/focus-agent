@@ -7,8 +7,8 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
+from .graph.lexicon import CJK_RE, HTTP_URL_RE
+
 _ANCHOR_DATE_RE = re.compile(
     r"(?:当前\s*(?:UTC)?\s*时间|UTC\s*时间|today|current\s*UTC\s*time)"
     r"[^0-9]{0,24}?"
@@ -59,7 +59,7 @@ class TemporalAnchorRepairResult:
 
 
 def _cjk_count(value: str) -> int:
-    return len(_CJK_RE.findall(value))
+    return len(CJK_RE.findall(value))
 
 
 def _ascii_letter_count(value: str) -> int:
@@ -86,7 +86,7 @@ def _locked_facts(
     source_urls: tuple[str, ...],
 ) -> tuple[str, ...]:
     values = [observed_at.strip()] if observed_at.strip() else []
-    values.extend(match.rstrip(".,!?;:，。！？；：") for match in _URL_RE.findall(draft))
+    values.extend(match.rstrip(".,!?;:，。！？；：") for match in HTTP_URL_RE.findall(draft))
     values.extend(value.strip() for value in source_urls)
     return tuple(dict.fromkeys(value for value in values if value))
 

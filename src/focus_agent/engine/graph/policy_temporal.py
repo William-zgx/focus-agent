@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from .lexicon import contains_cjk
 from .policy_markers import _contains_any
 
 # Digit lookarounds, not \b: Python treats 年 as a word char, so "2024年" has no \b.
@@ -207,7 +208,7 @@ def _absolute_date_tokens(date_parts: list[str]) -> list[str]:
 
 
 def _semantic_search_terms(query: str, *, location_scope: str) -> list[str]:
-    if re.search(r"[\u4e00-\u9fff]", query):
+    if contains_cjk(query):
         return _chinese_semantic_search_terms(query, location_scope=location_scope)
     return _english_semantic_search_terms(query, location_scope=location_scope)
 

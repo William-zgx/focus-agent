@@ -7,6 +7,7 @@ from typing import Any
 from langchain.messages import ToolMessage as ToolMessage
 
 from ...capabilities.tool_router import ToolIntentPlan
+from .lexicon import HTTP_URL_RE
 from .policy_intent import (
     is_tool_carryover_confirmation as _is_tool_carryover_confirmation,
 )
@@ -15,9 +16,6 @@ from .policy_intent import (
 )
 from .policy_intent import (
     requires_temporal_anchor as _requires_temporal_anchor,
-)
-from .policy_intent_parsing import (
-    _HTTP_URL_RE as _HTTP_URL_RE,
 )
 from .policy_intent_parsing import (
     _SKILL_ID_RE as _SKILL_ID_RE,
@@ -304,7 +302,7 @@ def _classify_turn_tool_exposure(text: str) -> TurnToolExposure:
     # URL paths can contain underscore-delimited slugs such as ``api_v2`` or
     # ``source_code``. They are remote resource identifiers, not local code
     # references, so exclude URL spans before applying the workspace heuristic.
-    code_reference_text = _HTTP_URL_RE.sub(" ", normalized)
+    code_reference_text = HTTP_URL_RE.sub(" ", normalized)
     code_reference_hit = bool(_CODE_OR_FILE_REFERENCE_RE.search(code_reference_text))
     if academic_lookup_hits:
         live_hits = tuple(dict.fromkeys((*live_hits, *academic_lookup_hits)))

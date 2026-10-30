@@ -82,7 +82,6 @@ from .agent_loop_skill_helpers import (
 from .agent_loop_support import (
     _ALTERNATIVE_OUTCOME_ROLES,  # noqa: F401
     _FAILED_OUTCOME_STATUSES,  # noqa: F401
-    _HTTP_URL_RE,  # noqa: F401
     _PRIMARY_OUTCOME_ROLES,  # noqa: F401
     _SUCCESS_OUTCOME_STATUSES,  # noqa: F401
     _drain_steer_messages,
@@ -97,6 +96,7 @@ from .agent_loop_support import (
     _with_stream_phase,
 )
 from .agent_loop_updates import finalize_agent_loop_turn
+from .lexicon import contains_cjk
 from .policy import (
     _skill_install_name_from_text,
     _skill_view_name_from_text,
@@ -350,9 +350,7 @@ def make_agent_loop_node(
             else:
                 response = AIMessage(content=fallback_answer)
             if temporal_anchor_required and current_utc_time_result:
-                is_chinese_request = any(
-                    "\u4e00" <= character <= "\u9fff" for character in tool_intent_text
-                )
+                is_chinese_request = contains_cjk(tool_intent_text)
                 time_label = "当前 UTC 时间" if is_chinese_request else "Verified current UTC time"
                 response = response.model_copy(
                     update={

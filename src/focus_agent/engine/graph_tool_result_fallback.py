@@ -10,6 +10,7 @@ from ..core.repo_call import has_repo_method
 from ..core.state import AgentState
 from ..core.tool_protocol import looks_like_textual_tool_call_artifact
 from ..core.types import ContextBudget
+from .graph.lexicon import contains_cjk
 from .graph_evidence import (
     evidence_bundle_source_snippets,
     normalize_evidence_bundle,
@@ -89,7 +90,7 @@ def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
 def _degraded_answer_from_tool_results(prompt_messages: list[Any]) -> str:
     latest_turn = _latest_turn_messages(prompt_messages)
     latest_user = _latest_human_message_text(latest_turn)
-    chinese = bool(re.search(r"[\u4e00-\u9fff]", latest_user))
+    chinese = contains_cjk(latest_user)
     web_answer = _fallback_web_answer_from_tool_results(latest_turn)
     failure = _latest_failed_tool_summary(latest_turn)
 
@@ -526,7 +527,7 @@ def _tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
 def _timeout_tool_result_fallback_message(prompt_messages: list[Any]) -> AIMessage:
     answer = _degraded_answer_from_tool_results(prompt_messages)
     latest_user = _latest_human_message_text(_latest_turn_messages(prompt_messages))
-    if re.search(r"[\u4e00-\u9fff]", latest_user):
+    if contains_cjk(latest_user):
         content = (
             "上游模型在整合工具结果时超时。以下仅根据已经获得的工具证据做保守整理，"
             "没有补充未验证的推断：\n"

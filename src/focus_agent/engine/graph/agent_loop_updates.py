@@ -51,6 +51,7 @@ from .agent_loop_helpers import (
     _skill_execution_repair_prompt,
 )
 from .agent_loop_support import _with_focus_agent_turn_metadata, _with_stream_phase
+from .lexicon import contains_cjk
 
 
 def finalize_agent_loop_turn(
@@ -250,7 +251,7 @@ def finalize_agent_loop_turn(
         and _live_web_answer_needs_repair(answer_verification)
     ):
         if str(answer_verification.get("repair_action") or "") == "answer_with_uncertainty":
-            chinese = any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text)
+            chinese = contains_cjk(tool_intent_text)
             caveat = (
                 (
                     "时效说明：来源的发布时间未能充分核实，无法确认以上信息全部符合所问时间范围。"
