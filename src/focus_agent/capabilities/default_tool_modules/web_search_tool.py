@@ -142,28 +142,35 @@ def _provider_failure_summary(errors: list[dict[str, Any]]) -> str:
     return "No web search provider succeeded: " + "; ".join(details)
 
 
-def build_web_search_runner(
-    *,
-    web_search_config: Any,
-    resolved_env: Any,
-    emit_tool_event: Callable[..., None],
-    http: Callable[[], httpx.Client],
-) -> tuple[Callable[..., str], Callable[[Exception, dict[str, Any]], str]]:
-    preferred_web_search_provider = (
-        str(web_search_config.provider or "auto").strip().lower() or "auto"
-    )
-    fallback_web_search_provider = (
-        str(web_search_config.fallback_provider).strip().lower()
-        if web_search_config.fallback_provider
-        else None
-    )
-    tavily_api_key = (
-        resolved_env.get(web_search_config.api_key_env, "").strip()
-        if web_search_config.api_key_env
-        else ""
-    ) or str(web_search_config.api_key_default or "").strip()
+class _WebSearchRunner:
+    """Runs the configured provider chain (Tavily with retries, then DuckDuckGo)."""
 
-    def _provider_order() -> list[str]:
+    def __init__(
+        self,
+        *,
+        web_search_config: Any,
+        resolved_env: Any,
+        emit_tool_event: Callable[..., None],
+        http: Callable[[], httpx.Client],
+    ) -> None:
+        self._config = web_search_config
+        self._emit = emit_tool_event
+        self._http = http
+        self._preferred_provider = (
+            str(web_search_config.provider or "auto").strip().lower() or "auto"
+        )
+        self._fallback_provider = (
+            str(web_search_config.fallback_provider).strip().lower()
+            if web_search_config.fallback_provider
+            else None
+        )
+        self._tavily_api_key = (
+            resolved_env.get(web_search_config.api_key_env, "").strip()
+            if web_search_config.api_key_env
+            else ""
+        ) or str(web_search_config.api_key_default or "").strip()
+
+    def _provider_order(self) -> list[str]:
         providers: list[str] = []
 
         def _add(provider: str | None) -> None:
@@ -171,61 +178,17 @@ def build_web_search_runner(
             if normalized in {"tavily", "duckduckgo"} and normalized not in providers:
                 providers.append(normalized)
 
-        if preferred_web_search_provider in {"auto", "tavily"}:
+        if self._preferred_provider in {"auto", "tavily"}:
             _add("tavily")
-            _add(fallback_web_search_provider)
-        elif preferred_web_search_provider == "duckduckgo":
+            _add(self._fallback_provider)
+        elif self._preferred_provider == "duckduckgo":
             _add("duckduckgo")
         else:
             return []
         return providers
 
-    def _emit_provider_attempt(
-        *,
-        tool_name: str,
-        provider: str,
-        attempt: int,
-        max_attempts: int,
-    ) -> None:
-        emit_tool_event(
-            tool_name=tool_name,
-            stage="provider_attempt",
-            provider=provider,
-            attempt=attempt,
-            max_attempts=max_attempts,
-        )
-
-    def _emit_provider_success(
-        *,
-        tool_name: str,
-        payload: dict[str, Any],
-        attempt: int,
-    ) -> None:
-        emit_tool_event(
-            tool_name=tool_name,
-            stage="provider_success",
-            provider=payload["provider"],
-            attempt=attempt,
-            result_count=len(payload["results"]),
-        )
-
-    def _emit_provider_error(
-        *,
-        tool_name: str,
-        error: _WebSearchProviderError,
-    ) -> None:
-        emit_tool_event(
-            tool_name=tool_name,
-            stage="provider_error",
-            provider=error.provider,
-            category=error.category,
-            retryable=error.retryable,
-            status_code=error.status_code,
-            attempt=error.attempt,
-            error=str(error),
-        )
-
     def _run_provider_attempt(
+        self,
         *,
         provider: str,
         query: str,
@@ -237,8 +200,9 @@ def build_web_search_runner(
         attempt: int,
         max_attempts: int,
     ) -> dict[str, Any]:
-        _emit_provider_attempt(
+        self._emit(
             tool_name=tool_name,
+            stage="provider_attempt",
             provider=provider,
             attempt=attempt,
             max_attempts=max_attempts,
@@ -246,8 +210,8 @@ def build_web_search_runner(
         try:
             if provider == "tavily":
                 payload = _run_tavily_search(
-                    http=http,
-                    tavily_api_key=tavily_api_key,
+                    http=self._http,
+                    tavily_api_key=self._tavily_api_key,
                     query=query,
                     max_results=max_results,
                     attempt=attempt,
@@ -272,37 +236,45 @@ def build_web_search_runner(
                     attempt=attempt,
                 )
         except _WebSearchProviderError as exc:
-            _emit_provider_error(tool_name=tool_name, error=exc)
+            self._emit(
+                tool_name=tool_name,
+                stage="provider_error",
+                provider=exc.provider,
+                category=exc.category,
+                retryable=exc.retryable,
+                status_code=exc.status_code,
+                attempt=exc.attempt,
+                error=str(exc),
+            )
             raise
-        _emit_provider_success(tool_name=tool_name, payload=payload, attempt=attempt)
+        self._emit(
+            tool_name=tool_name,
+            stage="provider_success",
+            provider=payload["provider"],
+            attempt=attempt,
+            result_count=len(payload["results"]),
+        )
         return payload
 
-    def _run_tavily_with_retries(
+    def _run_provider_with_retries(
+        self,
         *,
-        query: str,
-        max_results: int,
-        time_range: str | None,
-        include_domains: list[str],
-        exclude_domains: list[str],
-        tool_name: str,
+        provider: str,
         errors: list[dict[str, Any]],
+        **search_args: Any,
     ) -> dict[str, Any]:
-        for attempt in range(1, _TAVILY_MAX_ATTEMPTS + 1):
+        max_attempts = _TAVILY_MAX_ATTEMPTS if provider == "tavily" else 1
+        for attempt in range(1, max_attempts + 1):
             try:
-                return _run_provider_attempt(
-                    provider="tavily",
-                    query=query,
-                    max_results=max_results,
-                    time_range=time_range,
-                    include_domains=include_domains,
-                    exclude_domains=exclude_domains,
-                    tool_name=tool_name,
+                return self._run_provider_attempt(
+                    provider=provider,
                     attempt=attempt,
-                    max_attempts=_TAVILY_MAX_ATTEMPTS,
+                    max_attempts=max_attempts,
+                    **search_args,
                 )
             except _WebSearchProviderError as exc:
                 _record_error(errors, exc)
-                if exc.retryable and attempt < _TAVILY_MAX_ATTEMPTS:
+                if exc.retryable and attempt < max_attempts:
                     continue
                 raise
         raise _make_provider_error(
@@ -311,7 +283,12 @@ def build_web_search_runner(
             message="Tavily search failed before producing a result.",
         )
 
-    def _run_web_search(
+    def _fail(self, *, tool_name: str, message: str, error_type: type[Exception]) -> Exception:
+        self._emit(tool_name=tool_name, stage="error", error=message)
+        return error_type(message)
+
+    def run(
+        self,
         *,
         query: str,
         max_results: int,
@@ -331,10 +308,12 @@ def build_web_search_runner(
         try:
             capped_results = max(1, min(int(max_results), 10))
         except (TypeError, ValueError) as exc:
-            message = "max_results must be an integer."
-            emit_tool_event(tool_name=tool_name, stage="error", error=message)
-            raise ValueError(message) from exc
-        emit_tool_event(
+            raise self._fail(
+                tool_name=tool_name,
+                message="max_results must be an integer.",
+                error_type=ValueError,
+            ) from exc
+        self._emit(
             tool_name=tool_name,
             stage="start",
             query=normalized_query,
@@ -345,53 +324,39 @@ def build_web_search_runner(
             exclude_domains=normalized_exclude_domains,
         )
         if not normalized_query:
-            message = "Query must not be empty."
-            emit_tool_event(tool_name=tool_name, stage="error", error=message)
-            raise ValueError(message)
-        if not web_search_config.enabled:
-            message = "web_search is disabled by tools configuration."
-            emit_tool_event(tool_name=tool_name, stage="error", error=message)
-            raise RuntimeError(message)
-
-        providers = _provider_order()
+            raise self._fail(
+                tool_name=tool_name, message="Query must not be empty.", error_type=ValueError
+            )
+        if not self._config.enabled:
+            raise self._fail(
+                tool_name=tool_name,
+                message="web_search is disabled by tools configuration.",
+                error_type=RuntimeError,
+            )
+        providers = self._provider_order()
         if not providers:
-            message = "No primary web search provider is configured."
-            emit_tool_event(tool_name=tool_name, stage="error", error=message)
-            raise RuntimeError(message)
+            raise self._fail(
+                tool_name=tool_name,
+                message="No primary web search provider is configured.",
+                error_type=RuntimeError,
+            )
 
         attempted_providers: list[str] = []
         errors: list[dict[str, Any]] = []
-        primary_provider = providers[0]
         for provider in providers:
             if provider not in attempted_providers:
                 attempted_providers.append(provider)
             try:
-                if provider == "tavily":
-                    payload = _run_tavily_with_retries(
-                        query=normalized_query,
-                        max_results=capped_results,
-                        time_range=normalized_time_range,
-                        include_domains=normalized_include_domains,
-                        exclude_domains=normalized_exclude_domains,
-                        tool_name=tool_name,
-                        errors=errors,
-                    )
-                else:
-                    try:
-                        payload = _run_provider_attempt(
-                            provider=provider,
-                            query=normalized_query,
-                            max_results=capped_results,
-                            time_range=normalized_time_range,
-                            include_domains=normalized_include_domains,
-                            exclude_domains=normalized_exclude_domains,
-                            tool_name=tool_name,
-                            attempt=1,
-                            max_attempts=1,
-                        )
-                    except _WebSearchProviderError as exc:
-                        _record_error(errors, exc)
-                        raise
+                payload = self._run_provider_with_retries(
+                    provider=provider,
+                    errors=errors,
+                    query=normalized_query,
+                    max_results=capped_results,
+                    time_range=normalized_time_range,
+                    include_domains=normalized_include_domains,
+                    exclude_domains=normalized_exclude_domains,
+                    tool_name=tool_name,
+                )
             except _WebSearchProviderError:
                 continue
 
@@ -399,13 +364,13 @@ def build_web_search_runner(
                 payload,
                 attempted_providers=attempted_providers,
                 errors=errors,
-                fallback_used=provider != primary_provider,
+                fallback_used=provider != providers[0],
                 requested_time_range=time_range,
             )
             if query_truncated:
                 payload["query_truncated"] = True
             result = json.dumps(payload, ensure_ascii=False)
-            emit_tool_event(
+            self._emit(
                 tool_name=tool_name,
                 stage="end",
                 provider=payload["provider"],
@@ -419,7 +384,7 @@ def build_web_search_runner(
         category = (
             str(errors[-1].get("category") or "provider_error") if errors else "provider_error"
         )
-        emit_tool_event(
+        self._emit(
             tool_name=tool_name,
             stage="error",
             category=category,
@@ -432,7 +397,7 @@ def build_web_search_runner(
             errors=errors,
         )
 
-    def _fallback_web_search(_error: Exception, args: dict[str, Any]) -> str:
+    def fallback(self, _error: Exception, args: dict[str, Any]) -> str:
         normalized_query, query_truncated = _normalize_web_search_query(
             str(args.get("query") or "")
         )
@@ -445,17 +410,13 @@ def build_web_search_runner(
                 exclude_domains=args.get("exclude_domains"),
             )
         )
-        should_try_duckduckgo = (
-            preferred_web_search_provider == "duckduckgo"
-            or fallback_web_search_provider == "duckduckgo"
-        )
-        if not should_try_duckduckgo:
+        if "duckduckgo" not in {self._preferred_provider, self._fallback_provider}:
             raise RuntimeError("No fallback web search provider is configured.")
         errors = _errors_from_exception(_error)
         attempted_providers = _attempted_providers_from_errors(errors)
         if "duckduckgo" not in attempted_providers:
             attempted_providers.append("duckduckgo")
-        payload = _run_provider_attempt(
+        payload = self._run_provider_attempt(
             provider="duckduckgo",
             query=normalized_query,
             max_results=capped_results,
@@ -476,7 +437,7 @@ def build_web_search_runner(
         if query_truncated:
             payload["query_truncated"] = True
         result = json.dumps(payload, ensure_ascii=False)
-        emit_tool_event(
+        self._emit(
             tool_name="web_search",
             stage="delta",
             provider="duckduckgo",
@@ -485,4 +446,22 @@ def build_web_search_runner(
         )
         return result
 
-    return _run_web_search, _fallback_web_search
+
+def build_web_search_runner(
+    *,
+    web_search_config: Any,
+    resolved_env: Any,
+    emit_tool_event: Callable[..., None],
+    http: Callable[[], httpx.Client],
+) -> tuple[Callable[..., str], Callable[[Exception, dict[str, Any]], str]]:
+    runner = _WebSearchRunner(
+        web_search_config=web_search_config,
+        resolved_env=resolved_env,
+        emit_tool_event=emit_tool_event,
+        http=http,
+    )
+
+    def _fallback_web_search(error: Exception, args: dict[str, Any]) -> str:
+        return runner.fallback(error, args)
+
+    return runner.run, _fallback_web_search
