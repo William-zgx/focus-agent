@@ -108,7 +108,14 @@ def matches_filters(
 
 
 def _terms(value: str) -> tuple[str, ...]:
-    terms = re.findall(r"[a-z0-9]{2,}|[\u3400-\u4dbf\u4e00-\u9fff]{1,}", value.lower())
+    # CJK has no word boundaries: match on bigrams so "检索服务的超时" still hits
+    # "检索服务超时需要重试". Runs of one or two characters are kept whole.
+    terms: list[str] = []
+    for token in re.findall(r"[a-z0-9]{2,}|[\u3400-\u4dbf\u4e00-\u9fff]+", value.lower()):
+        if len(token) <= 2 or token.isascii():
+            terms.append(token)
+        else:
+            terms.extend(token[index : index + 2] for index in range(len(token) - 1))
     return tuple(dict.fromkeys(terms))
 
 

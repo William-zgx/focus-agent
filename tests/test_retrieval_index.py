@@ -121,3 +121,30 @@ def test_artifact_indexing_embeds_chunks_in_batches():
     assert chunk_count == 70
     assert provider.calls == [64, 6]
     assert index.stats()["collections"] == {"focus_artifact_chunks": 70}
+
+
+def test_in_memory_retrieval_index_matches_chinese_queries_by_bigram():
+    index = InMemoryRetrievalIndex()
+    index.upsert(
+        RetrievalDocument(
+            collection="focus_memory",
+            doc_id="memory:cjk",
+            source_id="cjk",
+            text="检索服务超时需要重试",
+            fields={},
+        )
+    )
+    index.upsert(
+        RetrievalDocument(
+            collection="focus_memory",
+            doc_id="memory:other",
+            source_id="other",
+            text="前端样式调整",
+            fields={},
+        )
+    )
+
+    hits = index.search(collection="focus_memory", query="检索服务的超时", limit=5)
+
+    assert [hit.source_id for hit in hits] == ["cjk"]
+    assert hits[0].score >= 0.5
