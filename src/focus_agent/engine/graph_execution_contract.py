@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from . import graph_execution_facts as _execution_facts
 from .graph.policy_intent_parsing import _should_prefer_web_fetch, requires_external_evidence
 from .graph.policy_temporal import fresh_evidence_min_date as _fresh_evidence_min_date
 from .graph.policy_temporal import requires_temporal_anchor
@@ -16,27 +15,8 @@ from .graph_evidence import (
 from .graph_evidence import (
     _is_internal_summary as _is_internal_evidence_summary,
 )
+from .graph_execution_facts import _answer_mentions_skill_fact, _tool_message_counts_as_success
 from .graph_tool_messages import iter_tool_results
-
-skill_execution_evidence_facts = _execution_facts.skill_execution_evidence_facts
-_tool_message_counts_as_success = _execution_facts._tool_message_counts_as_success
-_run_workspace_command_payload_succeeded = _execution_facts._run_workspace_command_payload_succeeded
-_embedded_command_payload_failed = _execution_facts._embedded_command_payload_failed
-_run_skill_entrypoint_payload_succeeded = _execution_facts._run_skill_entrypoint_payload_succeeded
-_facts_from_skill_entrypoint_payload = _execution_facts._facts_from_skill_entrypoint_payload
-_facts_from_read_file_payload = _execution_facts._facts_from_read_file_payload
-_facts_from_generic_tool_payload = _execution_facts._facts_from_generic_tool_payload
-_facts_from_skill_summary = _execution_facts._facts_from_skill_summary
-_facts_from_financial_analysis = _execution_facts._facts_from_financial_analysis
-_facts_from_valuation = _execution_facts._facts_from_valuation
-_parse_line_numbered_json = _execution_facts._parse_line_numbered_json
-_fact = _execution_facts._fact
-_fact_phrases = _execution_facts._fact_phrases
-_value_is_strong_standalone = _execution_facts._value_is_strong_standalone
-_clean_fact_value = _execution_facts._clean_fact_value
-_dedupe_facts = _execution_facts._dedupe_facts
-_answer_mentions_skill_fact = _execution_facts._answer_mentions_skill_fact
-_normalize_fact_text = _execution_facts._normalize_fact_text
 
 ContractStatus = Literal["not_required", "missing_required_tools", "satisfied", "blocked"]
 VerificationStatus = Literal["verified", "unsupported", "contradicted", "not_required", "blocked"]

@@ -645,7 +645,7 @@ def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
     graph = build_graph(

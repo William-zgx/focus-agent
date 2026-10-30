@@ -5,6 +5,52 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 from ...core.context_request import build_context_request
+from ...core.runtime_outcome import build_task_outcome
+from ...core.state import append_agent_state_record
+from ...delegation.delegation_repair import build_failure_records, build_review_queue
+from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE
+from ..graph_evidence import (
+    evidence_bundle_to_citation_refs,
+    normalize_evidence_bundle,
+    normalize_evidence_ledger,
+)
+from ..graph_execution_contract import (
+    evaluate_execution_contract,
+    tool_result_names,
+    verify_answer_against_evidence,
+)
+from ..graph_execution_facts import skill_execution_evidence_facts
+from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
+from ..graph_textual_tool_call_repair import (
+    _looks_like_textual_tool_call_artifact,
+    _repair_textual_tool_call_response,
+)
+from ..graph_tool_call_repair import _repair_and_dedupe_tool_calls
+from ..graph_tool_history_repair import (
+    _ensure_reasoning_content_for_tool_call_history,
+    _latest_turn_messages,
+)
+from ..graph_tool_result_fallback import (
+    _degraded_answer_from_tool_results,
+    _fallback_answer_from_tool_results,
+    _invoke_with_tool_result_fallback,
+    _should_replace_unfound_workspace_answer,
+)
+from .agent_loop_helpers import (
+    _latest_tool_result_content,
+    _latest_turn_has_tool_result,
+    _live_web_answer_needs_repair,
+    _live_web_answer_repair_count,
+    _live_web_failure_answer,
+    _live_web_repair_response,
+    _message_content_text,
+    _new_citation_refs,
+    _next_pending_tool_action,
+    _skill_execution_answer_repair_count,
+    _skill_execution_failure_answer,
+    _skill_execution_repair_prompt,
+)
+from .agent_loop_support import _with_focus_agent_turn_metadata, _with_stream_phase
 
 
 def finalize_agent_loop_turn(
@@ -12,7 +58,7 @@ def finalize_agent_loop_turn(
     state: dict[str, Any],
     state_messages: list[Any],
     response: AIMessage,
-    hooks: dict[str, Any],
+    model_with_tools_for: Any,
     settings: Any,
     tool_intent_plan: Any,
     tool_route_plan: Any | None,
@@ -38,67 +84,29 @@ def finalize_agent_loop_turn(
 ) -> dict[str, Any]:
     """Verify a completed model turn and persist its observable state updates.
 
-    The caller supplies hooks resolved from ``agent_loop`` immediately before
-    each invocation. This preserves existing test patch seams while keeping
-    evidence repair and update construction separate from prompt orchestration.
+    Evidence repair and update construction live here, separate from prompt
+    orchestration in ``agent_loop``.
     """
 
     fallback_reason = (getattr(response, "additional_kwargs", None) or {}).get(
         "tool_result_fallback_reason"
     )
-    latest_turn_messages = hooks["_latest_turn_messages"]
-    degraded_answer_from_tool_results = hooks["_degraded_answer_from_tool_results"]
-    message_content_text = hooks["_message_content_text"]
-    fallback_answer_from_tool_results = hooks["_fallback_answer_from_tool_results"]
-    should_replace_unfound_workspace_answer = hooks["_should_replace_unfound_workspace_answer"]
-    latest_tool_result_content = hooks["_latest_tool_result_content"]
-    normalize_evidence_bundle = hooks["normalize_evidence_bundle"]
-    normalize_evidence_ledger = hooks["normalize_evidence_ledger"]
-    skill_execution_evidence_facts = hooks["skill_execution_evidence_facts"]
-    tool_result_names = hooks["tool_result_names"]
-    evaluate_execution_contract = hooks["evaluate_execution_contract"]
-    verify_answer_against_evidence = hooks["verify_answer_against_evidence"]
-    live_web_answer_repair_count = hooks["_live_web_answer_repair_count"]
-    skill_execution_answer_repair_count = hooks["_skill_execution_answer_repair_count"]
-    live_web_answer_needs_repair = hooks["_live_web_answer_needs_repair"]
-    skill_execution_repair_prompt = hooks["_skill_execution_repair_prompt"]
-    ensure_reasoning_content = hooks["_ensure_reasoning_content_for_tool_call_history"]
-    invoke_with_tool_result_fallback = hooks["_invoke_with_tool_result_fallback"]
-    with_stream_phase = hooks["_with_stream_phase"]
-    stream_visibility_quarantine = hooks["STREAM_VISIBILITY_QUARANTINE"]
-    looks_like_textual_tool_call_artifact = hooks["_looks_like_textual_tool_call_artifact"]
-    repair_textual_tool_call_response = hooks["_repair_textual_tool_call_response"]
-    repair_and_dedupe_tool_calls = hooks["_repair_and_dedupe_tool_calls"]
-    skill_execution_failure_answer = hooks["_skill_execution_failure_answer"]
-    live_web_repair_response = hooks["_live_web_repair_response"]
-    live_web_failure_answer = hooks["_live_web_failure_answer"]
-    evidence_bundle_to_citation_refs = hooks["evidence_bundle_to_citation_refs"]
-    new_citation_refs = hooks["_new_citation_refs"]
-    latest_turn_has_tool_result = hooks["_latest_turn_has_tool_result"]
-    enforce_temporal_anchor = hooks["enforce_temporal_anchor"]
-    repair_chinese_output = hooks["repair_chinese_output"]
-    build_task_outcome = hooks["build_task_outcome"]
-    with_focus_agent_turn_metadata = hooks["_with_focus_agent_turn_metadata"]
-    next_pending_tool_action = hooks["_next_pending_tool_action"]
-    append_agent_state_record = hooks["append_agent_state_record"]
-    build_failure_records = hooks["build_failure_records"]
-    build_review_queue = hooks["build_review_queue"]
 
     context_overflow = execution_contract.get("blocked_reason_code") == "required_context_overflow"
-    completed_turn_messages = latest_turn_messages([*state_messages, response])
+    completed_turn_messages = _latest_turn_messages([*state_messages, response])
     if (
         not context_overflow
         and tool_policy in {"workspace_lookup", "execution"}
         and not getattr(response, "tool_calls", None)
-        and should_replace_unfound_workspace_answer(
-            message_content_text(response),
+        and _should_replace_unfound_workspace_answer(
+            _message_content_text(response),
             completed_turn_messages,
         )
     ):
-        response = AIMessage(content=fallback_answer_from_tool_results(completed_turn_messages))
-        completed_turn_messages = latest_turn_messages([*state_messages, response])
+        response = AIMessage(content=_fallback_answer_from_tool_results(completed_turn_messages))
+        completed_turn_messages = _latest_turn_messages([*state_messages, response])
         tool_protocol_repair_reason = tool_protocol_repair_reason or "workspace_evidence_fallback"
-    observed_at = latest_tool_result_content(completed_turn_messages, "current_utc_time")
+    observed_at = _latest_tool_result_content(completed_turn_messages, "current_utc_time")
     evidence_bundle = normalize_evidence_bundle(
         completed_turn_messages,
         observed_at=observed_at or None,
@@ -125,28 +133,30 @@ def finalize_agent_loop_turn(
         skill_evidence_facts=skill_evidence_facts,
     )
     answer_verification = verify_answer_against_evidence(
-        answer=message_content_text(response) if not getattr(response, "tool_calls", None) else "",
+        answer=_message_content_text(response) if not getattr(response, "tool_calls", None) else "",
         contract=execution_contract,
         evidence_ledger=evidence_ledger,
     )
-    live_web_repair_count = live_web_answer_repair_count(state)
+    live_web_repair_count = _live_web_answer_repair_count(state)
     live_web_repair_taken = ""
-    skill_execution_repair_count = skill_execution_answer_repair_count(state)
+    skill_execution_repair_count = _skill_execution_answer_repair_count(state)
     skill_execution_repair_taken = ""
     if (
         not context_overflow
         and str(execution_contract.get("policy") or "") == "skill_execution"
         and not getattr(response, "tool_calls", None)
-        and live_web_answer_needs_repair(answer_verification)
+        and _live_web_answer_needs_repair(answer_verification)
     ):
         if (
             forced_degraded_skill_recovery
             or str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results"
         ):
-            response = AIMessage(content=degraded_answer_from_tool_results(completed_turn_messages))
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            response = AIMessage(
+                content=_degraded_answer_from_tool_results(completed_turn_messages)
+            )
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             answer_verification = verify_answer_against_evidence(
-                answer=message_content_text(response),
+                answer=_message_content_text(response),
                 contract=execution_contract,
                 evidence_ledger=evidence_ledger,
             )
@@ -160,7 +170,7 @@ def finalize_agent_loop_turn(
                 [
                     prompt_messages[0],
                     SystemMessage(
-                        content=skill_execution_repair_prompt(
+                        content=_skill_execution_repair_prompt(
                             verification=answer_verification,
                             execution_contract=execution_contract,
                         )
@@ -171,7 +181,7 @@ def finalize_agent_loop_turn(
                 available_tools=available_tools,
             )
             repair_prompt = repair_request.messages
-            repair_prompt = ensure_reasoning_content(
+            repair_prompt = _ensure_reasoning_content_for_tool_call_history(
                 repair_prompt,
                 model_id=selected_model,
                 thinking_mode=selected_thinking_mode,
@@ -180,27 +190,27 @@ def finalize_agent_loop_turn(
             repair_response = (
                 AIMessage(content="")
                 if repair_request.required_overflow
-                else invoke_with_tool_result_fallback(
-                    with_stream_phase(
-                        hooks["model_with_tools_for"](
+                else _invoke_with_tool_result_fallback(
+                    _with_stream_phase(
+                        model_with_tools_for(
                             selected_model,
                             selected_thinking_mode,
                             available_tools,
                         ),
-                        stream_visibility_quarantine,
+                        STREAM_VISIBILITY_QUARANTINE,
                     ),
                     repair_prompt,
                     fallback_messages=fallback_messages,
                     known_tool_names=known_names,
                 )
             )
-            if looks_like_textual_tool_call_artifact(
+            if _looks_like_textual_tool_call_artifact(
                 repair_response,
                 known_tool_names=known_names,
             ):
                 tool_protocol_repair_count += 1
                 tool_protocol_repair_reason = tool_protocol_repair_reason or "textual_tool_marker"
-            repair_response = repair_textual_tool_call_response(
+            repair_response = _repair_textual_tool_call_response(
                 response=repair_response,
                 prompt_messages=repair_prompt,
                 fallback_messages=fallback_messages,
@@ -211,10 +221,10 @@ def finalize_agent_loop_turn(
                 model_for=quarantined_model_for,
                 model_with_tools_for=quarantined_model_with_tools_for,
             )
-            repair_response = repair_and_dedupe_tool_calls(repair_response)
+            repair_response = _repair_and_dedupe_tool_calls(repair_response)
             if getattr(repair_response, "tool_calls", None):
                 response = repair_response
-                completed_turn_messages = latest_turn_messages([*state_messages, response])
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
                 answer_verification = {
                     **answer_verification,
                     "repair_action_taken": "retry_skill_primary_tool",
@@ -222,12 +232,12 @@ def finalize_agent_loop_turn(
                 skill_execution_repair_taken = "retry_skill_primary_tool"
         if not skill_execution_repair_taken:
             response = AIMessage(
-                content=skill_execution_failure_answer(
+                content=_skill_execution_failure_answer(
                     verification=answer_verification,
                     execution_contract=execution_contract,
                 )
             )
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             answer_verification = {
                 **answer_verification,
                 "repair_action_taken": "answer_with_uncertainty",
@@ -237,7 +247,7 @@ def finalize_agent_loop_turn(
         tool_policy == "live_web_research"
         and not force_tool_free_answer
         and not getattr(response, "tool_calls", None)
-        and live_web_answer_needs_repair(answer_verification)
+        and _live_web_answer_needs_repair(answer_verification)
     ):
         if str(answer_verification.get("repair_action") or "") == "answer_with_uncertainty":
             chinese = any("\u4e00" <= character <= "\u9fff" for character in tool_intent_text)
@@ -255,19 +265,21 @@ def finalize_agent_loop_turn(
                 )
             )
             response = response.model_copy(
-                update={"content": message_content_text(response) + ("\n\n" + caveat)}
+                update={"content": _message_content_text(response) + ("\n\n" + caveat)}
             )
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             answer_verification = {
                 **answer_verification,
                 "repair_action_taken": "answer_with_uncertainty",
             }
             live_web_repair_taken = "answer_with_uncertainty"
         elif str(answer_verification.get("repair_action") or "") == "fallback_to_tool_results":
-            response = AIMessage(content=fallback_answer_from_tool_results(completed_turn_messages))
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            response = AIMessage(
+                content=_fallback_answer_from_tool_results(completed_turn_messages)
+            )
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             answer_verification = verify_answer_against_evidence(
-                answer=message_content_text(response),
+                answer=_message_content_text(response),
                 contract=execution_contract,
                 evidence_ledger=evidence_ledger,
             )
@@ -277,7 +289,7 @@ def finalize_agent_loop_turn(
             }
             live_web_repair_taken = "fallback_to_tool_results"
         else:
-            repair_response = live_web_repair_response(
+            repair_response = _live_web_repair_response(
                 state=state,
                 available_tools=available_tools,
                 tool_intent_plan=tool_intent_plan.model_dump(mode="json"),
@@ -289,7 +301,7 @@ def finalize_agent_loop_turn(
             )
             if repair_response is not None:
                 response = repair_response
-                completed_turn_messages = latest_turn_messages([*state_messages, response])
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
                 answer_verification = {
                     **answer_verification,
                     "repair_action_taken": "retry_web_search",
@@ -297,13 +309,13 @@ def finalize_agent_loop_turn(
                 live_web_repair_taken = "retry_web_search"
             else:
                 response = AIMessage(
-                    content=live_web_failure_answer(
+                    content=_live_web_failure_answer(
                         verification=answer_verification,
                         execution_contract=execution_contract,
                         evidence_ledger=evidence_ledger,
                     )
                 )
-                completed_turn_messages = latest_turn_messages([*state_messages, response])
+                completed_turn_messages = _latest_turn_messages([*state_messages, response])
                 answer_verification = {
                     **answer_verification,
                     "repair_action_taken": "answer_with_uncertainty",
@@ -327,7 +339,7 @@ def finalize_agent_loop_turn(
         )
         if language_repair is not None:
             response = language_repair.response
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             language_repair_taken = True
             language_repair_attempts = language_repair.attempts
     temporal_anchor_repair_taken = ""
@@ -344,7 +356,7 @@ def finalize_agent_loop_turn(
         )
         if temporal_anchor_repair is not None:
             response = temporal_anchor_repair.response
-            completed_turn_messages = latest_turn_messages([*state_messages, response])
+            completed_turn_messages = _latest_turn_messages([*state_messages, response])
             temporal_anchor_repair_taken = temporal_anchor_repair.action
             if temporal_anchor_repair.action == "answer_with_verified_temporal_anchor":
                 answer_verification = {
@@ -371,14 +383,14 @@ def finalize_agent_loop_turn(
                 "repair_action_taken": "answer_with_uncertainty",
             }
             live_web_repair_taken = "answer_with_uncertainty"
-    citation_refs = new_citation_refs(
+    citation_refs = _new_citation_refs(
         evidence_citation_refs,
         existing=list(state.get("citations", []) or []),
     )
-    web_tool_result_seen = latest_turn_has_tool_result(
+    web_tool_result_seen = _latest_turn_has_tool_result(
         state_messages,
         "web_search",
-    ) or latest_turn_has_tool_result(
+    ) or _latest_turn_has_tool_result(
         state_messages,
         "web_fetch",
     )
@@ -386,7 +398,7 @@ def finalize_agent_loop_turn(
         tool_policy == "live_web_research"
         and web_tool_result_seen
         and not getattr(response, "tool_calls", None)
-        and message_content_text(response)
+        and _message_content_text(response)
         and not citation_refs
         and not state.get("citations")
     )
@@ -404,7 +416,7 @@ def finalize_agent_loop_turn(
             answer_verification=answer_verification,
             evidence_ledger=evidence_ledger,
             tool_outcomes=current_tool_outcomes,
-            final_answer=message_content_text(response),
+            final_answer=_message_content_text(response),
             repair_action_taken=(
                 skill_execution_repair_taken
                 or live_web_repair_taken
@@ -469,12 +481,12 @@ def finalize_agent_loop_turn(
     if skill_execution_repair_taken:
         turn_metadata["answer_verification"] = answer_verification
     if turn_metadata:
-        response = with_focus_agent_turn_metadata(response, turn_metadata)
+        response = _with_focus_agent_turn_metadata(response, turn_metadata)
         updates["messages"] = [response]
     updates["pending_tool_action"] = (
         None
         if context_overflow
-        else next_pending_tool_action(
+        else _next_pending_tool_action(
             state=state,
             tool_intent_plan=intent_dumped,
             response=response,

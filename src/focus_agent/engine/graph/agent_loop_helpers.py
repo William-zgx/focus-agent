@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
-from threading import RLock
 from typing import Any
 
 from langchain.messages import AIMessage
 
 from ...capabilities import ToolRegistry
-from ...capabilities.tool_router import SkillExecutionPlan, ToolIntentPlan
 from ...core.state import AgentState
 from ...delegation.roles import AgentRole
-from ...skills import SkillRegistry
 from ..graph_tool_messages import iter_tool_results
-from . import agent_loop_helpers_skill_planning as _skill_planning
 from .policy import (
     _is_tool_carryover_confirmation,
     _temporal_live_web_search_args,
@@ -25,141 +20,6 @@ from .policy_tools import (
     _tools_for_policy,
     _workspace_lookup_should_start_with_search,
 )
-
-_SKILL_SUPPORTING_TOOL_DEFAULTS = _skill_planning._SKILL_SUPPORTING_TOOL_DEFAULTS
-_ACTIVE_EXECUTE_CONTINUATION_MARKERS = _skill_planning._ACTIVE_EXECUTE_CONTINUATION_MARKERS
-_LIVE_WEB_DOMAIN_MARKERS = _skill_planning._LIVE_WEB_DOMAIN_MARKERS
-_FINANCE_ENTITY_HINTS = _skill_planning._FINANCE_ENTITY_HINTS
-_FINANCE_PERFORMANCE_MARKERS = _skill_planning._FINANCE_PERFORMANCE_MARKERS
-_STOCK_CODE_RE = _skill_planning._STOCK_CODE_RE
-_active_skill_recommended_tool_names = _skill_planning._active_skill_recommended_tool_names
-_is_explicit_skill_lookup_policy = _skill_planning._is_explicit_skill_lookup_policy
-_active_skill_match_score = _skill_planning._active_skill_match_score
-_skill_match_terms = _skill_planning._skill_match_terms
-_looks_like_active_execute_continuation = _skill_planning._looks_like_active_execute_continuation
-_active_execute_continuation_allowed = _skill_planning._active_execute_continuation_allowed
-_explicit_live_web_domains = _skill_planning._explicit_live_web_domains
-_skill_supports_live_web_domains = _skill_planning._skill_supports_live_web_domains
-_skill_live_web_domains = _skill_planning._skill_live_web_domains
-_query_matches_live_web_domain = _skill_planning._query_matches_live_web_domain
-_skill_primary_tools = _skill_planning._skill_primary_tools
-_skill_supporting_tools = _skill_planning._skill_supporting_tools
-_normalized_skill_tool_names = _skill_planning._normalized_skill_tool_names
-_skill_runtime_cwd = _skill_planning._skill_runtime_cwd
-_recommended_tool_allowed_for_policy = _skill_planning._recommended_tool_allowed_for_policy
-
-_SKILL_PLANNING_SEAM_NAMES = (
-    "_SKILL_SUPPORTING_TOOL_DEFAULTS",
-    "_ACTIVE_EXECUTE_CONTINUATION_MARKERS",
-    "_LIVE_WEB_DOMAIN_MARKERS",
-    "_FINANCE_ENTITY_HINTS",
-    "_FINANCE_PERFORMANCE_MARKERS",
-    "_STOCK_CODE_RE",
-    "_active_skill_recommended_tool_names",
-    "_is_explicit_skill_lookup_policy",
-    "_active_skill_match_score",
-    "_skill_match_terms",
-    "_looks_like_active_execute_continuation",
-    "_active_execute_continuation_allowed",
-    "_explicit_live_web_domains",
-    "_skill_supports_live_web_domains",
-    "_skill_live_web_domains",
-    "_query_matches_live_web_domain",
-    "_skill_primary_tools",
-    "_skill_supporting_tools",
-    "_normalized_skill_tool_names",
-    "_skill_runtime_cwd",
-    "_recommended_tool_allowed_for_policy",
-)
-_SKILL_PLANNING_DEFAULTS = {name: globals()[name] for name in _SKILL_PLANNING_SEAM_NAMES}
-_SKILL_PLANNING_IMPLEMENTATIONS = {
-    "_merge_active_skill_recommended_tools": _skill_planning._merge_active_skill_recommended_tools,
-    "build_active_skill_execution_plan": _skill_planning.build_active_skill_execution_plan,
-    "apply_skill_execution_plan": _skill_planning.apply_skill_execution_plan,
-    "skill_execution_policy_note": _skill_planning.skill_execution_policy_note,
-}
-_SKILL_PLANNING_PATCH_LOCK = RLock()
-
-
-def _call_skill_planning_implementation(
-    name: str,
-    /,
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
-    implementation = _SKILL_PLANNING_IMPLEMENTATIONS[name]
-    if all(globals()[symbol] is value for symbol, value in _SKILL_PLANNING_DEFAULTS.items()):
-        return implementation(*args, **kwargs)
-    with _SKILL_PLANNING_PATCH_LOCK:
-        implementation_module = getattr(
-            _skill_planning,
-            "_implementation_module",
-            _skill_planning,
-        )
-        previous = {
-            symbol: getattr(_skill_planning, symbol) for symbol in _SKILL_PLANNING_SEAM_NAMES
-        }
-        try:
-            for symbol in _SKILL_PLANNING_SEAM_NAMES:
-                setattr(implementation_module, symbol, globals()[symbol])
-            return implementation(*args, **kwargs)
-        finally:
-            for symbol, value in previous.items():
-                setattr(implementation_module, symbol, value)
-
-
-def _merge_active_skill_recommended_tools(
-    available_tools: list[Any],
-    all_tools: list[Any],
-    *,
-    skill_registry: SkillRegistry | None,
-    active_skill_ids: list[Any],
-    tool_policy: str,
-) -> list[Any]:
-    return _call_skill_planning_implementation(
-        "_merge_active_skill_recommended_tools",
-        available_tools,
-        all_tools,
-        skill_registry=skill_registry,
-        active_skill_ids=active_skill_ids,
-        tool_policy=tool_policy,
-    )
-
-
-def build_active_skill_execution_plan(
-    *,
-    skill_registry: SkillRegistry | None,
-    active_skill_ids: list[Any],
-    text: str,
-    workspace_root: Path,
-    base_intent_plan: ToolIntentPlan,
-) -> SkillExecutionPlan | None:
-    return _call_skill_planning_implementation(
-        "build_active_skill_execution_plan",
-        skill_registry=skill_registry,
-        active_skill_ids=active_skill_ids,
-        text=text,
-        workspace_root=workspace_root,
-        base_intent_plan=base_intent_plan,
-    )
-
-
-def apply_skill_execution_plan(
-    intent_plan: ToolIntentPlan,
-    skill_execution_plan: SkillExecutionPlan | None,
-) -> ToolIntentPlan:
-    return _call_skill_planning_implementation(
-        "apply_skill_execution_plan",
-        intent_plan,
-        skill_execution_plan,
-    )
-
-
-def skill_execution_policy_note(skill_execution_plan: SkillExecutionPlan | None) -> str:
-    return _call_skill_planning_implementation(
-        "skill_execution_policy_note",
-        skill_execution_plan,
-    )
 
 
 def _tools_for_policy_compat(

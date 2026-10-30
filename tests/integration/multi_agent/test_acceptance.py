@@ -286,7 +286,7 @@ def test_async_approval_pending_does_not_block_other_tool_calls(monkeypatch) -> 
         "allowed_roles": ("executor",),
     }
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: _SingleRoundToolModel(
             tool_calls=[
                 {"id": "approval-async", "name": "approval_lookup", "args": {"name": "focus"}},

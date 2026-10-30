@@ -11,29 +11,15 @@ from langgraph.runtime import Runtime
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ...config import Settings
-from ...core.context.policy import apply_prompt_budget_guard
 from ...core.context_request import build_context_request
-from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
-from ...core.runtime_outcome import build_task_outcome
-from ...core.state import AgentState, append_agent_state_record
+from ...core.state import AgentState
 from ...core.types import Plan  # noqa: F401
-from ...delegation.delegation_repair import build_failure_records, build_review_queue
 from ...skills import SkillRegistry
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
-from ..graph_evidence import (
-    evidence_bundle_to_citation_refs,
-    normalize_evidence_bundle,
-    normalize_evidence_ledger,
-)
 from ..graph_execution_contract import (
     build_execution_contract,
-    evaluate_execution_contract,
-    skill_execution_evidence_facts,
-    tool_result_names,
-    verify_answer_against_evidence,
 )
-from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
 from ..graph_plan_nodes import _format_plan_block  # noqa: F401
 from ..graph_textual_tool_call_repair import (
     _looks_like_textual_tool_call_artifact,
@@ -53,33 +39,24 @@ from ..graph_tool_result_fallback import (
     _degraded_answer_from_tool_results,
     _fallback_answer_from_tool_results,
     _invoke_with_tool_result_fallback,
-    _should_replace_unfound_workspace_answer,
     _tool_result_synthesis_prompt,
 )
-from . import agent_loop_support as _agent_loop_support
 from .agent_loop_helpers import (
     _has_tool_named,
     _latest_tool_result_content,
     _latest_turn_has_tool_result,
-    _live_web_answer_needs_repair,
-    _live_web_answer_repair_count,
     _live_web_contract_needs_search,
-    _live_web_failure_answer,
-    _live_web_repair_response,
     _live_web_research_should_start_with_search_compat,
-    _merge_active_skill_recommended_tools,
     _message_content_text,
-    _new_citation_refs,
-    _next_pending_tool_action,
     _pending_live_web_search_action_from_state,
     _registered_tool_names,
-    _skill_execution_answer_repair_count,
-    _skill_execution_failure_answer,
-    _skill_execution_repair_prompt,
     _tool_intent_text,
     _tool_router_fallback_role,
     _tools_for_policy_compat,
     _workspace_lookup_should_start_with_search_compat,
+)
+from .agent_loop_helpers_skill_planning import (
+    _merge_active_skill_recommended_tools,
     apply_skill_execution_plan,
     build_active_skill_execution_plan,
     skill_execution_policy_note,
@@ -110,12 +87,14 @@ from .agent_loop_support import (
     _SUCCESS_OUTCOME_STATUSES,  # noqa: F401
     _drain_steer_messages,
     _filter_tools_by_agent_def,
+    _model_for_stream_phase,
+    _model_with_tools_for_stream_phase,
     _outcome_attempt_index,  # noqa: F401
     _outcome_max_attempts,  # noqa: F401
     _resolve_agent_definition,
     _should_force_degraded_skill_recovery_answer,
     _web_fetch_args,
-    _with_focus_agent_turn_metadata,
+    _with_stream_phase,
 )
 from .agent_loop_updates import finalize_agent_loop_turn
 from .policy import (
@@ -132,90 +111,6 @@ from .policy_temporal import search_time_range
 from .retrieval_ledger import collect_retrieval_ledger, retrieval_ledger_note
 
 _logger = logging.getLogger(__name__)
-
-
-def _with_stream_phase(model: Any, phase: str) -> Any:
-    """Apply stream metadata while preserving the established patch seam."""
-
-    return _agent_loop_support._with_stream_phase(
-        model,
-        phase,
-        has_method=has_repo_method,
-    )
-
-
-def _model_for_stream_phase(
-    model_for: Callable[[str, str], Any],
-    phase: str,
-) -> Callable[[str, str], Any]:
-    def wrapped(model_id: str, thinking_mode: str) -> Any:
-        return _with_stream_phase(model_for(model_id, thinking_mode), phase)
-
-    return wrapped
-
-
-def _model_with_tools_for_stream_phase(
-    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
-    phase: str,
-) -> Callable[[str, str, list[Any] | None], Any]:
-    def wrapped(model_id: str, thinking_mode: str, available_tools: list[Any] | None) -> Any:
-        return _with_stream_phase(
-            model_with_tools_for(model_id, thinking_mode, available_tools),
-            phase,
-        )
-
-    return wrapped
-
-
-def _agent_loop_update_hooks(
-    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
-) -> dict[str, Any]:
-    """Resolve finalization dependencies at turn time for patch compatibility."""
-
-    hooks = {
-        "_degraded_answer_from_tool_results": _degraded_answer_from_tool_results,
-        "_message_content_text": _message_content_text,
-        "_fallback_answer_from_tool_results": _fallback_answer_from_tool_results,
-        "_should_replace_unfound_workspace_answer": _should_replace_unfound_workspace_answer,
-        "_latest_tool_result_content": _latest_tool_result_content,
-        "normalize_evidence_bundle": normalize_evidence_bundle,
-        "normalize_evidence_ledger": normalize_evidence_ledger,
-        "skill_execution_evidence_facts": skill_execution_evidence_facts,
-        "tool_result_names": tool_result_names,
-        "evaluate_execution_contract": evaluate_execution_contract,
-        "verify_answer_against_evidence": verify_answer_against_evidence,
-        "_live_web_answer_repair_count": _live_web_answer_repair_count,
-        "_skill_execution_answer_repair_count": _skill_execution_answer_repair_count,
-        "_live_web_answer_needs_repair": _live_web_answer_needs_repair,
-        "apply_prompt_budget_guard": apply_prompt_budget_guard,
-        "_skill_execution_repair_prompt": _skill_execution_repair_prompt,
-        "_ensure_reasoning_content_for_tool_call_history": (
-            _ensure_reasoning_content_for_tool_call_history
-        ),
-        "_invoke_with_tool_result_fallback": _invoke_with_tool_result_fallback,
-        "_with_stream_phase": _with_stream_phase,
-        "_looks_like_textual_tool_call_artifact": _looks_like_textual_tool_call_artifact,
-        "_repair_textual_tool_call_response": _repair_textual_tool_call_response,
-        "_repair_and_dedupe_tool_calls": _repair_and_dedupe_tool_calls,
-        "_skill_execution_failure_answer": _skill_execution_failure_answer,
-        "_live_web_repair_response": _live_web_repair_response,
-        "_live_web_failure_answer": _live_web_failure_answer,
-        "evidence_bundle_to_citation_refs": evidence_bundle_to_citation_refs,
-        "_new_citation_refs": _new_citation_refs,
-        "_latest_turn_has_tool_result": _latest_turn_has_tool_result,
-        "enforce_temporal_anchor": enforce_temporal_anchor,
-        "repair_chinese_output": repair_chinese_output,
-        "build_task_outcome": build_task_outcome,
-        "_with_focus_agent_turn_metadata": _with_focus_agent_turn_metadata,
-        "_next_pending_tool_action": _next_pending_tool_action,
-        "append_agent_state_record": append_agent_state_record,
-        "build_failure_records": build_failure_records,
-        "build_review_queue": build_review_queue,
-        "_latest_turn_messages": _latest_turn_messages,
-        "STREAM_VISIBILITY_QUARANTINE": STREAM_VISIBILITY_QUARANTINE,
-        "model_with_tools_for": model_with_tools_for,
-    }
-    return hooks
 
 
 def make_agent_loop_node(
@@ -729,7 +624,7 @@ def make_agent_loop_node(
             state=state,
             state_messages=state_messages,
             response=response,
-            hooks=_agent_loop_update_hooks(model_with_tools_for),
+            model_with_tools_for=model_with_tools_for,
             settings=settings,
             tool_intent_plan=tool_intent_plan,
             tool_route_plan=tool_route_plan,

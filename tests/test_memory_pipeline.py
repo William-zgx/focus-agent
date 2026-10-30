@@ -554,7 +554,7 @@ def test_graph_extracts_and_writes_user_memory(monkeypatch, tmp_path):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 

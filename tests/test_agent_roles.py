@@ -170,7 +170,7 @@ def test_graph_default_off_does_not_record_role_route_plan(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
     graph = build_graph(
@@ -211,7 +211,7 @@ def test_graph_enabled_records_role_route_plan_without_changing_model_path(monke
         return FakeModel()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         fake_create_chat_model,
     )
 
