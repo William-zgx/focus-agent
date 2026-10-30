@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Mapping
 from typing import Any
 
@@ -17,7 +16,6 @@ from ...capabilities.ask_user_question import (
     format_ask_user_question_tool_result,
     parse_ask_user_question_answers,
 )
-from ...capabilities.default_tool_modules.memory import authorize_memory_tool_args
 from ...capabilities.tool_messages import build_tool_message
 from ...capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -33,14 +31,12 @@ from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_tool_outcomes_from_messages
 from ...core.state import AgentState, append_agent_state_record
-from ..graph_tool_call_repair import _canonicalize_tool_call_args, _tool_call_dedupe_key
+from ..graph_tool_call_repair import _canonicalize_tool_call_args
 from ..graph_tool_result_fallback import _context_budget_from_state
-from .retrieval_ledger import collect_retrieval_ledger, retrieval_key
+from .retrieval_ledger import collect_retrieval_ledger
+from .tool_call_guards import _intercept_tool_call, _preflight_tool_call, _route_plan_mapping
 from .tool_result_hooks import (
     _apply_result_hooks,
-    _ask_permission_result,
-    _blocked_tool_error,
-    _denied_tool_result,
     _patch_tool_message_content,
     _patch_tool_message_error,
 )
@@ -80,39 +76,6 @@ class HarnessToolServices:
         self.middleware_stack = middleware_stack
         self.run_id = run_id
         self.active_agent_name = active_agent_name
-
-
-# ---------------------------------------------------------------------------
-# Command extraction for bash-like tools
-# ---------------------------------------------------------------------------
-
-
-_BASH_LIKE_TOOL_NAMES = frozenset(
-    {
-        "run_workspace_command",
-        "bash",
-        "shell",
-        "execute_command",
-        "run_command",
-    }
-)
-
-
-def _extract_command(tool_name: str, tool_args: Mapping[str, Any]) -> str | None:
-    """Best-effort extraction of a shell command string from tool args for
-    use in permission matching (e.g. ``bash:rm -rf *``)."""
-
-    if not tool_args:
-        return None
-    if tool_name in _BASH_LIKE_TOOL_NAMES:
-        for key in ("command", "cmd", "script", "shell", "input"):
-            value = tool_args.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        parts = [str(v) for v in tool_args.values() if isinstance(v, str)]
-        if parts:
-            return " ".join(parts).strip()
-    return None
 
 
 def _configured_thread_id() -> str | None:
@@ -214,242 +177,39 @@ def make_tool_executor_node(
             tool_name = str(tool_call.get("name") or "").strip()
             tool_call_id = str(tool_call.get("id") or "").strip() or f"tool-call-{index + 1}"
             tool_args = _canonicalize_tool_call_args(tool_call.get("args"))
-            if not tool_name:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name="unknown_tool",
-                    args=tool_args,
-                    error="Malformed tool call: missing tool name",
-                    runtime_info={"malformed_tool_call": True},
-                )
-                continue
-            signature = _tool_call_dedupe_key({"name": tool_name, "args": tool_args})
-            if signature in seen_tool_call_signatures:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Duplicate tool call suppressed: {tool_name}",
-                    runtime_info={"duplicate_tool_call_suppressed": True},
-                )
-                continue
-            seen_tool_call_signatures.add(signature)
-            retrieved = retrieval_ledger.get(retrieval_key(tool_name, tool_args) or "")
-            if retrieved is not None:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=(
-                        (
-                            f"This URL already failed earlier in this turn ({retrieved.error}); "
-                            "retrying will fail the same way. Use another source."
-                        )
-                        if retrieved.error
-                        else (
-                            "Already retrieved earlier in this turn "
-                            f"(tool call {retrieved.tool_call_id}); reuse that result. Read an "
-                            "unread source, search a different angle, or answer from the "
-                            "evidence collected."
-                        )
-                    ),
-                    runtime_info={
-                        "repeated_retrieval_suppressed": True,
-                        "previous_tool_call_id": retrieved.tool_call_id,
-                    },
-                )
-                continue
-            authorized_args, authorization_error = authorize_memory_tool_args(
-                tool_name,
-                tool_args,
-                runtime.context,
+            preflight = _preflight_tool_call(
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                tool_args=tool_args,
+                request_context=runtime.context,
+                tools_by_name=tools_by_name,
+                tool_runtime_by_name=tool_runtime_by_name,
+                route_plan=route_plan,
+                retrieval_ledger=retrieval_ledger,
+                seen_signatures=seen_tool_call_signatures,
+                tool_call_counts=tool_call_counts,
             )
-            if authorization_error is not None:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=authorization_error,
-                    runtime_info={"memory_context_authorization_failed": True},
-                )
+            if preflight.error is not None:
+                messages_by_index[index] = preflight.error
                 continue
-            tool_args = authorized_args or tool_args
-            tool = tools_by_name.get(tool_name)
-            if tool is None:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Unknown tool: {tool_name}",
-                )
+            tool, runtime_meta = preflight.tool, preflight.runtime_meta
+            interception = _intercept_tool_call(
+                services=services,
+                ext_ctx=ext_ctx,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                tool_args=preflight.args,
+                runtime_meta=runtime_meta,
+                thread_id=thread_id,
+                run_id=run_id,
+                active_agent_name=active_agent_name,
+                state=state,
+            )
+            if interception.error is not None:
+                messages_by_index[index] = interception.error
                 continue
-            if _forbidden_by_route_plan(route_plan, tool_name):
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Forbidden tool by Tool Router policy: {tool_name}",
-                    runtime_info={"forbidden_by_tool_router": True},
-                )
-                continue
-            runtime_meta = tool_runtime_by_name.get(tool_name)
-            if runtime_meta is None:
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Tool runtime metadata is missing: {tool_name}",
-                    runtime_info={"missing_tool_runtime_metadata": True},
-                )
-                continue
-            tool_call_counts[tool_name] = tool_call_counts.get(tool_name, 0) + 1
-            max_calls = getattr(runtime_meta, "max_calls_per_turn", None)
-            if max_calls is not None and tool_call_counts[tool_name] > int(max_calls):
-                messages_by_index[index] = build_tool_error_message(
-                    tool_call_id=tool_call_id,
-                    tool_name=tool_name,
-                    args=tool_args,
-                    error=f"Tool call budget exceeded for {tool_name}: max {int(max_calls)} per turn",
-                    runtime_info={
-                        "max_calls_per_turn_exceeded": True,
-                        "max_calls_per_turn": int(max_calls),
-                    },
-                )
-                continue
-            validator = getattr(runtime_meta, "validator", None)
-            if validator is not None:
-                try:
-                    validator(tool_args)
-                except Exception as exc:  # noqa: BLE001
-                    messages_by_index[index] = build_tool_error_message(
-                        tool_call_id=tool_call_id,
-                        tool_name=tool_name,
-                        args=tool_args,
-                        error=f"Invalid tool parameters for {tool_name}: {exc}",
-                        runtime_info={"parameter_validation_error": True},
-                    )
-                    continue
-
-            # =========================================================
-            # Layer 1: Extension on_tool_call hook
-            # =========================================================
-            blocked = False
-            if (
-                services is not None
-                and services.extension_registry is not None
-                and ext_ctx is not None
-            ):
-                try:
-                    from ...harness.extensions import ToolInterceptionResult
-
-                    hook_results = services.extension_registry.fire_hook(
-                        "on_tool_call",
-                        ext_ctx,
-                        tool_name=tool_name,
-                        args=tool_args,
-                    )
-                    for result in hook_results:
-                        if isinstance(result, ToolInterceptionResult):
-                            if result.block:
-                                messages_by_index[index] = _blocked_tool_error(
-                                    tool_call_id,
-                                    tool_name,
-                                    tool_args,
-                                    result.reason,
-                                    source="blocked_by_extension",
-                                )
-                                blocked = True
-                                break
-                            if result.patched_args is not None:
-                                tool_args = dict(result.patched_args)
-                except Exception:  # noqa: BLE001
-                    logger.warning(
-                        "Extension on_tool_call hook failed for tool=%s",
-                        tool_name,
-                        exc_info=True,
-                    )
-            if blocked:
-                continue
-
-            # =========================================================
-            # Layer 2: Middleware intercept_tool_call
-            # =========================================================
-            if services is not None and services.middleware_stack is not None:
-                try:
-                    mw_ctx = {
-                        "thread_id": thread_id,
-                        "run_id": run_id,
-                        "agent_name": active_agent_name,
-                        "state": state,
-                    }
-                    interception = services.middleware_stack.intercept_tool_call(
-                        tool_name,
-                        tool_args,
-                        ctx=mw_ctx,
-                    )
-                    if interception is not None and interception.block:
-                        messages_by_index[index] = _blocked_tool_error(
-                            tool_call_id,
-                            tool_name,
-                            tool_args,
-                            interception.reason,
-                            source="blocked_by_middleware",
-                        )
-                        continue
-                    if interception is not None and interception.patched_args is not None:
-                        tool_args = dict(interception.patched_args)
-                except Exception:  # noqa: BLE001
-                    logger.warning(
-                        "Middleware intercept_tool_call failed for tool=%s",
-                        tool_name,
-                        exc_info=True,
-                    )
-
-            # =========================================================
-            # Layer 3: Permission check
-            # =========================================================
-            permission_allowed = False
-            if services is not None and services.permission_manager is not None:
-                try:
-                    from ...harness.governance.permissions import (
-                        PermissionAction,
-                        PermissionRequest,
-                    )
-
-                    req = PermissionRequest(
-                        id=str(uuid.uuid4()),
-                        tool_name=tool_name,
-                        command=_extract_command(tool_name, tool_args),
-                        agent_name=active_agent_name or "*",
-                        session_id=thread_id,
-                        metadata={"args": dict(tool_args)},
-                    )
-                    action, reason = services.permission_manager.check_permission(req)
-                    if action == PermissionAction.DENY:
-                        messages_by_index[index] = _denied_tool_result(
-                            tool_call_id, tool_name, tool_args, reason
-                        )
-                        continue
-                    if action == PermissionAction.ALLOW:
-                        # Permission manager explicitly allowed this tool.
-                        # This also implies tool approval is not needed —
-                        # the permission system has already vetted it.
-                        permission_allowed = True
-                    if action == PermissionAction.ASK:
-                        # If the tool already requires approval, let the existing
-                        # approval interrupt handle it; otherwise surface an error.
-                        if not getattr(runtime_meta, "requires_approval", False):
-                            messages_by_index[index] = _ask_permission_result(
-                                tool_call_id, tool_name, tool_args, reason
-                            )
-                            continue
-                        # fall through: the normal requires_approval interrupt below will run
-                except Exception:  # noqa: BLE001
-                    logger.warning(
-                        "Permission check failed for tool=%s",
-                        tool_name,
-                        exc_info=True,
-                    )
+            tool_args = interception.args
+            permission_allowed = interception.permission_allowed
 
             execution_input = ToolExecutionInput(
                 index=index,
@@ -759,26 +519,6 @@ def _tool_call_counts_since_latest_human(messages: list[Any]) -> dict[str, int]:
             if tool_name:
                 counts[tool_name] = counts.get(tool_name, 0) + 1
     return counts
-
-
-def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:
-    if isinstance(route_plan, Mapping):
-        return route_plan
-    if not has_repo_method(route_plan, "model_dump"):
-        return None
-    dumped = route_plan.model_dump(mode="json")
-    return dumped if isinstance(dumped, Mapping) else None
-
-
-def _forbidden_by_route_plan(
-    route_plan: Mapping[str, Any] | None,
-    tool_name: str,
-) -> bool:
-    if not route_plan or not bool(route_plan.get("enforce", True)):
-        return False
-    allowed_tools = {str(name) for name in route_plan.get("allowed_tools") or []}
-    denied_tools = {str(name) for name in route_plan.get("denied_tools") or []}
-    return tool_name in denied_tools or tool_name not in allowed_tools
 
 
 __all__ = [
