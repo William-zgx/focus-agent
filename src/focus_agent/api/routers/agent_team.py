@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -36,7 +36,12 @@ from ..contracts import (
     UpdateAgentTeamTaskRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
-from ..route_utils.agent_team import _agent_team_error, _agent_team_service_or_503
+from ..route_utils.agent_team import (
+    _agent_team_service_or_503,
+    agent_team_errors,
+    agent_team_v2_errors,
+    agent_team_v2_not_implemented,
+)
 from ..route_utils.agent_team_responses import (
     _DEPRECATED_ROUTE_LINK_REL,
     _mark_deprecated_route,
@@ -121,20 +126,8 @@ def _agent_team_v2_readiness(
 def _agent_team_v2_method_or_501(service: object, method_name: str):
     method = getattr(service, method_name, None)
     if not callable(method):
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Agent Team v2 capability '{method_name}' is not implemented by this service.",
-        )
+        raise agent_team_v2_not_implemented(method_name)
     return method
-
-
-def _agent_team_v2_error(exc: Exception, *, method_name: str) -> HTTPException:
-    if isinstance(exc, NotImplementedError):
-        return HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Agent Team v2 capability '{method_name}' is not implemented by this service.",
-        )
-    return _agent_team_error(exc)
 
 
 @router.get("/v2/agent-team/readiness", response_model=AgentTeamReadinessResponse)
@@ -156,10 +149,8 @@ def get_agent_team_task_run_v2(
 ) -> AgentTeamTaskRunResponse:
     service = _agent_team_service_or_503(runtime)
     get_task_run = _agent_team_v2_method_or_501(service, "get_task_run")
-    try:
+    with agent_team_v2_errors("get_task_run"):
         task_run = get_task_run(task_run_id=task_run_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_v2_error(exc, method_name="get_task_run") from exc
     return AgentTeamTaskRunResponse(task_run=task_run)
 
 
@@ -174,10 +165,8 @@ def list_agent_team_task_runs_v2(
 ) -> AgentTeamTaskRunListResponse:
     service = _agent_team_service_or_503(runtime)
     list_task_runs = _agent_team_v2_method_or_501(service, "list_task_runs")
-    try:
+    with agent_team_v2_errors("list_task_runs"):
         task_runs = list_task_runs(task_id=task_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_v2_error(exc, method_name="list_task_runs") from exc
     return AgentTeamTaskRunListResponse(items=task_runs, count=len(task_runs))
 
 
@@ -192,10 +181,8 @@ def list_agent_team_session_evidence_v2(
 ) -> AgentTeamEvidenceListResponse:
     service = _agent_team_service_or_503(runtime)
     list_evidence_records = _agent_team_v2_method_or_501(service, "list_evidence_records")
-    try:
+    with agent_team_v2_errors("list_evidence_records"):
         evidence = list_evidence_records(session_id=session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_v2_error(exc, method_name="list_evidence_records") from exc
     return AgentTeamEvidenceListResponse(items=evidence, count=len(evidence))
 
 
@@ -214,7 +201,10 @@ def execute_agent_team_revision_command_v2(
         service,
         "execute_revision_command",
     )
-    try:
+    with agent_team_v2_errors(
+        "execute_revision_command",
+        (RuntimeError, status.HTTP_409_CONFLICT),
+    ):
         outcome = execute_revision_command(
             session_id=session_id,
             user_id=principal.user_id,
@@ -224,12 +214,6 @@ def execute_agent_team_revision_command_v2(
             task_ids=payload.task_ids,
             metadata=payload.metadata,
         )
-    except NotImplementedError as exc:
-        raise _agent_team_v2_error(exc, method_name="execute_revision_command") from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_v2_error(exc, method_name="execute_revision_command") from exc
     return AgentTeamRevisionCommandResponse(
         command=payload.command,
         session_id=session_id,
@@ -244,15 +228,13 @@ def create_agent_team_session(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         session = service.create_session(
             root_thread_id=payload.root_thread_id,
             user_id=principal.user_id,
             title=payload.title,
             goal=payload.goal,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamSessionResponse(session=session)
 
 
@@ -266,7 +248,7 @@ def list_agent_team_sessions(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionListResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         sessions = service.list_sessions(
             user_id=principal.user_id,
             root_thread_id=root_thread_id,
@@ -274,8 +256,6 @@ def list_agent_team_sessions(
             limit=limit,
             offset=offset,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamSessionListResponse(sessions=sessions, items=sessions, count=len(sessions))
 
 
@@ -286,10 +266,8 @@ def get_agent_team_session(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         session = service.get_session(session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamSessionResponse(session=session)
 
 
@@ -304,7 +282,7 @@ def dispatch_agent_team_session(
 ) -> AgentTeamDispatchResponse:
     service = _agent_team_service_or_503(runtime)
     request = payload or DispatchAgentTeamSessionRequest()
-    try:
+    with agent_team_errors():
         session, tasks = service.dispatch_default_tasks(
             session_id=session_id,
             user_id=principal.user_id,
@@ -313,8 +291,6 @@ def dispatch_agent_team_session(
             else request.create_branches,
             parent_thread_id=request.parent_thread_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamDispatchResponse(session=session, tasks=tasks, items=tasks, count=len(tasks))
 
 
@@ -332,7 +308,7 @@ def plan_agent_team_session(
         if request.auto_fork_branch is not None
         else request.create_branches
     )
-    try:
+    with agent_team_errors():
         session, tasks = service.plan_session(
             session_id=session_id,
             user_id=principal.user_id,
@@ -343,8 +319,6 @@ def plan_agent_team_session(
             focus=request.focus,
             max_tasks=request.max_tasks,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     planning = AgentTeamPlanningMetadata.model_validate(
         _planning_metadata_payload(
             {"session": session, "tasks": tasks},
@@ -370,14 +344,12 @@ def run_agent_team_session(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionViewResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         service.run_ready_tasks(
             session_id=session_id,
             user_id=principal.user_id,
             task_ids=payload.task_ids if payload else None,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return _view_response(
         service.get_session_view(session_id=session_id, user_id=principal.user_id)
     )
@@ -392,12 +364,10 @@ def get_agent_team_session_view(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionViewResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         return _view_response(
             service.get_session_view(session_id=session_id, user_id=principal.user_id)
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
 
 
 @router.post("/v1/agent-team/sessions/{session_id}/tasks", response_model=AgentTeamTaskResponse)
@@ -408,7 +378,7 @@ def create_agent_team_task(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.create_task(
             session_id=session_id,
             user_id=principal.user_id,
@@ -435,8 +405,6 @@ def create_agent_team_task(
             branch_name=payload.branch_name,
             parent_thread_id=payload.parent_thread_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -447,10 +415,8 @@ def list_agent_team_tasks(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskListResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         tasks = service.list_tasks(session_id=session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskListResponse(tasks=tasks, items=tasks, count=len(tasks))
 
 
@@ -461,10 +427,8 @@ def get_agent_team_task(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.get_task(task_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -512,7 +476,7 @@ def _update_agent_team_task_status(
     runtime: AppRuntime,
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.update_task(
             task_id=task_id,
             user_id=principal.user_id,
@@ -546,8 +510,6 @@ def _update_agent_team_task_status(
             finished_at=payload.finished_at,
             last_error=payload.last_error,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -558,10 +520,8 @@ def run_agent_team_task(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.run_task(task_id=task_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -572,10 +532,8 @@ def retry_agent_team_task(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.retry_task(task_id=task_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -586,10 +544,8 @@ def cancel_agent_team_task(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         task = service.cancel_task(task_id=task_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamTaskResponse(task=task)
 
 
@@ -602,10 +558,8 @@ def cancel_agent_team_session(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamSessionViewResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         service.cancel_session(session_id=session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return _view_response(
         service.get_session_view(session_id=session_id, user_id=principal.user_id)
     )
@@ -619,7 +573,7 @@ def record_agent_team_task_output(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamTaskOutputResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         output = service.record_task_output(
             task_id=task_id,
             user_id=principal.user_id,
@@ -640,8 +594,6 @@ def record_agent_team_task_output(
             risk_notes=payload.risk_notes,
             metadata=payload.metadata,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     task = service.get_task(task_id, user_id=principal.user_id)
     return AgentTeamTaskOutputResponse(output=output, task=task)
 
@@ -690,10 +642,8 @@ def _prepare_agent_team_merge_bundle(
     runtime: AppRuntime,
 ) -> AgentTeamMergeBundleResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         bundle = service.prepare_merge_bundle(session_id=session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeBundleResponse(bundle=bundle)
 
 
@@ -747,7 +697,7 @@ def _apply_agent_team_merge_decision(
     runtime: AppRuntime,
 ) -> AgentTeamMergeDecisionResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         decision = service.apply_merge_decision(
             session_id=session_id,
             user_id=principal.user_id,
@@ -757,8 +707,6 @@ def _apply_agent_team_merge_decision(
             accepted_tasks=payload.accepted_tasks,
             rejected_tasks=payload.rejected_tasks,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     session = service.get_session(session_id, user_id=principal.user_id)
     merge_bundle = None
     if session.latest_merge_bundle:

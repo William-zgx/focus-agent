@@ -15,6 +15,7 @@ from ..contract_models.agent_team import (
     DecideAgentTeamToolApprovalRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
+from ..route_utils.agent_team import agent_team_errors
 
 router = APIRouter()
 
@@ -36,11 +37,9 @@ def list_agent_team_tool_approvals(
 ) -> AgentTeamToolApprovalListResponse:
     agent_team = _root_agent_team_module()
     service = agent_team._agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         session = service.get_session(session_id, user_id=principal.user_id)
         approvals = agent_team._pending_tool_approvals_for_session(service, session)
-    except Exception as exc:  # noqa: BLE001
-        raise agent_team._agent_team_error(exc) from exc
     return AgentTeamToolApprovalListResponse(
         approvals=approvals,
         items=approvals,
@@ -61,7 +60,7 @@ def decide_agent_team_tool_approval(
 ) -> AgentTeamToolApprovalDecisionResponse:
     agent_team = _root_agent_team_module()
     service = agent_team._agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         session = service.get_session(session_id, user_id=principal.user_id)
         approval_queue = agent_team._agent_team_approval_queue(service)
         request = agent_team._get_tool_approval_request(approval_queue, request_id)
@@ -76,8 +75,6 @@ def decide_agent_team_tool_approval(
             decided_by=principal.user_id,
         )
         decided = agent_team._get_tool_approval_request(approval_queue, request_id) or request
-    except Exception as exc:  # noqa: BLE001
-        raise agent_team._agent_team_error(exc) from exc
     return AgentTeamToolApprovalDecisionResponse(
         approval=AgentTeamToolApprovalContract.model_validate(
             agent_team._tool_approval_payload(decided)

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from focus_agent.api.deps import get_app_runtime, get_current_principal
@@ -121,31 +120,24 @@ def test_tool_approval_routes_preserve_response_and_openapi_contracts() -> None:
     )
 
 
-def test_tool_approval_subrouter_uses_root_router_patch_seams(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = FakeAgentTeamService()
-    client = _client(service)
-    runtime = SimpleNamespace(agent_team_service=service)
-    calls: list[object] = []
+def test_tool_approval_routes_map_service_errors_to_http_status() -> None:
+    client = _client(FakeAgentTeamService())
 
-    def service_or_503(received_runtime: object) -> FakeAgentTeamService:
-        calls.append(received_runtime)
-        return service
-
-    monkeypatch.setattr(agent_team, "_agent_team_service_or_503", service_or_503)
-    monkeypatch.setattr(
-        agent_team,
-        "_agent_team_error",
-        lambda exc: HTTPException(status_code=418, detail=f"mapped:{exc}"),
-    )
-
-    listed = client.get("/v1/agent-team/sessions/session-1/tool-approvals")
     missing = client.get("/v1/agent-team/sessions/missing/tool-approvals")
 
-    assert listed.status_code == 200
-    assert calls
-    assert all(call.agent_team_service is service for call in calls)
-    assert runtime.agent_team_service is service
-    assert missing.status_code == 418
-    assert missing.json()["detail"] == "mapped:'missing'"
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "'missing'"
+
+
+def test_agent_team_routes_hide_unexpected_error_details() -> None:
+    class ExplodingAgentTeamService(FakeAgentTeamService):
+        def get_session(self, session_id: str, *, user_id: str) -> object:
+            raise RuntimeError("database password=secret")
+
+    client = _client(ExplodingAgentTeamService())
+
+    response = client.get("/v1/agent-team/sessions/session-1/tool-approvals")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error."
+    assert "secret" not in response.text

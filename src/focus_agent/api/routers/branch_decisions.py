@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat import ConcurrentTurnError
 
 from ..contracts import (
     BranchDecisionConfigResponse,
@@ -15,6 +14,12 @@ from ..contracts import (
 from ..deps import get_app_runtime, get_current_principal
 from ..route_helpers import run_sync_route_call
 from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
+from ..route_utils.service_errors import (
+    BAD_REQUEST_ERROR_RULE,
+    NOT_FOUND_ERROR_RULE,
+    PERMISSION_ERROR_RULE,
+    map_service_errors,
+)
 
 router = APIRouter()
 
@@ -42,7 +47,7 @@ async def list_thread_branch_decisions(
     principal: Principal = Depends(get_current_principal),
 ) -> BranchDecisionListResponse:
     service = _branch_decision_service(runtime)
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE,)):
         await ensure_branch_handoff_decision_from_journal(
             runtime=runtime,
             thread_id=thread_id,
@@ -57,8 +62,6 @@ async def list_thread_branch_decisions(
             action=action,
             limit=limit,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return BranchDecisionListResponse(
         items=[
             BranchDecisionEventResponse.model_validate(item.model_dump(mode="json"))
@@ -80,21 +83,13 @@ def promote_thread_branch_decision(
     principal: Principal = Depends(get_current_principal),
 ) -> BranchDecisionEventResponse:
     service = _branch_decision_service(runtime)
-    try:
+    with map_service_errors():
         event = service.promote_decision(
             thread_id=thread_id,
             decision_id=decision_id,
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BranchDecisionEventResponse.model_validate(event.model_dump(mode="json"))
 
 
@@ -110,19 +105,15 @@ def dismiss_thread_branch_decision(
     principal: Principal = Depends(get_current_principal),
 ) -> BranchDecisionEventResponse:
     service = _branch_decision_service(runtime)
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, NOT_FOUND_ERROR_RULE, BAD_REQUEST_ERROR_RULE)
+    ):
         event = service.dismiss_decision(
             thread_id=thread_id,
             decision_id=decision_id,
             user_id=principal.user_id,
             reason=(payload.reason if payload is not None else None),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BranchDecisionEventResponse.model_validate(event.model_dump(mode="json"))
 
 
