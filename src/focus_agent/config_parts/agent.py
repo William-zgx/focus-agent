@@ -18,13 +18,6 @@ def _optional_string_env(
     return text or None
 
 
-def _optional_int_env(env: MutableMapping[str, str], name: str, default: int | None) -> int | None:
-    value = env.get(name)
-    if value is None or not value.strip():
-        return default
-    return int(value)
-
-
 def _float_env(env: MutableMapping[str, str], name: str, default: float) -> float:
     return float(env.get(name, str(default)))
 

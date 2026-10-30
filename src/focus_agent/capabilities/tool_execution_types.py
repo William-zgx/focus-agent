@@ -186,14 +186,3 @@ def _copy_json_safe(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_copy_json_safe(item) for item in value]
     return value
-
-
-def _approval_text_is_approved(value: str) -> bool:
-    return value.strip().lower() in {
-        "approve",
-        "approved",
-        "allow",
-        "allowed",
-        "yes",
-        "true",
-    }

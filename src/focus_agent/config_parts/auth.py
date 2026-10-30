@@ -132,25 +132,6 @@ def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, 
     return _dedupe_auth_jwt_keys(keys)
 
 
-def _configured_single_auth_secret(settings: Any, env: MutableMapping[str, str]) -> str | None:
-    if _normalize_optional_string(env.get("AUTH_JWT_SECRET")) is None:
-        return None
-    return _normalize_optional_string(settings.auth_jwt_secret)
-
-
-def _current_auth_jwt_secret(settings: Any, env: MutableMapping[str, str]) -> str | None:
-    if settings.auth_jwt_key_id:
-        for key in settings.auth_jwt_keys:
-            if key.active and key.kid == settings.auth_jwt_key_id:
-                return key.secret
-        return _configured_single_auth_secret(settings, env)
-
-    for key in settings.auth_jwt_keys:
-        if key.active:
-            return key.secret
-    return _configured_single_auth_secret(settings, env)
-
-
 def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple[str, ...]:
     sources: list[str] = []
     for key in ("APP_ENVIRONMENT", "ENVIRONMENT"):
