@@ -6,6 +6,8 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import BaseModel
+
 from focus_agent.core.agent_team import (
     AgentTeamMergeReview,
     AgentTeamMergeReviewEvent,
@@ -13,9 +15,22 @@ from focus_agent.core.agent_team import (
     AgentTeamTask,
     AgentTeamTaskOutput,
     AgentTeamTaskStatus,
+    EvidenceRecord,
+    TaskCheckpoint,
+    TaskRun,
+    TaskRunEvent,
+    ToolExecution,
 )
 
 from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
+
+_EXECUTION_RECORD_MODELS: dict[str, type[BaseModel]] = {
+    "task_runs": TaskRun,
+    "task_checkpoints": TaskCheckpoint,
+    "tool_executions": ToolExecution,
+    "evidence_records": EvidenceRecord,
+    "task_run_events": TaskRunEvent,
+}
 
 
 class SQLiteAgentTeamRepository(AgentTeamRepository):
@@ -89,6 +104,32 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                     FOREIGN KEY(review_id) REFERENCES focus_agent_team_merge_reviews(review_id)
                 )
                 """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS agent_team_execution_records (
+                    collection TEXT NOT NULL,
+                    record_id TEXT NOT NULL,
+                    task_run_id TEXT,
+                    task_id TEXT,
+                    session_id TEXT,
+                    created_at TEXT NOT NULL,
+                    data_json TEXT NOT NULL,
+                    PRIMARY KEY (collection, record_id)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_execution_records_run "
+                "ON agent_team_execution_records(collection, task_run_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_execution_records_task "
+                "ON agent_team_execution_records(collection, task_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_team_execution_records_session "
+                "ON agent_team_execution_records(collection, session_id)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_team_sessions_user_created ON agent_team_sessions(user_id, created_at DESC)"
@@ -487,6 +528,104 @@ class SQLiteAgentTeamRepository(AgentTeamRepository):
                 (review_id,),
             ).fetchall()
         return [self._merge_review_event_from_row(row) for row in rows]
+
+    # V2 execution records (task runs, checkpoints, tool executions, evidence, run events)
+    # are persisted so they survive process restarts, matching the Postgres repository.
+    def _append_execution_record(self, collection: str, record_id: str, record: object) -> None:
+        assert isinstance(record, BaseModel)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_team_execution_records (
+                    collection, record_id, task_run_id, task_id, session_id, created_at, data_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(collection, record_id) DO UPDATE SET
+                    task_run_id = excluded.task_run_id,
+                    task_id = excluded.task_id,
+                    session_id = excluded.session_id,
+                    created_at = excluded.created_at,
+                    data_json = excluded.data_json
+                """,
+                (
+                    collection,
+                    record_id,
+                    getattr(record, "task_run_id", None),
+                    getattr(record, "task_id", None),
+                    getattr(record, "session_id", None),
+                    str(getattr(record, "created_at", "") or ""),
+                    record.model_dump_json(),
+                ),
+            )
+            conn.commit()
+
+    def _load_execution_records(self, collection: str, **filters: str | None) -> list[BaseModel]:
+        model = _EXECUTION_RECORD_MODELS[collection]
+        conditions = ["collection = ?"]
+        params: list[str] = [collection]
+        for column, value in filters.items():
+            if value is not None:
+                conditions.append(f"{column} = ?")
+                params.append(value)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT data_json FROM agent_team_execution_records "
+                f"WHERE {' AND '.join(conditions)}",
+                params,
+            ).fetchall()
+        return [model.model_validate(json.loads(row["data_json"])) for row in rows]
+
+    def create_task_run(self, task_run: TaskRun) -> None:
+        self._append_execution_record("task_runs", task_run.task_run_id, task_run)
+
+    def get_task_run(self, task_run_id: str) -> TaskRun:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT data_json FROM agent_team_execution_records "
+                "WHERE collection = 'task_runs' AND record_id = ?",
+                (task_run_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown agent team task run: {task_run_id}")
+        return TaskRun.model_validate(json.loads(row["data_json"]))
+
+    def list_task_runs(
+        self,
+        *,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[TaskRun]:
+        records = self._load_execution_records("task_runs", task_id=task_id, session_id=session_id)
+        return sorted(records, key=lambda item: (item.created_at, item.task_run_id))
+
+    def list_task_checkpoints(self, *, task_run_id: str) -> list[TaskCheckpoint]:
+        records = self._load_execution_records("task_checkpoints", task_run_id=task_run_id)
+        return sorted(
+            records,
+            key=lambda item: (item.sequence, item.created_at, item.checkpoint_id),
+        )
+
+    def list_tool_executions(self, *, task_run_id: str) -> list[ToolExecution]:
+        records = self._load_execution_records("tool_executions", task_run_id=task_run_id)
+        return sorted(records, key=lambda item: (item.created_at, item.tool_execution_id))
+
+    def list_evidence_records(
+        self,
+        *,
+        task_run_id: str | None = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[EvidenceRecord]:
+        records = self._load_execution_records(
+            "evidence_records",
+            task_run_id=task_run_id,
+            task_id=task_id,
+            session_id=session_id,
+        )
+        return sorted(records, key=lambda item: (item.created_at, item.evidence_id))
+
+    def list_task_run_events(self, *, task_run_id: str) -> list[TaskRunEvent]:
+        records = self._load_execution_records("task_run_events", task_run_id=task_run_id)
+        return sorted(records, key=lambda item: (item.created_at, item.event_id))
 
 
 __all__ = ["SQLiteAgentTeamRepository"]

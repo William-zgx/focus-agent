@@ -127,8 +127,12 @@ def test_sandbox_verified_execution_requires_verified_evidence_and_is_deliverabl
         )
 
 
-def test_in_memory_repository_appends_and_lists_v2_execution_records() -> None:
-    repository = InMemoryAgentTeamRepository()
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_repository_appends_and_lists_v2_execution_records(backend, tmp_path) -> None:
+    db_path = str(tmp_path / "agent-team.sqlite3")
+    repository = (
+        InMemoryAgentTeamRepository() if backend == "memory" else SQLiteAgentTeamRepository(db_path)
+    )
     task = _task()
     task_run = TaskRun(
         task_run_id="run-1",
@@ -177,6 +181,9 @@ def test_in_memory_repository_appends_and_lists_v2_execution_records() -> None:
     repository.append_tool_execution(tool_execution)
     repository.append_evidence_record(evidence)
     repository.append_task_run_event(event)
+    if backend == "sqlite":
+        # Durable records must survive a process restart (a fresh repository instance).
+        repository = SQLiteAgentTeamRepository(db_path)
 
     assert repository.get_task_run(task_run.task_run_id) == task_run
     assert repository.list_task_runs(task_id=task.task_id) == [task_run]
@@ -185,17 +192,3 @@ def test_in_memory_repository_appends_and_lists_v2_execution_records() -> None:
     assert repository.list_evidence_records(task_run_id=task_run.task_run_id) == [evidence]
     assert repository.list_evidence_records(task_id=task.task_id) == [evidence]
     assert repository.list_task_run_events(task_run_id=task_run.task_run_id) == [event]
-
-
-def test_legacy_sqlite_repository_inherits_v2_memory_fallback(tmp_path) -> None:
-    repository = SQLiteAgentTeamRepository(str(tmp_path / "agent-team.sqlite3"))
-    task_run = TaskRun(
-        task_run_id="run-legacy-repository",
-        task_id="task-1",
-        session_id="session-1",
-        created_at=_TIME,
-    )
-
-    repository.create_task_run(task_run)
-
-    assert repository.get_task_run(task_run.task_run_id) == task_run
