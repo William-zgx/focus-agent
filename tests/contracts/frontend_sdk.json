@@ -1428,6 +1428,9 @@
     "apps/web/src/pages/admin/admin-config-controls.tsx": [
       "FocusAgentAdminConfigValue"
     ],
+    "apps/web/src/pages/admin/admin-config-copy.ts": [
+      "FocusAgentAdminConfigValue"
+    ],
     "apps/web/src/pages/admin/admin-config-draft-utils.ts": [
       "FocusAgentAdminConfig",
       "FocusAgentAdminConfigProvider",
@@ -1435,7 +1438,13 @@
       "FocusAgentAdminModelConfigEntry",
       "FocusAgentAdminToolConfigEntry",
       "FocusAgentAdminToolProviderConfig",
-      "FocusAgentModelProtocol"
+      "FocusAgentModelProtocol",
+      "FocusAgentUpdateAdminModelConfigEntry",
+      "FocusAgentUpdateAdminModelConfigRequest",
+      "FocusAgentUpdateAdminModelProviderConfig",
+      "FocusAgentUpdateAdminToolConfigEntry",
+      "FocusAgentUpdateAdminToolConfigRequest",
+      "FocusAgentUpdateAdminToolProviderConfig"
     ],
     "apps/web/src/pages/admin/admin-config-intent-panels.tsx": [
       "FocusAgentAdminConfigSource",
@@ -1450,13 +1459,7 @@
       "FocusAgentAdminConfigValue"
     ],
     "apps/web/src/pages/admin/admin-config-page.tsx": [
-      "FocusAgentAdminSkillConfigEntry",
-      "FocusAgentUpdateAdminModelConfigEntry",
-      "FocusAgentUpdateAdminModelConfigRequest",
-      "FocusAgentUpdateAdminModelProviderConfig",
-      "FocusAgentUpdateAdminToolConfigEntry",
-      "FocusAgentUpdateAdminToolConfigRequest",
-      "FocusAgentUpdateAdminToolProviderConfig"
+      "FocusAgentAdminSkillConfigEntry"
     ],
     "apps/web/src/pages/admin/admin-config-tool-policy-panels.tsx": [
       "FocusAgentAdminConfigValue"

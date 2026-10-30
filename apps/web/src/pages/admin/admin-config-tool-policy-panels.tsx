@@ -1,6 +1,10 @@
 import type { FocusAgentAdminConfigValue } from "@focus-agent/web-sdk";
 import type { FormEvent } from "react";
 
+import {
+	localizedConfigValueCopy,
+	localizedToolCopy,
+} from "./admin-config-copy";
 import { AdminField, AdminPanelHeader } from "./admin-page-sections";
 import {
 	ConfigActions,
@@ -9,11 +13,7 @@ import {
 	ReadOnlyConfigValue,
 	ToggleControl,
 } from "./admin-config-controls";
-import {
-	localizedConfigValueCopy,
-	localizedToolCopy,
-	policyDraftValue,
-} from "./admin-config-draft-utils";
+import { policyDraftValue } from "./admin-config-draft-utils";
 import type {
 	PolicyDraft,
 	PolicyDraftValue,
