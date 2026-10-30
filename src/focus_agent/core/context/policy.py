@@ -5,14 +5,9 @@ from typing import Any
 
 from langchain.messages import AnyMessage
 
-from ..context_budget_guard import (
-    _coerce_prompt_mode,
-    _conversation_safe_messages,
-)
 from ..context_compaction import select_recent_messages
 from ..state import normalize_agent_state
 from ..types import ContextBudget, PromptMode
-from . import budget as _budget_guard
 from .assembly import (
     _branch_scope_block,
     _coerce_artifact_lines,
@@ -32,94 +27,23 @@ from .assembly import (
     _render_lines,
     _skill_system_block,
 )
-
-_estimate_with_tokenizer = _budget_guard._estimate_with_tokenizer
-_message_budget_units = _budget_guard._message_budget_units
+from .budget import (
+    _coerce_prompt_mode,
+    _conversation_safe_messages,
+    _prompt_budget_count,
+    apply_prompt_budget_guard,
+    approximate_token_count,
+    trim_tool_observation,
+)
 
 __all__ = [
     "ContextSlice",
-    "_estimate_with_tokenizer",
-    "_message_budget_units",
     "_prompt_budget_count",
     "approximate_token_count",
     "apply_prompt_budget_guard",
     "assemble_context",
     "trim_tool_observation",
 ]
-
-
-def _with_budget_guard_monkeypatches():
-    return {
-        "_estimate_with_tokenizer": _budget_guard._estimate_with_tokenizer,
-        "_message_budget_units": _budget_guard._message_budget_units,
-    }
-
-
-def _restore_budget_guard_monkeypatches(previous: dict[str, Any]) -> None:
-    _budget_guard._estimate_with_tokenizer = previous["_estimate_with_tokenizer"]
-    _budget_guard._message_budget_units = previous["_message_budget_units"]
-
-
-def approximate_token_count(
-    value: Any,
-    *,
-    chars_per_token: int = 4,
-    tokenizer_id: str | None = None,
-) -> int:
-    previous = _with_budget_guard_monkeypatches()
-    _budget_guard._estimate_with_tokenizer = _estimate_with_tokenizer
-    try:
-        return _budget_guard.approximate_token_count(
-            value,
-            chars_per_token=chars_per_token,
-            tokenizer_id=tokenizer_id,
-        )
-    finally:
-        _restore_budget_guard_monkeypatches(previous)
-
-
-def apply_prompt_budget_guard(
-    prompt_messages: list[AnyMessage],
-    *,
-    budget: ContextBudget,
-) -> list[AnyMessage]:
-    previous = _with_budget_guard_monkeypatches()
-    _budget_guard._estimate_with_tokenizer = _estimate_with_tokenizer
-    _budget_guard._message_budget_units = _message_budget_units
-    try:
-        return _budget_guard.apply_prompt_budget_guard(prompt_messages, budget=budget)
-    finally:
-        _restore_budget_guard_monkeypatches(previous)
-
-
-def trim_tool_observation(
-    observation: Any,
-    *,
-    tool_name: str = "",
-    tool_call_id: str = "",
-    budget: ContextBudget | None = None,
-    max_chars: int | None = None,
-    artifactize_for_prompt: bool = False,
-    force_artifactize: bool = False,
-) -> str:
-    return _budget_guard.trim_tool_observation(
-        observation,
-        tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        budget=budget,
-        max_chars=max_chars,
-        artifactize_for_prompt=artifactize_for_prompt,
-        force_artifactize=force_artifactize,
-    )
-
-
-def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -> int:
-    previous = _with_budget_guard_monkeypatches()
-    _budget_guard._message_budget_units = _message_budget_units
-    try:
-        return _budget_guard._prompt_budget_count(messages, budget=budget)
-    finally:
-        _restore_budget_guard_monkeypatches(previous)
 
 
 @dataclass(slots=True)

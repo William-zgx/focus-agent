@@ -1,30 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
-
 from langchain.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
 
 from .. import context_prompt_budget as _prompt_budget
 from .. import context_token_counting as _token_counting
-from .. import context_tool_observation as _tool_observation
+from ..context_prompt_budget import _prompt_budget_count
+from ..context_token_counting import approximate_token_count
 from ..types import ContextBudget, PromptMode
-
-_estimate_with_tokenizer = _token_counting._estimate_with_tokenizer
-_message_budget_units = _token_counting._message_budget_units
-
-
-def approximate_token_count(
-    value: Any,
-    *,
-    chars_per_token: int = 4,
-    tokenizer_id: str | None = None,
-) -> int:
-    _sync_token_counting_hooks()
-    return _token_counting.approximate_token_count(
-        value,
-        chars_per_token=chars_per_token,
-        tokenizer_id=tokenizer_id,
-    )
+from .tool_observations import trim_tool_observation
 
 
 def apply_prompt_budget_guard(
@@ -33,7 +16,6 @@ def apply_prompt_budget_guard(
     budget: ContextBudget,
     preserve_required_messages: bool = False,
 ) -> list[AnyMessage]:
-    _sync_prompt_budget_hooks()
     prioritized = _prioritize_tokenizer_first_system_messages(
         prompt_messages,
         budget=budget,
@@ -135,33 +117,6 @@ def _trim_system_message_to_units(
     return _prompt_budget._copy_message_with_content(message, content)
 
 
-def trim_tool_observation(
-    observation: Any,
-    *,
-    tool_name: str = "",
-    tool_call_id: str = "",
-    budget: ContextBudget | None = None,
-    max_chars: int | None = None,
-    artifactize_for_prompt: bool = False,
-    force_artifactize: bool = False,
-) -> str:
-    _sync_token_counting_hooks()
-    return _tool_observation.trim_tool_observation(
-        observation,
-        tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        budget=budget,
-        max_chars=max_chars,
-        artifactize_for_prompt=artifactize_for_prompt,
-        force_artifactize=force_artifactize,
-    )
-
-
-def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -> int:
-    _sync_prompt_budget_hooks()
-    return _prompt_budget._prompt_budget_count(messages, budget=budget)
-
-
 def _coerce_prompt_mode(mode: PromptMode | str | None) -> PromptMode:
     if isinstance(mode, PromptMode):
         return mode
@@ -184,21 +139,9 @@ def _conversation_safe_messages(messages: list[AnyMessage], *, limit: int) -> li
     return safe_messages[-limit:]
 
 
-def _sync_token_counting_hooks() -> None:
-    _token_counting._estimate_with_tokenizer = _estimate_with_tokenizer
-
-
-def _sync_prompt_budget_hooks() -> None:
-    _sync_token_counting_hooks()
-    _prompt_budget._message_budget_units = _message_budget_units
-    _prompt_budget.trim_tool_observation = trim_tool_observation
-
-
 __all__ = [
     "_coerce_prompt_mode",
     "_conversation_safe_messages",
-    "_estimate_with_tokenizer",
-    "_message_budget_units",
     "_prompt_budget_count",
     "approximate_token_count",
     "apply_prompt_budget_guard",

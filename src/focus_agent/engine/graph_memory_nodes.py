@@ -8,7 +8,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..config import Settings
-from ..core.context_policy import assemble_context as build_context_slice
+from ..core.context.policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
 from ..core.types import PromptMode

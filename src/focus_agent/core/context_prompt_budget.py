@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from langchain.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 
-from .context_assembly import _context_block_priority
-from .context_assembly_rendering import _context_block_header
-from .context_policy_helpers import units_to_char_budget as _units_to_char_budget_helper
-from .context_token_counting import _message_budget_units, _text_for_budget
-from .context_tool_observation import (
+from . import context_token_counting as _token_counting
+from .context.tool_observations import (
     _prompt_observation_for_tool_message,
     _tool_message_was_runtime_compacted,
     _tool_name_for_tool_message,
@@ -14,6 +11,9 @@ from .context_tool_observation import (
     _tool_observation_within_budget,
     trim_tool_observation,
 )
+from .context_assembly import _context_block_priority
+from .context_assembly_rendering import _context_block_header
+from .context_policy_helpers import units_to_char_budget as _units_to_char_budget_helper
 from .types import ContextBudget, PromptMode
 
 
@@ -49,7 +49,7 @@ def apply_prompt_budget_guard(
                 target_chars,
                 max(0, _prompt_char_limit(budget) - _prompt_char_count(other_messages)),
             )
-        system_text = _text_for_budget(guarded[main_system_index])
+        system_text = _token_counting._text_for_budget(guarded[main_system_index])
         trimmed_system = (
             _trim_system_text_preserving_required_blocks(
                 system_text,
@@ -105,7 +105,7 @@ def _prompt_char_limit(budget: ContextBudget) -> int:
 
 
 def _prompt_char_count(messages: list[AnyMessage]) -> int:
-    return sum(len(_text_for_budget(message)) for message in messages)
+    return sum(len(_token_counting._text_for_budget(message)) for message in messages)
 
 
 def _within_prompt_budget(
@@ -206,7 +206,7 @@ def _trim_system_text_by_blocks(
                 continue
             extra = len(block) + (2 if selected else 0)
             extra_units = (
-                _message_budget_units(SystemMessage(content=block), budget=budget)
+                _token_counting._message_budget_units(SystemMessage(content=block), budget=budget)
                 if unit_budget is not None and budget is not None
                 else 0
             )
@@ -266,14 +266,16 @@ def _trim_system_text_preserving_required_blocks(
     selected = set(required)
     used_chars = sum(len(blocks[index]) for index in required) + max(0, len(required) - 1) * 2
     used_units = sum(
-        _message_budget_units(SystemMessage(content=blocks[index]), budget=budget)
+        _token_counting._message_budget_units(SystemMessage(content=blocks[index]), budget=budget)
         for index in required
     )
     for index, block in enumerate(blocks):
         if index in required:
             continue
         extra_chars = len(block) + (2 if selected else 0)
-        extra_units = _message_budget_units(SystemMessage(content=block), budget=budget)
+        extra_units = _token_counting._message_budget_units(
+            SystemMessage(content=block), budget=budget
+        )
         if used_chars + extra_chars > max_chars or used_units + extra_units > target_units:
             continue
         selected.add(index)
@@ -349,7 +351,7 @@ def _shrink_tool_messages_to_fit(
             if _enforce_prompt_char_budget(budget)
             else 0
         )
-        current = _text_for_budget(message)
+        current = _token_counting._text_for_budget(message)
         target = max(
             200,
             len(current)
@@ -414,7 +416,7 @@ def _hard_limit_prompt_messages(
         if _within_prompt_budget(guarded, budget=budget, counter=budget_counter):
             break
         message = guarded[index]
-        current = _text_for_budget(message)
+        current = _token_counting._text_for_budget(message)
         overflow_units = max(0, current_count - budget.prompt_token_limit)
         overflow_chars = (
             max(0, _prompt_char_count(guarded) - _prompt_char_limit(budget))
@@ -458,12 +460,12 @@ class _PromptBudgetCounter:
     def message_units(self, message: AnyMessage) -> int:
         if isinstance(message, SystemMessage):
             return self.system_units(str(message.content))
-        text = _text_for_budget(message)
+        text = _token_counting._text_for_budget(message)
         key = (id(message), text)
         cached = self._message_cache.get(key)
         if cached is not None:
             return cached
-        value = _message_budget_units(message, budget=self.budget)
+        value = _token_counting._message_budget_units(message, budget=self.budget)
         self._message_cache[key] = value
         return value
 
@@ -483,9 +485,10 @@ def _prompt_budget_count(messages: list[AnyMessage], *, budget: ContextBudget) -
 def _system_message_budget_units(text: str, *, budget: ContextBudget) -> int:
     blocks = _split_context_blocks(text)
     if not blocks:
-        return _message_budget_units(SystemMessage(content=text), budget=budget)
+        return _token_counting._message_budget_units(SystemMessage(content=text), budget=budget)
     return sum(
-        _message_budget_units(SystemMessage(content=block), budget=budget) for block in blocks
+        _token_counting._message_budget_units(SystemMessage(content=block), budget=budget)
+        for block in blocks
     )
 
 

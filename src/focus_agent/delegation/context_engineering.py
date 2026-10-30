@@ -10,7 +10,7 @@ from langchain.messages import ToolMessage
 from pydantic import Field
 
 from ..config import Settings
-from ..core.context_policy import assemble_context
+from ..core.context.policy import assemble_context
 from ..core.types import ContextBudget, PromptMode, StateModel
 
 ContextArtifactSource = Literal["tool_observation", "rolling_summary", "assembled_context"]
