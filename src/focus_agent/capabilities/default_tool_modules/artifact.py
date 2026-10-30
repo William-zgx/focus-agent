@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -35,150 +36,247 @@ def _artifact_title_from_id(artifact_id: str) -> str:
     return artifact_path.stem.replace("-", " ").strip().title() or artifact_path.name
 
 
-def build_artifact_tools(
+def _validate_write_artifact_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "title")
+    _require_non_empty_text_arg(args, "body")
+
+
+def _reject_reserved_observation_path(artifact_id: str) -> None:
+    if _is_tool_observation_artifact_id(artifact_id):
+        raise PermissionError(
+            "tool-observation artifacts must be read through a scoped tool-observation reference."
+        )
+
+
+def _index_artifact_best_effort(
     context: ToolBuildContext,
     *,
-    backend: ArtifactBackend,
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    tool_catalog = context.tool_catalog
-    emit_tool_event = context.emit_tool_event
-    artifact_dir = backend.artifact_dir
-    store = backend.store
+    artifact_id: str,
+    title: str,
+    content: str,
+    thread_id: str | None,
+) -> None:
+    index = context.retrieval_index
+    provider = getattr(context.memory_embedding_service, "provider", None)
+    if index is None or provider is None:
+        return
 
-    def _validate_write_artifact_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "title")
-        _require_non_empty_text_arg(args, "body")
-
-    def _reject_reserved_observation_path(artifact_id: str) -> None:
-        if _is_tool_observation_artifact_id(artifact_id):
-            raise PermissionError(
-                "tool-observation artifacts must be read through a scoped tool-observation reference."
-            )
-
-    def _index_artifact_best_effort(
-        *,
-        artifact_id: str,
-        title: str,
-        content: str,
-        thread_id: str | None,
-    ) -> None:
-        index = context.retrieval_index
-        provider = getattr(context.memory_embedding_service, "provider", None)
-        if index is None or provider is None:
-            return
-
-        try:
-            index_artifact_content(
-                retrieval_index=index,
-                embedding_provider=provider,
-                artifact_id=artifact_id,
-                title=title,
-                content=content,
-                thread_id=thread_id,
-            )
-        except Exception:  # noqa: BLE001
-            return
-
-    def _search_artifacts_from_filesystem(*, query: str, limit: int) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        terms = _query_terms(query)
-        artifact_iter = backend.iter_artifacts()
-        for item in artifact_iter:
-            if _is_tool_observation_artifact_id(item.artifact_id):
-                continue
-            try:
-                content = store.load(item.artifact_id).decode("utf-8")
-            except Exception:  # noqa: BLE001
-                continue
-            score, snippet = _artifact_text_match(query=query, terms=terms, content=content)
-            if score <= 0:
-                continue
-            results.append(
-                {
-                    "artifact_id": item.artifact_id,
-                    "title": _artifact_title_from_id(item.artifact_id),
-                    "path": str(item.path),
-                    "snippet": snippet,
-                    "offset": content.find(snippet),
-                    "score": score,
-                    "backend": "filesystem",
-                }
-            )
-        results.sort(key=lambda item: (-float(item["score"]), str(item["artifact_id"])))
-        return results[:limit]
-
-    def _search_artifacts_from_index(*, query: str, limit: int) -> list[dict[str, Any]]:
-        index = context.retrieval_index
-        provider = getattr(context.memory_embedding_service, "provider", None)
-        if index is None or provider is None:
-            return []
-        vector = provider.embed([query])[0]
-        hits = index.search(
-            collection="focus_artifact_chunks",
-            query=query,
-            vector=vector,
-            limit=limit,
+    try:
+        index_artifact_content(
+            retrieval_index=index,
+            embedding_provider=provider,
+            artifact_id=artifact_id,
+            title=title,
+            content=content,
+            thread_id=thread_id,
         )
-        results: list[dict[str, Any]] = []
-        for hit in hits:
-            artifact_id = str(hit.fields.get("artifact_id") or hit.source_id)
-            if _is_tool_observation_artifact_id(artifact_id):
-                continue
-            try:
-                content = store.load(artifact_id).decode("utf-8")
-            except Exception:  # noqa: BLE001
-                continue
-            expected_hash = str(hit.fields.get("artifact_hash") or "")
-            if expected_hash and expected_hash != artifact_content_hash(content):
-                continue
-            offset = content.find(hit.text)
-            results.append(
-                {
-                    "artifact_id": artifact_id,
-                    "title": str(hit.fields.get("title") or _artifact_title_from_id(hit.source_id)),
-                    "chunk_index": hit.fields.get("chunk_index"),
-                    "snippet": hit.text[:600],
-                    **({"offset": offset} if offset >= 0 else {}),
-                    "score": hit.score,
-                    "backend": "zvec",
-                }
-            )
-        return results
+    except Exception:  # noqa: BLE001
+        return
 
-    def _artifact_payload_from_metadata(record: Any) -> dict[str, Any]:
-        updated_at = getattr(record, "updated_at", None)
-        return {
-            "artifact_id": str(record.artifact_id),
-            "path": str(record.path),
-            "title": str(record.title),
-            "size_bytes": int(record.size_bytes),
-            "updated_at": (
-                updated_at.isoformat()
-                if isinstance(updated_at, datetime)
-                else str(updated_at or "")
-            ),
-        }
 
-    def _list_artifacts_from_filesystem(*, limit: int) -> tuple[list[dict[str, Any]], bool]:
-        artifacts: list[dict[str, Any]] = []
-        truncated = False
-        artifact_iter = backend.iter_artifacts()
-        for item in artifact_iter:
-            if _is_tool_observation_artifact_id(item.artifact_id):
-                continue
-            artifacts.append(
-                {
-                    "artifact_id": item.artifact_id,
-                    "path": str(item.path),
-                    "title": _artifact_title_from_id(item.artifact_id),
-                    "size_bytes": item.size_bytes,
-                    "updated_at": item.updated_at.isoformat(),
-                }
+def _search_artifacts_from_filesystem(
+    backend: ArtifactBackend, *, query: str, limit: int
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    terms = _query_terms(query)
+    for item in backend.iter_artifacts():
+        if _is_tool_observation_artifact_id(item.artifact_id):
+            continue
+        try:
+            content = backend.store.load(item.artifact_id).decode("utf-8")
+        except Exception:  # noqa: BLE001
+            continue
+        score, snippet = _artifact_text_match(query=query, terms=terms, content=content)
+        if score <= 0:
+            continue
+        results.append(
+            {
+                "artifact_id": item.artifact_id,
+                "title": _artifact_title_from_id(item.artifact_id),
+                "path": str(item.path),
+                "snippet": snippet,
+                "offset": content.find(snippet),
+                "score": score,
+                "backend": "filesystem",
+            }
+        )
+    results.sort(key=lambda item: (-float(item["score"]), str(item["artifact_id"])))
+    return results[:limit]
+
+
+def _search_artifacts_from_index(
+    context: ToolBuildContext, backend: ArtifactBackend, *, query: str, limit: int
+) -> list[dict[str, Any]]:
+    index = context.retrieval_index
+    provider = getattr(context.memory_embedding_service, "provider", None)
+    if index is None or provider is None:
+        return []
+    vector = provider.embed([query])[0]
+    hits = index.search(
+        collection="focus_artifact_chunks",
+        query=query,
+        vector=vector,
+        limit=limit,
+    )
+    results: list[dict[str, Any]] = []
+    for hit in hits:
+        artifact_id = str(hit.fields.get("artifact_id") or hit.source_id)
+        if _is_tool_observation_artifact_id(artifact_id):
+            continue
+        try:
+            content = backend.store.load(artifact_id).decode("utf-8")
+        except Exception:  # noqa: BLE001
+            continue
+        expected_hash = str(hit.fields.get("artifact_hash") or "")
+        if expected_hash and expected_hash != artifact_content_hash(content):
+            continue
+        offset = content.find(hit.text)
+        results.append(
+            {
+                "artifact_id": artifact_id,
+                "title": str(hit.fields.get("title") or _artifact_title_from_id(hit.source_id)),
+                "chunk_index": hit.fields.get("chunk_index"),
+                "snippet": hit.text[:600],
+                **({"offset": offset} if offset >= 0 else {}),
+                "score": hit.score,
+                "backend": "zvec",
+            }
+        )
+    return results
+
+
+def _artifact_payload_from_metadata(record: Any) -> dict[str, Any]:
+    updated_at = getattr(record, "updated_at", None)
+    return {
+        "artifact_id": str(record.artifact_id),
+        "path": str(record.path),
+        "title": str(record.title),
+        "size_bytes": int(record.size_bytes),
+        "updated_at": (
+            updated_at.isoformat() if isinstance(updated_at, datetime) else str(updated_at or "")
+        ),
+    }
+
+
+def _list_artifacts_from_filesystem(
+    backend: ArtifactBackend, *, limit: int
+) -> tuple[list[dict[str, Any]], bool]:
+    artifacts: list[dict[str, Any]] = []
+    truncated = False
+    for item in backend.iter_artifacts():
+        if _is_tool_observation_artifact_id(item.artifact_id):
+            continue
+        artifacts.append(
+            {
+                "artifact_id": item.artifact_id,
+                "path": str(item.path),
+                "title": _artifact_title_from_id(item.artifact_id),
+                "size_bytes": item.size_bytes,
+                "updated_at": item.updated_at.isoformat(),
+            }
+        )
+        if len(artifacts) >= limit:
+            truncated = True
+            break
+    return artifacts, truncated
+
+
+def _list_artifacts_from_metadata(
+    repo: Any, *, thread_id: str, limit: int
+) -> tuple[list[dict[str, Any]], bool]:
+    metadata_rows = repo.list_by_thread(thread_id, limit=limit + 1)
+    metadata_rows = [
+        record
+        for record in metadata_rows
+        if not _is_tool_observation_artifact_id(str(record.artifact_id))
+    ]
+    truncated = len(metadata_rows) > limit
+    artifacts = [_artifact_payload_from_metadata(record) for record in metadata_rows[:limit]]
+    return artifacts, truncated
+
+
+def _artifact_read_window(
+    tool_catalog: Any, *, offset: int | None, limit: int | None, query: str | None
+) -> tuple[int, int]:
+    if query is not None and not query.strip():
+        raise ValueError("query must not be empty")
+    if isinstance(offset, bool) or (offset is not None and int(offset) != offset):
+        raise ValueError("offset must be a non-negative integer")
+    if isinstance(limit, bool) or (limit is not None and int(limit) != limit):
+        raise ValueError("limit must be a positive integer")
+    requested_offset = 0 if offset is None else int(offset)
+    if requested_offset < 0:
+        raise ValueError("offset must be a non-negative integer")
+    configured_limit = max(1, int(tool_catalog.artifact_read.max_chars))
+    read_limit = min(_MAX_ARTIFACT_READ_RANGE, configured_limit)
+    if limit is not None:
+        read_limit = min(read_limit, int(limit))
+        if read_limit < 1:
+            raise ValueError("limit must be a positive integer")
+    return requested_offset, read_limit
+
+
+def _resolve_observation_read_target(
+    context: ToolBuildContext, backend: ArtifactBackend, *, reference: str
+) -> tuple[str, Path]:
+    thread_id = context.get_current_thread_id()
+    if not thread_id:
+        raise PermissionError("tool-observation reads require a runtime thread scope")
+    read_artifact_id = _observation_artifact_id_from_ref(reference=reference, thread_id=thread_id)
+    if read_artifact_id is None:
+        raise PermissionError("invalid tool-observation scope")
+    path = backend.path_for(read_artifact_id)
+    repo = backend.metadata_repository()
+    if repo is not None:
+        try:
+            metadata_record = repo.get_by_artifact_id(read_artifact_id)
+        except Exception as exc:  # noqa: BLE001
+            raise PermissionError(
+                "tool-observation metadata lookup failed; refusing unscoped read"
+            ) from exc
+        if metadata_record is not None and str(metadata_record.thread_id) != str(thread_id):
+            raise PermissionError("tool-observation is not readable in this thread")
+    return read_artifact_id, path
+
+
+def _resolve_plain_read_target(
+    backend: ArtifactBackend,
+    *,
+    artifact_id: str,
+    path: Path,
+    emit_tool_event: Callable[..., None],
+) -> tuple[str, Path]:
+    _reject_reserved_observation_path(artifact_id)
+    read_artifact_id = artifact_id
+    repo = backend.metadata_repository()
+    if repo is not None:
+        try:
+            metadata_record = repo.get_by_artifact_id(artifact_id)
+        except Exception as exc:  # noqa: BLE001
+            emit_tool_event(
+                tool_name="artifact_read",
+                stage="delta",
+                message="Artifact metadata lookup failed; reading from filesystem path.",
+                error=str(exc),
             )
-            if len(artifacts) >= limit:
-                truncated = True
-                break
-        return artifacts, truncated
+        else:
+            if metadata_record is not None:
+                metadata_path = Path(str(metadata_record.path)).expanduser()
+                if not metadata_path.is_absolute():
+                    metadata_path = metadata_path.resolve()
+                try:
+                    metadata_path.relative_to(backend.artifact_dir.resolve())
+                except ValueError:
+                    pass
+                else:
+                    read_artifact_id = backend.artifact_id_for_path(metadata_path)
+                    path = metadata_path
+    _reject_reserved_observation_path(read_artifact_id)
+    return read_artifact_id, path
+
+
+def build_write_text_artifact_tool(context: ToolBuildContext, *, backend: ArtifactBackend) -> Any:
+    emit_tool_event = context.emit_tool_event
 
     @tool
     def write_text_artifact(title: str, body: str) -> str:
@@ -196,11 +294,13 @@ def build_artifact_tools(
                 message="Writing artifact to disk",
                 path=display_path,
             )
-            store.save(filename, f"# {title}\n\n{body}\n".encode())
+            content = f"# {title}\n\n{body}\n"
+            backend.store.save(filename, content.encode())
             _index_artifact_best_effort(
+                context,
                 artifact_id=filename,
                 title=_artifact_title_from_id(filename),
-                content=f"# {title}\n\n{body}\n",
+                content=content,
                 thread_id=thread_id,
             )
             backend.upsert_metadata(
@@ -220,6 +320,13 @@ def build_artifact_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), title=title)
             raise
 
+    return write_text_artifact
+
+
+def build_artifact_list_tool(context: ToolBuildContext, *, backend: ArtifactBackend) -> Any:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def artifact_list(max_results: int | None = None) -> str:
         """List text artifacts saved in the configured artifact directory."""
@@ -238,17 +345,9 @@ def build_artifact_tools(
             thread_id = context.get_current_thread_id()
             if repo is not None and thread_id:
                 try:
-                    metadata_rows = repo.list_by_thread(thread_id, limit=capped_results + 1)
-                    metadata_rows = [
-                        record
-                        for record in metadata_rows
-                        if not _is_tool_observation_artifact_id(str(record.artifact_id))
-                    ]
-                    truncated = len(metadata_rows) > capped_results
-                    artifacts = [
-                        _artifact_payload_from_metadata(record)
-                        for record in metadata_rows[:capped_results]
-                    ]
+                    artifacts, truncated = _list_artifacts_from_metadata(
+                        repo, thread_id=thread_id, limit=capped_results
+                    )
                 except Exception as exc:  # noqa: BLE001
                     emit_tool_event(
                         tool_name=tool_name,
@@ -256,12 +355,16 @@ def build_artifact_tools(
                         message="Artifact metadata lookup failed; falling back to filesystem.",
                         error=str(exc),
                     )
-                    artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
+                    artifacts, truncated = _list_artifacts_from_filesystem(
+                        backend, limit=capped_results
+                    )
             else:
-                artifacts, truncated = _list_artifacts_from_filesystem(limit=capped_results)
+                artifacts, truncated = _list_artifacts_from_filesystem(
+                    backend, limit=capped_results
+                )
             result = json.dumps(
                 {
-                    "artifact_dir": str(artifact_dir),
+                    "artifact_dir": str(backend.artifact_dir),
                     "artifacts": artifacts,
                     "truncated": truncated,
                 },
@@ -274,6 +377,12 @@ def build_artifact_tools(
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
+
+    return artifact_list
+
+
+def build_artifact_read_tool(context: ToolBuildContext, *, backend: ArtifactBackend) -> Any:
+    emit_tool_event = context.emit_tool_event
 
     @tool(parse_docstring=True)
     def artifact_read(
@@ -302,81 +411,26 @@ def build_artifact_tools(
             limit=limit,
         )
         try:
-            if query is not None and not query.strip():
-                raise ValueError("query must not be empty")
-            if isinstance(offset, bool) or (offset is not None and int(offset) != offset):
-                raise ValueError("offset must be a non-negative integer")
-            if isinstance(limit, bool) or (limit is not None and int(limit) != limit):
-                raise ValueError("limit must be a positive integer")
-            requested_offset = 0 if offset is None else int(offset)
-            if requested_offset < 0:
-                raise ValueError("offset must be a non-negative integer")
-            configured_limit = max(1, int(tool_catalog.artifact_read.max_chars))
-            read_limit = min(_MAX_ARTIFACT_READ_RANGE, configured_limit)
-            if limit is not None:
-                read_limit = min(read_limit, int(limit))
-                if read_limit < 1:
-                    raise ValueError("limit must be a positive integer")
-
+            requested_offset, read_limit = _artifact_read_window(
+                context.tool_catalog, offset=offset, limit=limit, query=query
+            )
             observation_ref = _parse_tool_observation_ref(artifact_id)
             if artifact_id.startswith("tool-observation://") and observation_ref is None:
                 raise ValueError("invalid tool-observation reference")
-            read_artifact_id = artifact_id
-            path = backend.path_for(read_artifact_id)
-            metadata_record = None
+            path = backend.path_for(artifact_id)
             if observation_ref is not None:
-                thread_id = context.get_current_thread_id()
-                if not thread_id:
-                    raise PermissionError("tool-observation reads require a runtime thread scope")
-                read_artifact_id = _observation_artifact_id_from_ref(
-                    reference=artifact_id, thread_id=thread_id
+                read_artifact_id, path = _resolve_observation_read_target(
+                    context, backend, reference=artifact_id
                 )
-                if read_artifact_id is None:
-                    raise PermissionError("invalid tool-observation scope")
-                path = backend.path_for(read_artifact_id)
-                repo = backend.metadata_repository()
-                if repo is not None:
-                    try:
-                        metadata_record = repo.get_by_artifact_id(read_artifact_id)
-                    except Exception as exc:  # noqa: BLE001
-                        raise PermissionError(
-                            "tool-observation metadata lookup failed; refusing unscoped read"
-                        ) from exc
-                    if metadata_record is not None and str(metadata_record.thread_id) != str(
-                        thread_id
-                    ):
-                        raise PermissionError("tool-observation is not readable in this thread")
             else:
-                _reject_reserved_observation_path(artifact_id)
-                repo = backend.metadata_repository()
-                if repo is not None:
-                    try:
-                        metadata_record = repo.get_by_artifact_id(artifact_id)
-                    except Exception as exc:  # noqa: BLE001
-                        emit_tool_event(
-                            tool_name=tool_name,
-                            stage="delta",
-                            message="Artifact metadata lookup failed; reading from filesystem path.",
-                            error=str(exc),
-                        )
-                    else:
-                        if metadata_record is not None:
-                            metadata_path = Path(str(metadata_record.path)).expanduser()
-                            if not metadata_path.is_absolute():
-                                metadata_path = metadata_path.resolve()
-                            try:
-                                metadata_path.relative_to(artifact_dir.resolve())
-                            except ValueError:
-                                pass
-                            else:
-                                read_artifact_id = backend.artifact_id_for_path(metadata_path)
-                                path = metadata_path
-                _reject_reserved_observation_path(read_artifact_id)
-            if not store.exists(read_artifact_id):
+                read_artifact_id, path = _resolve_plain_read_target(
+                    backend, artifact_id=artifact_id, path=path, emit_tool_event=emit_tool_event
+                )
+            if not backend.store.exists(read_artifact_id):
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
                 raise IsADirectoryError(artifact_id)
-            content = store.load(read_artifact_id).decode("utf-8")
+            content = backend.store.load(read_artifact_id).decode("utf-8")
             found = True
             if query is not None:
                 match = re.compile(re.escape(query), re.IGNORECASE).search(
@@ -408,11 +462,15 @@ def build_artifact_tools(
             )
             raise
 
+    # engine/graph/tool_execution.py reads the observation saver from this metadata key.
     artifact_read.metadata = {
         **(getattr(artifact_read, "metadata", {}) or {}),
         "_focus_agent_save_tool_observation": backend.save_tool_observation,
     }
+    return artifact_read
 
+
+def _make_artifact_read_validator(artifact_read: Any) -> Callable[[dict[str, Any]], None]:
     def _validate_artifact_read_args(args: dict[str, Any]) -> None:
         unknown = args.keys() - artifact_read.args.keys()
         if unknown:
@@ -421,6 +479,13 @@ def build_artifact_tools(
                 f"Allowed arguments: {', '.join(artifact_read.args)}. "
                 "Pass one integer offset to continue reading."
             )
+
+    return _validate_artifact_read_args
+
+
+def build_artifact_update_tool(context: ToolBuildContext, *, backend: ArtifactBackend) -> Any:
+    emit_tool_event = context.emit_tool_event
+    store = backend.store
 
     @tool
     def artifact_update(artifact_id: str, body: str, mode: str = "replace") -> str:
@@ -450,6 +515,7 @@ def build_artifact_tools(
             store.save(relative_artifact_id, updated.encode("utf-8"))
             path = backend.path_for(relative_artifact_id)
             _index_artifact_best_effort(
+                context,
                 artifact_id=relative_artifact_id,
                 title=_artifact_title_from_id(relative_artifact_id),
                 content=updated,
@@ -458,7 +524,7 @@ def build_artifact_tools(
             backend.upsert_metadata(
                 thread_id=context.get_current_thread_id(),
                 artifact_id=relative_artifact_id,
-                path=artifact_dir / relative_artifact_id,
+                path=backend.artifact_dir / relative_artifact_id,
                 title=_artifact_title_from_id(relative_artifact_id),
             )
             payload = {
@@ -476,6 +542,13 @@ def build_artifact_tools(
             )
             raise
 
+    return artifact_update
+
+
+def build_artifact_search_tool(context: ToolBuildContext, *, backend: ArtifactBackend) -> Any:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def artifact_search(query: str, limit: int | None = None) -> str:
         """Search saved text artifact chunks."""
@@ -489,7 +562,9 @@ def build_artifact_tools(
             )
             capped_limit = max(1, min(requested_limit, tool_catalog.artifact_search.max_limit))
             try:
-                results = _search_artifacts_from_index(query=query, limit=capped_limit)
+                results = _search_artifacts_from_index(
+                    context, backend, query=query, limit=capped_limit
+                )
             except Exception as exc:  # noqa: BLE001
                 emit_tool_event(
                     tool_name=tool_name,
@@ -499,7 +574,9 @@ def build_artifact_tools(
                 )
                 results = []
             if not results:
-                results = _search_artifacts_from_filesystem(query=query, limit=capped_limit)
+                results = _search_artifacts_from_filesystem(
+                    backend, query=query, limit=capped_limit
+                )
             payload = {"query": query, "results": results, "truncated": False}
             result = json.dumps(payload, ensure_ascii=False)
             emit_tool_event(
@@ -510,13 +587,22 @@ def build_artifact_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query)
             raise
 
+    return artifact_search
+
+
+def build_artifact_tools(
+    context: ToolBuildContext,
+    *,
+    backend: ArtifactBackend,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    artifact_read = build_artifact_read_tool(context, backend=backend)
     return (
         {
-            "write_text_artifact": write_text_artifact,
-            "artifact_list": artifact_list,
+            "write_text_artifact": build_write_text_artifact_tool(context, backend=backend),
+            "artifact_list": build_artifact_list_tool(context, backend=backend),
             "artifact_read": artifact_read,
-            "artifact_update": artifact_update,
-            "artifact_search": artifact_search,
+            "artifact_update": build_artifact_update_tool(context, backend=backend),
+            "artifact_search": build_artifact_search_tool(context, backend=backend),
         },
         {
             "write_text_artifact": {
@@ -530,7 +616,7 @@ def build_artifact_tools(
             },
             "artifact_read": {
                 "parallel_safe": True,
-                "validator": _validate_artifact_read_args,
+                "validator": _make_artifact_read_validator(artifact_read),
                 "max_observation_chars": 8000,
             },
             "artifact_update": {
@@ -546,7 +632,7 @@ def build_artifact_tools(
 
 
 def _query_terms(query: str) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(re.findall(r"[a-z0-9]{2,}|[\u4e00-\u9fff]+", query.lower())))
+    return tuple(dict.fromkeys(re.findall(r"[a-z0-9]{2,}|[一-鿿]+", query.lower())))
 
 
 def _artifact_text_match(*, query: str, terms: tuple[str, ...], content: str) -> tuple[float, str]:
