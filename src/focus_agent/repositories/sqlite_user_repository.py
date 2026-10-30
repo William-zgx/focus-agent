@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 
 from focus_agent.core.users import (
     AdminAuditEvent,
@@ -13,6 +12,7 @@ from focus_agent.core.users import (
 )
 from focus_agent.security.tokens import Principal
 
+from ._sqlite_base import SQLiteRepositoryBase
 from .user_repository import (
     AuditEventListFilters,
     LastActiveAdminError,
@@ -21,17 +21,7 @@ from .user_repository import (
 )
 
 
-class SQLiteUserRepository(UserRepository):
-    def __init__(self, db_path: str):
-        self.db_path = str(Path(db_path).expanduser())
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._setup()
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
+class SQLiteUserRepository(SQLiteRepositoryBase, UserRepository):
     def _setup(self) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -58,7 +48,20 @@ class SQLiteUserRepository(UserRepository):
                 )
                 """
             )
-            self._add_missing_user_columns(conn)
+            self._add_columns_if_missing(
+                conn,
+                "users",
+                {
+                    "username": "TEXT",
+                    "password_hash": "TEXT",
+                    "auth_provider": "TEXT NOT NULL DEFAULT 'local'",
+                    "external_subject": "TEXT",
+                    "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
+                    "locked_until": "TEXT",
+                    "last_login_at": "TEXT",
+                    "password_updated_at": "TEXT",
+                },
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -74,7 +77,11 @@ class SQLiteUserRepository(UserRepository):
                 )
                 """
             )
-            self._add_missing_session_columns(conn)
+            self._add_columns_if_missing(
+                conn,
+                "user_sessions",
+                {"refresh_token_hash": "TEXT NOT NULL DEFAULT ''"},
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS admin_audit_events (
@@ -141,33 +148,6 @@ class SQLiteUserRepository(UserRepository):
     @staticmethod
     def _audit_event_from_row(row: sqlite3.Row) -> AdminAuditEvent:
         return AdminAuditEvent.model_validate(json.loads(row["data_json"]))
-
-    @staticmethod
-    def _add_missing_user_columns(conn: sqlite3.Connection) -> None:
-        existing = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
-        columns = {
-            "username": "TEXT",
-            "password_hash": "TEXT",
-            "auth_provider": "TEXT NOT NULL DEFAULT 'local'",
-            "external_subject": "TEXT",
-            "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
-            "locked_until": "TEXT",
-            "last_login_at": "TEXT",
-            "password_updated_at": "TEXT",
-        }
-        for name, definition in columns.items():
-            if name not in existing:
-                conn.execute(f"ALTER TABLE users ADD COLUMN {name} {definition}")
-
-    @staticmethod
-    def _add_missing_session_columns(conn: sqlite3.Connection) -> None:
-        existing = {
-            row["name"] for row in conn.execute("PRAGMA table_info(user_sessions)").fetchall()
-        }
-        if "refresh_token_hash" not in existing:
-            conn.execute(
-                "ALTER TABLE user_sessions ADD COLUMN refresh_token_hash TEXT NOT NULL DEFAULT ''"
-            )
 
     def create_user(self, user: User) -> User:
         with self._connect() as conn:

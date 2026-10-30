@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import timedelta
-from pathlib import Path
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -22,6 +21,7 @@ from focus_agent.core.agent_team import (
     ToolExecution,
 )
 
+from ._sqlite_base import SQLiteRepositoryBase
 from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
 
 _EXECUTION_RECORD_MODELS: dict[str, type[BaseModel]] = {
@@ -33,17 +33,7 @@ _EXECUTION_RECORD_MODELS: dict[str, type[BaseModel]] = {
 }
 
 
-class SQLiteAgentTeamRepository(AgentTeamRepository):
-    def __init__(self, db_path: str):
-        self.db_path = str(Path(db_path).expanduser())
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._setup()
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
+class SQLiteAgentTeamRepository(SQLiteRepositoryBase, AgentTeamRepository):
     def _setup(self) -> None:
         with self._connect() as conn:
             conn.execute(

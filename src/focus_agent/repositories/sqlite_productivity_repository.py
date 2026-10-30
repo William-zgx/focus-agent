@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 
 from focus_agent.core.productivity import (
     FocusNote,
@@ -12,20 +11,11 @@ from focus_agent.core.productivity import (
     FocusTaskStatus,
 )
 
+from ._sqlite_base import SQLiteRepositoryBase
 from .productivity_repository import ProductivityRepository, _task_event
 
 
-class SQLiteProductivityRepository(ProductivityRepository):
-    def __init__(self, db_path: str):
-        self.db_path = str(Path(db_path).expanduser())
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._setup()
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
+class SQLiteProductivityRepository(SQLiteRepositoryBase, ProductivityRepository):
     def _setup(self) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -89,17 +79,29 @@ class SQLiteProductivityRepository(ProductivityRepository):
                 )
                 """
             )
-            _add_column_if_missing(conn, "focus_notes", "source_kind", "TEXT")
-            _add_column_if_missing(conn, "focus_notes", "source_id", "TEXT")
-            _add_column_if_missing(conn, "focus_notes", "source_url", "TEXT")
-            _add_column_if_missing(conn, "focus_notes", "pinned_context_json", "TEXT")
-            _add_column_if_missing(conn, "focus_notes", "captured_from", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "source_artifact_id", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "source_kind", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "source_id", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "source_url", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "pinned_context_json", "TEXT")
-            _add_column_if_missing(conn, "focus_tasks", "captured_from", "TEXT")
+            self._add_columns_if_missing(
+                conn,
+                "focus_notes",
+                {
+                    "source_kind": "TEXT",
+                    "source_id": "TEXT",
+                    "source_url": "TEXT",
+                    "pinned_context_json": "TEXT",
+                    "captured_from": "TEXT",
+                },
+            )
+            self._add_columns_if_missing(
+                conn,
+                "focus_tasks",
+                {
+                    "source_artifact_id": "TEXT",
+                    "source_kind": "TEXT",
+                    "source_id": "TEXT",
+                    "source_url": "TEXT",
+                    "pinned_context_json": "TEXT",
+                    "captured_from": "TEXT",
+                },
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_focus_notes_user_updated ON focus_notes(user_id, is_archived, updated_at DESC)"
             )
@@ -338,17 +340,6 @@ class SQLiteProductivityRepository(ProductivityRepository):
                 (task_id, user_id),
             ).fetchall()
         return [self._event_from_row(row) for row in rows]
-
-
-def _add_column_if_missing(
-    conn: sqlite3.Connection,
-    table_name: str,
-    column_name: str,
-    column_type: str,
-) -> None:
-    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
-    if column_name not in existing:
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
 __all__ = ["SQLiteProductivityRepository"]
