@@ -8,7 +8,6 @@ from focus_agent.core.agent_team import (
     AgentTeamTask,
 )
 from focus_agent.delegation.delegation import (
-    AgentDelegationPlan,
     AgentTask,
 )
 from focus_agent.delegation.execution import DelegatedRunExecutor
@@ -36,9 +35,6 @@ from .agent_team_run_execution import (
 )
 from .agent_team_run_execution import (
     acquire_task_resource_claims as _run_acquire_task_resource_claims,
-)
-from .agent_team_run_execution import (
-    build_delegation_plan as _run_build_delegation_plan,
 )
 from .agent_team_run_execution import (
     cleanup_task_workspace as _run_cleanup_task_workspace,
@@ -74,8 +70,6 @@ from .agent_team_run_helpers import (
     _artifact_kind_for_task,
     _is_runnable_task,
     _max_parallel_runs_for,
-    _task_identity,
-    _team_role_for_agent_role,
 )
 from .agent_team_run_lease import _AgentTeamLeaseHeartbeat
 from .agent_team_run_orchestration import (
@@ -92,7 +86,6 @@ from .agent_team_run_orchestration import (
 from .agent_team_run_orchestration import (
     maybe_schedule_next_wave as _run_maybe_schedule_next_wave,
 )
-from .agent_team_run_orchestration import plan_session as _run_plan_session
 from .agent_team_run_orchestration import retry_task as _run_retry_task
 from .agent_team_run_orchestration import (
     run_ready_tasks_once as _run_ready_tasks_once,
@@ -109,24 +102,6 @@ class AgentTeamRunMixin:
     coordination_backend: Any | None
     background_work: Any | None
     workspace_service: AgentTeamWorkspaceService
-
-    def plan_session(
-        self,
-        *,
-        session_id: str,
-        user_id: str,
-        create_branches: bool = True,
-        parent_thread_id: str | None = None,
-    ) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
-        return _run_plan_session(
-            self,
-            session_id=session_id,
-            user_id=user_id,
-            create_branches=create_branches,
-            parent_thread_id=parent_thread_id,
-            task_identity=_task_identity,
-            team_role_for_agent_role=_team_role_for_agent_role,
-        )
 
     def run_ready_tasks(
         self, *, session_id: str, user_id: str, task_ids: list[str] | None = None
@@ -275,9 +250,6 @@ class AgentTeamRunMixin:
 
     def get_session_view(self, *, session_id: str, user_id: str) -> dict[str, Any]:
         return _run_get_session_view(self, session_id=session_id, user_id=user_id)
-
-    def _build_delegation_plan(self, session: AgentTeamSession) -> AgentDelegationPlan | None:
-        return _run_build_delegation_plan(self, session)
 
     def _to_delegated_task(self, task: AgentTeamTask, *, user_id: str) -> AgentTask:
         return _run_to_delegated_task(self, task, user_id=user_id)

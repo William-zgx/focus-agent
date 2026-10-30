@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from inspect import Parameter, signature
 from typing import Any
 
 from fastapi import Response
@@ -70,14 +69,6 @@ def _planning_metadata_payload(
     return metadata
 
 
-def _call_plan_session(service: Any, **kwargs: Any) -> tuple[Any, list[Any]]:
-    plan_session = service.plan_session
-    params = signature(plan_session).parameters
-    if any(param.kind == Parameter.VAR_KEYWORD for param in params.values()):
-        return plan_session(**kwargs)
-    return plan_session(**{key: value for key, value in kwargs.items() if key in params})
-
-
 def _view_response(payload: dict[str, Any]) -> AgentTeamSessionViewResponse:
     data = dict(payload)
     data["planning"] = _planning_metadata_payload(data)
@@ -86,7 +77,6 @@ def _view_response(payload: dict[str, Any]) -> AgentTeamSessionViewResponse:
 
 __all__ = [
     "_DEPRECATED_ROUTE_LINK_REL",
-    "_call_plan_session",
     "_mark_deprecated_route",
     "_model_payload",
     "_planning_metadata_payload",

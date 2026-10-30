@@ -23,7 +23,6 @@ def test_memory_router_private_helpers_remain_importable_facades() -> None:
 def test_agent_team_router_private_helpers_remain_importable_facades() -> None:
     assert agent_team._mark_deprecated_route is agent_team_responses._mark_deprecated_route
     assert agent_team._planning_metadata_payload is agent_team_responses._planning_metadata_payload
-    assert agent_team._call_plan_session is agent_team_responses._call_plan_session
     assert agent_team._view_response is agent_team_responses._view_response
 
 

@@ -13,9 +13,7 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.delegation.delegation import (
-    AgentDelegationPlan,
     AgentTask,
-    build_agent_delegation_plan,
 )
 from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
@@ -616,12 +614,6 @@ def get_session_view(service: Any, *, session_id: str, user_id: str) -> dict[str
     }
 
 
-def build_delegation_plan(service: Any, session: AgentTeamSession) -> AgentDelegationPlan | None:
-    if service.settings is None:
-        return None
-    return build_agent_delegation_plan(settings=service.settings, task_text=session.goal)
-
-
 def to_delegated_task(service: Any, task: AgentTeamTask, *, user_id: str) -> AgentTask:
     session = service.get_session(task.session_id, user_id=user_id)
     upstream_outputs = [
@@ -764,7 +756,6 @@ __all__ = [
     "_pending_tool_approvals_for_session",
     "_tool_approval_payload",
     "acquire_task_resource_claims",
-    "build_delegation_plan",
     "cleanup_task_workspace",
     "delegated_executor",
     "enqueue_durable_job",

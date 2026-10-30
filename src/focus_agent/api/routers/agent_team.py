@@ -39,7 +39,6 @@ from ..deps import get_app_runtime, get_current_principal
 from ..route_utils.agent_team import _agent_team_error, _agent_team_service_or_503
 from ..route_utils.agent_team_responses import (
     _DEPRECATED_ROUTE_LINK_REL,
-    _call_plan_session,
     _mark_deprecated_route,
     _model_payload,
     _planning_metadata_payload,
@@ -334,8 +333,7 @@ def plan_agent_team_session(
         else request.create_branches
     )
     try:
-        session, tasks = _call_plan_session(
-            service,
+        session, tasks = service.plan_session(
             session_id=session_id,
             user_id=principal.user_id,
             create_branches=create_branches,
@@ -791,7 +789,6 @@ reject_agent_team_tool_approval = agent_team_tool_approvals.reject_agent_team_to
 
 __all__ = [
     "_DEPRECATED_ROUTE_LINK_REL",
-    "_call_plan_session",
     "_mark_deprecated_route",
     "_model_payload",
     "_planning_metadata_payload",
