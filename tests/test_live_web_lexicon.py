@@ -76,3 +76,33 @@ def test_non_live_or_fetch_questions_keep_their_policy(query: str, policy: str) 
 def test_popularity_phrases_still_route_to_web_search() -> None:
     for query in ("抖音上很火的歌", "最近什么比较火", "现在什么最火", "这首歌很火吗"):
         assert build_tool_intent_plan(query).preferred_first_tool == "web_search", query
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "解释一下汇率是怎么决定的",
+        "汇率是什么意思",
+        "股价为什么会波动",
+        "how is a stock price determined",
+        "what is an exchange rate",
+    ],
+)
+def test_conceptual_questions_on_live_topics_let_the_model_choose(query: str) -> None:
+    # Live topic words alone must not force a search for a concept question.
+    plan = build_tool_intent_plan(query)
+
+    assert plan.preferred_first_tool is None
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "为什么最近油价上涨",
+        "为什么这首歌最近很火",
+        "汇率现在是多少",
+        "explain today's stock market drop",
+    ],
+)
+def test_conceptual_wording_with_freshness_cue_still_searches_first(query: str) -> None:
+    assert build_tool_intent_plan(query).preferred_first_tool == "web_search"

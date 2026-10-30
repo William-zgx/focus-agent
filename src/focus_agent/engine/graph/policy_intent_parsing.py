@@ -3,7 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from .lexicon import HTTP_URL_RE
+from .lexicon import (
+    CURRENT_TERMS,
+    HTTP_URL_RE,
+    LATEST_STATE_TERMS,
+    TIME_WINDOW_TERMS,
+    WEB_SEARCH_ACTION_TERMS,
+)
 from .policy_markers import (
     _CODE_OR_FILE_REFERENCE_RE,
     _CODE_SEARCH_TOOL_INTENT_MARKERS,
@@ -14,6 +20,34 @@ from .policy_markers import (
 )
 
 _SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
+# "Explain how exchange rates are set" mentions a live topic but asks for a
+# concept; without a freshness cue the model decides whether to search.
+_CONCEPTUAL_QUESTION_MARKERS = (
+    "解释一下",
+    "是什么意思",
+    "什么是",
+    "是怎么",
+    "为什么",
+    "原理",
+    "explain",
+    "what is a ",
+    "what is an ",
+    "what does",
+    "how is ",
+    "how does ",
+    "how do ",
+    "why does ",
+    "why do ",
+)
+_FRESH_VALUE_TERMS = (
+    *TIME_WINDOW_TERMS,
+    *LATEST_STATE_TERMS,
+    *CURRENT_TERMS,
+    *WEB_SEARCH_ACTION_TERMS,
+    "多少",
+    "几度",
+    "how much",
+)
 _WEB_SEARCH_QUERY_MAX_CHARS = 400
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
 
@@ -79,7 +113,11 @@ def _preferred_first_tool(
         ):
             return "search_code"
     if policy == "live_web_research":
-        if web_lookup_hits or _contains_any(text, _LIVE_WEB_SEARCH_FIRST_MARKERS):
+        if web_lookup_hits:
+            return "web_search"
+        if _contains_any(text, _LIVE_WEB_SEARCH_FIRST_MARKERS) and not _conceptual_question(
+            normalized
+        ):
             return "web_search"
     if policy == "execution":
         wants_workspace_first = bool(symbol_hits) and not file_browse_hits
@@ -89,6 +127,12 @@ def _preferred_first_tool(
         if wants_web_first and not wants_workspace_first:
             return "web_search"
     return None
+
+
+def _conceptual_question(normalized: str) -> bool:
+    return _contains_any(normalized, _CONCEPTUAL_QUESTION_MARKERS) and not _contains_any(
+        normalized, _FRESH_VALUE_TERMS
+    )
 
 
 def _preferred_first_args(tool_name: str | None, text: str) -> dict[str, Any]:
