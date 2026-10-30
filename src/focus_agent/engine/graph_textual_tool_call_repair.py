@@ -10,6 +10,8 @@ from ..core.types import ContextBudget
 from .graph_tool_call_repair import _known_tool_names
 from .graph_tool_history_repair import _message_text
 from .graph_tool_result_fallback import (
+    _has_tool_result_messages,
+    _invoke_tool_result_synthesis,
     _invoke_with_tool_result_fallback,
     _tool_result_fallback_message,
 )
@@ -121,12 +123,6 @@ def _repair_tool_free_answer_response(
     selected_thinking_mode: str,
     model_for,
 ) -> Any:
-    from .graph_tool_result_fallback import (
-        _has_tool_result_messages,
-        _invoke_tool_result_synthesis,
-        _tool_result_fallback_message,
-    )
-
     fallback_source_messages = fallback_messages or prompt_messages
     if not _message_text(response).strip() and _has_tool_result_messages(fallback_source_messages):
         synthesized = _invoke_tool_result_synthesis(

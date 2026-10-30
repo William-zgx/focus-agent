@@ -576,8 +576,6 @@ def _invoke_tool_result_synthesis(
     *,
     known_tool_names: set[str] | None = None,
 ) -> Any | None:
-    from .graph_textual_tool_call_repair import _looks_like_textual_tool_call_artifact
-
     if not has_repo_method(model, "invoke"):
         return None
     try:
@@ -588,7 +586,9 @@ def _invoke_tool_result_synthesis(
         return None
     if not _message_text(response).strip():
         return None
-    if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_tool_names):
+    if looks_like_textual_tool_call_artifact(
+        _message_text(response), known_tool_names=known_tool_names
+    ):
         return None
     return response
 
