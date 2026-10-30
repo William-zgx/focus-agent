@@ -327,10 +327,6 @@ export function MergeBundleCard({
 	);
 }
 
-export function riskItemsFromTasks(tasks: AgentTeamTask[]) {
-	return tasks.flatMap((task) => task.risk_notes ?? []);
-}
-
 function FinalAnswerStatusPill({
 	bundle,
 	isChineseUi,
