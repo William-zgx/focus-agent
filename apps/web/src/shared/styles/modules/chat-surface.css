@@ -28,12 +28,6 @@
 	padding: 18px;
 }
 
-.fa-chat-main-body .fa-chat-history-shell {
-	min-height: 100%;
-	padding: 22px 24px;
-	border-radius: 22px;
-}
-
 :root[data-theme="light"] .fa-chat-main-body .fa-chat-transcript {
 	background:
 		linear-gradient(
@@ -60,11 +54,6 @@
 			rgba(255, 255, 255, 0.96),
 			rgba(246, 247, 252, 0.98)
 		);
-}
-
-:root[data-theme="light"] .fa-chat-main-body .fa-chat-history-shell {
-	background: rgba(255, 255, 255, 0.8);
-	border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .fa-chat-main-body .fa-chat-history {

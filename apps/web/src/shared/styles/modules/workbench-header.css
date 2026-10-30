@@ -63,11 +63,6 @@
 	cursor: pointer;
 }
 
-.fa-conversation-title-button {
-	min-width: 0;
-	padding: 10px 12px;
-}
-
 .fa-conversation-jump-select {
 	padding: 0;
 	color: transparent;

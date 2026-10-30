@@ -80,12 +80,10 @@
 	box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
 }
 
-:where(.fa-auth-login-panel .fa-auth-form) .fa-auth-password-field,
-:where(.fa-auth-login-panel .fa-auth-form) .fa-auth-password-row {
+:where(.fa-auth-login-panel .fa-auth-form) .fa-auth-password-field {
 	min-width: 0;
 }
 
-.fa-auth-login-panel .fa-auth-password-row,
 .fa-auth-login-panel .fa-auth-password-control {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
@@ -511,13 +509,8 @@
 
 	.fa-auth-form input,
 	.fa-auth-form textarea,
-	.fa-auth-api-input-row input,
 	.fa-auth-button {
 		font-size: 0.86rem;
-	}
-
-	.fa-auth-api-input-row {
-		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.fa-auth-actions,

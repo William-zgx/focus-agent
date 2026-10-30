@@ -2,27 +2,6 @@
 	width: min(560px, 100%);
 }
 
-.fa-auth-bootstrap-copy {
-	margin: 12px 0 0;
-	color: var(--fa-text-muted);
-	font-size: 14px;
-	line-height: 1.6;
-}
-
-.fa-auth-bootstrap-form {
-	display: grid;
-	gap: 12px;
-	margin-top: 16px;
-}
-
-.fa-auth-bootstrap-label {
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: var(--fa-text-muted);
-}
-
 .fa-auth-bootstrap-input {
 	width: 100%;
 	min-height: 104px;
@@ -39,47 +18,6 @@
 .fa-auth-bootstrap-input:focus-visible {
 	outline: 2px solid color-mix(in srgb, var(--fa-accent) 56%, transparent);
 	outline-offset: 2px;
-}
-
-.fa-auth-bootstrap-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
-}
-
-.fa-auth-bootstrap-button {
-	appearance: none;
-	border: 1px solid var(--fa-border);
-	background: color-mix(in srgb, var(--fa-panel-3) 84%, transparent);
-	color: var(--fa-text);
-	border-radius: 999px;
-	padding: 10px 16px;
-	font: inherit;
-	font-size: 14px;
-	font-weight: 600;
-	cursor: pointer;
-	transition:
-		background 0.16s ease,
-		border-color 0.16s ease,
-		transform 0.16s ease;
-}
-
-.fa-auth-bootstrap-button:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--fa-panel-3) 60%, var(--fa-accent) 10%);
-}
-
-.fa-auth-bootstrap-button:disabled {
-	cursor: not-allowed;
-	opacity: 0.56;
-}
-
-.fa-auth-bootstrap-button:active:not(:disabled) {
-	transform: translateY(1px);
-}
-
-.fa-auth-bootstrap-button.is-primary {
-	border-color: color-mix(in srgb, var(--fa-accent) 40%, transparent);
-	background: color-mix(in srgb, var(--fa-accent) 18%, var(--fa-panel-3) 82%);
 }
 
 .fa-auth-page,

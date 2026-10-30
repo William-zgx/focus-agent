@@ -29,7 +29,6 @@
 }
 
 .fa-transcript-panel,
-.fa-inspector-panel,
 .fa-tree-card {
 	border-radius: 26px;
 }
@@ -40,67 +39,12 @@
 	overflow: hidden;
 }
 
-.fa-thread-toolbar {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 16px;
-	border-bottom: 1px solid var(--fa-border-subtle);
-}
-
-.fa-thread-toolbar-copy {
-	min-width: 0;
-}
-
-.fa-thread-toolbar-actions {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.fa-thread-status-pill,
-.fa-thread-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 7px 12px;
-	border-radius: 999px;
-	border: 1px solid var(--fa-border);
-	background: color-mix(in srgb, var(--fa-panel-3) 76%, transparent);
-	color: var(--fa-text-muted);
-	font-size: 11px;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
-}
-
-.fa-thread-status-pill strong {
-	padding: 3px 8px;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--fa-accent) 14%, var(--fa-panel-2) 86%);
-	color: var(--fa-accent-text);
-	letter-spacing: 0.02em;
-}
-
-.fa-thread-id {
-	color: white;
-	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-	line-height: 1.5;
-	word-break: break-all;
-}
-
-.fa-thread-chip-row {
-	display: flex;
-	flex-wrap: wrap;
-	margin-top: 14px;
-}
-
 .fa-chat-history {
 	overflow-y: auto;
 }
 
 .fa-chat-empty,
 .fa-inline-notice,
-.fa-side-card,
 .fa-tree-summary {
 	color: var(--fa-text-muted);
 	font-size: 13px;

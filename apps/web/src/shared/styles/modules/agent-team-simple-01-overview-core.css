@@ -31,8 +31,7 @@
 .fa-agent-team-simple-panel,
 .fa-agent-team-simple-task-copy,
 .fa-agent-team-simple-detail,
-.fa-agent-team-simple-result,
-.fa-agent-team-simple-next {
+.fa-agent-team-simple-result {
 	display: grid;
 	gap: 10px;
 	min-width: 0;
@@ -106,8 +105,7 @@
 	align-content: center;
 }
 
-.fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button,
-.fa-agent-team-simple-next .fa-agent-team-cockpit-button {
+.fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button {
 	min-height: 44px;
 }
 
@@ -179,21 +177,6 @@
 
 .fa-agent-team-simple-step small {
 	color: var(--fa-text-muted);
-}
-
-.fa-agent-team-simple-grid {
-	display: grid;
-	grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
-	gap: 12px;
-	align-items: start;
-}
-
-.fa-agent-team-simple-side {
-	position: sticky;
-	top: 12px;
-	display: grid;
-	gap: 12px;
-	min-width: 0;
 }
 
 .fa-agent-team-simple-panel {
@@ -274,8 +257,7 @@
 	);
 }
 
-.fa-agent-team-simple-task-copy > div:first-child,
-.fa-agent-team-simple-detail-meta {
+.fa-agent-team-simple-task-copy > div:first-child {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
@@ -289,16 +271,6 @@
 	overflow: hidden;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
-}
-
-.fa-agent-team-simple-detail-meta span {
-	display: inline-flex;
-	min-height: 24px;
-	padding: 3px 8px;
-	border: 1px solid var(--fa-border-subtle);
-	border-radius: 999px;
-	color: var(--fa-text-muted);
-	font-size: 0.72rem;
 }
 
 .fa-agent-team-simple-detail section,
@@ -352,16 +324,6 @@
 	text-decoration: underline;
 }
 
-@media (max-width: 1180px) {
-	.fa-agent-team-simple-grid {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.fa-agent-team-simple-side {
-		position: static;
-	}
-}
-
 @media (max-width: 760px) {
 	.fa-agent-team-simple-hero,
 	.fa-agent-team-simple-steps {
@@ -374,8 +336,7 @@
 		justify-content: stretch;
 	}
 
-	.fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button,
-	.fa-agent-team-simple-next .fa-agent-team-cockpit-button {
+	.fa-agent-team-simple-hero-action .fa-agent-team-cockpit-button {
 		width: 100%;
 	}
 }

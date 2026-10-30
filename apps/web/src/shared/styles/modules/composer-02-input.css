@@ -1,13 +1,3 @@
-.fa-composer-wrap {
-	padding: 16px 20px 20px;
-	border-top: 1px solid rgba(255, 255, 255, 0.04);
-	background: linear-gradient(
-		180deg,
-		rgba(15, 15, 21, 0.9),
-		rgba(11, 11, 16, 0.96)
-	);
-}
-
 .fa-composer-card {
 	display: grid;
 }

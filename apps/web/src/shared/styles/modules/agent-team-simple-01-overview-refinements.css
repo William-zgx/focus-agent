@@ -78,11 +78,6 @@
 	height: 24px;
 }
 
-.fa-agent-team-simple-grid,
-.fa-agent-team-simple-side {
-	display: contents;
-}
-
 .fa-agent-team-simple-panel {
 	padding: 12px;
 	border-radius: 16px;

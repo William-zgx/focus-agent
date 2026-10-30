@@ -62,7 +62,6 @@
 
 .fa-header-card,
 .fa-transcript-panel,
-.fa-inspector-panel,
 .fa-tree-card {
 	border: 1px solid var(--fa-border-subtle);
 	background:
@@ -249,9 +248,7 @@
 	min-width: 36px;
 }
 
-.fa-conversation-select,
-.fa-conversation-title-button,
-.fa-composer-select {
+.fa-conversation-select {
 	width: 100%;
 	appearance: none;
 	border: 1px solid rgba(255, 255, 255, 0.08);
@@ -266,23 +263,6 @@
 		border-color 0.18s ease,
 		box-shadow 0.18s ease,
 		transform 0.18s ease;
-}
-
-.fa-conversation-title-button {
-	min-width: 0;
-	flex: 1 1 auto;
-	height: 39px;
-	overflow: hidden;
-	padding: 11px 12px;
-	border-radius: 14px;
-	box-shadow: 0 10px 24px rgba(4, 10, 22, 0.12);
-	cursor: text;
-	font-size: 13px;
-	font-weight: 700;
-	line-height: 1.2;
-	text-align: left;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .fa-conversation-select {
@@ -305,28 +285,20 @@
 	background: var(--fa-panel-2);
 }
 
-.fa-conversation-title-button:hover,
-.fa-conversation-select:hover,
-.fa-composer-select:hover {
+.fa-conversation-select:hover {
 	border-color: rgba(129, 140, 248, 0.4);
 }
 
-.fa-conversation-title-button:focus-visible,
 .fa-conversation-select:focus,
-.fa-composer-select:focus,
 .fa-composer-textarea:focus,
 .fa-inline-rename-input:focus {
 	border-color: rgba(129, 140, 248, 0.54);
 	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
-.fa-toolbar-icon-button,
 .fa-toolbar-secondary,
 .fa-toolbar-primary,
 .fa-branch-action-button,
-.fa-composer-ghost,
-.fa-composer-stop,
-.fa-composer-send,
 .fa-thinking-toggle {
 	border: 1px solid rgba(255, 255, 255, 0.08);
 	border-radius: 14px;
@@ -343,10 +315,8 @@
 		transform 0.18s ease;
 }
 
-.fa-toolbar-icon-button:hover,
 .fa-toolbar-secondary:hover,
 .fa-branch-action-button:hover,
-.fa-composer-ghost:hover,
 .fa-thinking-toggle:hover {
 	border-color: rgba(129, 140, 248, 0.32);
 	background: linear-gradient(
@@ -356,20 +326,13 @@
 	);
 }
 
-.fa-toolbar-icon-button,
 .fa-toolbar-secondary {
 	padding: 10px 12px;
 	font-size: 13px;
 }
 
-.fa-toolbar-icon-button {
-	width: 42px;
-	justify-content: center;
-}
-
 .fa-toolbar-primary,
-.fa-branch-action-button.is-primary,
-.fa-composer-send {
+.fa-branch-action-button.is-primary {
 	border-color: rgba(129, 140, 248, 0.44);
 	background: linear-gradient(
 		135deg,
@@ -380,30 +343,17 @@
 }
 
 .fa-toolbar-primary:hover,
-.fa-branch-action-button.is-primary:hover,
-.fa-composer-send:hover {
+.fa-branch-action-button.is-primary:hover {
 	transform: translateY(-1px);
 	filter: brightness(1.08);
 }
 
 .fa-toolbar-primary,
 .fa-toolbar-secondary,
-.fa-composer-send,
-.fa-composer-stop,
-.fa-composer-ghost,
 .fa-thinking-toggle {
 	padding: 10px 14px;
 	font-size: 13px;
 	font-weight: 600;
-}
-
-.fa-composer-stop {
-	background: linear-gradient(
-		135deg,
-		rgba(226, 83, 111, 0.96),
-		rgba(200, 61, 88, 0.96)
-	);
-	border-color: rgba(244, 114, 182, 0.26);
 }
 
 .fa-toolbar-note {

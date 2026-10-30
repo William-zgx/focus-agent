@@ -26,7 +26,6 @@
 	}
 
 	.fa-chat-header-top,
-	.fa-thread-toolbar,
 	.fa-composer-footer-row {
 		flex-direction: column;
 		align-items: stretch;
