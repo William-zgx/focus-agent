@@ -6,8 +6,6 @@ from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.agent_team import (
@@ -18,7 +16,9 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskOutput,
     AgentTeamTaskStatus,
 )
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
+from ._postgres_base import PostgresMixin
 from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
 from .postgres_agent_team_execution_repository import (
     _EXECUTION_RECORD_KEY,
@@ -27,16 +27,21 @@ from .postgres_agent_team_execution_repository import (
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 
 
-class PostgresAgentTeamRepository(PostgresAgentTeamExecutionRepositoryMixin, AgentTeamRepository):
-    def __init__(self, database_uri: str):
+class PostgresAgentTeamRepository(
+    PostgresMixin, PostgresAgentTeamExecutionRepositoryMixin, AgentTeamRepository
+):
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
 
     def setup(self) -> None:
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
-
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod
     def _model_payload(

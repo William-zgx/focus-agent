@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.governance import (
@@ -15,6 +14,9 @@ from focus_agent.core.governance import (
     SkillPreference,
     SkillSelectionEvent,
 )
+from focus_agent.storage.postgres import PostgresConnectionProvider
+
+from ._postgres_base import PostgresMixin
 
 _CONTEXT_MEMORY_EVIDENCE_COLUMNS = """
     evidence_id, user_id, thread_id, turn_id, source_kind,
@@ -47,12 +49,15 @@ _FEEDBACK_EVENT_COLUMNS = """
 """
 
 
-class PostgresGovernanceRepository:
-    def __init__(self, database_uri: str):
+class PostgresGovernanceRepository(PostgresMixin):
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
         self.database_uri = database_uri
-
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
+        self.connection_provider = connection_provider
 
     @staticmethod
     def _decode_payload(value: object) -> dict[str, Any]:

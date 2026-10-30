@@ -28,7 +28,7 @@ from ..memory.embedding import (
 )
 from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
-from ..repositories.agent_team_repository import AgentTeamRepository, InMemoryAgentTeamRepository
+from ..repositories.agent_team_repository import InMemoryAgentTeamRepository  # noqa: F401
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.in_memory_branch_repository import (
     InMemoryBranchRepository as InMemoryBranchRepository,
@@ -97,11 +97,13 @@ from .runtime_memory_setup import (
     _setup_memory_repository_if_available as _setup_memory_repository_if_available,
 )
 from .runtime_persistence import (
-    _create_local_checkpointer as _create_local_checkpointer,
-)
-from .runtime_persistence import (
+    _create_agent_team_repository,
+    _create_governance_repository,
     _create_local_fallback_persistence,
     _create_postgres_primary_persistence,
+)
+from .runtime_persistence import (
+    _create_local_checkpointer as _create_local_checkpointer,
 )
 from .runtime_persistence import (
     _create_repository_with_provider as _create_repository_with_provider,
@@ -271,7 +273,9 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         coordination_backend=coordination_backend,
     )
     graph = harness.graph
-    governance_repository = _create_governance_repository(settings)
+    governance_repository = _create_governance_repository(
+        settings, connection_provider=postgres_connection_provider
+    )
     services = _create_runtime_services(
         settings=settings,
         graph=graph,
@@ -286,6 +290,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         retrieval_index=memory.retrieval_index,
         coordination_backend=coordination_backend,
         background_work=background_work,
+        postgres_connection_provider=postgres_connection_provider,
     )
 
     runtime = AppRuntime(
@@ -461,16 +466,6 @@ def _create_postgres_connection_provider(settings: Settings) -> PostgresConnecti
     )
 
 
-def _create_governance_repository(settings: Settings) -> object:
-    if settings.database_uri:
-        from ..repositories.postgres_governance_repository import PostgresGovernanceRepository
-
-        return PostgresGovernanceRepository(settings.database_uri)
-    from ..repositories.governance_repository import InMemoryGovernanceRepository
-
-    return InMemoryGovernanceRepository()
-
-
 def _create_memory_components(
     *,
     settings: Settings,
@@ -576,6 +571,7 @@ def _create_runtime_services(
     retrieval_index: object | None,
     coordination_backend: CoordinationBackend,
     background_work: BoundedBackgroundQueue,
+    postgres_connection_provider: PostgresConnectionProvider | None = None,
 ) -> RuntimeServices:
     return _create_runtime_services_impl(
         settings=settings,
@@ -590,7 +586,9 @@ def _create_runtime_services(
         retrieval_index=retrieval_index,
         coordination_backend=coordination_backend,
         background_work=background_work,
-        agent_team_repository=_create_agent_team_repository(settings),
+        agent_team_repository=_create_agent_team_repository(
+            settings, connection_provider=postgres_connection_provider
+        ),
         branch_service_factory=BranchService,
         agent_team_service_factory=AgentTeamService,
         user_service_factory=UserService,
@@ -622,17 +620,6 @@ def _langgraph_postgres_pool(*, settings: Settings, name: str) -> Iterator[objec
         open=True,
     ) as pool:
         yield pool
-
-
-def _create_agent_team_repository(settings: Settings) -> AgentTeamRepository:
-    if settings.database_uri:
-        from ..repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
-
-        repository = PostgresAgentTeamRepository(settings.database_uri)
-    else:
-        repository = InMemoryAgentTeamRepository()
-    _setup_component_if_available(repository)
-    return repository
 
 
 def _setup_component_if_available(component: object) -> None:

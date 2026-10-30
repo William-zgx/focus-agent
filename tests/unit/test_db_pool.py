@@ -154,3 +154,46 @@ def test_readyz_exposes_active_connections_from_provider_snapshot() -> None:
         assert readiness.active_connections == 1
     finally:
         provider._return()
+
+
+def test_app_repositories_route_connections_through_shared_provider() -> None:
+    from focus_agent.repositories.postgres_agent_team_repository import (
+        PostgresAgentTeamRepository,
+    )
+    from focus_agent.repositories.postgres_governance_repository import (
+        PostgresGovernanceRepository,
+    )
+    from focus_agent.repositories.postgres_productivity_repository import (
+        PostgresProductivityRepository,
+    )
+    from focus_agent.repositories.postgres_user_repository import PostgresUserRepository
+
+    connection = object()
+
+    class FakeProvider:
+        def __init__(self) -> None:
+            self.row_factories: list[object | None] = []
+
+        @contextmanager
+        def connect(self, *, row_factory: object | None = None) -> Any:
+            self.row_factories.append(row_factory)
+            yield connection
+
+    for repository_cls in (
+        PostgresAgentTeamRepository,
+        PostgresGovernanceRepository,
+        PostgresProductivityRepository,
+        PostgresUserRepository,
+    ):
+        provider = FakeProvider()
+        repo = repository_cls(
+            "postgresql://focus-agent.test/runtime",
+            connection_provider=provider,  # type: ignore[arg-type]
+        )
+
+        with repo._connect() as conn:
+            assert conn is connection
+        with repo._connection() as conn:
+            assert conn is connection
+
+        assert provider.row_factories == [dict_row_factory, None], repository_cls.__name__

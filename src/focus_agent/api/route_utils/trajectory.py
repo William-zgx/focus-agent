@@ -376,7 +376,10 @@ def _maybe_get_trajectory_repository(
         return repository
     database_uri = getattr(getattr(runtime, "settings", None), "database_uri", None)
     if database_uri:
-        return PostgresTrajectoryRepository(database_uri)
+        return PostgresTrajectoryRepository(
+            database_uri,
+            connection_provider=getattr(runtime, "postgres_connection_provider", None),
+        )
     return None
 
 
