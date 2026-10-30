@@ -24,12 +24,15 @@ from ..graph_tool_history_repair import (
     _ensure_reasoning_content_for_tool_call_history,
     _find_trailing_tool_span_start,
     _has_tool_calls,
+    _latest_human_message_text,
+    _latest_turn_messages,
     _message_text,
     _messages_for_model,
     _sanitize_assistant_tool_call_message,
     _should_force_tool_free_answer,
     _stringify_message_block,
     _thinking_mode_requires_reasoning_content,
+    _truncate_inline,
 )
 from ..graph_tool_result_fallback import (
     _TOOL_CALL_REPAIR_FALLBACK_TEXT,
@@ -40,15 +43,12 @@ from ..graph_tool_result_fallback import (
     _invoke_tool_result_synthesis,
     _invoke_with_tool_result_fallback,
     _latest_final_ai_text,
-    _latest_human_message_text,
-    _latest_turn_messages,
     _tool_call_args_summary,
     _tool_observation_summary,
     _tool_result_fallback_message,
     _tool_result_snippets,
     _tool_result_synthesis_prompt,
     _tool_runtime_summary,
-    _truncate_inline,
 )
 
 __all__ = [

@@ -5,33 +5,17 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, ToolMessage
 
 from ..core.context_tool_observation_references import _tool_observation_ref
 from ..core.types import ContextBudget
 from .graph_evidence import relevant_web_tool_call_ids
-from .graph_tool_history_repair import _message_text
-
-
-def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
-    text = " ".join(str(value).split())
-    if len(text) <= max_chars:
-        return text
-    return f"{text[: max_chars - 1]}…"
-
-
-def _latest_human_message_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            return _message_text(message)
-    return ""
-
-
-def _latest_turn_messages(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index:]
-    return messages
+from .graph_tool_history_repair import (
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _message_text,
+    _truncate_inline,
+)
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:

@@ -15,24 +15,19 @@ from .graph_evidence import (
     normalize_evidence_bundle,
     relevant_web_tool_call_ids,
 )
-from .graph_tool_history_repair import _message_text
+from .graph_tool_history_repair import (
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _message_text,
+    _truncate_inline,
+)
 from .graph_web_result_fallback import (
-    _chinese_weather_summary_from_payloads,
-    _contains_weather_marker,
-    _extract_concise_weather_text,
     _fallback_web_answer_from_tool_results,
     _latest_relevant_web_payloads,
-    _looks_like_internal_web_summary,
-    _looks_like_live_web_fallback_payload,
-    _looks_like_weather_query,
     _looks_like_web_observation_payload,
     _payload_results,
     _prompt_observation_payload,
-    _reference_sources,
     _representative_fetch_excerpt,
-    _source_domain,
-    _web_payload_main_answer,
-    _web_payload_sources,
     _web_synthesis_char_budget,
 )
 
@@ -68,13 +63,6 @@ _UNFOUND_ANSWER_MARKERS = (
 )
 
 
-def _latest_human_message_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            return _message_text(message)
-    return ""
-
-
 def _latest_final_ai_text(messages: list[Any]) -> str:
     for message in reversed(messages):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
@@ -97,20 +85,6 @@ def _context_budget_from_state(state: AgentState) -> ContextBudget:
     if budget.tokenizer_id or not selected_model:
         return budget
     return budget.model_copy(update={"tokenizer_id": selected_model})
-
-
-def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
-    text = " ".join(str(value).split())
-    if len(text) <= max_chars:
-        return text
-    return f"{text[: max_chars - 1]}…"
-
-
-def _latest_turn_messages(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index:]
-    return messages
 
 
 def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -647,32 +621,14 @@ def _invoke_with_tool_result_fallback(
 __all__ = [
     "_TOOL_CALL_REPAIR_FALLBACK_TEXT",
     "_TOOL_RESULT_SYNTHESIS_NOTE",
-    "_latest_human_message_text",
     "_latest_final_ai_text",
     "_context_budget_from_state",
-    "_truncate_inline",
-    "_latest_turn_messages",
     "_fallback_answer_from_tool_results",
     "_degraded_answer_from_tool_results",
-    "_fallback_web_answer_from_tool_results",
-    "_latest_relevant_web_payloads",
-    "_looks_like_live_web_fallback_payload",
-    "_web_payload_main_answer",
-    "_looks_like_internal_web_summary",
-    "_looks_like_weather_query",
-    "_contains_weather_marker",
-    "_chinese_weather_summary_from_payloads",
-    "_extract_concise_weather_text",
-    "_web_payload_sources",
-    "_reference_sources",
-    "_payload_results",
-    "_source_domain",
     "_tool_call_args_summary",
     "_tool_runtime_summary",
     "_tool_observation_summary",
     "_tool_result_snippets",
-    "_looks_like_web_observation_payload",
-    "_prompt_observation_payload",
     "_tool_result_synthesis_prompt",
     "_should_replace_unfound_workspace_answer",
     "_has_tool_result_messages",

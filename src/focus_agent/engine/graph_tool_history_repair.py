@@ -218,6 +218,27 @@ def _message_text(message: Any) -> str:
     return str(content)
 
 
+def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
+    text = " ".join(str(value).split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
+def _latest_human_message_text(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return _message_text(message)
+    return ""
+
+
+def _latest_turn_messages(messages: list[Any]) -> list[Any]:
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index:]
+    return messages
+
+
 def _stringify_message_block(value: Any) -> str:
     if value is None:
         return ""
@@ -359,6 +380,9 @@ __all__ = [
     "_should_force_tool_free_answer",
     "_has_repeated_failed_tool_call",
     "_message_text",
+    "_truncate_inline",
+    "_latest_human_message_text",
+    "_latest_turn_messages",
     "_stringify_message_block",
     "_sanitize_assistant_tool_call_message",
     "_thinking_mode_requires_reasoning_content",
