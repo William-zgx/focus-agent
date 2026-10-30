@@ -8,79 +8,57 @@ from typing import Any
 from langchain.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
 
-from ...agent_delegation import build_failure_records, build_review_queue
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ...config import Settings
-from ...core.context.policy import apply_prompt_budget_guard
 from ...core.context_request import build_context_request
-from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
-from ...core.runtime_outcome import build_task_outcome
-from ...core.state import AgentState, append_agent_state_record
-from ...core.types import Plan  # noqa: F401
+from ...core.state import AgentState
 from ...skills import SkillRegistry
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
-from ..graph_evidence import (
-    evidence_bundle_to_citation_refs,
-    normalize_evidence_bundle,
-    normalize_evidence_ledger,
-)
 from ..graph_execution_contract import (
     build_execution_contract,
-    evaluate_execution_contract,
-    skill_execution_evidence_facts,
-    tool_result_names,
-    verify_answer_against_evidence,
 )
-from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
-from ..graph_plan_nodes import _format_plan_block  # noqa: F401
-from ..graph_tool_result_fallback import (
-    _should_replace_unfound_workspace_answer,
-    _tool_result_synthesis_prompt,
-)
-from ..graph_turn_helpers import (
-    _context_budget_from_state,
-    _degraded_answer_from_tool_results,
-    _ensure_reasoning_content_for_tool_call_history,
-    _fallback_answer_from_tool_results,
-    _invoke_with_tool_result_fallback,
-    _known_tool_names,
-    _latest_human_message_text,
-    _latest_turn_messages,
+from ..graph_textual_tool_call_repair import (
     _looks_like_textual_tool_call_artifact,
-    _messages_for_model,
-    _repair_and_dedupe_tool_calls,
     _repair_textual_tool_call_response,
     _repair_tool_free_answer_response,
-    _should_force_tool_free_answer,
-    _tool_policy_note,
-    _workspace_search_query,
 )
-from . import agent_loop_support as _agent_loop_support
+from ..graph_tool_call_repair import _known_tool_names, _repair_and_dedupe_tool_calls
+from ..graph_tool_history_repair import (
+    _ensure_reasoning_content_for_tool_call_history,
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _messages_for_model,
+    _should_force_tool_free_answer,
+)
+from ..graph_tool_result_fallback import (
+    _context_budget_from_state,
+    _degraded_answer_from_tool_results,
+    _fallback_answer_from_tool_results,
+    _invoke_with_tool_result_fallback,
+    _tool_result_synthesis_prompt,
+)
+from .agent_loop_first_calls import (
+    anchor_planned_web_search_args,
+    planned_web_fetch_call,
+    planned_web_search_call,
+    skill_or_workspace_first_call,
+    temporal_anchor_call,
+)
 from .agent_loop_helpers import (
     _has_tool_named,
     _latest_tool_result_content,
     _latest_turn_has_tool_result,
-    _live_web_answer_needs_repair,
-    _live_web_answer_repair_count,
     _live_web_contract_needs_search,
-    _live_web_failure_answer,
-    _live_web_repair_response,
-    _live_web_research_should_start_with_search_compat,
-    _merge_active_skill_recommended_tools,
     _message_content_text,
-    _new_citation_refs,
-    _next_pending_tool_action,
     _pending_live_web_search_action_from_state,
     _registered_tool_names,
-    _skill_execution_answer_repair_count,
-    _skill_execution_failure_answer,
-    _skill_execution_repair_prompt,
     _tool_intent_text,
     _tool_router_fallback_role,
-    _tools_for_policy_compat,
-    _workspace_lookup_should_start_with_search_compat,
+)
+from .agent_loop_helpers_skill_planning import (
+    _merge_active_skill_recommended_tools,
     apply_skill_execution_plan,
     build_active_skill_execution_plan,
     skill_execution_policy_note,
@@ -96,125 +74,30 @@ from .agent_loop_prompt import (
     _root_thread_id,
     _steer_block,
 )
-from .agent_loop_skill_helpers import _READ_ONLY_SKILL_TOOL_RE  # noqa: F401
 from .agent_loop_skill_helpers import (
     explicit_skill_tools_satisfied as _explicit_skill_tools_satisfied,
 )
-from .agent_loop_skill_helpers import (
-    skill_install_args_from_search_result as _skill_install_args_from_search_result,
-)
 from .agent_loop_support import (
-    _ALTERNATIVE_OUTCOME_ROLES,  # noqa: F401
-    _FAILED_OUTCOME_STATUSES,  # noqa: F401
-    _HTTP_URL_RE,  # noqa: F401
-    _PRIMARY_OUTCOME_ROLES,  # noqa: F401
-    _SUCCESS_OUTCOME_STATUSES,  # noqa: F401
     _drain_steer_messages,
     _filter_tools_by_agent_def,
-    _outcome_attempt_index,  # noqa: F401
-    _outcome_max_attempts,  # noqa: F401
+    _model_for_stream_phase,
+    _model_with_tools_for_stream_phase,
     _resolve_agent_definition,
     _should_force_degraded_skill_recovery_answer,
-    _web_fetch_args,
-    _with_focus_agent_turn_metadata,
+    _with_stream_phase,
 )
 from .agent_loop_updates import finalize_agent_loop_turn
+from .lexicon import contains_cjk
 from .policy import (
-    _skill_install_name_from_text,
-    _skill_view_name_from_text,
-    _temporal_live_web_search_args,
     _tool_intent_plan_requires_temporal_anchor,
     _turn_tool_exposure_from_intent_plan,
     build_tool_intent_plan,
 )
-from .policy_temporal import search_time_range
+from .policy_notes import _tool_policy_note
+from .policy_tools import _live_web_research_should_start_with_search, _tools_for_policy
 from .retrieval_ledger import collect_retrieval_ledger, retrieval_ledger_note
 
 _logger = logging.getLogger(__name__)
-
-
-def _with_stream_phase(model: Any, phase: str) -> Any:
-    """Apply stream metadata while preserving the established patch seam."""
-
-    return _agent_loop_support._with_stream_phase(
-        model,
-        phase,
-        has_method=has_repo_method,
-    )
-
-
-def _model_for_stream_phase(
-    model_for: Callable[[str, str], Any],
-    phase: str,
-) -> Callable[[str, str], Any]:
-    def wrapped(model_id: str, thinking_mode: str) -> Any:
-        return _with_stream_phase(model_for(model_id, thinking_mode), phase)
-
-    return wrapped
-
-
-def _model_with_tools_for_stream_phase(
-    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
-    phase: str,
-) -> Callable[[str, str, list[Any] | None], Any]:
-    def wrapped(model_id: str, thinking_mode: str, available_tools: list[Any] | None) -> Any:
-        return _with_stream_phase(
-            model_with_tools_for(model_id, thinking_mode, available_tools),
-            phase,
-        )
-
-    return wrapped
-
-
-def _agent_loop_update_hooks(
-    model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
-) -> dict[str, Any]:
-    """Resolve finalization dependencies at turn time for patch compatibility."""
-
-    hooks = {
-        "_degraded_answer_from_tool_results": _degraded_answer_from_tool_results,
-        "_message_content_text": _message_content_text,
-        "_fallback_answer_from_tool_results": _fallback_answer_from_tool_results,
-        "_should_replace_unfound_workspace_answer": _should_replace_unfound_workspace_answer,
-        "_latest_tool_result_content": _latest_tool_result_content,
-        "normalize_evidence_bundle": normalize_evidence_bundle,
-        "normalize_evidence_ledger": normalize_evidence_ledger,
-        "skill_execution_evidence_facts": skill_execution_evidence_facts,
-        "tool_result_names": tool_result_names,
-        "evaluate_execution_contract": evaluate_execution_contract,
-        "verify_answer_against_evidence": verify_answer_against_evidence,
-        "_live_web_answer_repair_count": _live_web_answer_repair_count,
-        "_skill_execution_answer_repair_count": _skill_execution_answer_repair_count,
-        "_live_web_answer_needs_repair": _live_web_answer_needs_repair,
-        "apply_prompt_budget_guard": apply_prompt_budget_guard,
-        "_skill_execution_repair_prompt": _skill_execution_repair_prompt,
-        "_ensure_reasoning_content_for_tool_call_history": (
-            _ensure_reasoning_content_for_tool_call_history
-        ),
-        "_invoke_with_tool_result_fallback": _invoke_with_tool_result_fallback,
-        "_with_stream_phase": _with_stream_phase,
-        "_looks_like_textual_tool_call_artifact": _looks_like_textual_tool_call_artifact,
-        "_repair_textual_tool_call_response": _repair_textual_tool_call_response,
-        "_repair_and_dedupe_tool_calls": _repair_and_dedupe_tool_calls,
-        "_skill_execution_failure_answer": _skill_execution_failure_answer,
-        "_live_web_repair_response": _live_web_repair_response,
-        "_live_web_failure_answer": _live_web_failure_answer,
-        "evidence_bundle_to_citation_refs": evidence_bundle_to_citation_refs,
-        "_new_citation_refs": _new_citation_refs,
-        "_latest_turn_has_tool_result": _latest_turn_has_tool_result,
-        "enforce_temporal_anchor": enforce_temporal_anchor,
-        "repair_chinese_output": repair_chinese_output,
-        "build_task_outcome": build_task_outcome,
-        "_with_focus_agent_turn_metadata": _with_focus_agent_turn_metadata,
-        "_next_pending_tool_action": _next_pending_tool_action,
-        "append_agent_state_record": append_agent_state_record,
-        "build_failure_records": build_failure_records,
-        "build_review_queue": build_review_queue,
-        "_latest_turn_messages": _latest_turn_messages,
-        "STREAM_VISIBILITY_QUARANTINE": STREAM_VISIBILITY_QUARANTINE,
-        "model_with_tools_for": model_with_tools_for,
-    }
-    return hooks
 
 
 def make_agent_loop_node(
@@ -280,34 +163,16 @@ def make_agent_loop_node(
         tool_policy = tool_intent_plan.policy
         temporal_anchor_required = _tool_intent_plan_requires_temporal_anchor(tool_intent_plan)
         current_utc_time_result = _latest_tool_result_content(state_messages, "current_utc_time")
-        if (
-            tool_policy == "live_web_research"
-            and tool_intent_plan.preferred_first_tool == "web_search"
-            and current_utc_time_result
-        ):
-            anchored_args = _temporal_live_web_search_args(
-                tool_intent_plan.preferred_first_args,
-                fallback_query=tool_intent_text,
-                current_utc_time=current_utc_time_result,
-            )
-            search_tool = next(
-                (tool for tool in all_tools if getattr(tool, "name", "") == "web_search"), None
-            )
-            search_parameters = getattr(search_tool, "args", {})
-            if (
-                isinstance(search_parameters, dict)
-                and "time_range" in search_parameters
-                and (time_range := search_time_range(tool_intent_text))
-            ):
-                anchored_args.setdefault("time_range", time_range)
-            if anchored_args and anchored_args != tool_intent_plan.preferred_first_args:
-                tool_intent_plan = tool_intent_plan.model_copy(
-                    update={"preferred_first_args": anchored_args}
-                )
+        tool_intent_plan = anchor_planned_web_search_args(
+            tool_intent_plan,
+            tool_intent_text=tool_intent_text,
+            current_utc_time_result=current_utc_time_result,
+            all_tools=all_tools,
+        )
         tool_exposure = _turn_tool_exposure_from_intent_plan(tool_intent_plan)
         temporal_anchor_forced = False
         forced_degraded_skill_recovery = False
-        available_tools = _tools_for_policy_compat(
+        available_tools = _tools_for_policy(
             tool_policy,
             all_tools,
             tool_intent_text,
@@ -426,6 +291,7 @@ def make_agent_loop_node(
         terminal_stream_phase = (
             STREAM_VISIBILITY_QUARANTINE if temporal_anchor_required else STREAM_VISIBILITY_VISIBLE
         )
+        call_index = state.get("llm_calls", 0) + 1
         if context_overflow:
             response = _context_overflow_response(tool_intent_text)
         elif force_tool_free_answer:
@@ -454,9 +320,7 @@ def make_agent_loop_node(
             else:
                 response = AIMessage(content=fallback_answer)
             if temporal_anchor_required and current_utc_time_result:
-                is_chinese_request = any(
-                    "\u4e00" <= character <= "\u9fff" for character in tool_intent_text
-                )
+                is_chinese_request = contains_cjk(tool_intent_text)
                 time_label = "当前 UTC 时间" if is_chinese_request else "Verified current UTC time"
                 response = response.model_copy(
                     update={
@@ -465,47 +329,33 @@ def make_agent_loop_node(
                     }
                 )
         elif (
-            tool_policy == "live_web_research"
-            and temporal_anchor_required
-            and _has_tool_named(available_tools, "current_utc_time")
-            and not _latest_turn_has_tool_result(state_messages, "current_utc_time")
-        ):
+            anchor_call := temporal_anchor_call(
+                tool_policy=tool_policy,
+                temporal_anchor_required=temporal_anchor_required,
+                available_tools=available_tools,
+                state_messages=state_messages,
+                call_index=call_index,
+            )
+        ) is not None:
             temporal_anchor_forced = True
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"current-utc-time-{state.get('llm_calls', 0) + 1}",
-                        "name": "current_utc_time",
-                        "args": {},
-                    }
-                ],
-            )
+            response = anchor_call
         elif (
-            tool_policy == "live_web_research"
-            and tool_intent_plan.preferred_first_tool == "web_fetch"
-            and _has_tool_named(available_tools, "web_fetch")
-            and not _latest_turn_has_tool_result(state_messages, "web_fetch")
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"live-web-fetch-{state.get('llm_calls', 0) + 1}",
-                        "name": "web_fetch",
-                        "args": _web_fetch_args(
-                            tool_intent_plan.preferred_first_args,
-                            tool_intent_text,
-                        ),
-                    }
-                ],
+            fetch_call := planned_web_fetch_call(
+                tool_policy=tool_policy,
+                tool_intent_plan=tool_intent_plan,
+                tool_intent_text=tool_intent_text,
+                available_tools=available_tools,
+                state_messages=state_messages,
+                call_index=call_index,
             )
+        ) is not None:
+            response = fetch_call
         elif (
             tool_policy == "live_web_research"
             and _has_tool_named(available_tools, "web_search")
             and (
                 _live_web_contract_needs_search(state_messages)
-                or _live_web_research_should_start_with_search_compat(
+                or _live_web_research_should_start_with_search(
                     tool_intent_text, state_messages, available_tools, exposure=tool_exposure
                 )
             )
@@ -528,131 +378,23 @@ def make_agent_loop_node(
                 _logger.warning("Search query planning failed", exc_info=True)
                 response = AIMessage(content="")
             if not getattr(response, "tool_calls", None):
-                response = AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": f"live-web-search-{state.get('llm_calls', 0) + 1}",
-                            "name": "web_search",
-                            "args": tool_intent_plan.preferred_first_args
-                            or {"query": tool_intent_text},
-                        }
-                    ],
+                response = planned_web_search_call(
+                    tool_intent_plan=tool_intent_plan,
+                    tool_intent_text=tool_intent_text,
+                    call_index=call_index,
                 )
         elif (
-            tool_policy in {"workspace_lookup", "execution"}
-            and tool_intent_plan.preferred_first_tool == "skills_search"
-            and _has_tool_named(available_tools, "skills_search")
-            and not _latest_turn_has_tool_result(state_messages, "skills_search")
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"skills-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "skills_search",
-                        "args": tool_intent_plan.preferred_first_args
-                        or {"query": tool_intent_text},
-                    }
-                ],
+            first_call := skill_or_workspace_first_call(
+                tool_policy=tool_policy,
+                tool_intent_plan=tool_intent_plan,
+                tool_intent_text=tool_intent_text,
+                available_tools=available_tools,
+                state_messages=state_messages,
+                tool_exposure=tool_exposure,
+                call_index=call_index,
             )
-        elif (
-            tool_policy == "execution"
-            and "skill_install_intent" in tool_intent_plan.reason_codes
-            and _has_tool_named(available_tools, "skill_install")
-            and _latest_turn_has_tool_result(state_messages, "skills_search")
-            and not _latest_turn_has_tool_result(state_messages, "skill_install")
-            and (
-                skill_install_args := _skill_install_args_from_search_result(
-                    tool_intent_text,
-                    state_messages,
-                    latest_tool_result_content=_latest_tool_result_content,
-                    skill_install_name_from_text=_skill_install_name_from_text,
-                )
-            )
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"skill-install-{state.get('llm_calls', 0) + 1}",
-                        "name": "skill_install",
-                        "args": skill_install_args,
-                    }
-                ],
-            )
-        elif (
-            tool_policy == "execution"
-            and tool_intent_plan.preferred_first_tool == "skill_install"
-            and _has_tool_named(available_tools, "skill_install")
-            and not _latest_turn_has_tool_result(state_messages, "skill_install")
-            and tool_intent_plan.preferred_first_args.get("skill_id")
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"skill-install-{state.get('llm_calls', 0) + 1}",
-                        "name": "skill_install",
-                        "args": tool_intent_plan.preferred_first_args,
-                    }
-                ],
-            )
-        elif (
-            tool_policy == "workspace_lookup"
-            and tool_intent_plan.preferred_first_tool == "skill_view"
-            and _has_tool_named(available_tools, "skill_view")
-            and not _latest_turn_has_tool_result(state_messages, "skill_view")
-            and tool_intent_plan.preferred_first_args.get("name")
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"skill-view-{state.get('llm_calls', 0) + 1}",
-                        "name": "skill_view",
-                        "args": tool_intent_plan.preferred_first_args,
-                    }
-                ],
-            )
-        elif (
-            tool_policy == "workspace_lookup"
-            and "skill_view" in tool_intent_text.lower()
-            and _has_tool_named(available_tools, "skill_view")
-            and _latest_turn_has_tool_result(state_messages, "skills_search")
-            and not _latest_turn_has_tool_result(state_messages, "skill_view")
-            and (skill_view_name := _skill_view_name_from_text(tool_intent_text))
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"skill-view-{state.get('llm_calls', 0) + 1}",
-                        "name": "skill_view",
-                        "args": {"name": skill_view_name},
-                    }
-                ],
-            )
-        elif (
-            tool_policy == "workspace_lookup"
-            and _workspace_lookup_should_start_with_search_compat(
-                tool_intent_text,
-                state_messages,
-                available_tools,
-                exposure=tool_exposure,
-            )
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": f"workspace-search-{state.get('llm_calls', 0) + 1}",
-                        "name": "search_code",
-                        "args": tool_intent_plan.preferred_first_args
-                        or {"query": _workspace_search_query(tool_intent_text)},
-                    }
-                ],
-            )
+        ) is not None:
+            response = first_call
         elif not available_tools:
             response = _invoke_with_tool_result_fallback(
                 _with_stream_phase(
@@ -728,7 +470,7 @@ def make_agent_loop_node(
             state=state,
             state_messages=state_messages,
             response=response,
-            hooks=_agent_loop_update_hooks(model_with_tools_for),
+            model_with_tools_for=model_with_tools_for,
             settings=settings,
             tool_intent_plan=tool_intent_plan,
             tool_route_plan=tool_route_plan,

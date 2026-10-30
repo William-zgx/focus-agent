@@ -12,7 +12,7 @@ from focus_agent.capabilities.tool_router import build_tool_route_plan
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
-from focus_agent.engine.graph.agent_loop_helpers import (
+from focus_agent.engine.graph.agent_loop_helpers_skill_planning import (
     apply_skill_execution_plan,
     build_active_skill_execution_plan,
 )
@@ -66,7 +66,7 @@ class _StaticAIResponseModel:
 def _patch_static_chat_model(monkeypatch, *, content: str = "done"):
     fake_model = _StaticAIResponseModel(content=content)
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
     return fake_model
@@ -691,7 +691,7 @@ def test_graph_forces_tool_free_answer_after_eight_web_rounds(monkeypatch):
     fake_model = FakeModel()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -789,7 +789,7 @@ def test_graph_exhaustion_rejects_additional_live_web_tool_calls_with_verified_t
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -882,7 +882,7 @@ def test_graph_rejects_tool_markup_without_repeated_synthesis(monkeypatch):
     fake_model = FakeModel()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -957,7 +957,7 @@ def test_graph_repairs_textual_tool_call_artifact_before_tool_execution(monkeypa
     fake_model = FakeModel()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -1656,7 +1656,7 @@ def test_graph_routes_external_ai_trend_queries_to_web_search_first(monkeypatch)
                 return FakeRunnable()
 
         monkeypatch.setattr(
-            "focus_agent.engine.graph_builder.create_chat_model",
+            "focus_agent.engine.graph.builder.create_chat_model",
             lambda *args, **kwargs: FakeModel(),
         )
 
@@ -1721,7 +1721,7 @@ def test_graph_forces_current_time_before_temporal_web_search(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -1912,7 +1912,7 @@ def test_graph_forces_web_fetch_for_explicit_url_requests(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -1981,7 +1981,7 @@ def test_graph_keeps_web_fetch_url_when_prior_time_tool_result_exists(monkeypatc
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2074,7 +2074,7 @@ def test_graph_repairs_once_then_fails_credibly_for_stale_live_web_evidence(monk
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2276,7 +2276,7 @@ def test_graph_recovers_pending_web_search_from_confirmation(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2339,7 +2339,7 @@ def test_graph_writes_evidence_bundle_and_citations_after_web_result(monkeypatch
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2389,7 +2389,7 @@ def test_graph_routes_research_prefixed_academic_download_to_web_search_first(mo
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2441,7 +2441,7 @@ def test_graph_routes_project_web_search_location_to_search_code_without_web_exp
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2510,7 +2510,7 @@ def test_graph_routes_skill_discovery_requests_to_skills_search(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2580,7 +2580,7 @@ def test_graph_routes_chinese_explicit_skill_use_with_live_signals_to_skills_sea
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2656,7 +2656,7 @@ def test_graph_routes_explicit_skill_tool_chain_to_skill_tools(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2753,7 +2753,7 @@ def test_graph_routes_skill_install_intent_from_search_to_install(monkeypatch):
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -2944,7 +2944,7 @@ def test_graph_adds_active_skill_recommended_read_tools_to_main_chat(tmp_path, m
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -3020,7 +3020,7 @@ def test_graph_adds_active_skill_recommended_command_tools_for_execution(tmp_pat
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -3110,7 +3110,7 @@ def test_graph_adds_active_skill_primary_tools_for_execution_contract(tmp_path, 
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -3262,7 +3262,7 @@ def test_graph_repairs_active_skill_answer_that_skips_primary_tool(tmp_path, mon
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -3372,7 +3372,7 @@ def test_graph_falls_back_when_skill_answer_ignores_entrypoint_observation(tmp_p
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -3550,7 +3550,7 @@ def test_graph_forces_degraded_answer_after_exhausted_skill_recovery(tmp_path, m
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -3673,7 +3673,7 @@ def test_graph_respects_no_network_recent_ai_tools_request_without_tool_call(mon
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -3727,7 +3727,7 @@ def test_graph_exposes_mixed_readonly_web_and_workspace_tools_without_write_tool
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -3893,7 +3893,7 @@ def test_graph_replaces_unfound_workspace_answer_when_tool_results_have_hits(mon
             return FakeRunnable()
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -4088,7 +4088,7 @@ def test_graph_does_not_bind_tools_for_direct_answer_turn(monkeypatch):
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4163,7 +4163,7 @@ def test_graph_binds_only_workspace_tools_for_workspace_turn(monkeypatch):
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4235,7 +4235,7 @@ def test_graph_applies_prompt_budget_guard_before_direct_model_invoke(monkeypatc
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4307,7 +4307,7 @@ def test_graph_blocks_model_when_required_context_overflows(monkeypatch, user_re
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4630,7 +4630,7 @@ def test_graph_falls_back_to_web_tool_results_when_final_answer_model_fails(monk
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4717,7 +4717,7 @@ def test_graph_rewrites_english_web_answer_for_chinese_request(monkeypatch):
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4819,7 +4819,7 @@ def test_graph_repairs_kimi_bracket_tool_marker_after_tool_results(monkeypatch):
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -4887,7 +4887,7 @@ def test_graph_repairs_internal_search_narration_after_tool_results(monkeypatch)
 
     fake_model = FakeModel()
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5003,7 +5003,7 @@ def test_graph_memory_search_binds_missing_context_args_and_avoids_default_proje
         ],
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5048,7 +5048,7 @@ def test_graph_memory_tool_rejects_mismatched_user_and_root_without_executing(mo
         ],
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5085,7 +5085,7 @@ def test_graph_memory_tool_rejects_explicit_other_user_namespace(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5120,7 +5120,7 @@ def test_graph_memory_tool_rejects_skill_scope_without_executing(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5158,7 +5158,7 @@ def test_graph_memory_tool_allows_current_branch_namespace(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5213,7 +5213,7 @@ def test_graph_tool_executor_converts_tool_exception_into_error_message(monkeypa
     )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5275,7 +5275,7 @@ def test_graph_tool_executor_retries_retryable_failure_once(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5442,7 +5442,7 @@ def test_graph_tool_executor_enforces_max_calls_per_turn(monkeypatch):
         final_answer="handled limit",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5496,7 +5496,7 @@ def test_graph_tool_executor_enforces_max_calls_across_tool_rounds(monkeypatch):
         final_answer="handled limit",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5557,7 +5557,7 @@ def test_graph_tool_executor_backstop_denies_unexposed_web_search_for_direct_and
                 )
 
         monkeypatch.setattr(
-            "focus_agent.engine.graph_builder.create_chat_model",
+            "focus_agent.engine.graph.builder.create_chat_model",
             lambda *args, **kwargs: FakeModel(),
         )
 
@@ -5643,7 +5643,7 @@ def test_graph_tool_executor_backstop_denies_live_web_write_hallucination(monkey
             )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: FakeModel(),
     )
 
@@ -5718,7 +5718,7 @@ def test_graph_adds_reasoning_content_before_followup_thinking_invoke(monkeypatc
         on_final_invoke=_assert_reasoning_prompt,
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5779,7 +5779,7 @@ def test_graph_forces_search_code_for_workspace_definition_lookup(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: _WorkspaceLookupModel(),
     )
 
@@ -5840,7 +5840,7 @@ def test_graph_tool_executor_parallelizes_read_only_tools(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5897,7 +5897,7 @@ def test_graph_tool_executor_interrupts_before_required_approval_and_resumes_app
         final_answer="approval handled",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -5985,7 +5985,7 @@ def test_graph_tool_executor_requires_approval_before_apply_patch(monkeypatch, t
         final_answer="patch handled",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -6054,7 +6054,7 @@ def test_graph_tool_executor_validates_approval_tools_before_interrupt(monkeypat
         final_answer="invalid patch handled",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -6111,7 +6111,7 @@ def test_graph_tool_executor_async_approval_records_pending_without_interrupt(mo
         final_answer="approval queued",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -6195,7 +6195,7 @@ def test_graph_tool_executor_async_approval_does_not_block_other_tools(monkeypat
         final_answer="approval queued and safe completed",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -6257,7 +6257,7 @@ def test_graph_tool_executor_resume_deny_writes_structured_tool_error(monkeypatc
         final_answer="approval denied handled",
     )
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 
@@ -6333,7 +6333,7 @@ def test_graph_tool_executor_reuses_thread_cache_for_cacheable_tools(monkeypatch
     }
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: _SingleRoundToolModel(
             tool_calls=[
                 {"id": "cache-1", "name": "cached_lookup", "args": {"name": "focus"}},
@@ -6376,7 +6376,7 @@ def test_graph_tool_executor_does_not_reuse_turn_cache_across_turns(monkeypatch)
     }
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: _SingleRoundToolModel(
             tool_calls=[
                 {"id": "turn-1", "name": "turn_scoped_lookup", "args": {"name": "focus"}},
@@ -6432,7 +6432,7 @@ def test_graph_turn_cache_isolated_between_threads(monkeypatch):
     }
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: _SingleRoundToolModel(
             tool_calls=[
                 {"id": "turn-1", "name": "turn_scoped_lookup", "args": {"name": "focus"}},
@@ -6499,7 +6499,7 @@ def test_graph_tool_executor_reports_validator_failures_without_crashing(monkeyp
     )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model",
+        "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: fake_model,
     )
 

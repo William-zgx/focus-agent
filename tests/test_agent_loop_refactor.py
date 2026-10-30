@@ -22,20 +22,6 @@ class _StaticRunnable:
         return AIMessage(content="拆分后的节点仍可直接回答。")
 
 
-def test_agent_loop_finalization_hooks_resolve_current_module_patch_seams(monkeypatch):
-    def sentinel(*_args, **_kwargs):
-        return "patched"
-
-    monkeypatch.setattr(agent_loop, "_latest_tool_result_content", sentinel)
-
-    hooks = agent_loop._agent_loop_update_hooks(lambda *_args: _StaticRunnable())
-
-    assert hooks["_latest_tool_result_content"] is sentinel
-    assert hooks["model_with_tools_for"]("model", "mode", []).invoke([]).content == (
-        "拆分后的节点仍可直接回答。"
-    )
-
-
 def test_agent_loop_node_still_finalizes_a_direct_answer():
     node = agent_loop.make_agent_loop_node(
         settings=Settings(),

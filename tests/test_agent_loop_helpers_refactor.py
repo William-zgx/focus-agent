@@ -4,6 +4,7 @@ from pathlib import Path
 
 from focus_agent.capabilities.tool_router import ToolIntentPlan
 from focus_agent.engine.graph import agent_loop_helpers
+from focus_agent.engine.graph import agent_loop_helpers_skill_planning as skill_planning
 from focus_agent.skills.models import SkillDefinition
 
 
@@ -42,52 +43,18 @@ def test_agent_loop_helpers_facade_stays_within_line_budget() -> None:
     assert len(helper_path.read_text(encoding="utf-8").splitlines()) <= 740
 
 
-def test_agent_loop_helpers_reexports_skill_planning_interfaces() -> None:
-    legacy_private_symbols = (
-        "_ACTIVE_EXECUTE_CONTINUATION_MARKERS",
-        "_FINANCE_ENTITY_HINTS",
-        "_FINANCE_PERFORMANCE_MARKERS",
-        "_LIVE_WEB_DOMAIN_MARKERS",
-        "_SKILL_SUPPORTING_TOOL_DEFAULTS",
-        "_STOCK_CODE_RE",
-        "_active_execute_continuation_allowed",
-        "_active_skill_match_score",
-        "_active_skill_recommended_tool_names",
-        "_explicit_live_web_domains",
-        "_is_explicit_skill_lookup_policy",
-        "_looks_like_active_execute_continuation",
-        "_merge_active_skill_recommended_tools",
-        "_normalized_skill_tool_names",
-        "_query_matches_live_web_domain",
-        "_recommended_tool_allowed_for_policy",
-        "_skill_live_web_domains",
-        "_skill_match_terms",
-        "_skill_primary_tools",
-        "_skill_runtime_cwd",
-        "_skill_supporting_tools",
-        "_skill_supports_live_web_domains",
-    )
-
-    assert callable(agent_loop_helpers._merge_active_skill_recommended_tools)
-    assert callable(agent_loop_helpers.build_active_skill_execution_plan)
-    assert callable(agent_loop_helpers.apply_skill_execution_plan)
-    assert callable(agent_loop_helpers.skill_execution_policy_note)
-    assert agent_loop_helpers._SKILL_SUPPORTING_TOOL_DEFAULTS
-    assert all(hasattr(agent_loop_helpers, name) for name in legacy_private_symbols)
-
-
-def test_skill_plan_uses_legacy_helper_patch_seam(tmp_path: Path, monkeypatch) -> None:
+def test_skill_plan_skips_unmatched_active_skill(tmp_path: Path, monkeypatch) -> None:
     skill = _active_skill(tmp_path)
     registry = _SingleSkillRegistry(skill)
     base_plan = ToolIntentPlan(policy="execution")
 
     monkeypatch.setattr(
-        agent_loop_helpers,
+        skill_planning,
         "_active_skill_match_score",
         lambda *_args, **_kwargs: (0.0, []),
     )
 
-    plan = agent_loop_helpers.build_active_skill_execution_plan(
+    plan = skill_planning.build_active_skill_execution_plan(
         skill_registry=registry,
         active_skill_ids=[skill.skill_id],
         text="quality",
@@ -98,7 +65,7 @@ def test_skill_plan_uses_legacy_helper_patch_seam(tmp_path: Path, monkeypatch) -
     assert plan is None
 
 
-def test_recommended_tool_merging_uses_legacy_helper_patch_seam(
+def test_recommended_tool_merging_respects_policy_filter(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -108,12 +75,12 @@ def test_recommended_tool_merging_uses_legacy_helper_patch_seam(
     recommended_tool = type("Tool", (), {"name": "run_workspace_command"})()
 
     monkeypatch.setattr(
-        agent_loop_helpers,
+        skill_planning,
         "_recommended_tool_allowed_for_policy",
         lambda *_args, **_kwargs: False,
     )
 
-    merged = agent_loop_helpers._merge_active_skill_recommended_tools(
+    merged = skill_planning._merge_active_skill_recommended_tools(
         [available_tool],
         [available_tool, recommended_tool],
         skill_registry=registry,

@@ -10,6 +10,7 @@ from ..core.branch_messages import branch_context_messages, branch_fork_message_
 from ..core.state import AgentState
 from ..core.tool_call_protocol import repair_dangling_tool_call_messages
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
+from .graph_tool_messages import tool_message_failed
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 4
 
@@ -144,7 +145,7 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
                 call_id = str(call.get("id") or "").strip()
                 if not call_id:
                     continue
-                call_signatures[call_id] = _tool_call_signature(call)
+                call_signatures[call_id] = _failure_streak_signature(call)
             continue
         if not isinstance(message, ToolMessage):
             continue
@@ -152,7 +153,7 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
         signature = call_signatures.get(call_id)
         if not signature:
             continue
-        if not _tool_message_is_failure(message):
+        if not tool_message_failed(message):
             if streak_signature == signature:
                 streak_signature = ""
                 streak_count = 0
@@ -174,7 +175,7 @@ def _messages_since_latest_human(messages: list[Any]) -> list[Any]:
     return messages
 
 
-def _tool_call_signature(call: dict[str, Any]) -> str:
+def _failure_streak_signature(call: dict[str, Any]) -> str:
     return json.dumps(
         {
             "name": str(call.get("name") or "").strip(),
@@ -186,36 +187,32 @@ def _tool_call_signature(call: dict[str, Any]) -> str:
     )
 
 
-def _tool_message_is_failure(message: ToolMessage) -> bool:
-    if str(getattr(message, "status", "") or "").strip().lower() == "error":
-        return True
-    content = _message_text(message)
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(payload, dict):
-        return False
-    if str(payload.get("status") or "").strip().lower() == "error":
-        return True
-    exit_code = payload.get("exit_code")
-    if isinstance(exit_code, int) and exit_code != 0:
-        return True
-    if isinstance(exit_code, str):
-        try:
-            return int(exit_code) != 0
-        except ValueError:
-            return False
-    if payload.get("timed_out") is True:
-        return True
-    return False
-
-
 def _message_text(message: Any) -> str:
     content = getattr(message, "content", "")
     if isinstance(content, list):
         return json.dumps(content, ensure_ascii=False)
     return str(content)
+
+
+def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
+    text = " ".join(str(value).split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
+def _latest_human_message_text(messages: list[Any]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return _message_text(message)
+    return ""
+
+
+def _latest_turn_messages(messages: list[Any]) -> list[Any]:
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index:]
+    return messages
 
 
 def _stringify_message_block(value: Any) -> str:
@@ -359,6 +356,9 @@ __all__ = [
     "_should_force_tool_free_answer",
     "_has_repeated_failed_tool_call",
     "_message_text",
+    "_truncate_inline",
+    "_latest_human_message_text",
+    "_latest_turn_messages",
     "_stringify_message_block",
     "_sanitize_assistant_tool_call_message",
     "_thinking_mode_requires_reasoning_content",

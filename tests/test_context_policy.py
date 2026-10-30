@@ -2,7 +2,7 @@ import json
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-import focus_agent.core.context_policy as context_policy_module
+import focus_agent.core.context_token_counting as token_counting_module
 from focus_agent.core.context_policy import (
     apply_prompt_budget_guard,
     approximate_token_count,
@@ -395,7 +395,7 @@ def test_approximate_token_count_uses_deterministic_char_budget():
 
 def test_approximate_token_count_prefers_tokenizer_when_available(monkeypatch):
     monkeypatch.setattr(
-        context_policy_module,
+        token_counting_module,
         "_estimate_with_tokenizer",
         lambda text, tokenizer_id=None: 3 if tokenizer_id == "fake-model" and text else None,
     )
@@ -575,7 +575,7 @@ def test_prompt_budget_guard_tokenizer_first_uses_token_estimates(monkeypatch):
             return 40
         return max(1, len(text) // 10)
 
-    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+    monkeypatch.setattr(token_counting_module, "_message_budget_units", fake_estimate)
 
     system_text = "\n\n".join(
         [
@@ -615,7 +615,7 @@ def test_prompt_budget_guard_tokenizer_first_preserves_current_user_with_policy_
             return 40
         return max(1, len(text) // 10)
 
-    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+    monkeypatch.setattr(token_counting_module, "_message_budget_units", fake_estimate)
 
     system_text = "\n\n".join(
         [
@@ -767,3 +767,22 @@ def test_temporal_anchor_preserves_foreign_language_source_excerpt():
     assert repair is not None
     assert repair.action == "prepend_verified_temporal_anchor"
     assert excerpt.strip() in repair.response.content
+
+
+def test_policy_prompt_budget_guard_honours_preserve_required_messages():
+    from focus_agent.core.context.policy import apply_prompt_budget_guard as policy_guard
+
+    messages = [
+        SystemMessage(content="Required rules. " + "detail " * 40),
+        HumanMessage(content="old context " * 20),
+        HumanMessage(content="keep this current user request"),
+    ]
+    budget = ContextBudget(
+        prompt_token_limit=30, chars_per_token=1, token_budget_mode="chars_fallback"
+    )
+
+    guarded = policy_guard(messages, budget=budget, preserve_required_messages=True)
+
+    assert guarded[0].content.startswith("Required rules")
+    assert any(message.content == "keep this current user request" for message in guarded)
+    assert not any("old context" in str(message.content) for message in guarded)

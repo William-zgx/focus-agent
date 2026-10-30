@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -9,10 +8,10 @@ from langchain.messages import AIMessage
 
 from ...core.repo_call import has_repo_method
 from ...core.state import AgentState
+from .lexicon import HTTP_URL_RE
 
 _logger = logging.getLogger(__name__)
 
-_HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
 _PRIMARY_OUTCOME_ROLES = frozenset({"primary"})
 _ALTERNATIVE_OUTCOME_ROLES = frozenset({"alternative"})
 _FAILED_OUTCOME_STATUSES = frozenset({"failed", "blocked"})
@@ -39,7 +38,7 @@ def _web_fetch_args(preferred_args: dict[str, Any] | None, fallback_text: str) -
     args = dict(preferred_args or {})
     if str(args.get("url") or "").strip():
         return args
-    match = _HTTP_URL_RE.search(str(fallback_text or ""))
+    match = HTTP_URL_RE.search(str(fallback_text or ""))
     if not match:
         return args
     return {"url": match.group(0).rstrip(".,!?;:，。！？；：")}

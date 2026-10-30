@@ -77,7 +77,7 @@ def _research_graph(
             )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph_builder.create_chat_model", lambda *a, **kw: Runnable()
+        "focus_agent.engine.graph.builder.create_chat_model", lambda *a, **kw: Runnable()
     )
 
     @tool

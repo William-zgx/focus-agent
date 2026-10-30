@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from langchain.messages import AnyMessage, HumanMessage, SystemMessage
 
-from .core.context_policy import (
+from .core.context.policy import (
     assemble_context,
 )
 from .core.context_request import build_context_request

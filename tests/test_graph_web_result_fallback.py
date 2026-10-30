@@ -3,33 +3,6 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from focus_agent.engine import graph_tool_result_fallback, graph_web_result_fallback
 
 
-def test_graph_tool_result_fallback_reexports_web_fallback_symbols() -> None:
-    symbol_names = (
-        "_fallback_web_answer_from_tool_results",
-        "_latest_relevant_web_payloads",
-        "_looks_like_live_web_fallback_payload",
-        "_web_payload_main_answer",
-        "_looks_like_internal_web_summary",
-        "_looks_like_weather_query",
-        "_contains_weather_marker",
-        "_chinese_weather_summary_from_payloads",
-        "_extract_concise_weather_text",
-        "_first_result_text",
-        "_web_payload_sources",
-        "_reference_sources",
-        "_payload_results",
-        "_source_domain",
-        "_looks_like_web_observation_payload",
-        "_prompt_observation_payload",
-    )
-
-    for symbol_name in symbol_names:
-        assert getattr(graph_tool_result_fallback, symbol_name) is getattr(
-            graph_web_result_fallback,
-            symbol_name,
-        )
-
-
 def test_graph_web_result_fallback_synthesizes_weather_with_source() -> None:
     answer = graph_web_result_fallback._fallback_web_answer_from_tool_results(
         [

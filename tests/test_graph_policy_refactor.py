@@ -30,7 +30,6 @@ def test_search_for_read_tool_definition_keeps_code_search():
 
 def test_policy_reexports_intent_parsing_helpers():
     helper_names = (
-        "_HTTP_URL_RE",
         "_SKILL_ID_RE",
         "_filter_bare_current_hits",
         "_explicit_web_tool_contract_reason_codes",

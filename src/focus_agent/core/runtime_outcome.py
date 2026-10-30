@@ -272,14 +272,14 @@ def _classify_tool_message(
         raw_message = _error_message(payload) or str(getattr(message, "content", "") or "")
         return "failed", _error_category(raw_message, runtime_info=runtime_info), raw_message
 
-    failure = _payload_failure(payload)
+    failure = payload_failure(payload)
     if failure is not None:
         category, error_message = failure
         return "failed", category, error_message
     return "succeeded", "none", ""
 
 
-def _payload_failure(payload: Any) -> tuple[str, str] | None:
+def payload_failure(payload: Any) -> tuple[str, str] | None:
     if not isinstance(payload, Mapping):
         return None
     if payload.get("timed_out") is True:
@@ -318,7 +318,7 @@ def _embedded_payload_failure(value: Any) -> tuple[str, str] | None:
         return None
     if not isinstance(payload, Mapping):
         return None
-    failure = _payload_failure(payload)
+    failure = payload_failure(payload)
     if failure is None:
         return None
     category, message = failure
@@ -638,5 +638,6 @@ __all__ = [
     "ToolOutcomeStatus",
     "build_task_outcome",
     "build_tool_outcomes_from_messages",
+    "payload_failure",
     "tool_outcome_from_message",
 ]

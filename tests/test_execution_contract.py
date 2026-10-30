@@ -8,10 +8,10 @@ from focus_agent.engine.graph_evidence import normalize_evidence_bundle, normali
 from focus_agent.engine.graph_execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
-    skill_execution_evidence_facts,
     tool_result_names,
     verify_answer_against_evidence,
 )
+from focus_agent.engine.graph_execution_facts import skill_execution_evidence_facts
 
 
 def test_live_web_contract_requires_search_after_temporal_anchor_only():

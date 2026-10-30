@@ -6,7 +6,7 @@ from typing import Any
 from langchain.messages import AIMessage, ToolMessage
 from langchain.tools import tool as langchain_tool
 
-from focus_agent.core import context_policy as context_policy_module
+from focus_agent.core import context_token_counting as token_counting_module
 from focus_agent.core.types import ContextBudget
 
 from .runner import run_case
@@ -245,7 +245,7 @@ def test_eval_tokenizer_first_budget_prioritizes_constraints(eval_runtime_factor
             return 40
         return max(1, len(text) // 10)
 
-    monkeypatch.setattr(context_policy_module, "_message_budget_units", fake_estimate)
+    monkeypatch.setattr(token_counting_module, "_message_budget_units", fake_estimate)
 
     case = EvalCase(
         id="budget_tokenizer_first_constraints_survive",

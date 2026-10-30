@@ -5,33 +5,21 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
-
-from ..core.context_tool_observation_references import _tool_observation_ref
 from ..core.types import ContextBudget
+from .graph.lexicon import WEATHER_TERMS, contains_cjk
 from .graph_evidence import relevant_web_tool_call_ids
-from .graph_tool_history_repair import _message_text
-
-
-def _truncate_inline(value: Any, *, max_chars: int = 180) -> str:
-    text = " ".join(str(value).split())
-    if len(text) <= max_chars:
-        return text
-    return f"{text[: max_chars - 1]}…"
-
-
-def _latest_human_message_text(messages: list[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, HumanMessage):
-            return _message_text(message)
-    return ""
-
-
-def _latest_turn_messages(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index:]
-    return messages
+from .graph_tool_history_repair import (
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _truncate_inline,
+)
+from .graph_tool_messages import (
+    artifact_source_refs,
+    iter_tool_results,
+    prompt_observation_json,
+    tool_message_failed,
+    tool_message_json,
+)
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -40,7 +28,7 @@ def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
     payloads = _latest_relevant_web_payloads(latest_turn, latest_user)
     if not payloads:
         return ""
-    chinese = bool(re.search(r"[\u4e00-\u9fff]", latest_user))
+    chinese = contains_cjk(latest_user)
     main = _web_payload_main_answer(payloads, user_query=latest_user, chinese=chinese)
     if not main:
         return ""
@@ -61,24 +49,12 @@ def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
 
 def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> list[dict[str, Any]]:
     relevant_web_call_ids = relevant_web_tool_call_ids(latest_turn, user_query=latest_user)
-    pending_calls: dict[str, str] = {}
     payloads: list[dict[str, Any]] = []
     source_by_ref: dict[str, dict[str, Any]] = {}
-    for message in latest_turn:
-        if isinstance(message, AIMessage):
-            for call in getattr(message, "tool_calls", None) or []:
-                if not isinstance(call, dict):
-                    continue
-                call_id = str(call.get("id") or "")
-                if call_id:
-                    pending_calls[call_id] = str(call.get("name") or "")
-            continue
-        if not isinstance(message, ToolMessage):
-            continue
-        if str(getattr(message, "status", "")) == "error":
+    for message, tool_name, _args in iter_tool_results(latest_turn):
+        if tool_message_failed(message):
             continue
         call_id = str(getattr(message, "tool_call_id", "") or "")
-        tool_name = pending_calls.get(call_id, "")
         if (
             tool_name != "artifact_read"
             and relevant_web_call_ids is not None
@@ -86,18 +62,16 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
         ):
             continue
         parsed_payloads = []
-        raw = _message_text(message)
-        try:
-            parsed_payloads.append(json.loads(raw))
-        except json.JSONDecodeError:
-            pass
-        prompt_payload = _prompt_observation_payload(message)
+        parsed = tool_message_json(message)
+        if parsed is not None:
+            parsed_payloads.append(parsed)
+        prompt_payload = prompt_observation_json(message)
         if not parsed_payloads and prompt_payload is not None:
             parsed_payloads.append(prompt_payload)
         for payload in parsed_payloads:
             if not isinstance(payload, dict):
                 continue
-            if payload.get("status") == "error" or payload.get("error"):
+            if tool_message_failed(message, payload):
                 continue
             if tool_name == "artifact_read":
                 source = source_by_ref.get(str(payload.get("artifact_id") or ""))
@@ -116,12 +90,13 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
                 payload
             ):
                 payloads.append(payload)
-                source_by_ref[_tool_observation_ref(tool_name=tool_name, tool_call_id=call_id)] = (
-                    payload
-                )
-                for view in (payload, prompt_payload):
-                    if isinstance(view, dict) and view.get("artifact_ref"):
-                        source_by_ref[str(view["artifact_ref"])] = payload
+                for ref in artifact_source_refs(
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    payload=payload,
+                    prompt_payload=prompt_payload,
+                ):
+                    source_by_ref[ref] = payload
     return payloads
 
 
@@ -273,14 +248,14 @@ def _looks_like_weather_query(user_query: str, payloads: list[dict[str, Any]]) -
 
 
 def _contains_weather_marker(text: str) -> bool:
-    return any(marker in text for marker in ("天气", "气温", "预报", "降雨", "下雨"))
+    return any(marker in text for marker in WEATHER_TERMS)
 
 
 def _chinese_weather_summary_from_payloads(payloads: list[dict[str, Any]]) -> str:
     for payload in payloads:
         for result in _payload_results(payload):
             content = str(result.get("content") or result.get("snippet") or "").strip()
-            if not content or not re.search(r"[\u4e00-\u9fff]", content):
+            if not content or not contains_cjk(content):
                 continue
             if not (_contains_weather_marker(content) or "最高气温" in content):
                 continue
@@ -302,21 +277,6 @@ def _extract_concise_weather_text(content: str) -> str:
     if match:
         return match.group(0)
     return _truncate_inline(text, max_chars=260)
-
-
-def _first_result_text(payload: dict[str, Any], *, prefer_chinese: bool) -> str:
-    fallback = ""
-    for result in _payload_results(payload):
-        content = str(result.get("content") or result.get("snippet") or "").strip()
-        title = str(result.get("title") or "").strip()
-        text = " ".join(part for part in (title, content) if part)
-        if not text:
-            continue
-        if prefer_chinese and re.search(r"[\u4e00-\u9fff]", text):
-            return text
-        if not fallback:
-            fallback = text
-    return fallback
 
 
 def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
@@ -396,19 +356,6 @@ def _looks_like_web_observation_payload(payload: Any) -> bool:
     )
 
 
-def _prompt_observation_payload(message: ToolMessage) -> Any | None:
-    artifact = getattr(message, "artifact", None)
-    if not isinstance(artifact, dict):
-        return None
-    prompt_observation = artifact.get("prompt_observation")
-    if not isinstance(prompt_observation, str) or not prompt_observation.strip():
-        return None
-    try:
-        return json.loads(prompt_observation)
-    except json.JSONDecodeError:
-        return None
-
-
 __all__ = [
     "_fallback_web_answer_from_tool_results",
     "_latest_relevant_web_payloads",
@@ -422,11 +369,9 @@ __all__ = [
     "_contains_weather_marker",
     "_chinese_weather_summary_from_payloads",
     "_extract_concise_weather_text",
-    "_first_result_text",
     "_web_payload_sources",
     "_reference_sources",
     "_payload_results",
     "_source_domain",
     "_looks_like_web_observation_payload",
-    "_prompt_observation_payload",
 ]

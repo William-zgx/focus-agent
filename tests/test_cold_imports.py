@@ -84,7 +84,6 @@ def test_graph_package_preserves_eager_export_contract_lazily() -> None:
             "policy",
             "policy_intent",
             "tool_execution",
-            "tool_repair",
         )
         modules = [
             importlib.import_module(f"focus_agent.engine.graph.{module_name}")

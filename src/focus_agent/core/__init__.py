@@ -12,7 +12,7 @@ from .branching import (
     MergeProposal,
     ThreadResolution,
 )
-from .context_policy import ContextSlice, assemble_context
+from .context.policy import ContextSlice, assemble_context
 from .merge_review import generate_merge_proposal
 from .request_context import RequestContext
 from .state import AgentState, initial_agent_state, normalize_agent_state, serialize_agent_state

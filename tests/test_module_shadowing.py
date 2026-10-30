@@ -30,11 +30,13 @@ def test_skill_planning_uses_only_the_canonical_helper_module() -> None:
     assert not abandoned_path.exists()
     assert canonical_path.is_file()
 
-    helpers = importlib.import_module("focus_agent.engine.graph.agent_loop_helpers")
+    agent_loop = importlib.import_module("focus_agent.engine.graph.agent_loop")
     canonical = importlib.import_module(
         "focus_agent.engine.graph.agent_loop_helpers_skill_planning"
     )
-    assert helpers._skill_planning is canonical
+    assert agent_loop.build_active_skill_execution_plan is (
+        canonical.build_active_skill_execution_plan
+    )
 
 
 def test_public_imports_resolve_to_packages() -> None:

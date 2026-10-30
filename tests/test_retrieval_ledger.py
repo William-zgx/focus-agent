@@ -92,3 +92,57 @@ def test_ledger_labels_fetched_pages_and_their_continuations_with_dates():
     assert "web_fetch https://blog.example/agents-week [published 2026-04-20]" in note
     assert "offset=4000 [page published 2026-04-20]" in note
     assert "outside the requested time window" in note
+
+
+def test_ledger_reads_publication_dates_from_metadata_and_alternate_keys():
+    nested = '{"url": "https://a.example/x", "metadata": {"published_date": "2026-03-02"}}'
+    alternate = '{"url": "https://b.example/y", "publishedDate": "2026-01-15T10:00:00Z"}'
+    messages = [
+        HumanMessage(content="question"),
+        _call("a", "web_fetch", {"url": "https://a.example/x"}),
+        ToolMessage(content=nested, tool_call_id="a"),
+        _call("b", "web_fetch", {"url": "https://b.example/y"}),
+        ToolMessage(content=alternate, tool_call_id="b"),
+    ]
+
+    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
+
+    assert "https://a.example/x [published 2026-03-02]" in note
+    assert "https://b.example/y [published 2026-01-15]" in note
+
+
+def test_ledger_links_continuation_through_observation_ref_without_artifact_ref():
+    # A page whose continuation is addressed by its prompt observation ref (no
+    # explicit artifact_ref) still carries its publication date to artifact_read.
+    page = '{"url": "https://c.example/z", "published_at": "2026-02-01", "content": "x"}'
+    messages = [
+        HumanMessage(content="question"),
+        _call("fetch-c", "web_fetch", {"url": "https://c.example/z"}),
+        ToolMessage(content=page, tool_call_id="fetch-c"),
+        _call(
+            "read-c",
+            "artifact_read",
+            {"artifact_id": "tool-observation://web_fetch/fetch-c", "offset": 2000},
+        ),
+        ToolMessage(content='{"content": "more"}', tool_call_id="read-c"),
+    ]
+
+    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
+
+    assert "offset=2000 [page published 2026-02-01]" in note
+
+
+def test_ledger_treats_error_payloads_as_failures_not_successful_retrievals():
+    # web_fetch reports failures as JSON payloads inside a success-status
+    # ToolMessage; those used to be recorded as "already retrieved", which made
+    # the executor reject a retry of a transiently failing page.
+    messages = [
+        HumanMessage(content="question"),
+        _call("busy", "web_fetch", {"url": "https://d.example/slow"}),
+        ToolMessage(
+            content='{"url": "https://d.example/slow", "status": "failed", "error": "HTTP 503"}',
+            tool_call_id="busy",
+        ),
+    ]
+
+    assert collect_retrieval_ledger(messages) == {}

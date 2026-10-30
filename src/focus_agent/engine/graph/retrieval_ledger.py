@@ -15,9 +15,17 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import ToolMessage
 
-from ..graph_tool_history_repair import _messages_since_latest_human, _tool_message_is_failure
+from ..graph_tool_history_repair import _messages_since_latest_human
+from ..graph_tool_messages import (
+    artifact_source_refs,
+    iter_tool_results,
+    payload_published_at,
+    prompt_observation_json,
+    tool_message_failed,
+    tool_message_json,
+)
 
 _LEDGER_NOTE_MAX_ENTRIES = 20
 # Fetch failures that will not change on retry within the same turn.
@@ -97,52 +105,29 @@ def _label(tool_name: str, args: Mapping[str, Any]) -> str:
 
 
 def _payload(message: ToolMessage) -> Mapping[str, Any]:
-    try:
-        payload = json.loads(str(message.content or ""))
-    except (TypeError, ValueError):
-        return {}
+    payload = tool_message_json(message)
     return payload if isinstance(payload, Mapping) else {}
 
 
 def _published_at(message: ToolMessage) -> str:
-    return str(_payload(message).get("published_at") or "").strip()[:10]
-
-
-def _artifact_ref(message: ToolMessage) -> str:
-    return str(_payload(message).get("artifact_ref") or "").strip()
+    return str(payload_published_at(_payload(message)) or "")[:10]
 
 
 def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEntry]:
     """Successful retrieval calls since the latest human message, keyed by identity."""
-    calls: dict[str, tuple[str, Mapping[str, Any]]] = {}
     ledger: dict[str, RetrievalLedgerEntry] = {}
     # Publication date per fetched page (and its saved full text), so the note can
     # show that paging deeper into an out-of-window page is not worth a round.
     published_by_ref: dict[str, str] = {}
-    for message in _messages_since_latest_human(list(messages or [])):
-        if isinstance(message, AIMessage):
-            for call in getattr(message, "tool_calls", None) or ():
-                if not isinstance(call, Mapping):
-                    continue
-                call_id = str(call.get("id") or "").strip()
-                args = call.get("args")
-                if call_id:
-                    calls[call_id] = (
-                        str(call.get("name") or "").strip(),
-                        args if isinstance(args, Mapping) else {},
-                    )
-            continue
-        if not isinstance(message, ToolMessage):
-            continue
+    for message, tool_name, args in iter_tool_results(
+        _messages_since_latest_human(list(messages or []))
+    ):
         call_id = str(getattr(message, "tool_call_id", "") or "")
-        if call_id not in calls:
-            continue
-        tool_name, args = calls[call_id]
         key = retrieval_key(tool_name, args)
         if key is None:
             continue
         error = ""
-        if _tool_message_is_failure(message):
+        if tool_message_failed(message):
             # Transient failures (timeouts, 5xx) may succeed on retry; only remember
             # fetches that will fail the same way again.
             text = str(message.content or "")
@@ -154,9 +139,15 @@ def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEn
             published = _published_at(message)
             if published:
                 label += f" [published {published}]"
-                for ref in (str(args.get("url") or ""), _artifact_ref(message)):
-                    if ref:
-                        published_by_ref[ref] = published
+                for ref in artifact_source_refs(
+                    tool_name=tool_name,
+                    tool_call_id=call_id,
+                    payload=_payload(message),
+                    prompt_payload=prompt_observation_json(message),
+                ):
+                    published_by_ref[ref] = published
+                if args.get("url"):
+                    published_by_ref[str(args["url"])] = published
         elif tool_name == "artifact_read":
             published = published_by_ref.get(str(args.get("artifact_id") or ""))
             if published:

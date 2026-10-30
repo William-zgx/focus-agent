@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
+from .lexicon import HTTP_URL_RE
 from .policy_markers import (
     _CODE_OR_FILE_REFERENCE_RE,
     _CODE_SEARCH_TOOL_INTENT_MARKERS,
@@ -12,7 +13,6 @@ from .policy_markers import (
     _skill_install_hits,
 )
 
-_HTTP_URL_RE = re.compile(r"https?://[^\s<>()\"'，。！？、]+", re.IGNORECASE)
 _SKILL_ID_RE = r"[A-Za-z0-9][A-Za-z0-9_.:/-]*"
 _WEB_SEARCH_QUERY_MAX_CHARS = 400
 _ToolPolicy = Literal["direct_answer", "workspace_lookup", "live_web_research", "execution"]
@@ -291,7 +291,7 @@ def _remote_url_local_mutation_request(text: str) -> bool:
         return False
     # URL slugs may contain action-like words. Only inspect the surrounding
     # request, and require an explicit local execution target for run/execute.
-    text_without_urls = _HTTP_URL_RE.sub(" ", str(text or ""))
+    text_without_urls = HTTP_URL_RE.sub(" ", str(text or ""))
     if _contains_any(
         text_without_urls,
         (
@@ -342,7 +342,7 @@ def _remote_url_local_mutation_request(text: str) -> bool:
 
 
 def _first_http_url(text: str) -> str:
-    match = _HTTP_URL_RE.search(str(text or ""))
+    match = HTTP_URL_RE.search(str(text or ""))
     if not match:
         return ""
     return match.group(0).rstrip(".,!?;:，。！？；：")

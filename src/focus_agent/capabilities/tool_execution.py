@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from ..core.context_policy import trim_tool_observation
+from ..core.context.tool_observations import trim_tool_observation
 from ..core.context_tool_observation_compaction import _unretrievable_tool_observation
 from ..core.types import ContextBudget
 from ..observability.tracing import start_trace_span

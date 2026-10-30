@@ -7,12 +7,12 @@ from langchain.messages import AIMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from ..agent_context_engineering import build_context_engineering_decision
 from ..config import Settings
-from ..core.context_policy import assemble_context as build_context_slice
+from ..core.context.policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
 from ..core.types import PromptMode
+from ..delegation.context_engineering import build_context_engineering_decision
 from ..memory import (
     MemoryExtractor,
     MemoryRetriever,
@@ -21,11 +21,8 @@ from ..memory import (
     render_memory_block,
 )
 from ..skills import SkillRegistry
-from .graph_turn_helpers import (
-    _context_budget_from_state,
-    _latest_final_ai_text,
-    _latest_human_message_text,
-)
+from .graph_tool_history_repair import _latest_human_message_text
+from .graph_tool_result_fallback import _context_budget_from_state, _latest_final_ai_text
 
 
 def _resolve_prompt_mode(state: AgentState) -> PromptMode:
