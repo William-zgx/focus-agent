@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..capabilities.default_tool_modules.workspace import _SKIP_DIR_NAMES, _language_for_path
+from ..capabilities.workspace_files import WORKSPACE_SKIP_DIR_NAMES, language_for_path
 from .artifacts import artifact_chunks
 from .index import RetrievalDocument, RetrievalIndex
 
@@ -40,7 +40,7 @@ def iter_indexable_workspace_files(
             dirnames[:] = [
                 name
                 for name in dirnames
-                if name not in _SKIP_DIR_NAMES and not (Path(current) / name).is_symlink()
+                if name not in WORKSPACE_SKIP_DIR_NAMES and not (Path(current) / name).is_symlink()
             ]
             candidates.extend(Path(current) / name for name in filenames)
     for file_path in sorted(candidates):
@@ -117,7 +117,7 @@ def index_workspace_file(
                 fields={
                     "source_type": "workspace_file",
                     "path": relative_path,
-                    "language": _language_for_path(file_path),
+                    "language": language_for_path(file_path),
                     "chunk_index": chunk_index,
                     "file_hash": file_hash,
                     "content_hash": hashlib.sha256(chunk.encode()).hexdigest(),

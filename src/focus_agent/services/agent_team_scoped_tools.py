@@ -26,26 +26,7 @@ from focus_agent.capabilities.sandbox_execution import (
     SandboxExecutionRequest,
     SandboxExecutionResult,
 )
-
-_SKIP_DIRECTORY_NAMES = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".svn",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".next",
-        ".tox",
-        ".cache",
-        "dist",
-        "build",
-    }
-)
+from focus_agent.capabilities.workspace_files import WORKSPACE_SKIP_DIR_NAMES
 
 
 @runtime_checkable
@@ -413,7 +394,7 @@ def _line_matcher(
 def _iter_workspace_files(root: Path) -> Iterable[Path]:
     for current_root, directory_names, file_names in os.walk(root):
         directory_names[:] = sorted(
-            name for name in directory_names if name not in _SKIP_DIRECTORY_NAMES
+            name for name in directory_names if name not in WORKSPACE_SKIP_DIR_NAMES
         )
         current_path = Path(current_root)
         yield from (current_path / name for name in sorted(file_names))

@@ -7,28 +7,9 @@ from typing import Any
 
 from langchain.tools import tool
 
+from ..workspace_files import WORKSPACE_SKIP_DIR_NAMES
 from .common import _coerce_relative_posix
 from .workspace_paths import _resolve_workspace_path
-
-_SKIP_DIR_NAMES = {
-    ".git",
-    ".hg",
-    ".svn",
-    ".venv",
-    "venv",
-    "node_modules",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".next",
-    ".tox",
-    ".cache",
-    ".claude",
-    ".focus_agent",
-    "dist",
-    "build",
-}
 
 
 def _build_workspace_tree_lines(
@@ -46,7 +27,7 @@ def _build_workspace_tree_lines(
             (
                 entry
                 for entry in dir_path.iterdir()
-                if entry.name not in _SKIP_DIR_NAMES and not entry.name.startswith(".")
+                if entry.name not in WORKSPACE_SKIP_DIR_NAMES and not entry.name.startswith(".")
             ),
             key=lambda entry: (not entry.is_dir(), entry.name.lower()),
         )

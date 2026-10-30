@@ -13,6 +13,7 @@ from typing import Any
 from langchain.tools import tool
 
 from ..sandbox_execution import SandboxExecutionRequest, default_sandbox_execution_service
+from ..workspace_files import WORKSPACE_SKIP_DIR_NAMES, language_for_path
 from .common import (
     _coerce_relative_posix,
     _get_current_branch_id,
@@ -39,63 +40,6 @@ from .workspace_paths import (
 from .workspace_read import _validate_read_file_args, build_read_file_tool
 from .workspace_tree import build_workspace_tree_tool
 
-_SKIP_DIR_NAMES = {
-    ".git",
-    ".hg",
-    ".svn",
-    ".venv",
-    "venv",
-    "node_modules",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".next",
-    ".tox",
-    ".cache",
-    ".claude",
-    ".focus_agent",
-    "dist",
-    "build",
-}
-_TEXT_FILE_SUFFIX_TO_LANGUAGE = {
-    ".c": "C",
-    ".cc": "C++",
-    ".cpp": "C++",
-    ".cs": "C#",
-    ".css": "CSS",
-    ".go": "Go",
-    ".h": "C/C++ Header",
-    ".hpp": "C++ Header",
-    ".html": "HTML",
-    ".java": "Java",
-    ".js": "JavaScript",
-    ".json": "JSON",
-    ".kt": "Kotlin",
-    ".md": "Markdown",
-    ".mjs": "JavaScript",
-    ".php": "PHP",
-    ".py": "Python",
-    ".rb": "Ruby",
-    ".rs": "Rust",
-    ".sh": "Shell",
-    ".sql": "SQL",
-    ".swift": "Swift",
-    ".toml": "TOML",
-    ".ts": "TypeScript",
-    ".tsx": "TSX",
-    ".txt": "Text",
-    ".xml": "XML",
-    ".yaml": "YAML",
-    ".yml": "YAML",
-}
-
-
-def _language_for_path(path: Path) -> str:
-    return _TEXT_FILE_SUFFIX_TO_LANGUAGE.get(
-        path.suffix.lower(), path.suffix.lower() or "no_extension"
-    )
-
 
 def _matches_glob_pattern(path_text: str, pattern: str) -> bool:
     candidate = pattern or "**/*"
@@ -110,7 +54,7 @@ def _matches_glob_pattern(path_text: str, pattern: str) -> bool:
 
 def _iter_workspace_files(root: Path) -> Iterable[Path]:
     for current_root, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(name for name in dirnames if name not in _SKIP_DIR_NAMES)
+        dirnames[:] = sorted(name for name in dirnames if name not in WORKSPACE_SKIP_DIR_NAMES)
         current_path = Path(current_root)
         for filename in sorted(filenames):
             yield current_path / filename
@@ -467,7 +411,7 @@ def build_workspace_tools(
                     content = _read_text_file(candidate)
                 except ValueError:
                     continue
-                language = _language_for_path(candidate)
+                language = language_for_path(candidate)
                 line_count = len(content.splitlines())
                 byte_count = candidate.stat().st_size
                 language_counter[language] += 1

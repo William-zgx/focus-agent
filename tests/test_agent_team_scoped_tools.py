@@ -109,6 +109,17 @@ def test_scoped_read_and_search_stay_within_task_worktree(task_worktree: Path) -
         _invoke(tools["search_code"], query="needle", path="../")
 
 
+def test_scoped_search_skips_shared_workspace_skip_dirs(task_worktree: Path) -> None:
+    for skipped in (".claude", ".focus_agent", "node_modules"):
+        (task_worktree / skipped).mkdir()
+        (task_worktree / skipped / "hidden.py").write_text("needle = 1\n", encoding="utf-8")
+    tools = _tools(task_worktree)
+
+    search_payload = json.loads(_invoke(tools["search_code"], query="needle", literal=True))
+
+    assert [item["path"] for item in search_payload["results"]] == ["src/app.py"]
+
+
 def test_scoped_patch_rejects_any_file_outside_write_scope_without_writing(
     task_worktree: Path,
 ) -> None:
