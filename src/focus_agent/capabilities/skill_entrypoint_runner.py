@@ -128,21 +128,6 @@ def run_skill_entrypoint_in_sandbox_service(
     return json.dumps(payload, ensure_ascii=False)
 
 
-def run_skill_entrypoint_in_local_venv(
-    *,
-    workspace_root: Path,
-    skill: SkillDefinition,
-    entrypoint_name: str,
-    arguments: Mapping[str, Any] | None = None,
-) -> str:
-    return run_skill_entrypoint_in_sandbox_service(
-        workspace_root=workspace_root,
-        skill=skill,
-        entrypoint_name=entrypoint_name,
-        arguments=arguments,
-    )
-
-
 class _LocalVenvSkillEntrypointBackend:
     backend_name = "local_venv"
 
@@ -632,6 +617,5 @@ def _resource_limiter(timeout_seconds: int, memory_mb: int):
 
 
 __all__ = [
-    "run_skill_entrypoint_in_local_venv",
     "run_skill_entrypoint_in_sandbox_service",
 ]
