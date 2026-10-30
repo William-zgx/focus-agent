@@ -8,7 +8,8 @@ from focus_agent.api.route_utils import (
     memory_access,
     memory_responses,
 )
-from focus_agent.api.routers import agent_team, harness_runs, memory
+from focus_agent.api.routers import agent_team, memory
+from focus_agent.api.routers.harness_runs import replay_helpers
 
 
 def test_memory_router_private_helpers_remain_importable_facades() -> None:
@@ -26,12 +27,12 @@ def test_agent_team_router_private_helpers_remain_importable_facades() -> None:
     assert agent_team._view_response is agent_team_responses._view_response
 
 
-def test_harness_runs_private_helpers_remain_importable_facades() -> None:
-    assert harness_runs._json_safe is harness_run_helpers._json_safe
-    assert harness_runs._run_record_payload is harness_run_helpers._run_record_payload
-    assert harness_runs._journal_method is harness_run_helpers._journal_method
-    assert harness_runs._get_persisted_run is harness_run_helpers._get_persisted_run
-    assert harness_runs._canonical_custom_event is harness_run_helpers._canonical_custom_event
+def test_harness_runs_replay_helpers_reuse_shared_route_helpers() -> None:
+    assert replay_helpers._json_safe is harness_run_helpers._json_safe
+    assert replay_helpers._run_record_payload is harness_run_helpers._run_record_payload
+    assert replay_helpers._journal_method is harness_run_helpers._journal_method
+    assert replay_helpers._get_persisted_run is harness_run_helpers._get_persisted_run
+    assert replay_helpers._canonical_custom_event is harness_run_helpers._canonical_custom_event
 
 
 def test_agent_governance_operations_private_helpers_remain_importable_facades() -> None:

@@ -24,6 +24,7 @@ from .tool_messages import (
     annotate_tool_result_runtime,
     build_tool_error_message,
     build_tool_message,
+    observation_message_status,
 )
 
 
@@ -119,6 +120,7 @@ def execute_single_untraced(
                     tool_call_id=item.tool_call_id,
                     tool_name=item.tool_name,
                     prompt_observation=prompt_observation,
+                    status=observation_message_status(observation),
                     runtime_info={
                         "cache_hit": True,
                         "fallback_used": False,
@@ -171,6 +173,7 @@ def execute_single_untraced(
                 tool_call_id=item.tool_call_id,
                 tool_name=item.tool_name,
                 prompt_observation=prompt_observation,
+                status=observation_message_status(text),
                 runtime_info={
                     "cache_hit": False,
                     "fallback_used": False,
@@ -214,6 +217,7 @@ def execute_single_untraced(
                         tool_call_id=item.tool_call_id,
                         tool_name=item.tool_name,
                         prompt_observation=prompt_observation,
+                        status=observation_message_status(fallback_text),
                         runtime_info={
                             "cache_hit": False,
                             "fallback_used": True,

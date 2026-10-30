@@ -9,10 +9,18 @@ import pytest
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 
-import focus_agent.api.routers.harness_runs as harness_runs
 from focus_agent.api.route_utils.branch_handoff_decisions import (
     ensure_branch_handoff_decision_from_journal,
 )
+from focus_agent.api.routers.harness_runs import (
+    detail,
+    replay_execution,
+    replay_helpers,
+    replay_models,
+    replay_payloads,
+    replay_streaming,
+)
+from focus_agent.api.routers.harness_runs import list as list_routes
 from focus_agent.harness.observability import InMemoryRunJournal, JournaledStreamBridge
 from focus_agent.harness.runtime import RunStatus
 from focus_agent.harness.runtime.rollback import (
@@ -29,12 +37,12 @@ def test_prepare_resume_payload_uses_langgraph_command_resume():
             return SimpleNamespace(root_thread_id="root-1"), {"branch": "main"}, {"messages": []}
 
     chat = _Chat()
-    payload = harness_runs.HarnessResumeRequest(
+    payload = replay_models.HarnessResumeRequest(
         resume={"approved": True},
         metadata={"assistant_id": "focus-agent"},
     )
 
-    command, context, branch_meta, initial_values = harness_runs._prepare_resume_payload(
+    command, context, branch_meta, initial_values = replay_payloads._prepare_resume_payload(
         thread_id="thread-1",
         user_id="user-1",
         payload=payload,
@@ -79,7 +87,7 @@ def test_stream_harness_resume_skips_pre_turn_branch_recommendation(monkeypatch)
         return SimpleNamespace(kind="streaming-response")
 
     monkeypatch.setattr(
-        harness_runs,
+        replay_streaming,
         "_prepare_resume_payload",
         lambda **kwargs: (
             Command(resume={"approved": True}),
@@ -88,17 +96,17 @@ def test_stream_harness_resume_skips_pre_turn_branch_recommendation(monkeypatch)
             {"messages": []},
         ),
     )
-    monkeypatch.setattr(harness_runs, "_capture_run_rollback_target", lambda **kwargs: None)
-    monkeypatch.setattr(harness_runs, "_create_run_record", fake_create_run_record)
-    monkeypatch.setattr(harness_runs, "_produce_run_stream", fake_produce_run_stream)
+    monkeypatch.setattr(replay_streaming, "_capture_run_rollback_target", lambda **kwargs: None)
+    monkeypatch.setattr(replay_streaming, "_create_run_record", fake_create_run_record)
+    monkeypatch.setattr(replay_streaming, "_produce_run_stream", fake_produce_run_stream)
     monkeypatch.setattr(
-        harness_runs, "_run_event_streaming_response", fake_run_event_streaming_response
+        replay_streaming, "_run_event_streaming_response", fake_run_event_streaming_response
     )
 
     async def scenario():
-        response = await harness_runs.stream_harness_resume(
+        response = await replay_streaming.stream_harness_resume(
             thread_id="thread-1",
-            payload=harness_runs.HarnessResumeRequest(resume={"approved": True}),
+            payload=replay_models.HarnessResumeRequest(resume={"approved": True}),
             request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
             runtime=SimpleNamespace(run_manager=_RunManager()),
             chat=SimpleNamespace(),
@@ -119,22 +127,22 @@ def test_stream_harness_resume_skips_pre_turn_branch_recommendation(monkeypatch)
 
 def test_branch_recommendation_timeout_uses_configured_value():
     assert (
-        harness_runs._branch_recommendation_timeout_seconds(
+        replay_helpers._branch_recommendation_timeout_seconds(
             SimpleNamespace(agent_branch_recommendation_timeout_seconds=12)
         )
         == 12.0
     )
     assert (
-        harness_runs._branch_recommendation_timeout_seconds(
+        replay_helpers._branch_recommendation_timeout_seconds(
             SimpleNamespace(agent_branch_recommendation_timeout_seconds=120)
         )
         == 60.0
     )
     assert (
-        harness_runs._branch_recommendation_timeout_seconds(
+        replay_helpers._branch_recommendation_timeout_seconds(
             SimpleNamespace(agent_branch_recommendation_timeout_seconds="bad")
         )
-        == harness_runs._BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
+        == replay_helpers._BRANCH_RECOMMENDATION_TIMEOUT_SECONDS
     )
 
 
@@ -160,12 +168,12 @@ def test_prepare_run_payload_keeps_explicit_message_when_input_has_messages():
             return "auto"
 
     chat = _Chat()
-    payload = harness_runs.HarnessRunRequest(
+    payload = replay_models.HarnessRunRequest(
         message="carried question",
         input={"messages": [], "custom": "value"},
     )
 
-    graph_payload, context, branch_meta, initial_values = harness_runs._prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = replay_payloads._prepare_run_payload(
         thread_id="thread-1",
         user_id="user-1",
         payload=payload,
@@ -211,9 +219,9 @@ def test_prepare_run_payload_preserves_thread_active_skill_without_new_trigger()
             return "auto"
 
     chat = _Chat()
-    payload = harness_runs.HarnessRunRequest(message="601020.SS 近一周表现")
+    payload = replay_models.HarnessRunRequest(message="601020.SS 近一周表现")
 
-    graph_payload, context, branch_meta, initial_values = harness_runs._prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = replay_payloads._prepare_run_payload(
         thread_id="thread-1",
         user_id="user-1",
         payload=payload,
@@ -253,12 +261,12 @@ def test_prepare_run_payload_skips_duplicate_branch_handoff_auto_run_input():
             del kwargs
             return "auto"
 
-    payload = harness_runs.HarnessRunRequest(
+    payload = replay_models.HarnessRunRequest(
         message="carried question",
         metadata={"branch_handoff_auto_run": True},
     )
 
-    graph_payload, _context, _branch_meta, _initial_values = harness_runs._prepare_run_payload(
+    graph_payload, _context, _branch_meta, _initial_values = replay_payloads._prepare_run_payload(
         thread_id="thread-1",
         user_id="user-1",
         payload=payload,
@@ -270,12 +278,12 @@ def test_prepare_run_payload_skips_duplicate_branch_handoff_auto_run_input():
 
 
 def test_run_message_from_payload_cleans_branch_handoff_auto_run():
-    payload = harness_runs.HarnessRunRequest(
+    payload = replay_models.HarnessRunRequest(
         message="新建子分支，探索济州岛10月亲子住宿，20字以内。",
         metadata={"branch_handoff_auto_run": True},
     )
 
-    assert harness_runs._run_message_from_payload(payload) == "探索济州岛10月亲子住宿，20字以内"
+    assert replay_payloads._run_message_from_payload(payload) == "探索济州岛10月亲子住宿，20字以内"
 
 
 def test_create_harness_run_skips_branch_action_intent_for_branch_handoff(monkeypatch):
@@ -310,18 +318,20 @@ def test_create_harness_run_skips_branch_action_intent_for_branch_handoff(monkey
     def fail_branch_action_intent(**kwargs):
         raise AssertionError("branch handoff auto-run must not create another branch action")
 
-    monkeypatch.setattr(harness_runs, "_create_run_record", fake_create_run_record)
-    monkeypatch.setattr(harness_runs, "_execute_harness_run", fake_execute_harness_run)
-    monkeypatch.setattr(harness_runs, "_branch_action_intent_for_run", fail_branch_action_intent)
-    monkeypatch.setattr(harness_runs, "_capture_run_rollback_target", lambda **kwargs: None)
+    monkeypatch.setattr(replay_execution, "_create_run_record", fake_create_run_record)
+    monkeypatch.setattr(replay_execution, "_execute_harness_run", fake_execute_harness_run)
+    monkeypatch.setattr(
+        replay_execution, "_branch_action_intent_for_run", fail_branch_action_intent
+    )
+    monkeypatch.setattr(replay_execution, "_capture_run_rollback_target", lambda **kwargs: None)
 
-    payload = harness_runs.HarnessRunRequest(
+    payload = replay_models.HarnessRunRequest(
         message="新建子分支，探索济州岛10月亲子住宿，20字以内。",
         metadata={"branch_handoff_auto_run": True},
     )
 
     async def scenario():
-        response = await harness_runs.create_harness_run(
+        response = await replay_execution.create_harness_run(
             thread_id="thread-2",
             payload=payload,
             request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
@@ -350,7 +360,7 @@ def test_get_persisted_run_reads_runtime_event_store_when_manager_misses():
 
     async def scenario():
         runtime = SimpleNamespace(event_store=_EventStore())
-        assert await harness_runs._get_persisted_run(runtime, "run-1") == {
+        assert await replay_helpers._get_persisted_run(runtime, "run-1") == {
             "run_id": "run-1",
             "thread_id": "thread-1",
             "status": "success",
@@ -368,9 +378,9 @@ def test_create_run_record_persists_user_id():
 
     async def scenario():
         manager = _RunManager()
-        payload = harness_runs.HarnessRunRequest(message="hello")
+        payload = replay_models.HarnessRunRequest(message="hello")
 
-        await harness_runs._create_run_record(
+        await replay_helpers._create_run_record(
             runtime=SimpleNamespace(run_manager=manager),
             payload=payload,
             thread_id="thread-1",
@@ -400,21 +410,21 @@ def test_create_run_record_persists_user_id():
 def test_create_run_record_rejects_enqueue_with_422():
     class _RunManager:
         async def create_or_reject(self, *args, **kwargs):
-            raise harness_runs.UnsupportedStrategyError(
+            raise replay_helpers.UnsupportedStrategyError(
                 "Multitask strategy 'enqueue' is not supported yet."
             )
 
     async def scenario():
-        payload = harness_runs.HarnessRunRequest(message="hello", multitask_strategy="enqueue")
+        payload = replay_models.HarnessRunRequest(message="hello", multitask_strategy="enqueue")
         try:
-            await harness_runs._create_run_record(
+            await replay_helpers._create_run_record(
                 runtime=SimpleNamespace(run_manager=_RunManager()),
                 payload=payload,
                 thread_id="thread-1",
                 user_id="user-1",
                 graph_payload={"messages": []},
             )
-        except harness_runs.HTTPException as exc:
+        except replay_helpers.HTTPException as exc:
             assert exc.status_code == 422
             assert "enqueue" in str(exc.detail)
         else:  # pragma: no cover
@@ -431,9 +441,9 @@ def test_create_run_record_marks_branch_action_rollback_partial():
 
     async def scenario():
         manager = _RunManager()
-        payload = harness_runs.HarnessRunRequest(message="hello")
+        payload = replay_models.HarnessRunRequest(message="hello")
 
-        await harness_runs._create_run_record(
+        await replay_helpers._create_run_record(
             runtime=SimpleNamespace(run_manager=manager),
             payload=payload,
             thread_id="thread-1",
@@ -521,12 +531,12 @@ def test_create_harness_run_uses_harness_invoke_adapter(monkeypatch):
             graph=_GraphShouldNotRun(),
             run_manager=manager,
         )
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_execution, "build_invoke_config", lambda **kwargs: {})
 
-        response = await harness_runs.create_harness_run(
+        response = await replay_execution.create_harness_run(
             thread_id="thread-1",
-            payload=harness_runs.HarnessRunRequest(message="hello"),
+            payload=replay_models.HarnessRunRequest(message="hello"),
             request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
             runtime=runtime,
             chat=_Chat(),
@@ -616,7 +626,7 @@ def test_create_harness_run_branch_action_records_turn_trajectory(monkeypatch):
             recorded.append(kwargs)
 
         monkeypatch.setattr(
-            harness_runs,
+            replay_execution,
             "_record_harness_turn_and_schedule",
             _capture_record_harness_turn_and_schedule,
         )
@@ -628,9 +638,9 @@ def test_create_harness_run_branch_action_records_turn_trajectory(monkeypatch):
             run_manager=_RunManager(),
         )
 
-        response = await harness_runs.create_harness_run(
+        response = await replay_execution.create_harness_run(
             thread_id="thread-1",
-            payload=harness_runs.HarnessRunRequest(message="hello"),
+            payload=replay_models.HarnessRunRequest(message="hello"),
             request=SimpleNamespace(state=SimpleNamespace(request_id="request-1")),
             runtime=runtime,
             chat=_Chat(),
@@ -698,7 +708,7 @@ def test_execute_harness_run_uses_pre_turn_branch_recommendation(monkeypatch):
             self.statuses.append((run_id, status, kwargs))
 
     async def scenario():
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
         manager = _Manager()
         harness = _Harness()
         runtime = SimpleNamespace(
@@ -708,7 +718,7 @@ def test_execute_harness_run_uses_pre_turn_branch_recommendation(monkeypatch):
         )
         chat = _Chat()
 
-        response = await harness_runs._execute_harness_run(
+        response = await replay_execution._execute_harness_run(
             runtime=runtime,
             chat=chat,
             run_record=manager.record,
@@ -788,8 +798,8 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_not_visib
             self.statuses.append((run_id, status, kwargs))
 
     async def scenario():
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_execution, "build_invoke_config", lambda **kwargs: {})
         manager = _Manager()
         harness = _Harness()
         runtime = SimpleNamespace(
@@ -799,7 +809,7 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_not_visib
         )
         chat = _Chat()
 
-        response = await harness_runs._execute_harness_run(
+        response = await replay_execution._execute_harness_run(
             runtime=runtime,
             chat=chat,
             run_record=manager.record,
@@ -891,8 +901,8 @@ def test_execute_harness_run_skips_pre_turn_recommendation_for_branch_handoff(mo
             self.statuses.append((run_id, status, kwargs))
 
     async def scenario():
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_execution, "build_invoke_config", lambda **kwargs: {})
         manager = _Manager()
         harness = _Harness()
         branch_decisions = _BranchDecisionService()
@@ -905,7 +915,7 @@ def test_execute_harness_run_skips_pre_turn_recommendation_for_branch_handoff(mo
         chat = _Chat()
         payload = {"messages": [HumanMessage(content="换个主题，研究十月大阪环球影城预算。")]}
 
-        response = await harness_runs._execute_harness_run(
+        response = await replay_execution._execute_harness_run(
             runtime=runtime,
             chat=chat,
             run_record=manager.record,
@@ -1030,7 +1040,7 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monk
     class _Chat:
         def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
             del kwargs
-            raise harness_runs.ConcurrentTurnError("busy")
+            raise replay_helpers.ConcurrentTurnError("busy")
 
         def _context_for_thread(self, **kwargs):
             del kwargs
@@ -1076,8 +1086,8 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monk
             self.statuses.append((run_id, status, kwargs))
 
     async def scenario():
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_execution, "build_invoke_config", lambda **kwargs: {})
         manager = _Manager()
         harness = _Harness()
         runtime = SimpleNamespace(
@@ -1086,7 +1096,7 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monk
             run_manager=manager,
         )
 
-        response = await harness_runs._execute_harness_run(
+        response = await replay_execution._execute_harness_run(
             runtime=runtime,
             chat=_Chat(),
             run_record=manager.record,
@@ -1111,7 +1121,7 @@ def test_execute_harness_run_continues_when_pre_turn_recommendation_is_busy(monk
 
 
 def test_task_stream_event_payload_merges_sanitized_metadata_without_duplicate_keyword():
-    payload, metadata = harness_runs._task_stream_event_payload(
+    payload, metadata = replay_helpers._task_stream_event_payload(
         {
             "id": "task-1",
             "metadata": {
@@ -1138,9 +1148,9 @@ def test_record_harness_turn_and_schedule_can_skip_side_effect_hooks(monkeypatch
         del chat, args, kwargs
         calls.append(method)
 
-    monkeypatch.setattr(harness_runs, "_call_chat_hook", _capture_chat_hook)
+    monkeypatch.setattr(replay_helpers, "_call_chat_hook", _capture_chat_hook)
 
-    harness_runs._record_harness_turn_and_schedule(
+    replay_helpers._record_harness_turn_and_schedule(
         chat=object(),
         thread_id="thread-1",
         user_id="user-1",
@@ -1169,12 +1179,12 @@ def test_authorize_run_access_rejects_mismatched_user():
     principal = SimpleNamespace(user_id="user-2")
 
     try:
-        harness_runs._authorize_run_access(
+        replay_helpers._authorize_run_access(
             chat=_Chat(),
             principal=principal,
             run_payload={"run_id": "run-1", "thread_id": "thread-1", "user_id": "user-1"},
         )
-    except harness_runs.HTTPException as exc:
+    except replay_helpers.HTTPException as exc:
         assert exc.status_code == 403
     else:  # pragma: no cover
         raise AssertionError("expected authorization failure")
@@ -1245,7 +1255,7 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
             settings=SimpleNamespace(sse_heartbeat_seconds=7),
         )
 
-        response = await harness_runs.stream_existing_harness_run(
+        response = await detail.stream_existing_harness_run(
             run_id="run-1",
             request=request,
             runtime=runtime,
@@ -1312,7 +1322,7 @@ def test_harness_observability_endpoints_read_authorized_journal():
         chat = _Chat()
         principal = SimpleNamespace(user_id="user-1")
 
-        events = await harness_runs.list_harness_run_events(
+        events = await list_routes.list_harness_run_events(
             "run-1",
             runtime=runtime,
             chat=chat,
@@ -1320,13 +1330,13 @@ def test_harness_observability_endpoints_read_authorized_journal():
             event="run.completed",
             limit=10,
         )
-        snapshot = await harness_runs.get_harness_run_snapshot(
+        snapshot = await detail.get_harness_run_snapshot(
             "run-1",
             runtime=runtime,
             chat=chat,
             principal=principal,
         )
-        trajectory = await harness_runs.get_harness_run_trajectory(
+        trajectory = await detail.get_harness_run_trajectory(
             "run-1",
             runtime=runtime,
             chat=chat,
@@ -1445,15 +1455,15 @@ async def _collect_produced_events(
         stream_bridge=bridge,
     )
 
-    monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-    monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+    monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+    monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
     producer_final_messages = (
         [AIMessage(content="done")] if final_messages is None else final_messages
     )
     producer_chat = chat or _ProducerChat(producer_final_messages)
 
-    await harness_runs._produce_run_stream(
+    await replay_streaming._produce_run_stream(
         runtime=runtime,
         chat=producer_chat,
         run_id="run-1",
@@ -1623,10 +1633,10 @@ def test_produce_run_stream_emits_canonical_v2_events(monkeypatch):
             stream_bridge=bridge,
         )
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=_Chat(),
             run_id="run-1",
@@ -1703,10 +1713,10 @@ def test_produce_run_stream_uses_pre_turn_branch_recommendation(monkeypatch):
         )
         chat = _Chat()
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=chat,
             run_id="run-1",
@@ -1783,12 +1793,12 @@ def test_produce_run_stream_offloads_pre_turn_branch_recommendation(monkeypatch)
                 ticks.append(time.perf_counter())
                 await asyncio.sleep(0.01)
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
         ticker_task = asyncio.create_task(ticker())
         producer_task = asyncio.create_task(
-            harness_runs._produce_run_stream(
+            replay_streaming._produce_run_stream(
                 runtime=runtime,
                 chat=chat,
                 run_id="run-1",
@@ -1865,13 +1875,13 @@ def test_produce_run_stream_times_out_pre_turn_branch_recommendation(monkeypatch
         )
         chat = _Chat()
 
-        monkeypatch.setattr(harness_runs, "_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS", 0.01)
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "_BRANCH_RECOMMENDATION_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
         try:
             await asyncio.wait_for(
-                harness_runs._produce_run_stream(
+                replay_streaming._produce_run_stream(
                     runtime=runtime,
                     chat=chat,
                     run_id="run-1",
@@ -1956,10 +1966,10 @@ def test_produce_run_stream_skips_pre_turn_recommendation_for_branch_handoff(mon
         )
         chat = _Chat()
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=chat,
             run_id="run-1",
@@ -2032,7 +2042,7 @@ def test_produce_run_stream_continues_when_pre_turn_recommendation_is_busy(monke
 
         def _handle_branch_recommendation_turn_with_lease(self, **kwargs):
             del kwargs
-            raise harness_runs.ConcurrentTurnError("busy")
+            raise replay_helpers.ConcurrentTurnError("busy")
 
     async def scenario():
         bridge = _CollectingBridge()
@@ -2046,10 +2056,10 @@ def test_produce_run_stream_continues_when_pre_turn_recommendation_is_busy(monke
             stream_bridge=bridge,
         )
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=_Chat(),
             run_id="run-1",
@@ -2100,7 +2110,7 @@ def test_produce_branch_action_run_stream_emits_canonical_completion():
         runtime = SimpleNamespace(run_manager=manager, stream_bridge=bridge)
         chat = _Chat()
 
-        await harness_runs._produce_branch_action_run_stream(
+        await replay_streaming._produce_branch_action_run_stream(
             runtime=runtime,
             chat=chat,
             run_id="run-1",
@@ -2165,7 +2175,7 @@ def test_produce_branch_action_run_stream_completes_after_task_cancel():
         chat = _Chat()
 
         task = asyncio.create_task(
-            harness_runs._produce_branch_action_run_stream(
+            replay_streaming._produce_branch_action_run_stream(
                 runtime=runtime,
                 chat=chat,
                 run_id="run-1",
@@ -2217,7 +2227,7 @@ def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
             recorded.append(kwargs)
 
         monkeypatch.setattr(
-            harness_runs,
+            replay_streaming,
             "_record_harness_turn_and_schedule",
             _capture_record_harness_turn_and_schedule,
         )
@@ -2226,7 +2236,7 @@ def test_produce_branch_action_run_stream_records_turn_trajectory(monkeypatch):
         manager = _CollectingRunManager()
         runtime = SimpleNamespace(run_manager=manager, stream_bridge=bridge)
 
-        await harness_runs._produce_branch_action_run_stream(
+        await replay_streaming._produce_branch_action_run_stream(
             runtime=runtime,
             chat=_Chat(),
             run_id="run-1",
@@ -2264,7 +2274,7 @@ def test_produce_branch_action_run_stream_drops_tool_protocol_message():
         manager = _CollectingRunManager()
         runtime = SimpleNamespace(run_manager=manager, stream_bridge=bridge)
 
-        await harness_runs._produce_branch_action_run_stream(
+        await replay_streaming._produce_branch_action_run_stream(
             runtime=runtime,
             chat=_Chat(),
             run_id="run-1",
@@ -2294,7 +2304,7 @@ def test_branch_action_intent_for_run_delegates_to_chat_facade():
 
     chat = _Chat()
 
-    assert harness_runs._branch_action_intent_for_run(
+    assert replay_helpers._branch_action_intent_for_run(
         chat=chat,
         initial_values={"branch_actions": []},
         branch_meta={"branch": "main"},
@@ -2780,10 +2790,10 @@ def test_produce_run_stream_does_not_duplicate_manager_interrupt(monkeypatch):
             stream_bridge=bridge,
         )
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=SimpleNamespace(),
             run_id="run-1",
@@ -2837,7 +2847,7 @@ def test_produce_run_stream_keeps_closed_sequence_after_lifecycle_event(monkeypa
                 await self.bridge.publish(
                     run_id,
                     "run.interrupt",
-                    harness_runs.canonical_event_payload(
+                    replay_helpers.canonical_event_payload(
                         run_id=run_id,
                         thread_id="thread-1",
                         turn_id=run_id,
@@ -2862,10 +2872,10 @@ def test_produce_run_stream_keeps_closed_sequence_after_lifecycle_event(monkeypa
         )
         runtime.run_manager = _Manager(bridge, journal)
 
-        monkeypatch.setattr(harness_runs, "build_trace_correlation", lambda **kwargs: {})
-        monkeypatch.setattr(harness_runs, "build_invoke_config", lambda **kwargs: {})
+        monkeypatch.setattr(replay_helpers, "build_trace_correlation", lambda **kwargs: {})
+        monkeypatch.setattr(replay_streaming, "build_invoke_config", lambda **kwargs: {})
 
-        await harness_runs._produce_run_stream(
+        await replay_streaming._produce_run_stream(
             runtime=runtime,
             chat=SimpleNamespace(),
             run_id="run-1",

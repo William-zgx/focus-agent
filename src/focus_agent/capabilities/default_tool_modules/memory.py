@@ -223,22 +223,123 @@ def _json_safe_memory_item(item: Any, *, namespace: tuple[str, ...]) -> dict[str
     return payload
 
 
-def build_memory_tools(
+def _validate_memory_save_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "content")
+
+
+def _validate_memory_forget_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "memory_id")
+
+
+def _require_memory_backend(store: Any, memory_repository: Any) -> None:
+    if store is None and memory_repository is None:
+        raise RuntimeError("Memory store is not configured.")
+
+
+def _lookup_namespaces(
+    context: ToolBuildContext,
+    *,
+    namespace: str | None,
+    user_id: str | None,
+    root_thread_id: str | None,
+    branch_id: str | None,
+    project_id: str | None,
+) -> list[tuple[str, ...]]:
+    if namespace and namespace.strip():
+        return [_parse_namespace(namespace)]
+    return _default_memory_namespaces(
+        user_id=user_id,
+        root_thread_id=root_thread_id or context.get_current_thread_id(),
+        branch_id=branch_id,
+        project_id=project_id,
+    )
+
+
+def _search_memory_hits(
     context: ToolBuildContext,
     *,
     store: Any,
-    memory_repository: Any = None,
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    tool_catalog = context.tool_catalog
-    emit_tool_event = context.emit_tool_event
+    memory_repository: Any,
+    namespaces: list[tuple[str, ...]],
+    effective_query: str,
+    search_limit: int,
+) -> list[Any]:
     memory_embedding_service = context.memory_embedding_service
-    retrieval_index = context.retrieval_index
+    provider = getattr(memory_embedding_service, "provider", None)
+    retriever = MemoryRetriever(
+        store=store,
+        repository=memory_repository,
+        default_limit=search_limit,
+        retrieval_mode="hybrid",
+        embedding_provider=provider,
+        retrieval_index=context.retrieval_index
+        or getattr(memory_embedding_service, "retrieval_index", None),
+    )
+    hits = []
+    query_vector = None
+    if provider is not None:
+        try:
+            query_vector = provider.embed([effective_query])[0]
+        except Exception:  # noqa: BLE001
+            query_vector = None
+    for candidate_namespace in namespaces:
+        zvec_hits, _ = retriever._search_retrieval_namespace(
+            candidate_namespace,
+            effective_query,
+            limit=search_limit,
+            query_vector=query_vector,
+        )
+        hits.extend(
+            zvec_hits
+            or retriever._search_namespace(
+                candidate_namespace,
+                effective_query,
+                limit=search_limit,
+            )
+        )
+    reranked_hits = retriever._rerank_hits(
+        hits,
+        query=effective_query,
+        prompt_mode=PromptMode.EXPLORE,
+    )
+    return retriever._dedupe_hits(reranked_hits)
 
-    def _validate_memory_save_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "content")
 
-    def _validate_memory_forget_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "memory_id")
+def _forget_memory(
+    context: ToolBuildContext,
+    *,
+    store: Any,
+    memory_repository: Any,
+    memory_id: str,
+    namespaces: list[tuple[str, ...]],
+) -> tuple[str, ...] | None:
+    if memory_repository is not None:
+        service = MemoryService(
+            repository=memory_repository,
+            embedding_service=context.memory_embedding_service,
+        )
+        for candidate_namespace in namespaces:
+            decision = service.forget(
+                memory_id=memory_id,
+                namespace=candidate_namespace,
+                actor="memory_forget_tool",
+                reason="explicit_tool_forget",
+            )
+            if decision.status.value == "forgotten":
+                return candidate_namespace
+        return None
+    for candidate_namespace in namespaces:
+        if store.get(candidate_namespace, memory_id) is None:
+            continue
+        store.delete(candidate_namespace, memory_id)
+        return candidate_namespace
+    return None
+
+
+def build_memory_save_tool(
+    context: ToolBuildContext, *, store: Any, memory_repository: Any = None
+) -> Any:
+    emit_tool_event = context.emit_tool_event
 
     @tool
     def memory_save(
@@ -261,8 +362,7 @@ def build_memory_tools(
             tool_name=tool_name, stage="start", kind=kind, scope=scope, namespace=namespace
         )
         try:
-            if store is None and memory_repository is None:
-                raise RuntimeError("Memory store is not configured.")
+            _require_memory_backend(store, memory_repository)
             if not content.strip():
                 raise ValueError("content must not be empty.")
             memory_kind = MemoryKind(kind.strip())
@@ -296,7 +396,7 @@ def build_memory_tools(
             if memory_repository is not None:
                 decision = MemoryService(
                     repository=memory_repository,
-                    embedding_service=memory_embedding_service,
+                    embedding_service=context.memory_embedding_service,
                 ).upsert_request(
                     record,
                     actor="memory_save_tool",
@@ -322,6 +422,15 @@ def build_memory_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc))
             raise
 
+    return memory_save
+
+
+def build_memory_search_tool(
+    context: ToolBuildContext, *, store: Any, memory_repository: Any = None
+) -> Any:
+    search_config = context.tool_catalog.memory_search
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def memory_search(
         query: str,
@@ -338,71 +447,36 @@ def build_memory_tools(
             tool_name=tool_name, stage="start", query=query, namespace=namespace, limit=limit
         )
         try:
-            if store is None and memory_repository is None:
-                raise RuntimeError("Memory store is not configured.")
+            _require_memory_backend(store, memory_repository)
             if not query.strip():
                 raise ValueError("query must not be empty.")
-            requested_limit = (
-                tool_catalog.memory_search.default_limit if limit is None else int(limit)
-            )
-            capped_limit = max(1, min(requested_limit, tool_catalog.memory_search.max_limit))
+            requested_limit = search_config.default_limit if limit is None else int(limit)
+            capped_limit = max(1, min(requested_limit, search_config.max_limit))
             search_limit = min(
-                tool_catalog.memory_search.max_limit,
-                max(capped_limit, tool_catalog.memory_search.default_limit),
+                search_config.max_limit,
+                max(capped_limit, search_config.default_limit),
             )
-            namespaces = (
-                [_parse_namespace(namespace)]
-                if namespace and namespace.strip()
-                else _default_memory_namespaces(
-                    user_id=user_id,
-                    root_thread_id=root_thread_id or context.get_current_thread_id(),
-                    branch_id=branch_id,
-                    project_id=project_id,
-                )
+            namespaces = _lookup_namespaces(
+                context,
+                namespace=namespace,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+                branch_id=branch_id,
+                project_id=project_id,
             )
             effective_query = _build_retrieval_query(
                 query=query.strip(),
                 state={},
                 prompt_mode=PromptMode.EXPLORE,
             )
-            retriever = MemoryRetriever(
+            deduped_hits = _search_memory_hits(
+                context,
                 store=store,
-                repository=memory_repository,
-                default_limit=search_limit,
-                retrieval_mode="hybrid",
-                embedding_provider=getattr(memory_embedding_service, "provider", None),
-                retrieval_index=retrieval_index
-                or getattr(memory_embedding_service, "retrieval_index", None),
+                memory_repository=memory_repository,
+                namespaces=namespaces,
+                effective_query=effective_query,
+                search_limit=search_limit,
             )
-            hits = []
-            query_vector = None
-            provider = getattr(memory_embedding_service, "provider", None)
-            if provider is not None:
-                try:
-                    query_vector = provider.embed([effective_query])[0]
-                except Exception:  # noqa: BLE001
-                    query_vector = None
-            for candidate_namespace in namespaces:
-                zvec_hits, _ = retriever._search_retrieval_namespace(
-                    candidate_namespace,
-                    effective_query,
-                    limit=search_limit,
-                    query_vector=query_vector,
-                )
-                hits.extend(
-                    zvec_hits
-                    or retriever._search_namespace(
-                        candidate_namespace,
-                        effective_query,
-                        limit=search_limit,
-                    )
-                )
-            reranked_hits = retriever._rerank_hits(
-                hits,
-                query=effective_query,
-                prompt_mode=PromptMode.EXPLORE,
-            )
-            deduped_hits = retriever._dedupe_hits(reranked_hits)
             results = [
                 _json_safe_memory_item(item, namespace=item.namespace)
                 for item in deduped_hits[:capped_limit]
@@ -422,6 +496,14 @@ def build_memory_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), query=query)
             raise
 
+    return memory_search
+
+
+def build_memory_forget_tool(
+    context: ToolBuildContext, *, store: Any, memory_repository: Any = None
+) -> Any:
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def memory_forget(
         memory_id: str,
@@ -437,44 +519,25 @@ def build_memory_tools(
             tool_name=tool_name, stage="start", memory_id=memory_id, namespace=namespace
         )
         try:
-            if store is None and memory_repository is None:
-                raise RuntimeError("Memory store is not configured.")
+            _require_memory_backend(store, memory_repository)
             normalized_id = memory_id.strip()
             if not normalized_id:
                 raise ValueError("memory_id must not be empty.")
-            namespaces = (
-                [_parse_namespace(namespace)]
-                if namespace and namespace.strip()
-                else _default_memory_namespaces(
-                    user_id=user_id,
-                    root_thread_id=root_thread_id or context.get_current_thread_id(),
-                    branch_id=branch_id,
-                    project_id=project_id,
-                )
+            namespaces = _lookup_namespaces(
+                context,
+                namespace=namespace,
+                user_id=user_id,
+                root_thread_id=root_thread_id,
+                branch_id=branch_id,
+                project_id=project_id,
             )
-            deleted_namespace: tuple[str, ...] | None = None
-            if memory_repository is not None:
-                service = MemoryService(
-                    repository=memory_repository,
-                    embedding_service=memory_embedding_service,
-                )
-                for candidate_namespace in namespaces:
-                    decision = service.forget(
-                        memory_id=normalized_id,
-                        namespace=candidate_namespace,
-                        actor="memory_forget_tool",
-                        reason="explicit_tool_forget",
-                    )
-                    if decision.status.value == "forgotten":
-                        deleted_namespace = candidate_namespace
-                        break
-            else:
-                for candidate_namespace in namespaces:
-                    if store.get(candidate_namespace, normalized_id) is None:
-                        continue
-                    store.delete(candidate_namespace, normalized_id)
-                    deleted_namespace = candidate_namespace
-                    break
+            deleted_namespace = _forget_memory(
+                context,
+                store=store,
+                memory_repository=memory_repository,
+                memory_id=normalized_id,
+                namespaces=namespaces,
+            )
             payload = {
                 "memory_id": normalized_id,
                 "deleted": deleted_namespace is not None,
@@ -488,11 +551,21 @@ def build_memory_tools(
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), memory_id=memory_id)
             raise
 
+    return memory_forget
+
+
+def build_memory_tools(
+    context: ToolBuildContext,
+    *,
+    store: Any,
+    memory_repository: Any = None,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    backends = {"store": store, "memory_repository": memory_repository}
     return (
         {
-            "memory_save": memory_save,
-            "memory_search": memory_search,
-            "memory_forget": memory_forget,
+            "memory_save": build_memory_save_tool(context, **backends),
+            "memory_search": build_memory_search_tool(context, **backends),
+            "memory_forget": build_memory_forget_tool(context, **backends),
         },
         {
             "memory_save": {

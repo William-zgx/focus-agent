@@ -9,14 +9,10 @@ from langgraph.types import Command
 from focus_agent.harness.agents.mention import (
     extract_primary_agent as _extract_primary_agent,
 )
-from focus_agent.harness.agents.mention import list_available_agents
 from focus_agent.services.branches.actions import branch_handoff_message_from_text
 from focus_agent.services.chat import ChatService
 
 from .replay_models import HarnessResumeRequest, HarnessRunRequest
-
-# Re-export for callers that need mention metadata.
-available_agents_for_registry = list_available_agents
 
 
 def _prepare_run_payload(

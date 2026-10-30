@@ -8,7 +8,7 @@ from typing import Any
 from langchain.tools import tool
 
 from .build_context import ToolBuildContext
-from .common import _coerce_relative_posix
+from .common import _capped_int, _coerce_relative_posix
 from .workspace_paths import _resolve_workspace_path
 
 
@@ -76,13 +76,11 @@ def build_git_tools(context: ToolBuildContext) -> tuple[dict[str, Any], dict[str
             context_lines=context_lines,
         )
         try:
-            requested_context_lines = (
-                tool_catalog.git_diff.default_context_lines
-                if context_lines is None
-                else int(context_lines)
-            )
-            capped_context_lines = max(
-                0, min(requested_context_lines, tool_catalog.git_diff.max_context_lines)
+            capped_context_lines = _capped_int(
+                context_lines,
+                default=tool_catalog.git_diff.default_context_lines,
+                cap=tool_catalog.git_diff.max_context_lines,
+                floor=0,
             )
             args = ["diff", "--no-color", f"--unified={capped_context_lines}"]
             if staged:
@@ -112,8 +110,11 @@ def build_git_tools(context: ToolBuildContext) -> tuple[dict[str, Any], dict[str
         tool_name = "git_log"
         emit_tool_event(tool_name=tool_name, stage="start", limit=limit)
         try:
-            requested_limit = tool_catalog.git_log.default_limit if limit is None else int(limit)
-            capped_limit = max(1, min(requested_limit, tool_catalog.git_log.max_limit))
+            capped_limit = _capped_int(
+                limit,
+                default=tool_catalog.git_log.default_limit,
+                cap=tool_catalog.git_log.max_limit,
+            )
             output = _run_git_command(
                 workspace_root=workspace_root,
                 args=["log", f"-n{capped_limit}", "--pretty=format:%H%x09%h%x09%s"],

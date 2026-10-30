@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from urllib import parse as stdlib_urllib_parse
@@ -12,7 +13,7 @@ from langchain.tools import tool
 from focus_agent.runtime.http_client import shared_sync_http_client
 
 from .build_context import ToolBuildContext
-from .common import _require_non_empty_text_arg
+from .common import _capped_int, _require_non_empty_text_arg
 from .web_helpers import (
     _binary_payload_kind,
     _head_tail_text_window,
@@ -29,50 +30,79 @@ _WEB_FETCH_MAX_BYTES = 8 * 1024 * 1024
 _WEB_FETCH_TRUNCATION_MARKER = "\n\n[... middle omitted ...]\n\n"
 _WEB_FETCH_MAX_OBSERVATION_CHARS = 7000
 _WEB_FETCH_MIN_DISPLAY_CHARS = 200
+_WEB_FETCH_CHALLENGE_TITLES = {
+    "just a moment",
+    "access denied",
+    "attention required",
+    "attention required | cloudflare",
+    "verify you are human",
+    "robot or human",
+}
 
 
-def build_web_tools(
-    context: ToolBuildContext,
-    *,
-    web_search_config: Any,
-    resolved_env: Any,
-    urllib_parse_module: Any = stdlib_urllib_parse,
-    http_client: httpx.Client | None = None,
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    tool_catalog = context.tool_catalog
-    emit_tool_event = context.emit_tool_event
-    save_tool_observation = context.save_tool_observation
+def _validate_web_fetch_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "url")
 
-    def _validate_web_fetch_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "url")
 
-    def _validate_web_search_args(args: dict[str, Any]) -> None:
-        _require_non_empty_text_arg(args, "query")
+def _validate_web_search_args(args: dict[str, Any]) -> None:
+    _require_non_empty_text_arg(args, "query")
 
-    blocked_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "blocked_domains", ()) or ())
-    allowed_fetch_domains = tuple(getattr(tool_catalog.web_fetch, "allowed_domains", ()) or ())
 
-    def _http() -> httpx.Client:
-        return http_client or shared_sync_http_client()
+def _default_port(parsed_url: Any) -> int:
+    return parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
 
-    def _fetch_url(
-        url: str,
+
+class _WebFetcher:
+    """Follows redirects under the fetch access policy, pinning resolved public addresses."""
+
+    def __init__(
+        self,
         *,
-        max_bytes: int,
-    ) -> tuple[bytes, str, Any, str, bool]:
+        http: Callable[[], httpx.Client],
+        http_client: httpx.Client | None,
+        urllib_parse_module: Any,
+        blocked_domains: tuple[str, ...],
+        allowed_domains: tuple[str, ...],
+    ) -> None:
+        self._http = http
+        self._http_client = http_client
+        self._urllib_parse = urllib_parse_module
+        self._blocked_domains = blocked_domains
+        self._allowed_domains = allowed_domains
+
+    def policy_violation(self, host: str | None) -> dict[str, Any] | None:
+        return _web_fetch_policy_violation(
+            host,
+            blocked_domains=self._blocked_domains,
+            allowed_domains=self._allowed_domains,
+        )
+
+    def _redirect_target(self, current_url: str, location: str) -> Any:
+        parsed_next = self._urllib_parse.urlparse(self._urllib_parse.urljoin(current_url, location))
+        if parsed_next.scheme not in {"http", "https"}:
+            raise ValueError("Only http and https redirect URLs are supported.")
+        policy_violation = self.policy_violation(parsed_next.hostname)
+        if policy_violation is not None:
+            raise ValueError(
+                "Web fetch redirect blocked by access policy "
+                f"({policy_violation['category']}): {policy_violation['message']}"
+            )
+        return parsed_next
+
+    def fetch(self, url: str, *, max_bytes: int) -> tuple[bytes, str, Any, str, bool]:
+        urllib_parse_module = self._urllib_parse
         current_url = url
-        client = _http()
-        secure_transport = http_client is not None or isinstance(client, httpx.Client)
-        pinned_client = client if http_client is not None else None
+        client = self._http()
+        secure_transport = self._http_client is not None or isinstance(client, httpx.Client)
+        pinned_client = client if self._http_client is not None else None
         current_addresses: tuple[str, ...] | None = None
         response = None
         for _ in range(_WEB_FETCH_MAX_REDIRECTS + 1):
             parsed_current = urllib_parse_module.urlparse(current_url)
             if secure_transport and current_addresses is None:
-                port = parsed_current.port or (443 if parsed_current.scheme == "https" else 80)
                 current_addresses = _resolve_public_fetch_addresses(
                     str(parsed_current.hostname or ""),
-                    port,
+                    _default_port(parsed_current),
                 )
             if secure_transport:
                 response = request_pinned_fetch_url(
@@ -96,26 +126,12 @@ def build_web_tools(
             )
             if not location:
                 break
-            next_url = urllib_parse_module.urljoin(current_url, str(location))
-            parsed_next = urllib_parse_module.urlparse(next_url)
-            if parsed_next.scheme not in {"http", "https"}:
-                raise ValueError("Only http and https redirect URLs are supported.")
-            policy_violation = _web_fetch_policy_violation(
-                parsed_next.hostname,
-                blocked_domains=blocked_fetch_domains,
-                allowed_domains=allowed_fetch_domains,
-            )
-            if policy_violation is not None:
-                raise ValueError(
-                    "Web fetch redirect blocked by access policy "
-                    f"({policy_violation['category']}): {policy_violation['message']}"
-                )
+            parsed_next = self._redirect_target(current_url, str(location))
             if secure_transport:
                 try:
-                    next_port = parsed_next.port or (443 if parsed_next.scheme == "https" else 80)
                     current_addresses = _resolve_public_fetch_addresses(
                         str(parsed_next.hostname or ""),
-                        next_port,
+                        _default_port(parsed_next),
                     )
                 except ValueError as exc:
                     raise ValueError(f"Web fetch redirect blocked: {exc}") from exc
@@ -135,12 +151,152 @@ def build_web_tools(
             fetch_limited = len(response.content) > len(raw)
         return raw, current_url, response.headers, response.encoding or "utf-8", fetch_limited
 
-    _run_web_search, _fallback_web_search = build_web_search_runner(
-        web_search_config=web_search_config,
-        resolved_env=resolved_env,
-        emit_tool_event=emit_tool_event,
-        http=_http,
-    )
+
+def _extract_readable_content(
+    decoded: str, *, content_type: str, final_url: str
+) -> tuple[str, str, Any]:
+    if "html" in content_type.lower() or "<html" in decoded[:500].lower():
+        parser = _ReadableHTMLExtractor(base_url=final_url)
+        parser.feed(decoded)
+        parser.close()
+        return parser.title, parser.text, parser.published_at
+    return "", decoded.strip(), None
+
+
+def _web_fetch_continuation(
+    *, artifact_ref: str | None, head: str, display_chars: int, total_chars: int
+) -> dict[str, Any]:
+    if artifact_ref:
+        return {
+            "artifact_ref": artifact_ref,
+            "tool": "artifact_read",
+            "args": {
+                "artifact_id": artifact_ref,
+                "offset": len(head),
+                "limit": display_chars,
+            },
+            "offset": len(head),
+            "limit": display_chars,
+            "total_chars": total_chars,
+            "hint": (
+                "Call artifact_read using the supplied args to page through the omitted middle."
+            ),
+        }
+    return {
+        "available": False,
+        "total_chars": total_chars,
+        "hint": (
+            "Full text was not saved in this runtime; call web_fetch again "
+            "with a larger max_chars value to inspect more of the page."
+        ),
+    }
+
+
+def _make_full_content_saver(
+    context: ToolBuildContext, *, tool_name: str, content: str
+) -> Callable[[], str | None]:
+    save_tool_observation = context.save_tool_observation
+    emit_tool_event = context.emit_tool_event
+    saved_ref: list[str | None] = []
+
+    def save_full_content() -> str | None:
+        # Saved at most once, and only when the shown window omits text.
+        if saved_ref:
+            return saved_ref[0]
+        artifact_ref = None
+        if callable(save_tool_observation):
+            observation_id = uuid.uuid4().hex
+            try:
+                saved = save_tool_observation(
+                    tool_name=tool_name,
+                    tool_call_id=observation_id,
+                    content=content,
+                    thread_id=context.get_current_thread_id(),
+                )
+            except Exception as exc:  # noqa: BLE001
+                emit_tool_event(
+                    tool_name=tool_name,
+                    stage="delta",
+                    message="Full web content could not be saved for continuation.",
+                    error=str(exc),
+                )
+                saved = None
+            if saved:
+                artifact_ref = f"tool-observation://{tool_name}/{observation_id}"
+        saved_ref.append(artifact_ref)
+        return artifact_ref
+
+    return save_full_content
+
+
+def _render_web_fetch_result(
+    *,
+    content: str,
+    display_chars: int,
+    page: dict[str, Any],
+    save_full_content: Callable[[], str | None],
+) -> str:
+    def build_payload(display_chars: int) -> dict[str, Any]:
+        window_budget = (
+            display_chars
+            if len(content) <= display_chars
+            else max(1, display_chars - len(_WEB_FETCH_TRUNCATION_MARKER))
+        )
+        head, tail, truncated = _head_tail_text_window(content, window_budget)
+        continuation: dict[str, Any] | None = None
+        displayed_content = content
+        if truncated:
+            displayed_content = f"{head}{_WEB_FETCH_TRUNCATION_MARKER}{tail}"
+            if display_chars <= len(_WEB_FETCH_TRUNCATION_MARKER):
+                head, tail = content[:display_chars], ""
+                displayed_content = head
+            continuation = _web_fetch_continuation(
+                artifact_ref=save_full_content(),
+                head=head,
+                display_chars=display_chars,
+                total_chars=len(content),
+            )
+        payload = {
+            "url": page["url"],
+            "final_url": page["final_url"],
+            "title": page["title"],
+            "content_type": page["content_type"],
+            "content": displayed_content,
+            "content_chars": len(content),
+            "shown_chars": len(displayed_content),
+            "truncated": truncated,
+            "fetch_limited": page["fetch_limited"],
+            "observed_at": page["observed_at"],
+            "published_at": page["published_at"],
+            "source_type": "page",
+        }
+        if continuation is not None:
+            payload["continuation"] = continuation
+            payload["total_chars"] = len(content)
+            if continuation.get("artifact_ref"):
+                payload["artifact_ref"] = continuation["artifact_ref"]
+                payload["next_offset"] = len(head)
+        return payload
+
+    # The observation is trimmed above _WEB_FETCH_MAX_OBSERVATION_CHARS, which
+    # would hide text that the continuation offset already skips. Shrink the
+    # shown window until the serialized payload fits, so nothing is lost.
+    while True:
+        result = json.dumps(build_payload(display_chars), ensure_ascii=False)
+        overflow = len(result) - _WEB_FETCH_MAX_OBSERVATION_CHARS
+        if overflow <= 0 or display_chars <= _WEB_FETCH_MIN_DISPLAY_CHARS:
+            return result
+        display_chars = max(_WEB_FETCH_MIN_DISPLAY_CHARS, display_chars - overflow - 64)
+
+
+def build_web_fetch_tool(
+    context: ToolBuildContext,
+    *,
+    fetcher: _WebFetcher,
+    urllib_parse_module: Any,
+) -> Any:
+    fetch_config = context.tool_catalog.web_fetch
+    emit_tool_event = context.emit_tool_event
 
     @tool
     def web_fetch(url: str, max_chars: int | None = None) -> str:
@@ -151,11 +307,7 @@ def build_web_tools(
             parsed = urllib_parse_module.urlparse(url.strip())
             if parsed.scheme not in {"http", "https"}:
                 raise ValueError("Only http and https URLs are supported.")
-            policy_violation = _web_fetch_policy_violation(
-                parsed.hostname,
-                blocked_domains=blocked_fetch_domains,
-                allowed_domains=allowed_fetch_domains,
-            )
+            policy_violation = fetcher.policy_violation(parsed.hostname)
             if policy_violation is not None:
                 emit_tool_event(
                     tool_name=tool_name,
@@ -167,11 +319,10 @@ def build_web_tools(
                     "Web fetch blocked by access policy "
                     f"({policy_violation['category']}): {policy_violation['message']}"
                 )
-            requested_chars = (
-                tool_catalog.web_fetch.default_max_chars if max_chars is None else int(max_chars)
+            capped_chars = _capped_int(
+                max_chars, default=fetch_config.default_max_chars, cap=fetch_config.max_chars_cap
             )
-            capped_chars = max(1, min(requested_chars, tool_catalog.web_fetch.max_chars_cap))
-            raw, final_url, headers, charset, fetch_limited = _fetch_url(
+            raw, final_url, headers, charset, fetch_limited = fetcher.fetch(
                 urllib_parse_module.urlunparse(parsed),
                 max_bytes=_WEB_FETCH_MAX_BYTES,
             )
@@ -195,26 +346,12 @@ def build_web_tools(
                 result = json.dumps(payload, ensure_ascii=False)
                 emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
                 return result
-            decoded = raw.decode(charset, errors="replace")
-            title = ""
-            published_at = None
-            if "html" in content_type.lower() or "<html" in decoded[:500].lower():
-                parser = _ReadableHTMLExtractor(base_url=final_url)
-                parser.feed(decoded)
-                parser.close()
-                title = parser.title
-                content = parser.text
-                published_at = parser.published_at
-            else:
-                content = decoded.strip()
-            if not content or title.strip().lower().rstrip(".!…") in {
-                "just a moment",
-                "access denied",
-                "attention required",
-                "attention required | cloudflare",
-                "verify you are human",
-                "robot or human",
-            }:
+            title, content, published_at = _extract_readable_content(
+                raw.decode(charset, errors="replace"),
+                content_type=content_type,
+                final_url=final_url,
+            )
+            if not content or title.strip().lower().rstrip(".!…") in _WEB_FETCH_CHALLENGE_TITLES:
                 return json.dumps(
                     {
                         "url": url,
@@ -226,116 +363,32 @@ def build_web_tools(
                     },
                     ensure_ascii=False,
                 )
-            observed_at = datetime.now(UTC).isoformat()
-            saved_ref: list[str | None] = []
-
-            def save_full_content() -> str | None:
-                # Saved at most once, and only when the shown window omits text.
-                if saved_ref:
-                    return saved_ref[0]
-                artifact_ref = None
-                if callable(save_tool_observation):
-                    observation_id = uuid.uuid4().hex
-                    try:
-                        saved = save_tool_observation(
-                            tool_name=tool_name,
-                            tool_call_id=observation_id,
-                            content=content,
-                            thread_id=context.get_current_thread_id(),
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        emit_tool_event(
-                            tool_name=tool_name,
-                            stage="delta",
-                            message="Full web content could not be saved for continuation.",
-                            error=str(exc),
-                        )
-                        saved = None
-                    if saved:
-                        artifact_ref = f"tool-observation://{tool_name}/{observation_id}"
-                saved_ref.append(artifact_ref)
-                return artifact_ref
-
-            def build_payload(display_chars: int) -> dict[str, Any]:
-                window_budget = (
-                    display_chars
-                    if len(content) <= display_chars
-                    else max(1, display_chars - len(_WEB_FETCH_TRUNCATION_MARKER))
-                )
-                head, tail, truncated = _head_tail_text_window(content, window_budget)
-                continuation: dict[str, Any] | None = None
-                displayed_content = content
-                if truncated:
-                    displayed_content = f"{head}{_WEB_FETCH_TRUNCATION_MARKER}{tail}"
-                    if display_chars <= len(_WEB_FETCH_TRUNCATION_MARKER):
-                        head, tail = content[:display_chars], ""
-                        displayed_content = head
-                    artifact_ref = save_full_content()
-                    if artifact_ref:
-                        continuation = {
-                            "artifact_ref": artifact_ref,
-                            "tool": "artifact_read",
-                            "args": {
-                                "artifact_id": artifact_ref,
-                                "offset": len(head),
-                                "limit": display_chars,
-                            },
-                            "offset": len(head),
-                            "limit": display_chars,
-                            "total_chars": len(content),
-                            "hint": (
-                                "Call artifact_read using the supplied args "
-                                "to page through the omitted middle."
-                            ),
-                        }
-                    else:
-                        continuation = {
-                            "available": False,
-                            "total_chars": len(content),
-                            "hint": (
-                                "Full text was not saved in this runtime; call web_fetch again "
-                                "with a larger max_chars value to inspect more of the page."
-                            ),
-                        }
-                payload = {
+            result = _render_web_fetch_result(
+                content=content,
+                display_chars=capped_chars,
+                page={
                     "url": url,
                     "final_url": final_url,
                     "title": title,
                     "content_type": content_type,
-                    "content": displayed_content,
-                    "content_chars": len(content),
-                    "shown_chars": len(displayed_content),
-                    "truncated": truncated,
                     "fetch_limited": fetch_limited,
-                    "observed_at": observed_at,
+                    "observed_at": datetime.now(UTC).isoformat(),
                     "published_at": published_at,
-                    "source_type": "page",
-                }
-                if continuation is not None:
-                    payload["continuation"] = continuation
-                    payload["total_chars"] = len(content)
-                    if continuation.get("artifact_ref"):
-                        payload["artifact_ref"] = continuation["artifact_ref"]
-                        payload["next_offset"] = len(head)
-                return payload
-
-            # The observation is trimmed above _WEB_FETCH_MAX_OBSERVATION_CHARS, which
-            # would hide text that the continuation offset already skips. Shrink the
-            # shown window until the serialized payload fits, so nothing is lost.
-            display_chars = capped_chars
-            while True:
-                payload = build_payload(display_chars)
-                result = json.dumps(payload, ensure_ascii=False)
-                overflow = len(result) - _WEB_FETCH_MAX_OBSERVATION_CHARS
-                if overflow <= 0 or display_chars <= _WEB_FETCH_MIN_DISPLAY_CHARS:
-                    break
-                display_chars = max(_WEB_FETCH_MIN_DISPLAY_CHARS, display_chars - overflow - 64)
+                },
+                save_full_content=_make_full_content_saver(
+                    context, tool_name=tool_name, content=content
+                ),
+            )
             emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
             return result
         except Exception as exc:  # noqa: BLE001
             emit_tool_event(tool_name=tool_name, stage="error", error=str(exc), url=url)
             raise
 
+    return web_fetch
+
+
+def build_web_search_tool(run_web_search: Callable[..., str]) -> Any:
     @tool
     def web_search(
         query: str,
@@ -346,7 +399,7 @@ def build_web_tools(
     ) -> str:
         """Search the live web with optional freshness and domain filters."""
         requested_results = 5 if max_results is None else int(max_results)
-        return _run_web_search(
+        return run_web_search(
             query=query,
             max_results=requested_results,
             time_range=time_range,
@@ -355,10 +408,42 @@ def build_web_tools(
             tool_name="web_search",
         )
 
+    return web_search
+
+
+def build_web_tools(
+    context: ToolBuildContext,
+    *,
+    web_search_config: Any,
+    resolved_env: Any,
+    urllib_parse_module: Any = stdlib_urllib_parse,
+    http_client: httpx.Client | None = None,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    fetch_config = context.tool_catalog.web_fetch
+
+    # Resolve the shared client lazily so tests can patch ``web.shared_sync_http_client``.
+    def _http() -> httpx.Client:
+        return http_client or shared_sync_http_client()
+
+    fetcher = _WebFetcher(
+        http=_http,
+        http_client=http_client,
+        urllib_parse_module=urllib_parse_module,
+        blocked_domains=tuple(getattr(fetch_config, "blocked_domains", ()) or ()),
+        allowed_domains=tuple(getattr(fetch_config, "allowed_domains", ()) or ()),
+    )
+    run_web_search, fallback_web_search = build_web_search_runner(
+        web_search_config=web_search_config,
+        resolved_env=resolved_env,
+        emit_tool_event=context.emit_tool_event,
+        http=_http,
+    )
     return (
         {
-            "web_fetch": web_fetch,
-            "web_search": web_search,
+            "web_fetch": build_web_fetch_tool(
+                context, fetcher=fetcher, urllib_parse_module=urllib_parse_module
+            ),
+            "web_search": build_web_search_tool(run_web_search),
         },
         {
             "web_fetch": {
@@ -372,7 +457,7 @@ def build_web_tools(
                 "timeout_seconds": 45,
                 "validator": _validate_web_search_args,
                 "fallback_group": "web_search",
-                "fallback_handler": _fallback_web_search,
+                "fallback_handler": fallback_web_search,
                 "max_observation_chars": 7000,
             },
         },

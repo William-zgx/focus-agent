@@ -8,6 +8,7 @@ from langchain.tools import tool
 
 from ..ask_user_question import ASK_USER_QUESTION_TOOL_NAME
 from .build_context import ToolBuildContext
+from .common import _capped_int
 
 
 def _extract_checkpoint_state(checkpoint: dict[str, Any] | None) -> dict[str, Any]:
@@ -136,14 +137,11 @@ def build_conversation_tools(
             effective_thread_id = thread_id.strip() or context.get_current_thread_id()
             if not effective_thread_id:
                 raise ValueError("thread_id is required outside an active graph run.")
-            requested_messages = (
-                tool_catalog.conversation_summary.default_recent_messages
-                if recent_messages is None
-                else int(recent_messages)
-            )
-            capped_messages = max(
-                0,
-                min(requested_messages, tool_catalog.conversation_summary.max_recent_messages),
+            capped_messages = _capped_int(
+                recent_messages,
+                default=tool_catalog.conversation_summary.default_recent_messages,
+                cap=tool_catalog.conversation_summary.max_recent_messages,
+                floor=0,
             )
             if isinstance(offset, bool) or int(offset) != offset or int(offset) < 0:
                 raise ValueError("offset must be a non-negative integer.")

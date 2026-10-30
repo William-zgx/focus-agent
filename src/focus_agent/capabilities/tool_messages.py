@@ -33,6 +33,24 @@ def build_tool_error_message(
     )
 
 
+def observation_message_status(observation: str) -> str:
+    """Mirror a returned ``{"status": "error", ...}`` payload onto the ToolMessage status.
+
+    Tools such as ``web_fetch`` report unusable pages as structured error JSON instead
+    of raising, so status-only consumers would otherwise read them as successes.
+    """
+    text = observation.lstrip()
+    if not text.startswith("{"):
+        return "success"
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return "success"
+    if isinstance(payload, dict) and str(payload.get("status") or "").strip().lower() == "error":
+        return "error"
+    return "success"
+
+
 def build_tool_message(
     *,
     content: str,

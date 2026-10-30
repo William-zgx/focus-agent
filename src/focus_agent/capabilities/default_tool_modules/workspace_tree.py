@@ -8,7 +8,7 @@ from typing import Any
 from langchain.tools import tool
 
 from ..workspace_files import WORKSPACE_SKIP_DIR_NAMES
-from .common import _coerce_relative_posix
+from .common import _capped_int, _coerce_relative_posix
 from .workspace_paths import _resolve_workspace_path
 
 
@@ -80,12 +80,14 @@ def build_workspace_tree_tool(
                 raise FileNotFoundError(path)
             if root.is_file():
                 raise NotADirectoryError(path)
-            requested_depth = tree_config.default_max_depth if max_depth is None else int(max_depth)
-            capped_depth = max(1, min(requested_depth, tree_config.max_depth_cap))
-            requested_entries = (
-                tree_config.default_max_entries if max_entries is None else int(max_entries)
+            capped_depth = _capped_int(
+                max_depth, default=tree_config.default_max_depth, cap=tree_config.max_depth_cap
             )
-            capped_entries = max(1, min(requested_entries, tree_config.max_entries_cap))
+            capped_entries = _capped_int(
+                max_entries,
+                default=tree_config.default_max_entries,
+                cap=tree_config.max_entries_cap,
+            )
             relative_root = _coerce_relative_posix(root, workspace_root)
             lines = [relative_root if relative_root != "." else str(workspace_root.name)]
             truncated = _build_workspace_tree_lines(

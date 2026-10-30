@@ -21,6 +21,7 @@ from .sandbox_execution import (
     SandboxExecutionResult,
     default_sandbox_execution_service,
 )
+from .sandbox_runner import _coerce_output
 
 _PYTHON_NAMES = {"python", "python3"}
 _DEFAULT_TIMEOUT_SECONDS = 60
@@ -126,21 +127,6 @@ def run_skill_entrypoint_in_sandbox_service(
     payload = result.to_payload()
     payload["network"] = entrypoint.network
     return json.dumps(payload, ensure_ascii=False)
-
-
-def run_skill_entrypoint_in_local_venv(
-    *,
-    workspace_root: Path,
-    skill: SkillDefinition,
-    entrypoint_name: str,
-    arguments: Mapping[str, Any] | None = None,
-) -> str:
-    return run_skill_entrypoint_in_sandbox_service(
-        workspace_root=workspace_root,
-        skill=skill,
-        entrypoint_name=entrypoint_name,
-        arguments=arguments,
-    )
 
 
 class _LocalVenvSkillEntrypointBackend:
@@ -532,14 +518,6 @@ def _trim_output(value: str) -> tuple[str, bool]:
     return value[:_MAX_OUTPUT_CHARS], True
 
 
-def _coerce_process_output(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value)
-
-
 def _run_outputs(*, run_dir: Path, workspace_root: Path) -> tuple[list[dict[str, Any]], bool]:
     outputs: list[dict[str, Any]] = []
     total_bytes = 0
@@ -607,7 +585,7 @@ def _run_entrypoint_process(
         else:
             process.kill()
         stdout, stderr = process.communicate()
-        return None, _coerce_process_output(stdout), _coerce_process_output(stderr), True
+        return None, _coerce_output(stdout), _coerce_output(stderr), True
 
 
 def _resource_limiter(timeout_seconds: int, memory_mb: int):
@@ -632,6 +610,5 @@ def _resource_limiter(timeout_seconds: int, memory_mb: int):
 
 
 __all__ = [
-    "run_skill_entrypoint_in_local_venv",
     "run_skill_entrypoint_in_sandbox_service",
 ]
