@@ -60,6 +60,7 @@ from ..route_utils.memory_responses import (
     _value,
     _without_embedding_vectors,
 )
+from ..route_utils.pagination import PageLimit
 
 router = APIRouter()
 
@@ -75,7 +76,7 @@ def list_memory(
     root_thread_id: str | None = Query(default=None),
     source_thread_id: str | None = Query(default=None),
     source_branch_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     auth: AuthContext = Depends(get_current_auth_context),
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -136,7 +137,7 @@ def list_memory(
 @router.get("/v1/memory/audit", response_model=MemoryAuditEventListResponse)
 def list_memory_audit(
     memory_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     auth: AuthContext = Depends(get_current_auth_context),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> MemoryAuditEventListResponse:
@@ -182,7 +183,7 @@ def list_memory_audit(
 @router.get("/v1/memory/{memory_id}/audit", response_model=MemoryAuditEventListResponse)
 def list_memory_record_audit(
     memory_id: str,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     auth: AuthContext = Depends(get_current_auth_context),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> MemoryAuditEventListResponse:
@@ -192,7 +193,7 @@ def list_memory_record_audit(
 @router.get("/v1/memory/{memory_id}/usage", response_model=MemoryUsageResponse)
 def list_memory_usage(
     memory_id: str,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     auth: AuthContext = Depends(get_current_auth_context),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> MemoryUsageResponse:
@@ -232,7 +233,7 @@ def list_memory_usage(
 def list_memory_candidates(
     status_filter: str | None = Query(default=None, alias="status"),
     root_thread_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     auth: AuthContext = Depends(get_current_auth_context),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> MemoryCandidateListResponse:

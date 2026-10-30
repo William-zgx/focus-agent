@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -14,6 +14,7 @@ from ..contracts import (
 from ..deps import get_app_runtime, get_current_principal
 from ..route_helpers import run_sync_route_call
 from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
+from ..route_utils.pagination import PageLimit
 from ..route_utils.service_errors import (
     BAD_REQUEST_ERROR_RULE,
     NOT_FOUND_ERROR_RULE,
@@ -42,7 +43,7 @@ async def list_thread_branch_decisions(
     request: Request,
     status: str | None = None,
     action: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: PageLimit = 50,
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ) -> BranchDecisionListResponse:

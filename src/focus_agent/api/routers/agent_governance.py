@@ -108,6 +108,7 @@ from ..route_utils.agent_governance_operations import (
     _persist_skill_selection_event,
 )
 from ..route_utils.agent_governance_trajectory_responses import _scoped_governance_runtime
+from ..route_utils.pagination import PageLimit
 
 router = APIRouter()
 _GLOBAL_GOVERNANCE_PERMISSIONS = {
@@ -239,7 +240,7 @@ def select_agent_skills(
 @router.get("/v1/agent/skills/selections", response_model=AgentSkillSelectionEventListResponse)
 def list_agent_skill_selections(
     skill_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentSkillSelectionEventListResponse:
@@ -316,7 +317,7 @@ def dry_run_agent_role_route(
 
 @router.get("/v1/agent/roles/decisions", response_model=AgentRoleDecisionListResponse)
 def list_agent_role_decisions(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentRoleDecisionListResponse:
@@ -357,7 +358,7 @@ def route_agent_tools(
 
 @router.get("/v1/agent/tool-router/decisions", response_model=AgentToolRouteDecisionListResponse)
 def list_agent_tool_route_decisions(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentToolRouteDecisionListResponse:
@@ -394,7 +395,7 @@ def evaluate_agent_memory_curator(
     "/v1/agent/memory/curator/decisions", response_model=AgentMemoryCuratorDecisionListResponse
 )
 def list_agent_memory_curator_decisions(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentMemoryCuratorDecisionListResponse:
@@ -426,7 +427,7 @@ def plan_agent_delegation(
 
 @router.get("/v1/agent/delegation/runs", response_model=AgentDelegationRunListResponse)
 def list_agent_delegation_runs(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentDelegationRunListResponse:
@@ -458,7 +459,7 @@ def route_agent_model(
 
 @router.get("/v1/agent/model-router/decisions", response_model=AgentModelRouterDecisionListResponse)
 def list_agent_model_router_decisions(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentModelRouterDecisionListResponse:
@@ -471,7 +472,7 @@ def list_agent_model_router_decisions(
 
 @router.get("/v1/agent/self-repair/failures", response_model=AgentSelfRepairFailureListResponse)
 def list_agent_self_repair_failures(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentSelfRepairFailureListResponse:
@@ -496,7 +497,7 @@ def preview_agent_self_repair_promotion(
 
 @router.get("/v1/agent/review-queue", response_model=AgentReviewQueueListResponse)
 def list_agent_review_queue(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentReviewQueueListResponse:
@@ -550,7 +551,7 @@ def preview_agent_context(
 
 @router.get("/v1/agent/context/decisions", response_model=AgentContextDecisionListResponse)
 def list_agent_context_decisions(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentContextDecisionListResponse:
@@ -563,7 +564,7 @@ def list_agent_context_decisions(
 
 @router.get("/v1/agent/context/artifacts", response_model=AgentContextArtifactListResponse)
 def list_agent_context_artifacts(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentContextArtifactListResponse:
@@ -578,7 +579,7 @@ def list_agent_context_artifacts(
 def list_agent_context_evidence(
     thread_id: str | None = Query(default=None),
     turn_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentContextEvidenceListResponse:
@@ -625,7 +626,7 @@ def plan_agent_task_ledger(
 
 @router.get("/v1/agent/task-ledger/runs", response_model=AgentTaskLedgerRunListResponse)
 def list_agent_task_ledger_runs(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTaskLedgerRunListResponse:
@@ -638,7 +639,7 @@ def list_agent_task_ledger_runs(
 
 @router.get("/v1/agent/artifacts", response_model=AgentArtifactListResponse)
 def list_agent_artifacts(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentArtifactListResponse:
@@ -661,7 +662,7 @@ def synthesize_agent_artifacts(
 
 @router.get("/v1/agent/critic/verdicts", response_model=AgentCriticVerdictListResponse)
 def list_agent_critic_verdicts(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentCriticVerdictListResponse:

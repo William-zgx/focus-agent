@@ -16,6 +16,7 @@ from focus_agent.api.contract_models.productivity import (
     UpdateTaskRequest,
 )
 from focus_agent.api.deps import get_app_runtime, get_current_principal
+from focus_agent.api.route_utils.pagination import PageLimit
 from focus_agent.core.productivity import FocusTaskStatus
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.productivity_repository import ProductivityRepository
@@ -29,7 +30,7 @@ def list_notes(
     q: str | None = Query(default=None),
     tag: list[str] | None = Query(default=None),
     include_archived: bool = False,
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     principal=Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
@@ -111,7 +112,7 @@ def update_note(
 def list_tasks(
     status_filter: FocusTaskStatus | None = Query(default=None, alias="status"),
     include_archived: bool = False,
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     principal=Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),

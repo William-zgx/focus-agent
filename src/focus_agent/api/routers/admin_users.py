@@ -42,6 +42,7 @@ from ..deps import (
     require_admin_user,
     require_permission,
 )
+from ..route_utils.pagination import PageLimit
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -52,7 +53,7 @@ def list_users(
     role: str | None = None,
     tenant_id: str | None = None,
     query: str | None = None,
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     service: UserService = Depends(get_user_service),
     context: AuthContext = Depends(require_permission("users:read")),
@@ -270,7 +271,7 @@ def list_audit_events(
     resource_type: str | None = None,
     resource_id: str | None = None,
     decision: str | None = None,
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     service: UserService = Depends(get_user_service),
     context: AuthContext = Depends(require_permission("audit:read")),
@@ -316,7 +317,7 @@ def background_jobs_summary(
     response_model=BackgroundDeadLetterJobListResponse,
 )
 def list_background_dead_letter_jobs(
-    limit: int = Query(default=50, ge=0, le=200),
+    limit: PageLimit = 50,
     offset: int = Query(default=0, ge=0),
     runtime: Any = Depends(get_app_runtime),
     context: AuthContext = Depends(require_admin_user),
