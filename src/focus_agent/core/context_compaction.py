@@ -305,14 +305,10 @@ def _coerce_token_limit(value: Any) -> int | None:
 
 
 def _context_budget(value: Any) -> ContextBudget:
-    if isinstance(value, ContextBudget):
-        return value
-    if isinstance(value, Mapping):
-        try:
-            return ContextBudget.model_validate(dict(value))
-        except Exception:  # noqa: BLE001
-            return ContextBudget()
-    return ContextBudget()
+    try:
+        return ContextBudget.coerce(value)
+    except Exception:  # noqa: BLE001
+        return ContextBudget()
 
 
 def _safe_prefix_end(

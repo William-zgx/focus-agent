@@ -33,7 +33,7 @@ from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_tool_outcomes_from_messages
 from ...core.state import AgentState, append_agent_state_record
-from ..graph_tool_call_repair import _canonicalize_tool_call_args, _tool_call_signature
+from ..graph_tool_call_repair import _canonicalize_tool_call_args, _tool_call_dedupe_key
 from ..graph_tool_result_fallback import _context_budget_from_state
 from .retrieval_ledger import collect_retrieval_ledger, retrieval_key
 from .tool_result_hooks import (
@@ -223,7 +223,7 @@ def make_tool_executor_node(
                     runtime_info={"malformed_tool_call": True},
                 )
                 continue
-            signature = _tool_call_signature({"name": tool_name, "args": tool_args})
+            signature = _tool_call_dedupe_key({"name": tool_name, "args": tool_args})
             if signature in seen_tool_call_signatures:
                 messages_by_index[index] = build_tool_error_message(
                     tool_call_id=tool_call_id,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -9,6 +8,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from langchain.messages import AIMessage, ToolMessage
+
+from .graph_tool_messages import tool_call_names_by_id, tool_message_json
 
 TrustTier = str
 
@@ -127,7 +128,7 @@ def normalize_evidence_bundle(
     """Normalize web_search/web_fetch ToolMessage payloads into evidence dicts."""
 
     message_list = list(messages)
-    call_names = _tool_call_names(message_list)
+    call_names = tool_call_names_by_id(message_list)
     relevant_call_ids = relevant_web_tool_call_ids(message_list, user_query=user_query)
     items: list[EvidenceItem] = []
     for message in message_list:
@@ -139,7 +140,7 @@ def normalize_evidence_bundle(
         tool_name = _tool_name_for_message(message, call_names=call_names)
         if tool_name not in _WEB_EVIDENCE_TOOLS:
             continue
-        payload = _json_payload(message)
+        payload = tool_message_json(message)
         if not isinstance(payload, dict):
             item = _raw_payload_item(
                 tool_name=tool_name,
@@ -169,7 +170,7 @@ def normalize_evidence_ledger(
     """Normalize web evidence and attach stable per-turn ledger metadata."""
 
     message_list = list(messages)
-    call_names = _tool_call_names(message_list)
+    call_names = tool_call_names_by_id(message_list)
     relevant_call_ids = relevant_web_tool_call_ids(message_list, user_query=user_query)
     ledger: list[dict[str, Any]] = []
     for message in message_list:
@@ -181,7 +182,7 @@ def normalize_evidence_ledger(
         tool_name = _tool_name_for_message(message, call_names=call_names)
         if tool_name not in _WEB_EVIDENCE_TOOLS:
             continue
-        payload = _json_payload(message)
+        payload = tool_message_json(message)
         if not isinstance(payload, dict):
             item = _raw_payload_item(
                 tool_name=tool_name,
@@ -230,7 +231,7 @@ def relevant_web_tool_call_ids(
     if not query_terms:
         return None
     message_list = list(messages)
-    call_names = _tool_call_names(message_list)
+    call_names = tool_call_names_by_id(message_list)
     call_text_by_id = _tool_call_text_by_id(message_list)
     web_messages: list[tuple[str, str]] = []
     for message in message_list:
@@ -239,7 +240,7 @@ def relevant_web_tool_call_ids(
         tool_call_id = _clean_text(getattr(message, "tool_call_id", ""))
         tool_name = _tool_name_for_message(message, call_names=call_names)
         if tool_call_id and tool_name in _WEB_EVIDENCE_TOOLS:
-            payload = _json_payload(message)
+            payload = tool_message_json(message)
             haystack = " ".join(
                 part
                 for part in (
@@ -478,21 +479,6 @@ def _domain_matches(host: str, domains: set[str]) -> bool:
     return any(host == domain or host.endswith(f".{domain}") for domain in domains)
 
 
-def _tool_call_names(messages: Iterable[Any]) -> dict[str, str]:
-    call_names: dict[str, str] = {}
-    for message in messages:
-        if not isinstance(message, AIMessage):
-            continue
-        for call in getattr(message, "tool_calls", None) or []:
-            if not isinstance(call, dict):
-                continue
-            call_id = _clean_text(call.get("id"))
-            call_name = _clean_text(call.get("name"))
-            if call_id and call_name:
-                call_names[call_id] = call_name
-    return call_names
-
-
 def _tool_call_text_by_id(messages: Iterable[Any]) -> dict[str, str]:
     call_text: dict[str, str] = {}
     for message in messages:
@@ -526,7 +512,7 @@ def _tool_name_for_message(message: ToolMessage, *, call_names: dict[str, str]) 
     call_id = _clean_text(getattr(message, "tool_call_id", ""))
     if call_id in call_names:
         return call_names[call_id]
-    payload = _json_payload(message)
+    payload = tool_message_json(message)
     if isinstance(payload, dict):
         tool_name = _clean_text(payload.get("tool"))
         if tool_name in _WEB_EVIDENCE_TOOLS:
@@ -657,16 +643,6 @@ def _tool_message_status(message: ToolMessage, payload: dict[str, Any]) -> str:
         return "error"
     status = _clean_text(getattr(message, "status", "")) or _clean_text(payload.get("status"))
     return status.lower() or "success"
-
-
-def _json_payload(message: ToolMessage) -> Any:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            return None
-    return content if isinstance(content, (dict, list)) else None
 
 
 def _source_name(payload: dict[str, Any], *, url: str) -> str:

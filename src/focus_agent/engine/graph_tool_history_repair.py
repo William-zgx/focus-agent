@@ -144,7 +144,7 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
                 call_id = str(call.get("id") or "").strip()
                 if not call_id:
                     continue
-                call_signatures[call_id] = _tool_call_signature(call)
+                call_signatures[call_id] = _failure_streak_signature(call)
             continue
         if not isinstance(message, ToolMessage):
             continue
@@ -174,7 +174,7 @@ def _messages_since_latest_human(messages: list[Any]) -> list[Any]:
     return messages
 
 
-def _tool_call_signature(call: dict[str, Any]) -> str:
+def _failure_streak_signature(call: dict[str, Any]) -> str:
     return json.dumps(
         {
             "name": str(call.get("name") or "").strip(),

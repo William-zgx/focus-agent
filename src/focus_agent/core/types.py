@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -72,6 +73,15 @@ class ContextBudget(StateModel):
     )
     tool_observation_tokenizer_id: str | None = None
     tool_reference_token_limit: int = Field(default=240, ge=1)
+
+    @classmethod
+    def coerce(cls, value: Any) -> ContextBudget:
+        """Return ``value`` as a budget: mappings are validated, anything else is the default."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls.model_validate(dict(value))
+        return cls()
 
 
 class PlanStep(StateModel):

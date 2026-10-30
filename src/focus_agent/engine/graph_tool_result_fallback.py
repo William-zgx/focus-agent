@@ -21,6 +21,7 @@ from .graph_tool_history_repair import (
     _message_text,
     _truncate_inline,
 )
+from .graph_tool_messages import tool_message_json
 from .graph_web_result_fallback import (
     _fallback_web_answer_from_tool_results,
     _latest_relevant_web_payloads,
@@ -74,13 +75,7 @@ def _latest_final_ai_text(messages: list[Any]) -> str:
 
 
 def _context_budget_from_state(state: AgentState) -> ContextBudget:
-    value = state.get("context_budget")
-    if isinstance(value, ContextBudget):
-        budget = value
-    elif isinstance(value, dict):
-        budget = ContextBudget.model_validate(value)
-    else:
-        budget = ContextBudget()
+    budget = ContextBudget.coerce(state.get("context_budget"))
     selected_model = str(state.get("selected_model") or "").strip()
     if budget.tokenizer_id or not selected_model:
         return budget
@@ -165,12 +160,7 @@ def _latest_failed_tool_summary(messages: list[Any]) -> str:
         call_id = str(getattr(message, "tool_call_id", "") or "")
         tool_name = pending_calls.get(call_id, "tool")
         status = str(getattr(message, "status", "success") or "success").lower()
-        payload = None
-        raw = _message_text(message)
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            pass
+        payload = tool_message_json(message)
         failure = _payload_failure_summary(payload)
         if status == "error" or failure:
             failures.append(f"{tool_name} {failure or 'returned an error'}")
@@ -298,10 +288,7 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
         if not isinstance(message, ToolMessage):
             continue
         raw = _message_text(message)
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            payload = None
+        payload = tool_message_json(message)
         prompt_payload = _prompt_observation_payload(message)
 
         call_id = str(getattr(message, "tool_call_id", "") or "")
@@ -422,11 +409,7 @@ def _should_replace_unfound_workspace_answer(answer: str, source_messages: list[
     for message in latest_turn:
         if not isinstance(message, ToolMessage):
             continue
-        raw = _message_text(message)
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            payload = None
+        payload = tool_message_json(message)
         if not isinstance(payload, dict):
             continue
         results = payload.get("results")

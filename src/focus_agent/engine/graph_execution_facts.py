@@ -5,7 +5,9 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import ToolMessage
+
+from .graph_tool_messages import iter_tool_results, tool_message_json
 
 
 def skill_execution_evidence_facts(
@@ -16,26 +18,13 @@ def skill_execution_evidence_facts(
     """Extract high-signal facts from skill execution tool observations."""
 
     required = {str(item) for item in required_tools if str(item)}
-    call_names_by_id: dict[str, str] = {}
     facts: list[dict[str, Any]] = []
-    for message in messages:
-        if isinstance(message, AIMessage):
-            for call in getattr(message, "tool_calls", None) or ():
-                if not isinstance(call, Mapping):
-                    continue
-                call_id = str(call.get("id") or "").strip()
-                name = str(call.get("name") or "").strip()
-                if call_id and name:
-                    call_names_by_id[call_id] = name
-            continue
-        if not isinstance(message, ToolMessage):
-            continue
-        tool_name = call_names_by_id.get(str(message.tool_call_id or "").strip(), "")
+    for message, tool_name, _args in iter_tool_results(messages):
         if required and tool_name not in required and tool_name != "read_file":
             continue
         if tool_name and not _tool_message_counts_as_success(message, tool_name):
             continue
-        payload = _json_message_payload(message)
+        payload = tool_message_json(message)
         if not isinstance(payload, Mapping):
             continue
         if tool_name == "run_skill_entrypoint" or payload.get("skill_id") or payload.get("run_id"):
@@ -59,13 +48,7 @@ def _tool_message_counts_as_success(message: ToolMessage, tool_name: str) -> boo
 
 
 def _run_workspace_command_payload_succeeded(message: ToolMessage) -> bool:
-    content = getattr(message, "content", "")
-    if not isinstance(content, str):
-        return True
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return True
+    payload = tool_message_json(message)
     if not isinstance(payload, Mapping):
         return True
     if payload.get("fallback_used") is True:
@@ -115,13 +98,7 @@ def _embedded_command_payload_failed(value: Any) -> bool:
 
 
 def _run_skill_entrypoint_payload_succeeded(message: ToolMessage) -> bool:
-    content = getattr(message, "content", "")
-    if not isinstance(content, str):
-        return False
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return False
+    payload = tool_message_json(message)
     if not isinstance(payload, Mapping):
         return False
     if payload.get("timed_out") is not False:
@@ -138,16 +115,6 @@ def _run_skill_entrypoint_payload_succeeded(message: ToolMessage) -> bool:
         return int(payload.get("exit_code")) == 0
     except (TypeError, ValueError):
         return False
-
-
-def _json_message_payload(message: ToolMessage) -> Any:
-    content = getattr(message, "content", "")
-    if not isinstance(content, str):
-        return None
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return None
 
 
 def _facts_from_skill_entrypoint_payload(payload: Mapping[str, Any]) -> list[dict[str, Any]]:

@@ -184,14 +184,6 @@ def _conversation_safe_messages(messages: list[AnyMessage], *, limit: int) -> li
     return safe_messages[-limit:]
 
 
-def _coerce_context_budget(value: Any) -> ContextBudget:
-    if isinstance(value, ContextBudget):
-        return value
-    if isinstance(value, dict):
-        return ContextBudget.model_validate(value)
-    return ContextBudget()
-
-
 def _sync_token_counting_hooks() -> None:
     _token_counting._estimate_with_tokenizer = _estimate_with_tokenizer
 
@@ -203,7 +195,6 @@ def _sync_prompt_budget_hooks() -> None:
 
 
 __all__ = [
-    "_coerce_context_budget",
     "_coerce_prompt_mode",
     "_conversation_safe_messages",
     "_estimate_with_tokenizer",

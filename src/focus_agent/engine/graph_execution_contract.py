@@ -5,8 +5,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from langchain.messages import ToolMessage
-
 from . import graph_execution_facts as _execution_facts
 from .graph.policy_intent_parsing import _should_prefer_web_fetch, requires_external_evidence
 from .graph.policy_temporal import fresh_evidence_min_date as _fresh_evidence_min_date
@@ -18,13 +16,13 @@ from .graph_evidence import (
 from .graph_evidence import (
     _is_internal_summary as _is_internal_evidence_summary,
 )
+from .graph_tool_messages import iter_tool_results
 
 skill_execution_evidence_facts = _execution_facts.skill_execution_evidence_facts
 _tool_message_counts_as_success = _execution_facts._tool_message_counts_as_success
 _run_workspace_command_payload_succeeded = _execution_facts._run_workspace_command_payload_succeeded
 _embedded_command_payload_failed = _execution_facts._embedded_command_payload_failed
 _run_skill_entrypoint_payload_succeeded = _execution_facts._run_skill_entrypoint_payload_succeeded
-_json_message_payload = _execution_facts._json_message_payload
 _facts_from_skill_entrypoint_payload = _execution_facts._facts_from_skill_entrypoint_payload
 _facts_from_read_file_payload = _execution_facts._facts_from_read_file_payload
 _facts_from_generic_tool_payload = _execution_facts._facts_from_generic_tool_payload
@@ -300,21 +298,11 @@ def verify_answer_against_evidence(
 
 
 def tool_result_names(messages: Sequence[Any]) -> list[str]:
-    call_names_by_id: dict[str, str] = {}
-    names: list[str] = []
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or ():
-            if not isinstance(call, Mapping):
-                continue
-            call_id = str(call.get("id") or "").strip()
-            name = str(call.get("name") or "").strip()
-            if call_id and name:
-                call_names_by_id[call_id] = name
-        if isinstance(message, ToolMessage):
-            name = call_names_by_id.get(str(message.tool_call_id or "").strip())
-            if name and _tool_message_counts_as_success(message, name):
-                names.append(name)
-    return names
+    return [
+        name
+        for message, name, _args in iter_tool_results(messages)
+        if name and _tool_message_counts_as_success(message, name)
+    ]
 
 
 def _verification(

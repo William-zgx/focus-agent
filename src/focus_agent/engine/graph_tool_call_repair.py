@@ -30,7 +30,7 @@ def _canonicalize_tool_call_args(args: Any) -> dict[str, Any]:
     return {"_raw_args": args}
 
 
-def _tool_call_signature(tool_call: dict[str, Any]) -> str:
+def _tool_call_dedupe_key(tool_call: dict[str, Any]) -> str:
     args_json = json.dumps(
         _canonicalize_tool_call_args(tool_call.get("args")),
         ensure_ascii=False,
@@ -58,7 +58,7 @@ def _repair_and_dedupe_tool_calls(message: Any) -> Any:
         args = _canonicalize_tool_call_args(raw_call.get("args"))
         call_id = str(raw_call.get("id") or "").strip() or f"repaired-tool-call-{index + 1}"
         repaired = {"id": call_id, "name": name, "args": args}
-        signature = _tool_call_signature(repaired)
+        signature = _tool_call_dedupe_key(repaired)
         if signature in seen_signatures:
             changed = True
             continue
@@ -85,6 +85,6 @@ def _repair_and_dedupe_tool_calls(message: Any) -> Any:
 __all__ = [
     "_known_tool_names",
     "_canonicalize_tool_call_args",
-    "_tool_call_signature",
+    "_tool_call_dedupe_key",
     "_repair_and_dedupe_tool_calls",
 ]

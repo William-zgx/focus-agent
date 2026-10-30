@@ -6,7 +6,6 @@ from typing import Any
 from langchain.messages import AnyMessage
 
 from ..context_budget_guard import (
-    _coerce_context_budget,
     _coerce_prompt_mode,
     _conversation_safe_messages,
 )
@@ -156,7 +155,7 @@ class ContextSlice:
 def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSlice:
     normalized = normalize_agent_state(state)
     prompt_mode = _coerce_prompt_mode(mode or normalized.get("prompt_mode"))
-    budget = _coerce_context_budget(normalized.get("context_budget"))
+    budget = ContextBudget.coerce(normalized.get("context_budget"))
     branch_meta = normalized.get("branch_meta") or {}
     is_branch = bool(branch_meta)
 

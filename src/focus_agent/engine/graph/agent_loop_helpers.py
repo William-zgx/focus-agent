@@ -6,13 +6,14 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import AIMessage
 
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import SkillExecutionPlan, ToolIntentPlan
 from ...core.state import AgentState
 from ...delegation.roles import AgentRole
 from ...skills import SkillRegistry
+from ..graph_tool_messages import iter_tool_results
 from . import agent_loop_helpers_skill_planning as _skill_planning
 from .policy import (
     _is_tool_carryover_confirmation,
@@ -333,19 +334,10 @@ def _has_tool_named(tools: list[Any], name: str) -> bool:
 
 def _latest_turn_has_tool_result(messages: list[Any], tool_name: str) -> bool:
     latest_human_index = _latest_human_index(messages)
-    call_names_by_id: dict[str, str] = {}
-    for message in messages[latest_human_index + 1 :]:
-        for call in getattr(message, "tool_calls", None) or ():
-            if not isinstance(call, Mapping):
-                continue
-            call_id = str(call.get("id") or "").strip()
-            name = str(call.get("name") or "").strip()
-            if call_id and name:
-                call_names_by_id[call_id] = name
-        if isinstance(message, ToolMessage):
-            if call_names_by_id.get(str(message.tool_call_id or "").strip()) == tool_name:
-                return True
-    return False
+    return any(
+        name == tool_name
+        for _message, name, _args in iter_tool_results(messages[latest_human_index + 1 :])
+    )
 
 
 def _live_web_contract_needs_search(messages: list[Any]) -> bool:
@@ -356,19 +348,10 @@ def _live_web_contract_needs_search(messages: list[Any]) -> bool:
 
 
 def _latest_tool_result_content(messages: list[Any], tool_name: str) -> str:
-    call_names_by_id: dict[str, str] = {}
     latest = ""
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or ():
-            if not isinstance(call, Mapping):
-                continue
-            call_id = str(call.get("id") or "").strip()
-            name = str(call.get("name") or "").strip()
-            if call_id and name:
-                call_names_by_id[call_id] = name
-        if isinstance(message, ToolMessage):
-            if call_names_by_id.get(str(message.tool_call_id or "").strip()) == tool_name:
-                latest = _message_content_text(message)
+    for message, name, _args in iter_tool_results(messages):
+        if name == tool_name:
+            latest = _message_content_text(message)
     return latest
 
 

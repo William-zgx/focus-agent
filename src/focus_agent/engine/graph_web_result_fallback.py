@@ -5,7 +5,7 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import ToolMessage
 
 from ..core.context_tool_observation_references import _tool_observation_ref
 from ..core.types import ContextBudget
@@ -13,9 +13,9 @@ from .graph_evidence import relevant_web_tool_call_ids
 from .graph_tool_history_repair import (
     _latest_human_message_text,
     _latest_turn_messages,
-    _message_text,
     _truncate_inline,
 )
+from .graph_tool_messages import iter_tool_results, tool_message_json
 
 
 def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -45,24 +45,12 @@ def _fallback_web_answer_from_tool_results(prompt_messages: list[Any]) -> str:
 
 def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> list[dict[str, Any]]:
     relevant_web_call_ids = relevant_web_tool_call_ids(latest_turn, user_query=latest_user)
-    pending_calls: dict[str, str] = {}
     payloads: list[dict[str, Any]] = []
     source_by_ref: dict[str, dict[str, Any]] = {}
-    for message in latest_turn:
-        if isinstance(message, AIMessage):
-            for call in getattr(message, "tool_calls", None) or []:
-                if not isinstance(call, dict):
-                    continue
-                call_id = str(call.get("id") or "")
-                if call_id:
-                    pending_calls[call_id] = str(call.get("name") or "")
-            continue
-        if not isinstance(message, ToolMessage):
-            continue
+    for message, tool_name, _args in iter_tool_results(latest_turn):
         if str(getattr(message, "status", "")) == "error":
             continue
         call_id = str(getattr(message, "tool_call_id", "") or "")
-        tool_name = pending_calls.get(call_id, "")
         if (
             tool_name != "artifact_read"
             and relevant_web_call_ids is not None
@@ -70,11 +58,9 @@ def _latest_relevant_web_payloads(latest_turn: list[Any], latest_user: str) -> l
         ):
             continue
         parsed_payloads = []
-        raw = _message_text(message)
-        try:
-            parsed_payloads.append(json.loads(raw))
-        except json.JSONDecodeError:
-            pass
+        parsed = tool_message_json(message)
+        if parsed is not None:
+            parsed_payloads.append(parsed)
         prompt_payload = _prompt_observation_payload(message)
         if not parsed_payloads and prompt_payload is not None:
             parsed_payloads.append(prompt_payload)
