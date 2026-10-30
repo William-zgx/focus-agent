@@ -12,7 +12,6 @@ from focus_agent.harness.agents.mention import list_available_agents
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import (
     ChatService,
-    ConcurrentTurnError,
     ThreadStateUnavailableError,
 )
 
@@ -32,6 +31,13 @@ from ..contracts import (
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
 from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
 from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
+from ..route_utils.service_errors import (
+    BAD_REQUEST_ERROR_RULE,
+    CONCURRENT_TURN_ERROR_RULE,
+    NOT_FOUND_ERROR_RULE,
+    PERMISSION_ERROR_RULE,
+    map_service_errors,
+)
 from ..route_utils.token_usage import _token_usage_for_root_thread
 
 router = APIRouter()
@@ -122,19 +128,15 @@ def update_conversation(
     title = str(payload.title or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Conversation title cannot be empty.")
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, CONCURRENT_TURN_ERROR_RULE, NOT_FOUND_ERROR_RULE)
+    ):
         record = runtime.repo.update_conversation_title(
             root_thread_id=root_thread_id,
             owner_user_id=principal.user_id,
             title=title,
             title_pending_ai=False,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
         record.model_copy(
             update={
@@ -154,17 +156,13 @@ def archive_conversation(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ConversationSummaryResponse:
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, CONCURRENT_TURN_ERROR_RULE, NOT_FOUND_ERROR_RULE)
+    ):
         record = runtime.branch_service.archive_conversation(
             root_thread_id=root_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
         record.model_copy(
             update={
@@ -184,17 +182,13 @@ def activate_conversation(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ConversationSummaryResponse:
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, CONCURRENT_TURN_ERROR_RULE, NOT_FOUND_ERROR_RULE)
+    ):
         record = runtime.branch_service.activate_conversation(
             root_thread_id=root_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _conversation_response(
         record.model_copy(
             update={
@@ -215,10 +209,8 @@ def get_thread_resolution(
     resolver = getattr(runtime.repo, "resolve_thread_ref", None)
     if not callable(resolver):
         raise HTTPException(status_code=503, detail="Thread resolution is not configured.")
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE,)):
         resolution = resolver(thread_id=thread_id, owner_user_id=principal.user_id)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return ThreadResolutionResponse.model_validate(resolution.model_dump(mode="json"))
 
 
@@ -230,7 +222,7 @@ async def get_thread_snapshot(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ThreadStateResponse:
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE, (ThreadStateUnavailableError, 503))):
         await ensure_branch_handoff_decision_from_journal(
             runtime=runtime,
             thread_id=thread_id,
@@ -242,10 +234,6 @@ async def get_thread_snapshot(
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ThreadStateUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
 
@@ -260,21 +248,13 @@ def execute_thread_branch_action(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> BranchActionExecuteResponse:
-    try:
+    with map_service_errors():
         result = chat.execute_branch_action(
             thread_id=thread_id,
             action_id=action_id,
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return BranchActionExecuteResponse.model_validate(result)
 
 
@@ -289,19 +269,15 @@ def dismiss_thread_branch_action(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> ThreadStateResponse:
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, NOT_FOUND_ERROR_RULE, BAD_REQUEST_ERROR_RULE)
+    ):
         result = chat.dismiss_branch_action(
             thread_id=thread_id,
             action_id=action_id,
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ThreadStateResponse.model_validate(result)
 
 
@@ -314,14 +290,12 @@ def preview_thread_context(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> ThreadContextPreviewResponse:
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE,)):
         result = chat.preview_thread_context(
             thread_id=thread_id,
             user_id=principal.user_id,
             draft_message=payload.draft_message,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return ThreadContextPreviewResponse.model_validate(result)
 
 
@@ -334,14 +308,10 @@ def compact_thread_context(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> ThreadContextCompactResponse:
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE, CONCURRENT_TURN_ERROR_RULE)):
         result = chat.compact_thread_context(
             thread_id=thread_id,
             user_id=principal.user_id,
             trigger=payload.trigger,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ThreadContextCompactResponse.model_validate(result)

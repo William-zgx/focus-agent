@@ -173,7 +173,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -218,7 +218,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -471,7 +471,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -1793,7 +1793,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -1853,7 +1853,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -1884,7 +1884,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -1953,7 +1953,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2047,7 +2047,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2107,7 +2107,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2150,7 +2150,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2210,7 +2210,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2270,7 +2270,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2357,7 +2357,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2417,7 +2417,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2513,7 +2513,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2633,7 +2633,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -2664,7 +2664,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -3757,7 +3757,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null
@@ -5437,7 +5437,7 @@
           "schema": {
             "default": 50,
             "maximum": 200,
-            "minimum": 0,
+            "minimum": 1,
             "type": "integer"
           },
           "style": null

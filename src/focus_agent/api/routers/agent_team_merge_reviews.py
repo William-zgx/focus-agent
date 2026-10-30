@@ -15,7 +15,7 @@ from ..contract_models.agent_team import (
     UpdateAgentTeamMergeReviewRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
-from ..route_utils.agent_team import _agent_team_error, _agent_team_service_or_503
+from ..route_utils.agent_team import _agent_team_service_or_503, agent_team_errors
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ def create_agent_team_merge_review(
 ) -> AgentTeamMergeReviewResponse:
     service = _agent_team_service_or_503(runtime)
     request = payload or CreateAgentTeamMergeReviewRequest()
-    try:
+    with agent_team_errors():
         review = service.create_merge_review(
             session_id=session_id,
             user_id=principal.user_id,
@@ -46,8 +46,6 @@ def create_agent_team_merge_review(
             review_id=review.review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewResponse(review=review, events=events)
 
 
@@ -61,10 +59,8 @@ def list_agent_team_merge_reviews(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamMergeReviewListResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         reviews = service.list_merge_reviews(session_id=session_id, user_id=principal.user_id)
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewListResponse(
         reviews=reviews,
         items=reviews,
@@ -85,7 +81,7 @@ def update_agent_team_merge_review(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamMergeReviewResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         review = service.update_merge_review(
             session_id=session_id,
             review_id=review_id,
@@ -101,8 +97,6 @@ def update_agent_team_merge_review(
             review_id=review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewResponse(review=review, events=events)
 
 
@@ -117,7 +111,7 @@ def preview_agent_team_merge_review(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamMergeReviewResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         review = service.preview_merge_review(
             session_id=session_id,
             review_id=review_id,
@@ -128,8 +122,6 @@ def preview_agent_team_merge_review(
             review_id=review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewResponse(review=review, events=events)
 
 
@@ -146,7 +138,7 @@ def apply_agent_team_merge_review(
 ) -> AgentTeamMergeReviewResponse:
     service = _agent_team_service_or_503(runtime)
     request = payload or ApplyAgentTeamMergeReviewRequest()
-    try:
+    with agent_team_errors():
         review = service.apply_merge_review(
             session_id=session_id,
             review_id=review_id,
@@ -158,8 +150,6 @@ def apply_agent_team_merge_review(
             review_id=review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewResponse(review=review, events=events)
 
 
@@ -176,7 +166,7 @@ def reject_agent_team_merge_review(
 ) -> AgentTeamMergeReviewResponse:
     service = _agent_team_service_or_503(runtime)
     request = payload or RejectAgentTeamMergeReviewRequest()
-    try:
+    with agent_team_errors():
         review = service.reject_merge_review(
             session_id=session_id,
             review_id=review_id,
@@ -188,8 +178,6 @@ def reject_agent_team_merge_review(
             review_id=review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewResponse(review=review, events=events)
 
 
@@ -204,12 +192,10 @@ def capture_agent_team_merge_review(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamMergeReviewCaptureResponse:
     service = _agent_team_service_or_503(runtime)
-    try:
+    with agent_team_errors():
         capture = service.capture_merge_review(
             session_id=session_id,
             review_id=review_id,
             user_id=principal.user_id,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _agent_team_error(exc) from exc
     return AgentTeamMergeReviewCaptureResponse(capture=capture)

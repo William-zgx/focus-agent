@@ -22,7 +22,7 @@ from focus_agent.core.branching import (
 from focus_agent.core.request_context import RequestContext
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
-from focus_agent.services.branch_actions import (
+from focus_agent.services.branches.actions import (
     branch_handoff_message_from_text,
     build_branch_action_proposal,
     infer_suggested_branch_name,

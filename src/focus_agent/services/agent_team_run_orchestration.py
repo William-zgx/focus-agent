@@ -15,63 +15,6 @@ from focus_agent.multi_agent.contracts import (
 )
 
 
-def plan_session(
-    service: Any,
-    *,
-    session_id: str,
-    user_id: str,
-    create_branches: bool,
-    parent_thread_id: str | None,
-    task_identity: Callable[[AgentTeamTask], tuple[Any, str]],
-    team_role_for_agent_role: Callable[[Any], Any],
-) -> tuple[AgentTeamSession, list[AgentTeamTask]]:
-    session = service.get_session(session_id, user_id=user_id)
-    plan = service._build_delegation_plan(session)
-    if plan is None or not plan.enabled or not plan.tasks:
-        return service.dispatch_default_tasks(
-            session_id=session_id,
-            user_id=user_id,
-            create_branches=create_branches,
-            parent_thread_id=parent_thread_id,
-        )
-
-    existing = service.list_tasks(session_id=session_id, user_id=user_id)
-    existing_by_key = {task_identity(task): task for task in existing}
-    created_by_delegated_id: dict[str, AgentTeamTask] = {}
-
-    for delegated in plan.tasks:
-        role = team_role_for_agent_role(delegated.role)
-        key = (role, delegated.goal.strip())
-        existing_task = existing_by_key.get(key)
-        if existing_task is not None:
-            created_by_delegated_id[delegated.task_id] = existing_task
-            continue
-
-        dependency_ids = [
-            created_by_delegated_id[parent_id].task_id
-            for parent_id in [delegated.parent_task_id]
-            if parent_id and parent_id in created_by_delegated_id
-        ]
-        task = service.create_task(
-            session_id=session_id,
-            user_id=user_id,
-            role=role,
-            goal=delegated.goal,
-            scope=list(delegated.allowed_tools),
-            dependencies=dependency_ids,
-            acceptance_criteria=list(delegated.acceptance_criteria),
-            context_refs=list(delegated.context_refs),
-            create_branch=create_branches,
-            parent_thread_id=parent_thread_id or session.root_thread_id,
-        )
-        created_by_delegated_id[delegated.task_id] = task
-        existing_by_key[key] = task
-
-    session = service.get_session(session_id, user_id=user_id)
-    tasks = service.list_tasks(session_id=session_id, user_id=user_id)
-    return session, tasks
-
-
 def run_ready_tasks_once(
     service: Any,
     *,
@@ -700,7 +643,6 @@ __all__ = [
     "compute_dag_runnable_tasks",
     "mark_task_enqueue_failed",
     "maybe_schedule_next_wave",
-    "plan_session",
     "retry_task",
     "run_ready_tasks_once",
     "run_task",

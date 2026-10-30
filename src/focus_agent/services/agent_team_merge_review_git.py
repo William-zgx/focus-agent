@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from .agent_team_helpers import _dedupe
+
+
+def _git_env() -> dict[str, str]:
+    """Run git with C locale so parsed stderr (e.g. ``error: patch failed:``) is English."""
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    env["LANG"] = "C"
+    env.pop("LANGUAGE", None)
+    return env
 
 
 def repo_root(service: object) -> Path:
@@ -17,6 +27,7 @@ def repo_root(service: object) -> Path:
         text=True,
         capture_output=True,
         check=False,
+        env=_git_env(),
     )
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
@@ -65,6 +76,7 @@ def run_git_apply(*, target_root: Path, patch: str, check_only: bool) -> dict[st
         text=True,
         capture_output=True,
         check=False,
+        env=_git_env(),
     )
     message = (result.stderr or result.stdout or "").strip()
     return {"returncode": result.returncode, "message": message}
@@ -97,6 +109,7 @@ def _run_git_workspace(workspace_path: str, *args: str) -> str:
         text=True,
         capture_output=True,
         check=False,
+        env=_git_env(),
     )
     if result.returncode != 0:
         return ""

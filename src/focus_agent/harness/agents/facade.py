@@ -26,13 +26,15 @@ from ...core.tool_protocol import safe_visible_text_transition
 from ...transport.stream_events import (
     STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
-    extract_tool_call_chunks,
     extract_visible_text_candidate_delta,
     looks_like_stream_visible_text_artifact,
     safe_stream_visible_text_transition,
     sanitize_stream_metadata,
     sanitize_stream_visible_text,
     stream_visibility_phase_from_metadata,
+)
+from ...transport.tool_events import (
+    extract_tool_call_chunks,
 )
 from ..streaming.publisher import AgentEventPublisher
 from .factory import FocusAgentHarness

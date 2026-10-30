@@ -9,7 +9,6 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.delegation.execution import DelegatedRunExecutor
-from focus_agent.delegation.roles import AgentRole
 
 from .agent_team_helpers import _dedupe
 from .agent_team_workspace import AgentTeamWorkspaceStatus
@@ -18,14 +17,6 @@ _MAX_MISSION_SCHEDULER_WAVES = 16
 _MAX_MISSION_SCHEDULER_TASKS = 64
 _AGENT_TEAM_TASK_CLAIM_TTL_SECONDS = 300.0
 
-_AGENT_ROLE_TO_TEAM_ROLE: dict[AgentRole, AgentTeamTaskRole] = {
-    AgentRole.ORCHESTRATOR: AgentTeamTaskRole.ARCHITECT,
-    AgentRole.PLANNER: AgentTeamTaskRole.PLANNER,
-    AgentRole.EXECUTOR: AgentTeamTaskRole.BACKEND_EXECUTOR,
-    AgentRole.CRITIC: AgentTeamTaskRole.REVIEWER,
-    AgentRole.MEMORY_CURATOR: AgentTeamTaskRole.PLANNER,
-    AgentRole.SKILL_SCOUT: AgentTeamTaskRole.PLANNER,
-}
 _DEFAULT_WRITABLE_TEAM_ROLES = {
     AgentTeamTaskRole.BACKEND_EXECUTOR,
     AgentTeamTaskRole.FRONTEND_EXECUTOR,
@@ -36,14 +27,6 @@ _CONDITIONAL_WRITABLE_TEAM_ROLES = {
     AgentTeamTaskRole.WRITER,
 }
 _UNSCOPED_WORKSPACE_WRITE_TOOLS = {"apply_patch", "run_workspace_command"}
-
-
-def _task_identity(task: AgentTeamTask) -> tuple[AgentTeamTaskRole, str]:
-    return (task.role, task.goal.strip())
-
-
-def _team_role_for_agent_role(role: AgentRole) -> AgentTeamTaskRole:
-    return _AGENT_ROLE_TO_TEAM_ROLE.get(role, AgentTeamTaskRole.BACKEND_EXECUTOR)
 
 
 def _is_runnable_task(task: AgentTeamTask) -> bool:
@@ -261,9 +244,7 @@ __all__ = [
     "_run_metadata",
     "_scheduler_state",
     "_should_use_task_workspace",
-    "_task_identity",
     "_task_wave",
-    "_team_role_for_agent_role",
     "_team_status_for_run_status",
     "_test_evidence_for_run",
     "_workspace_metadata_for_run",

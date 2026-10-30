@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import MutableSequence
-from pathlib import Path
 
 from ..core.branching import (
     BranchRecord,
@@ -15,20 +14,11 @@ from ..core.branching import (
 )
 from ..core.types import ConversationRecord
 from ..security.ownership import OwnershipAuditEvent, allow_ownership, deny_ownership
+from ._sqlite_base import SQLiteRepositoryBase
 from .branch_repository import BranchRepository
 
 
-class SQLiteBranchRepository(BranchRepository):
-    def __init__(self, db_path: str):
-        self.db_path = str(Path(db_path).expanduser())
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._setup()
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
+class SQLiteBranchRepository(SQLiteRepositoryBase, BranchRepository):
     def _setup(self) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -53,19 +43,15 @@ class SQLiteBranchRepository(BranchRepository):
                 )
                 """
             )
-            columns = {
-                row["name"] for row in conn.execute("PRAGMA table_info(branches)").fetchall()
-            }
-            if "owner_user_id" not in columns:
-                conn.execute(
-                    "ALTER TABLE branches ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT 'unknown'"
-                )
-            if "is_archived" not in columns:
-                conn.execute(
-                    "ALTER TABLE branches ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
-                )
-            if "archived_at" not in columns:
-                conn.execute("ALTER TABLE branches ADD COLUMN archived_at TEXT")
+            self._add_columns_if_missing(
+                conn,
+                "branches",
+                {
+                    "owner_user_id": "TEXT NOT NULL DEFAULT 'unknown'",
+                    "is_archived": "INTEGER NOT NULL DEFAULT 0",
+                    "archived_at": "TEXT",
+                },
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS thread_access (
@@ -90,19 +76,15 @@ class SQLiteBranchRepository(BranchRepository):
                 )
                 """
             )
-            conversation_columns = {
-                row["name"] for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
-            }
-            if "title_pending_ai" not in conversation_columns:
-                conn.execute(
-                    "ALTER TABLE conversations ADD COLUMN title_pending_ai INTEGER NOT NULL DEFAULT 0"
-                )
-            if "is_archived" not in conversation_columns:
-                conn.execute(
-                    "ALTER TABLE conversations ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
-                )
-            if "archived_at" not in conversation_columns:
-                conn.execute("ALTER TABLE conversations ADD COLUMN archived_at TEXT")
+            self._add_columns_if_missing(
+                conn,
+                "conversations",
+                {
+                    "title_pending_ai": "INTEGER NOT NULL DEFAULT 0",
+                    "is_archived": "INTEGER NOT NULL DEFAULT 0",
+                    "archived_at": "TEXT",
+                },
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_branches_root_thread ON branches(root_thread_id)"
             )

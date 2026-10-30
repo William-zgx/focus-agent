@@ -85,7 +85,7 @@ class FocusAgentHarness:
     ) -> AsyncIterator[dict[str, Any] | None]:
         """Stream graph chunks through the harness execution adapter."""
 
-        from ...services.chat_streaming import stream_graph_chunks
+        from ...services.chat.streaming import stream_graph_chunks
 
         def _run_stream(state: Any) -> AsyncIterator[dict[str, Any] | None]:
             return stream_graph_chunks(

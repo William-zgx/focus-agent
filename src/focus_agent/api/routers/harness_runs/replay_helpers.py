@@ -27,8 +27,6 @@ from focus_agent.harness.runtime.rollback import (
 from focus_agent.harness.streaming import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
-    StreamProxy,
-    StreamProxyConfig,
     canonical_event_payload,
     sse_frame,
 )
@@ -54,7 +52,7 @@ from ...route_utils.harness_run_helpers import (
     _source_node,
     _tool_result_is_error,
 )
-from ...streaming import sse_streaming_response
+from ...streaming.sse import build_stream_proxy, sse_streaming_response
 from .replay_models import HarnessResumeRequest, HarnessRunRequest, HarnessRunResponse
 from .replay_payloads import (
     _is_branch_handoff_auto_run,
@@ -559,52 +557,6 @@ def _authorize_run_access(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
-def _should_optimize_stream(request: Request) -> bool:
-    """Decide whether to apply the StreamProxy for this SSE connection.
-
-    The proxy is opt-in: it is only enabled when the caller explicitly asks
-    for it. We honor, in priority order:
-      1. ``?optimize_stream=true`` query parameter.
-      2. ``X-Stream-Optimize: 1|true|yes`` request header.
-      3. ``Accept`` header containing the token ``stream-optimized`` (allows
-         web clients to request it via EventSource's fetch polyfill).
-      4. ``X-Stream-Optimize-Auto: 1`` **combined** with a browser UA lets
-         the frontend opt itself into auto-detection without forcing
-         optimization on all browsers.
-
-    Defaults to ``False`` so existing clients are unaffected.
-    """
-    try:
-        qp = request.query_params.get("optimize_stream")
-        if qp is not None and str(qp).strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-        hdr = request.headers.get("x-stream-optimize")
-        if hdr is not None and str(hdr).strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-        accept = (request.headers.get("accept") or "").lower()
-        if "stream-optimized" in accept:
-            return True
-        auto = request.headers.get("x-stream-optimize-auto")
-        if auto is not None and str(auto).strip().lower() in {"1", "true", "yes", "on"}:
-            ua = (request.headers.get("user-agent") or "").lower()
-            if ua.startswith("mozilla/"):
-                return True
-    except Exception:  # noqa: BLE001 - never break SSE over header parsing
-        return False
-    return False
-
-
-def _build_stream_proxy(request: Request) -> StreamProxy | None:
-    if not _should_optimize_stream(request):
-        return None
-    cfg = StreamProxyConfig(
-        strip_redundant_fields=True,
-        drop_empty_heartbeats=False,  # keep heartbeats for SSE liveness
-        deduplicate_consecutive=True,
-    )
-    return StreamProxy(config=cfg)
-
-
 def _run_event_streaming_response(
     *,
     runtime: AppRuntime,
@@ -613,7 +565,7 @@ def _run_event_streaming_response(
     request: Request,
     cancel_on_disconnect: bool,
 ) -> StreamingResponse:
-    proxy = _build_stream_proxy(request)
+    proxy = build_stream_proxy(request)
 
     async def event_stream() -> AsyncIterator[str]:
         last_event_id = request.headers.get("last-event-id")

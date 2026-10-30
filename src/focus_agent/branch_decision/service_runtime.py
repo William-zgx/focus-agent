@@ -20,7 +20,7 @@ from focus_agent.core.governance import (
 )
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.state import normalize_agent_state
-from focus_agent.services.branch_actions import (
+from focus_agent.services.branches.actions import (
     branch_action_audit_event,
     build_branch_action_proposal,
     latest_pending_branch_action,

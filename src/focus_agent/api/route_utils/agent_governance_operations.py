@@ -62,7 +62,10 @@ def _governance_repository(runtime: AppRuntime) -> object:
             PostgresGovernanceRepository,
         )
 
-        repository = PostgresGovernanceRepository(str(database_uri))
+        repository = PostgresGovernanceRepository(
+            str(database_uri),
+            connection_provider=getattr(runtime, "postgres_connection_provider", None),
+        )
     else:
         repository = InMemoryGovernanceRepository()
     try:

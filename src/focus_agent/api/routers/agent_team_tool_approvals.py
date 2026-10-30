@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import ModuleType
-
 from fastapi import APIRouter, Depends
 
 from focus_agent.engine.runtime import AppRuntime
@@ -15,14 +13,9 @@ from ..contract_models.agent_team import (
     DecideAgentTeamToolApprovalRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
+from ..route_utils.agent_team import _agent_team_service_or_503, agent_team_errors
 
 router = APIRouter()
-
-
-def _root_agent_team_module() -> ModuleType:
-    from . import agent_team
-
-    return agent_team
 
 
 @router.get(
@@ -34,13 +27,10 @@ def list_agent_team_tool_approvals(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamToolApprovalListResponse:
-    agent_team = _root_agent_team_module()
-    service = agent_team._agent_team_service_or_503(runtime)
-    try:
+    service = _agent_team_service_or_503(runtime)
+    with agent_team_errors():
         session = service.get_session(session_id, user_id=principal.user_id)
-        approvals = agent_team._pending_tool_approvals_for_session(service, session)
-    except Exception as exc:  # noqa: BLE001
-        raise agent_team._agent_team_error(exc) from exc
+        approvals = _pending_tool_approvals_for_session(service, session)
     return AgentTeamToolApprovalListResponse(
         approvals=approvals,
         items=approvals,
@@ -59,12 +49,11 @@ def decide_agent_team_tool_approval(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamToolApprovalDecisionResponse:
-    agent_team = _root_agent_team_module()
-    service = agent_team._agent_team_service_or_503(runtime)
-    try:
+    service = _agent_team_service_or_503(runtime)
+    with agent_team_errors():
         session = service.get_session(session_id, user_id=principal.user_id)
-        approval_queue = agent_team._agent_team_approval_queue(service)
-        request = agent_team._get_tool_approval_request(approval_queue, request_id)
+        approval_queue = _agent_team_approval_queue(service)
+        request = _get_tool_approval_request(approval_queue, request_id)
         if request is None or str(request.session_id) not in {
             session.session_id,
             session.root_thread_id,
@@ -75,13 +64,9 @@ def decide_agent_team_tool_approval(
             approved=payload.approved,
             decided_by=principal.user_id,
         )
-        decided = agent_team._get_tool_approval_request(approval_queue, request_id) or request
-    except Exception as exc:  # noqa: BLE001
-        raise agent_team._agent_team_error(exc) from exc
+        decided = _get_tool_approval_request(approval_queue, request_id) or request
     return AgentTeamToolApprovalDecisionResponse(
-        approval=AgentTeamToolApprovalContract.model_validate(
-            agent_team._tool_approval_payload(decided)
-        )
+        approval=AgentTeamToolApprovalContract.model_validate(_tool_approval_payload(decided))
     )
 
 
@@ -96,7 +81,7 @@ def approve_agent_team_tool_approval(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamToolApprovalDecisionResponse:
-    return _root_agent_team_module().decide_agent_team_tool_approval(
+    return decide_agent_team_tool_approval(
         session_id=session_id,
         request_id=request_id,
         payload=DecideAgentTeamToolApprovalRequest(
@@ -119,7 +104,7 @@ def reject_agent_team_tool_approval(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> AgentTeamToolApprovalDecisionResponse:
-    return _root_agent_team_module().decide_agent_team_tool_approval(
+    return decide_agent_team_tool_approval(
         session_id=session_id,
         request_id=request_id,
         payload=DecideAgentTeamToolApprovalRequest(
@@ -143,8 +128,7 @@ def _pending_tool_approvals_for_session(
     service: object,
     session: object,
 ) -> list[AgentTeamToolApprovalContract]:
-    agent_team = _root_agent_team_module()
-    approval_queue = agent_team._agent_team_approval_queue(service)
+    approval_queue = _agent_team_approval_queue(service)
     if not hasattr(approval_queue, "list_pending"):
         return []
     session_ids = {
@@ -155,9 +139,7 @@ def _pending_tool_approvals_for_session(
     for request in approval_queue.list_pending():
         if str(getattr(request, "session_id", "")) in session_ids:
             approvals.append(
-                AgentTeamToolApprovalContract.model_validate(
-                    agent_team._tool_approval_payload(request)
-                )
+                AgentTeamToolApprovalContract.model_validate(_tool_approval_payload(request))
             )
     return approvals
 

@@ -164,3 +164,13 @@ def test_productivity_capture_api_creates_sourced_note_and_task():
     assert task["source_id"] == "review-1"
     assert task["source_thread_id"] == "root-thread"
     assert task["captured_from"] == "agent_team"
+
+
+def test_list_endpoints_share_page_limit_bounds():
+    client, settings = _client()
+    headers = _headers(settings, "owner-1")
+
+    assert client.get("/v1/notes", headers=headers, params={"limit": 1}).status_code == 200
+    assert client.get("/v1/notes", headers=headers, params={"limit": 200}).status_code == 200
+    assert client.get("/v1/notes", headers=headers, params={"limit": 0}).status_code == 422
+    assert client.get("/v1/notes", headers=headers, params={"limit": 201}).status_code == 422

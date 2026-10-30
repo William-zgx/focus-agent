@@ -133,7 +133,7 @@ class ChatContextCompactionMixin:
             raise RuntimeError("cannot compact without a fresh graph state") from exc
 
         if getattr(snapshot, "interrupts", ()):
-            from .service import ConcurrentTurnError
+            from .errors import ConcurrentTurnError
 
             # LangGraph update_state clears pending interrupt writes. Wait for
             # the user's answer/approval instead of invalidating its resume ID.
@@ -290,7 +290,7 @@ class ChatContextCompactionMixin:
             compact_later(attempt=attempt)
 
         def compact_later(*, attempt: int) -> None:
-            from .service import ConcurrentTurnError
+            from .errors import ConcurrentTurnError
 
             try:
                 self.compact_thread_context(

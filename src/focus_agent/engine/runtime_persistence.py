@@ -197,7 +197,11 @@ def _create_postgres_primary_persistence(
         connection_provider=postgres_connection_provider,
     )
     runtime_mod._setup_component_if_available(repo)
-    user_repository = PostgresUserRepository(settings.database_uri)
+    user_repository = runtime_mod._create_repository_with_provider(
+        PostgresUserRepository,
+        settings.database_uri,
+        connection_provider=postgres_connection_provider,
+    )
     runtime_mod._setup_component_if_available(user_repository)
 
     artifact_metadata_repository = ArtifactMetadataRepository(settings.database_uri)
@@ -214,7 +218,11 @@ def _create_postgres_primary_persistence(
         memory_embedding_setup=memory_embedding_setup,
     )
 
-    productivity_repository = PostgresProductivityRepository(settings.database_uri)
+    productivity_repository = runtime_mod._create_repository_with_provider(
+        PostgresProductivityRepository,
+        settings.database_uri,
+        connection_provider=postgres_connection_provider,
+    )
     runtime_mod._setup_component_if_available(productivity_repository)
 
     trajectory_recorder = None
@@ -249,6 +257,45 @@ def _create_postgres_primary_persistence(
         artifact_metadata_repository,
         run_journal,
     )
+
+
+def _create_governance_repository(
+    settings: Settings,
+    *,
+    connection_provider: PostgresConnectionProvider | None = None,
+) -> object:
+    runtime_mod = _runtime_module()
+    if settings.database_uri:
+        from ..repositories.postgres_governance_repository import PostgresGovernanceRepository
+
+        return runtime_mod._create_repository_with_provider(
+            PostgresGovernanceRepository,
+            settings.database_uri,
+            connection_provider=connection_provider,
+        )
+    from ..repositories.governance_repository import InMemoryGovernanceRepository
+
+    return InMemoryGovernanceRepository()
+
+
+def _create_agent_team_repository(
+    settings: Settings,
+    *,
+    connection_provider: PostgresConnectionProvider | None = None,
+) -> object:
+    runtime_mod = _runtime_module()
+    if settings.database_uri:
+        from ..repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
+
+        repository = runtime_mod._create_repository_with_provider(
+            PostgresAgentTeamRepository,
+            settings.database_uri,
+            connection_provider=connection_provider,
+        )
+    else:
+        repository = runtime_mod.InMemoryAgentTeamRepository()
+    runtime_mod._setup_component_if_available(repository)
+    return repository
 
 
 def _create_repository_with_provider(

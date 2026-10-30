@@ -158,7 +158,7 @@ def test_postgres_agent_team_repository_round_trips_models(monkeypatch):
             return FakeCursor()
 
     monkeypatch.setattr(
-        "focus_agent.repositories.postgres_agent_team_repository.psycopg.connect",
+        "focus_agent.repositories._postgres_base.psycopg.connect",
         lambda uri, **kwargs: FakeConnection(),
     )
 
@@ -432,7 +432,7 @@ def test_postgres_agent_team_repository_raises_key_error_for_missing_records(mon
             return FakeCursor()
 
     monkeypatch.setattr(
-        "focus_agent.repositories.postgres_agent_team_repository.psycopg.connect",
+        "focus_agent.repositories._postgres_base.psycopg.connect",
         lambda uri, **kwargs: FakeConnection(),
     )
 

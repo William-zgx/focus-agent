@@ -5,7 +5,7 @@ from typing import Any
 
 from focus_agent.core.branching import BranchMeta, BranchStatus
 from focus_agent.core.governance import BranchDecisionAction, BranchDecisionSignal
-from focus_agent.services.branch_actions import (
+from focus_agent.services.branches.actions import (
     has_negated_branch_action_request,
     latest_pending_branch_action,
 )

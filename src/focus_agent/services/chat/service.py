@@ -29,13 +29,12 @@ from ...observability.tracing import (
 )
 from ...observability.trajectory import utc_now
 from ...skills.models import SkillSelection
-from ..branch_actions import (
+from ..branches.actions import (
     latest_pending_branch_action,
     normalize_branch_actions,
     proposal_message,
     serialize_branch_actions,
 )
-from ..chat_turn_errors import ConcurrentTurnError  # noqa: F401
 from ..coordination import create_in_memory_coordination_backend
 from .branch_actions import ChatBranchActionFacadeMixin
 from .branch_navigation import (  # noqa: F401
@@ -44,16 +43,18 @@ from .branch_navigation import (  # noqa: F401
 )
 from .ports import ChatServicePorts
 from .runtime_coordination import ChatRuntimeCoordinationMixin
-from .threads import (
-    ChatThreadAccessMixin,
-    effective_thinking_mode,
+from .serialization import (
     json_safe,
     latest_final_ai_text,
     message_content_to_text,
-    response_payload,
     serialize_message,
     sse_frame,
     thread_state_messages,
+)
+from .threads import (
+    ChatThreadAccessMixin,
+    effective_thinking_mode,
+    response_payload,
 )
 from .turns import ChatContextCompactionMixin, ChatTurnRecordingMixin
 

@@ -4,7 +4,6 @@ import json
 from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.users import (
@@ -15,7 +14,9 @@ from focus_agent.core.users import (
     UserSession,
 )
 from focus_agent.security.tokens import Principal
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
+from ._postgres_base import PostgresMixin
 from .postgres_schema import ensure_app_postgres_schema_on_connection
 from .user_repository import (
     AuditEventListFilters,
@@ -27,17 +28,20 @@ from .user_repository import (
 _ADMIN_DEMOTION_LOCK_KEY = 6_716_136_569_760_316_001
 
 
-class PostgresUserRepository(UserRepository):
-    def __init__(self, database_uri: str):
+class PostgresUserRepository(PostgresMixin, UserRepository):
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
 
     def setup(self) -> None:
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
             self._ensure_schema_compatibility(conn)
-
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod
     def _ensure_schema_compatibility(conn: object) -> None:

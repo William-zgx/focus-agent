@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+from typing import NoReturn
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from focus_agent.core.branching import MergeDecision, MergeMode, MergeTarget
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat_turn_errors import ConcurrentTurnError
 
 from ..contracts import (
     ApplyMergeDecisionRequest,
@@ -17,6 +19,14 @@ from ..contracts import (
     UpdateBranchNameRequest,
 )
 from ..deps import get_app_runtime, get_current_principal
+from ..route_utils.service_errors import (
+    BAD_REQUEST_ERROR_RULE,
+    CONCURRENT_TURN_ERROR_RULE,
+    PERMISSION_ERROR_RULE,
+    SERVICE_ERROR_RULES,
+    ErrorRule,
+    map_service_errors,
+)
 from ..route_utils.token_usage import (
     _annotate_branch_tree_token_usage,
     _token_usage_by_thread_for_root,
@@ -32,7 +42,7 @@ def create_branch(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ):
-    try:
+    with map_service_errors():
         record = runtime.branch_service.fork_branch(
             parent_thread_id=payload.parent_thread_id,
             user_id=principal.user_id,
@@ -42,14 +52,6 @@ def create_branch(
             branch_role=payload.branch_role,
             fork_checkpoint_id=payload.fork_checkpoint_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -59,24 +61,13 @@ def archive_branch_route(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ):
-    try:
+    with _child_thread_errors(
+        runtime=runtime, thread_id=child_thread_id, user_id=principal.user_id
+    ):
         record = runtime.branch_service.archive_branch(
             child_thread_id=child_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        _raise_child_thread_diagnostic(
-            runtime=runtime,
-            thread_id=child_thread_id,
-            user_id=principal.user_id,
-            exc=exc,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -90,25 +81,14 @@ def rename_branch_route(
     branch_name = str(payload.branch_name or "").strip()
     if not branch_name:
         raise HTTPException(status_code=400, detail="Branch name cannot be empty.")
-    try:
+    with _child_thread_errors(
+        runtime=runtime, thread_id=child_thread_id, user_id=principal.user_id
+    ):
         record = runtime.branch_service.rename_branch(
             child_thread_id=child_thread_id,
             user_id=principal.user_id,
             branch_name=branch_name,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        _raise_child_thread_diagnostic(
-            runtime=runtime,
-            thread_id=child_thread_id,
-            user_id=principal.user_id,
-            exc=exc,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -118,24 +98,13 @@ def activate_branch_route(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ):
-    try:
+    with _child_thread_errors(
+        runtime=runtime, thread_id=child_thread_id, user_id=principal.user_id
+    ):
         record = runtime.branch_service.activate_branch(
             child_thread_id=child_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        _raise_child_thread_diagnostic(
-            runtime=runtime,
-            thread_id=child_thread_id,
-            user_id=principal.user_id,
-            exc=exc,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return record.model_dump(mode="json")
 
 
@@ -147,24 +116,13 @@ def prepare_branch_merge_proposal(
     principal: Principal = Depends(get_current_principal),
 ):
     del payload
-    try:
+    with _child_thread_errors(
+        runtime=runtime, thread_id=child_thread_id, user_id=principal.user_id
+    ):
         proposal = runtime.branch_service.prepare_merge_proposal(
             child_thread_id=child_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        _raise_child_thread_diagnostic(
-            runtime=runtime,
-            thread_id=child_thread_id,
-            user_id=principal.user_id,
-            exc=exc,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return proposal.model_dump(mode="json")
 
 
@@ -175,7 +133,12 @@ def submit_merge_decision(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ) -> ApplyMergeDecisionResponse:
-    try:
+    with _child_thread_errors(
+        runtime=runtime,
+        thread_id=child_thread_id,
+        user_id=principal.user_id,
+        rules=(BAD_REQUEST_ERROR_RULE,),
+    ):
         require_child = getattr(runtime.branch_service, "_require_child_branch_record", None)
         if callable(require_child):
             record = require_child(
@@ -185,17 +148,10 @@ def submit_merge_decision(
             )
         else:
             record = runtime.repo.get_by_child_thread_id(child_thread_id)
-    except KeyError as exc:
-        _raise_child_thread_diagnostic(
-            runtime=runtime,
-            thread_id=child_thread_id,
-            user_id=principal.user_id,
-            exc=exc,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     decision = MergeDecision.model_validate(payload.model_dump(exclude={"user_id"}))
-    try:
+    with map_service_errors(
+        rules=(PERMISSION_ERROR_RULE, CONCURRENT_TURN_ERROR_RULE, (ValueError, 409))
+    ):
         imported = runtime.branch_service.apply_merge_decision(
             child_thread_id=child_thread_id,
             decision=decision,
@@ -205,12 +161,6 @@ def submit_merge_decision(
             ),
             proposal_overrides=payload.proposal_overrides,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ConcurrentTurnError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
     target_thread_id = None
     if imported is not None and decision.approved and decision.mode != MergeMode.NONE:
         target_thread_id = (
@@ -227,7 +177,7 @@ def get_branch_tree_view(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ) -> BranchTreeResponse:
-    try:
+    with map_service_errors(rules=(PERMISSION_ERROR_RULE,)):
         resolved_root_thread_id = _resolve_root_thread_id(
             runtime=runtime,
             thread_id=root_thread_id,
@@ -240,8 +190,6 @@ def get_branch_tree_view(
             root_thread_id=resolved_root_thread_id,
             user_id=principal.user_id,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     token_usage_by_thread = _token_usage_by_thread_for_root(
         runtime=runtime, root_thread_id=resolved_root_thread_id
     )
@@ -272,13 +220,28 @@ def _resolve_root_thread_id(*, runtime: AppRuntime, thread_id: str, user_id: str
     return str(resolver(thread_id=thread_id, owner_user_id=user_id).root_thread_id)
 
 
+def _child_thread_errors(
+    *,
+    runtime: AppRuntime,
+    thread_id: str,
+    user_id: str,
+    rules: tuple[ErrorRule, ...] = SERVICE_ERROR_RULES,
+) -> AbstractContextManager[None]:
+    def _diagnose(exc: Exception) -> NoReturn:
+        _raise_child_thread_diagnostic(
+            runtime=runtime, thread_id=thread_id, user_id=user_id, exc=exc
+        )
+
+    return map_service_errors((KeyError, _diagnose), rules=rules)
+
+
 def _raise_child_thread_diagnostic(
     *,
     runtime: AppRuntime,
     thread_id: str,
     user_id: str,
-    exc: KeyError,
-) -> None:
+    exc: Exception,
+) -> NoReturn:
     resolver = getattr(runtime.repo, "resolve_thread_ref", None)
     if callable(resolver):
         try:

@@ -17,7 +17,7 @@ from focus_agent.core.governance import (
     BranchDecisionSignal,
     BranchDecisionStatus,
 )
-from focus_agent.services.branch_actions import (
+from focus_agent.services.branches.actions import (
     branch_handoff_message_from_text,
     infer_suggested_branch_name,
     latest_pending_branch_action,
