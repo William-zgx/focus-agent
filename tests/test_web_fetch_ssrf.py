@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import socket
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from focus_agent.capabilities.default_tool_modules.build_context import ToolBuildContext
 from focus_agent.capabilities.default_tool_modules.web import build_web_tools
 from focus_agent.config import Settings
 
@@ -53,10 +55,13 @@ def _tool(
 ) -> Any:
     settings = Settings()
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FakeWebHttpClient(get),
     )
     return tools["web_fetch"]

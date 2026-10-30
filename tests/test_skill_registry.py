@@ -402,11 +402,11 @@ def test_run_skill_entrypoint_uses_unified_sandbox_service(tmp_path, monkeypatch
         lambda **_kwargs: _SandboxService(),
     )
     monkeypatch.setattr(
-        "focus_agent.capabilities.tool_registry._get_current_thread_id",
+        "focus_agent.capabilities.default_tool_modules.common._get_current_thread_id",
         lambda: "thread-1",
     )
     monkeypatch.setattr(
-        "focus_agent.capabilities.tool_registry._get_current_branch_id",
+        "focus_agent.capabilities.default_tool_modules.common._get_current_branch_id",
         lambda: None,
     )
     registry = SkillRegistry([skill_root])

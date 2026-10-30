@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from langchain.messages import AIMessage, HumanMessage
@@ -14,6 +15,7 @@ from focus_agent.capabilities.ask_user_question import (
     normalize_ask_user_questions,
     parse_ask_user_question_answers,
 )
+from focus_agent.capabilities.default_tool_modules.build_context import ToolBuildContext
 from focus_agent.capabilities.default_tool_modules.conversation import (
     build_conversation_tools,
 )
@@ -120,10 +122,13 @@ def test_ask_user_question_response_validation_and_parse():
 
 def test_ask_user_question_tool_rejects_direct_invoke():
     tools, _runtime = build_conversation_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=ToolCatalogConfig(),
+            emit_tool_event=lambda **_kwargs: None,
+            get_current_thread_id=lambda: None,
+        ),
         checkpointer=None,
-        tool_catalog=ToolCatalogConfig(),
-        emit_tool_event=lambda **_kwargs: None,
-        get_current_thread_id=lambda: None,
     )
     with pytest.raises(RuntimeError, match="cannot be executed automatically"):
         tools[ASK_USER_QUESTION_TOOL_NAME].invoke({"questions": _sample_questions()})
@@ -136,10 +141,13 @@ class _Runtime:
 
 def test_tool_executor_resumes_ask_user_question_with_answers(monkeypatch):
     tools, runtime_meta = build_conversation_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=ToolCatalogConfig(),
+            emit_tool_event=lambda **_kwargs: None,
+            get_current_thread_id=lambda: "thread-1",
+        ),
         checkpointer=None,
-        tool_catalog=ToolCatalogConfig(),
-        emit_tool_event=lambda **_kwargs: None,
-        get_current_thread_id=lambda: "thread-1",
     )
     tool = tools[ASK_USER_QUESTION_TOOL_NAME]
     tool.metadata = {**runtime_meta[ASK_USER_QUESTION_TOOL_NAME]}

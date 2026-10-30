@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from urllib import parse as stdlib_urllib_parse
@@ -12,6 +11,7 @@ from langchain.tools import tool
 
 from focus_agent.runtime.http_client import shared_sync_http_client
 
+from .build_context import ToolBuildContext
 from .common import _require_non_empty_text_arg
 from .web_helpers import (
     _binary_payload_kind,
@@ -32,16 +32,17 @@ _WEB_FETCH_MIN_DISPLAY_CHARS = 200
 
 
 def build_web_tools(
+    context: ToolBuildContext,
     *,
     web_search_config: Any,
-    tool_catalog: Any,
     resolved_env: Any,
-    emit_tool_event: Callable[..., None],
     urllib_parse_module: Any = stdlib_urllib_parse,
     http_client: httpx.Client | None = None,
-    save_tool_observation: Callable[..., str | None] | None = None,
-    get_current_thread_id: Callable[[], str | None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+    save_tool_observation = context.save_tool_observation
+
     def _validate_web_fetch_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "url")
 
@@ -236,14 +237,11 @@ def build_web_tools(
                 if callable(save_tool_observation):
                     observation_id = uuid.uuid4().hex
                     try:
-                        thread_id = (
-                            get_current_thread_id() if callable(get_current_thread_id) else None
-                        )
                         saved = save_tool_observation(
                             tool_name=tool_name,
                             tool_call_id=observation_id,
                             content=content,
-                            thread_id=thread_id,
+                            thread_id=context.get_current_thread_id(),
                         )
                     except Exception as exc:  # noqa: BLE001
                         emit_tool_event(

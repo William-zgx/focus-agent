@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from typing import Any
 
 from langchain.tools import tool
@@ -9,15 +8,16 @@ from langchain.tools import tool
 from ...core.productivity import FocusTaskStatus
 from ...repositories.productivity_repository import ProductivityRepository
 from ...services.productivity import ProductivityService
+from .build_context import ToolBuildContext
 
 
 def build_productivity_tools(
+    context: ToolBuildContext,
     *,
     productivity_repository: ProductivityRepository | None,
-    emit_tool_event: Callable[..., None],
-    get_current_thread_id: Callable[[], str | None],
-    get_current_user_id: Callable[[], str | None],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    emit_tool_event = context.emit_tool_event
+
     def _service() -> ProductivityService:
         return ProductivityService(_repository())
 
@@ -27,7 +27,7 @@ def build_productivity_tools(
         return productivity_repository
 
     def _user_id() -> str:
-        user_id = get_current_user_id()
+        user_id = context.get_current_user_id()
         if not user_id:
             raise RuntimeError("Productivity tools require an authenticated user context.")
         return user_id
@@ -54,7 +54,7 @@ def build_productivity_tools(
                 title=title,
                 body=body,
                 tags=tags,
-                source_thread_id=source_thread_id or get_current_thread_id(),
+                source_thread_id=source_thread_id or context.get_current_thread_id(),
                 source_artifact_id=source_artifact_id,
                 source_kind=source_kind,
                 source_id=source_id,
@@ -154,7 +154,7 @@ def build_productivity_tools(
                 priority=priority,
                 due_at=due_at,
                 source_note_id=source_note_id,
-                source_thread_id=source_thread_id or get_current_thread_id(),
+                source_thread_id=source_thread_id or context.get_current_thread_id(),
                 source_artifact_id=source_artifact_id,
                 source_kind=source_kind,
                 source_id=source_id,
@@ -260,7 +260,7 @@ def build_productivity_tools(
                     tags=tags,
                     source_id=source_id,
                     source_url=source_url,
-                    source_thread_id=source_thread_id or get_current_thread_id(),
+                    source_thread_id=source_thread_id or context.get_current_thread_id(),
                     source_artifact_id=source_artifact_id,
                     captured_from=captured_from,
                 )
@@ -275,7 +275,7 @@ def build_productivity_tools(
                     tags=tags,
                     source_id=source_id,
                     source_url=source_url,
-                    source_thread_id=source_thread_id or get_current_thread_id(),
+                    source_thread_id=source_thread_id or context.get_current_thread_id(),
                     source_note_id=source_note_id,
                     source_artifact_id=source_artifact_id,
                     captured_from=captured_from,

@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Any
 from urllib import parse as urllib_parse
 
-from langgraph.config import get_config
-
 from ...config import Settings
 from ...storage import LocalArtifactStore
 from .artifact import build_artifact_tools
+from .artifact_backend import ArtifactBackend
+from .build_context import ToolBuildContext
 from .common import (
     _apply_tool_metadata,
     _emit_tool_event,
@@ -22,30 +22,6 @@ from .memory import build_memory_tools
 from .productivity import build_productivity_tools
 from .web import build_web_tools
 from .workspace import build_workspace_tools
-
-
-def _get_current_thread_id() -> str | None:
-    try:
-        config = get_config()
-    except Exception:  # noqa: BLE001
-        return None
-    configurable = dict(config.get("configurable") or {})
-    value = configurable.get("thread_id")
-    return str(value) if value else None
-
-
-def _get_current_user_id() -> str | None:
-    try:
-        config = get_config()
-    except Exception:  # noqa: BLE001
-        return None
-    configurable = dict(config.get("configurable") or {})
-    value = configurable.get("user_id")
-    if value:
-        return str(value)
-    metadata = dict(config.get("metadata") or {})
-    metadata_user = metadata.get("user_id")
-    return str(metadata_user) if metadata_user else None
 
 
 def get_default_tools(
@@ -88,79 +64,47 @@ def get_default_tools(
         grouped_tools.update(tools_by_name)
         grouped_runtime_metadata.update(runtime_metadata_by_name)
 
-    _merge_tool_group(*build_utility_tools(emit_tool_event=_emit_display_tool_event))
+    backend = ArtifactBackend(
+        artifact_dir=artifact_dir,
+        artifact_store=artifact_store,
+        artifact_metadata_repository=artifact_metadata_repository,
+        database_uri=settings.database_uri,
+    )
+    context = ToolBuildContext(
+        workspace_root=workspace_root,
+        tool_catalog=tool_catalog,
+        emit_tool_event=_emit_display_tool_event,
+        memory_embedding_service=memory_embedding_service,
+        retrieval_index=retrieval_index,
+        save_tool_observation=backend.save_tool_observation,
+    )
+
+    _merge_tool_group(*build_utility_tools(context))
     _merge_tool_group(
         *build_workspace_tools(
-            workspace_root=workspace_root,
-            tool_catalog=tool_catalog,
-            emit_tool_event=_emit_display_tool_event,
+            context,
             trusted_skill_collection_roots=(
                 *settings.skill_directories,
                 settings.skill_install_directory,
             ),
-            memory_embedding_service=memory_embedding_service,
-            retrieval_index=retrieval_index,
         )
     )
-    _merge_tool_group(
-        *build_git_tools(
-            workspace_root=workspace_root,
-            tool_catalog=tool_catalog,
-            emit_tool_event=_emit_display_tool_event,
-        )
-    )
-    artifact_tools, artifact_runtime_metadata = build_artifact_tools(
-        artifact_dir=artifact_dir,
-        workspace_root=workspace_root,
-        settings=settings,
-        tool_catalog=tool_catalog,
-        artifact_store=artifact_store,
-        artifact_metadata_repository=artifact_metadata_repository,
-        memory_embedding_service=memory_embedding_service,
-        retrieval_index=retrieval_index,
-        emit_tool_event=_emit_display_tool_event,
-        get_current_thread_id=_get_current_thread_id,
-    )
-    _merge_tool_group(artifact_tools, artifact_runtime_metadata)
-    artifact_read_metadata = getattr(artifact_tools.get("artifact_read"), "metadata", {}) or {}
-    save_tool_observation = artifact_read_metadata.get("_focus_agent_save_tool_observation")
+    _merge_tool_group(*build_git_tools(context))
+    _merge_tool_group(*build_artifact_tools(context, backend=backend))
     _merge_tool_group(
         *build_web_tools(
+            context,
             web_search_config=web_search_config,
-            tool_catalog=tool_catalog,
             resolved_env=resolved_env,
-            emit_tool_event=_emit_display_tool_event,
             urllib_parse_module=urllib_parse,
-            save_tool_observation=save_tool_observation,
-            get_current_thread_id=_get_current_thread_id,
         )
     )
     _merge_tool_group(
-        *build_memory_tools(
-            store=store,
-            memory_repository=memory_repository,
-            memory_embedding_service=memory_embedding_service,
-            retrieval_index=retrieval_index,
-            tool_catalog=tool_catalog,
-            emit_tool_event=_emit_display_tool_event,
-            get_current_thread_id=_get_current_thread_id,
-        )
+        *build_memory_tools(context, store=store, memory_repository=memory_repository)
     )
+    _merge_tool_group(*build_conversation_tools(context, checkpointer=checkpointer))
     _merge_tool_group(
-        *build_conversation_tools(
-            checkpointer=checkpointer,
-            tool_catalog=tool_catalog,
-            emit_tool_event=_emit_display_tool_event,
-            get_current_thread_id=_get_current_thread_id,
-        )
-    )
-    _merge_tool_group(
-        *build_productivity_tools(
-            productivity_repository=productivity_repository,
-            emit_tool_event=_emit_display_tool_event,
-            get_current_thread_id=_get_current_thread_id,
-            get_current_user_id=_get_current_user_id,
-        )
+        *build_productivity_tools(context, productivity_repository=productivity_repository)
     )
     registered_tools = {
         **grouped_tools,

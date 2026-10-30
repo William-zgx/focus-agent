@@ -4,11 +4,13 @@ import json
 import sys
 import types
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from focus_agent.capabilities.default_tool_modules.build_context import ToolBuildContext
 from focus_agent.capabilities.default_tool_modules.web import build_web_tools
 from focus_agent.config import Settings
 
@@ -48,10 +50,13 @@ def _build_search_tools(*, provider: str, client: Any, env: dict[str, str] | Non
         }
     )
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=config,
-        tool_catalog=settings.tool_catalog,
         resolved_env=env or {"TAVILY_API_KEY": "test-key"},
-        emit_tool_event=lambda **_: None,
         http_client=client,
     )
     return tools
@@ -211,13 +216,16 @@ def test_web_fetch_downloads_before_display_truncation_and_returns_scoped_contin
     settings = Settings()
     saved: list[dict[str, Any]] = []
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+            save_tool_observation=lambda **kwargs: saved.append(kwargs) or "saved",
+            get_current_thread_id=lambda: "thread-1",
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
-        save_tool_observation=lambda **kwargs: saved.append(kwargs) or "saved",
-        get_current_thread_id=lambda: "thread-1",
     )
 
     payload = json.loads(
@@ -248,10 +256,13 @@ def test_web_fetch_does_not_render_pdf_as_replacement_text():
     )
     settings = Settings()
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
     )
 
@@ -263,11 +274,11 @@ def test_web_fetch_does_not_render_pdf_as_replacement_text():
 
 
 def test_default_web_fetch_continuation_reads_full_text_in_same_thread(tmp_path, monkeypatch):
-    from focus_agent.capabilities.default_tool_modules import factory
+    from focus_agent.capabilities.default_tool_modules import common, factory
     from focus_agent.capabilities.default_tool_modules import web as web_module
 
     active_thread = ["research-thread"]
-    monkeypatch.setattr(factory, "_get_current_thread_id", lambda: active_thread[0])
+    monkeypatch.setattr(common, "_get_current_thread_id", lambda: active_thread[0])
     content = "opening\n" + "middle evidence\n" * 500 + "conclusion"
     response = httpx.Response(
         200,
@@ -340,10 +351,13 @@ def test_web_fetch_preserves_publication_date_and_rejects_challenge_pages():
     settings = Settings()
     response = httpx.Response(200, text=html, headers={"content-type": "text/html"})
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
     )
     result = json.loads(tools["web_fetch"].invoke({"url": "https://93.184.216.34/old"}))
@@ -360,10 +374,13 @@ def test_web_fetch_preserves_publication_date_and_rejects_challenge_pages():
         headers={"content-type": "text/html"},
     )
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
     )
     blocked = json.loads(tools["web_fetch"].invoke({"url": "https://93.184.216.34/blocked"}))
@@ -380,10 +397,13 @@ def test_web_fetch_prefers_role_main_over_navigation_text():
     settings = Settings()
     response = httpx.Response(200, text=html, headers={"content-type": "text/html"})
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
     )
 
@@ -455,13 +475,16 @@ def test_default_web_fetch_fits_observation_cap_without_skipping_text():
     settings = Settings()
     saved: list[dict[str, Any]] = []
     tools, _ = build_web_tools(
+        ToolBuildContext(
+            workspace_root=Path("."),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+            save_tool_observation=lambda **kwargs: saved.append(kwargs) or "saved",
+            get_current_thread_id=lambda: "thread-1",
+        ),
         web_search_config=settings.web_search,
-        tool_catalog=settings.tool_catalog,
         resolved_env={},
-        emit_tool_event=lambda **_: None,
         http_client=_FetchClient(response),
-        save_tool_observation=lambda **kwargs: saved.append(kwargs) or "saved",
-        get_current_thread_id=lambda: "thread-1",
     )
 
     result = tools["web_fetch"].invoke({"url": "https://93.184.216.34/long"})

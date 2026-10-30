@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,12 +11,12 @@ from langchain.tools import tool
 
 from ...core.context_tool_observation_references import (
     _is_tool_observation_artifact_id,
-    _observation_artifact_id,
     _observation_artifact_id_from_ref,
     _parse_tool_observation_ref,
 )
 from ...retrieval.artifacts import artifact_content_hash, index_artifact_content
-from ...storage import LocalArtifactStore
+from .artifact_backend import ArtifactBackend
+from .build_context import ToolBuildContext
 from .common import _coerce_relative_posix, _require_non_empty_text_arg
 
 _MAX_ARTIFACT_READ_RANGE = 50_000
@@ -37,67 +36,24 @@ def _artifact_title_from_id(artifact_id: str) -> str:
 
 
 def build_artifact_tools(
+    context: ToolBuildContext,
     *,
-    artifact_dir: Path,
-    workspace_root: Path,
-    settings: Any,
-    tool_catalog: Any,
-    artifact_store: Any,
-    artifact_metadata_repository: Any,
-    memory_embedding_service: Any = None,
-    retrieval_index: Any = None,
-    emit_tool_event: Callable[..., None],
-    get_current_thread_id: Callable[[], str | None],
+    backend: ArtifactBackend,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+    artifact_dir = backend.artifact_dir
+    store = backend.store
+
     def _validate_write_artifact_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "title")
         _require_non_empty_text_arg(args, "body")
-
-    artifact_metadata_repo = artifact_metadata_repository
-    store = artifact_store or LocalArtifactStore(artifact_dir)
-
-    def _artifact_path_for(artifact_id: str) -> Path:
-        if hasattr(store, "path_for"):
-            return store.path_for(artifact_id)
-        return Path(store.url(artifact_id)).expanduser().resolve()
-
-    def _artifact_id_for_path(path: Path) -> str:
-        if hasattr(store, "artifact_id_for_path"):
-            return store.artifact_id_for_path(path)
-        return path.relative_to(artifact_dir.resolve()).as_posix()
 
     def _reject_reserved_observation_path(artifact_id: str) -> None:
         if _is_tool_observation_artifact_id(artifact_id):
             raise PermissionError(
                 "tool-observation artifacts must be read through a scoped tool-observation reference."
             )
-
-    def _get_artifact_metadata_repo():
-        nonlocal artifact_metadata_repo
-        if artifact_metadata_repo is not None:
-            return artifact_metadata_repo
-        if not settings.database_uri:
-            return None
-        from ...repositories.artifact_metadata_repository import ArtifactMetadataRepository
-
-        artifact_metadata_repo = ArtifactMetadataRepository(settings.database_uri)
-        artifact_metadata_repo.setup()
-        return artifact_metadata_repo
-
-    def _upsert_artifact_metadata(
-        *, thread_id: str | None, artifact_id: str, path: Path, title: str
-    ) -> None:
-        if not thread_id:
-            return
-        repo = _get_artifact_metadata_repo()
-        if repo is None:
-            return
-        repo.upsert_from_file(
-            thread_id=thread_id,
-            artifact_id=artifact_id,
-            path=path,
-            title=title,
-        )
 
     def _index_artifact_best_effort(
         *,
@@ -106,8 +62,8 @@ def build_artifact_tools(
         content: str,
         thread_id: str | None,
     ) -> None:
-        index = retrieval_index
-        provider = getattr(memory_embedding_service, "provider", None)
+        index = context.retrieval_index
+        provider = getattr(context.memory_embedding_service, "provider", None)
         if index is None or provider is None:
             return
 
@@ -123,39 +79,10 @@ def build_artifact_tools(
         except Exception:  # noqa: BLE001
             return
 
-    def _save_tool_observation(
-        *,
-        tool_name: str,
-        tool_call_id: str,
-        content: str,
-        thread_id: str | None,
-    ) -> str | None:
-        """Persist a trimmed tool's raw output under the trusted runtime thread."""
-        if not thread_id:
-            raise PermissionError("tool-observation persistence requires a runtime thread scope.")
-        artifact_id = _observation_artifact_id(
-            thread_id=thread_id,
-            tool_name=tool_name,
-            tool_call_id=tool_call_id,
-        )
-        path = _artifact_path_for(artifact_id)
-        store.save(artifact_id, content.encode("utf-8"))
-        _upsert_artifact_metadata(
-            thread_id=thread_id,
-            artifact_id=artifact_id,
-            path=path,
-            title=f"Tool observation: {tool_name}",
-        )
-        return artifact_id
-
     def _search_artifacts_from_filesystem(*, query: str, limit: int) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         terms = _query_terms(query)
-        artifact_iter = (
-            store.iter_artifacts()
-            if hasattr(store, "iter_artifacts")
-            else LocalArtifactStore(artifact_dir).iter_artifacts()
-        )
+        artifact_iter = backend.iter_artifacts()
         for item in artifact_iter:
             if _is_tool_observation_artifact_id(item.artifact_id):
                 continue
@@ -181,8 +108,8 @@ def build_artifact_tools(
         return results[:limit]
 
     def _search_artifacts_from_index(*, query: str, limit: int) -> list[dict[str, Any]]:
-        index = retrieval_index
-        provider = getattr(memory_embedding_service, "provider", None)
+        index = context.retrieval_index
+        provider = getattr(context.memory_embedding_service, "provider", None)
         if index is None or provider is None:
             return []
         vector = provider.embed([query])[0]
@@ -235,11 +162,7 @@ def build_artifact_tools(
     def _list_artifacts_from_filesystem(*, limit: int) -> tuple[list[dict[str, Any]], bool]:
         artifacts: list[dict[str, Any]] = []
         truncated = False
-        artifact_iter = (
-            store.iter_artifacts()
-            if hasattr(store, "iter_artifacts")
-            else LocalArtifactStore(artifact_dir).iter_artifacts()
-        )
+        artifact_iter = backend.iter_artifacts()
         for item in artifact_iter:
             if _is_tool_observation_artifact_id(item.artifact_id):
                 continue
@@ -264,9 +187,9 @@ def build_artifact_tools(
         emit_tool_event(tool_name=tool_name, stage="start", title=title)
         try:
             filename = f"{_slugify(title)}.md"
-            thread_id = get_current_thread_id()
-            path = _artifact_path_for(filename)
-            display_path = _coerce_relative_posix(path, workspace_root)
+            thread_id = context.get_current_thread_id()
+            path = backend.path_for(filename)
+            display_path = _coerce_relative_posix(path, context.workspace_root)
             emit_tool_event(
                 tool_name=tool_name,
                 stage="delta",
@@ -280,7 +203,7 @@ def build_artifact_tools(
                 content=f"# {title}\n\n{body}\n",
                 thread_id=thread_id,
             )
-            _upsert_artifact_metadata(
+            backend.upsert_metadata(
                 thread_id=thread_id,
                 artifact_id=filename,
                 path=path,
@@ -311,8 +234,8 @@ def build_artifact_tools(
             capped_results = max(
                 1, min(requested_results, tool_catalog.artifact_list.max_results_cap)
             )
-            repo = _get_artifact_metadata_repo()
-            thread_id = get_current_thread_id()
+            repo = backend.metadata_repository()
+            thread_id = context.get_current_thread_id()
             if repo is not None and thread_id:
                 try:
                     metadata_rows = repo.list_by_thread(thread_id, limit=capped_results + 1)
@@ -399,10 +322,10 @@ def build_artifact_tools(
             if artifact_id.startswith("tool-observation://") and observation_ref is None:
                 raise ValueError("invalid tool-observation reference")
             read_artifact_id = artifact_id
-            path = _artifact_path_for(read_artifact_id)
+            path = backend.path_for(read_artifact_id)
             metadata_record = None
             if observation_ref is not None:
-                thread_id = get_current_thread_id()
+                thread_id = context.get_current_thread_id()
                 if not thread_id:
                     raise PermissionError("tool-observation reads require a runtime thread scope")
                 read_artifact_id = _observation_artifact_id_from_ref(
@@ -410,8 +333,8 @@ def build_artifact_tools(
                 )
                 if read_artifact_id is None:
                     raise PermissionError("invalid tool-observation scope")
-                path = _artifact_path_for(read_artifact_id)
-                repo = _get_artifact_metadata_repo()
+                path = backend.path_for(read_artifact_id)
+                repo = backend.metadata_repository()
                 if repo is not None:
                     try:
                         metadata_record = repo.get_by_artifact_id(read_artifact_id)
@@ -425,7 +348,7 @@ def build_artifact_tools(
                         raise PermissionError("tool-observation is not readable in this thread")
             else:
                 _reject_reserved_observation_path(artifact_id)
-                repo = _get_artifact_metadata_repo()
+                repo = backend.metadata_repository()
                 if repo is not None:
                     try:
                         metadata_record = repo.get_by_artifact_id(artifact_id)
@@ -446,7 +369,7 @@ def build_artifact_tools(
                             except ValueError:
                                 pass
                             else:
-                                read_artifact_id = _artifact_id_for_path(metadata_path)
+                                read_artifact_id = backend.artifact_id_for_path(metadata_path)
                                 path = metadata_path
                 _reject_reserved_observation_path(read_artifact_id)
             if not store.exists(read_artifact_id):
@@ -466,7 +389,7 @@ def build_artifact_tools(
             payload = {
                 "artifact_id": artifact_id
                 if observation_ref is not None
-                else _artifact_id_for_path(path),
+                else backend.artifact_id_for_path(path),
                 "path": str(path),
                 "content": content[requested_offset:content_end] if found else "",
                 "offset": requested_offset,
@@ -487,7 +410,7 @@ def build_artifact_tools(
 
     artifact_read.metadata = {
         **(getattr(artifact_read, "metadata", {}) or {}),
-        "_focus_agent_save_tool_observation": _save_tool_observation,
+        "_focus_agent_save_tool_observation": backend.save_tool_observation,
     }
 
     def _validate_artifact_read_args(args: dict[str, Any]) -> None:
@@ -506,7 +429,7 @@ def build_artifact_tools(
         emit_tool_event(tool_name=tool_name, stage="start", artifact_id=artifact_id, mode=mode)
         try:
             _reject_reserved_observation_path(artifact_id)
-            path = _artifact_path_for(artifact_id)
+            path = backend.path_for(artifact_id)
             if not store.exists(artifact_id):
                 raise FileNotFoundError(artifact_id)
             if path.is_dir():
@@ -523,17 +446,17 @@ def build_artifact_tools(
                 updated = f"{body}{separator}{existing}"
             else:
                 raise ValueError("mode must be one of: replace, append, prepend.")
-            relative_artifact_id = _artifact_id_for_path(path)
+            relative_artifact_id = backend.artifact_id_for_path(path)
             store.save(relative_artifact_id, updated.encode("utf-8"))
-            path = _artifact_path_for(relative_artifact_id)
+            path = backend.path_for(relative_artifact_id)
             _index_artifact_best_effort(
                 artifact_id=relative_artifact_id,
                 title=_artifact_title_from_id(relative_artifact_id),
                 content=updated,
-                thread_id=get_current_thread_id(),
+                thread_id=context.get_current_thread_id(),
             )
-            _upsert_artifact_metadata(
-                thread_id=get_current_thread_id(),
+            backend.upsert_metadata(
+                thread_id=context.get_current_thread_id(),
                 artifact_id=relative_artifact_id,
                 path=artifact_dir / relative_artifact_id,
                 title=_artifact_title_from_id(relative_artifact_id),

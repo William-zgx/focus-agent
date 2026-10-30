@@ -3,10 +3,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain.tools import tool
 from langgraph.config import get_config, get_stream_writer
+
+if TYPE_CHECKING:
+    from .build_context import ToolBuildContext
 
 
 def _emit_tool_event(*, tool_name: str, stage: str, **payload: Any) -> None:
@@ -128,9 +131,10 @@ def _apply_tool_metadata(
 
 
 def build_utility_tools(
-    *,
-    emit_tool_event: Callable[..., None],
+    context: ToolBuildContext,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def current_utc_time() -> str:
         """Return the current UTC timestamp in ISO-8601 format."""

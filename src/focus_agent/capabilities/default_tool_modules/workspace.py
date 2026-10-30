@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +14,9 @@ from langchain.tools import tool
 
 from ..sandbox_execution import SandboxExecutionRequest, default_sandbox_execution_service
 from ..workspace_files import WORKSPACE_SKIP_DIR_NAMES, language_for_path
+from .build_context import ToolBuildContext
 from .common import (
     _coerce_relative_posix,
-    _get_current_branch_id,
-    _get_current_thread_id,
     _read_text_file,
     _require_non_empty_text_arg,
 )
@@ -100,14 +99,15 @@ def _run_git_apply(*, workspace_root: Path, patch: str, check: bool) -> str:
 
 
 def build_workspace_tools(
+    context: ToolBuildContext,
     *,
-    workspace_root: Path,
-    tool_catalog: Any,
-    emit_tool_event: Callable[..., None],
     trusted_skill_collection_roots: Iterable[str | Path] = (),
-    memory_embedding_service: Any | None = None,
-    retrieval_index: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+    memory_embedding_service = context.memory_embedding_service
+    retrieval_index = context.retrieval_index
     trusted_skill_collection_root_paths = _trusted_workspace_skill_collection_roots(
         workspace_root=workspace_root,
         configured_roots=trusted_skill_collection_roots,
@@ -540,8 +540,8 @@ def build_workspace_tools(
                     allow_network=False,
                     env=workspace_command_env(),
                     tool_name=tool_name,
-                    thread_id=_get_current_thread_id(),
-                    branch_id=_get_current_branch_id(),
+                    thread_id=context.get_current_thread_id(),
+                    branch_id=context.get_current_branch_id(),
                 )
             )
             result = sandbox_result.to_json()

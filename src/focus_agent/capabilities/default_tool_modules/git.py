@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
 
+from .build_context import ToolBuildContext
 from .common import _coerce_relative_posix
 from .workspace_paths import _resolve_workspace_path
 
@@ -35,12 +35,11 @@ def _run_git_command(*, workspace_root: Path, args: list[str]) -> str:
     return completed.stdout
 
 
-def build_git_tools(
-    *,
-    workspace_root: Path,
-    tool_catalog: Any,
-    emit_tool_event: Callable[..., None],
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+def build_git_tools(context: ToolBuildContext) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    workspace_root = context.workspace_root
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def git_status() -> str:
         """Inspect the current repository status from the workspace root."""

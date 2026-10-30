@@ -7,6 +7,8 @@ from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool
 
 from focus_agent.capabilities.default_tool_modules.artifact import build_artifact_tools
+from focus_agent.capabilities.default_tool_modules.artifact_backend import ArtifactBackend
+from focus_agent.capabilities.default_tool_modules.build_context import ToolBuildContext
 from focus_agent.capabilities.tool_messages import build_tool_message
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import ToolExecutionInput, execute_tool_calls
@@ -21,15 +23,20 @@ def _artifact_tools(tmp_path: Path, current_thread: list[str | None], *, reposit
         workspace_root=str(tmp_path),
         artifact_dir=str(tmp_path / "artifacts"),
     )
-    tools, _ = build_artifact_tools(
+    backend = ArtifactBackend(
         artifact_dir=Path(settings.artifact_dir),
-        workspace_root=Path(settings.workspace_root),
-        settings=settings,
-        tool_catalog=settings.tool_catalog,
         artifact_store=LocalArtifactStore(settings.artifact_dir),
         artifact_metadata_repository=repository,
-        emit_tool_event=lambda **_: None,
-        get_current_thread_id=lambda: current_thread[0],
+    )
+    tools, _ = build_artifact_tools(
+        ToolBuildContext(
+            workspace_root=Path(settings.workspace_root),
+            tool_catalog=settings.tool_catalog,
+            emit_tool_event=lambda **_: None,
+            save_tool_observation=backend.save_tool_observation,
+            get_current_thread_id=lambda: current_thread[0],
+        ),
+        backend=backend,
     )
     return tools
 

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
 from typing import Any
 
 from langchain.tools import tool
-from langgraph.config import get_config
 
 from ...core.request_context import RequestContext
 from ...core.types import PromptMode
@@ -21,6 +19,7 @@ from ...storage.namespaces import (
     root_thread_episodic_namespace,
     user_profile_namespace,
 )
+from .build_context import ToolBuildContext
 from .common import _require_non_empty_text_arg
 
 
@@ -31,16 +30,6 @@ def _parse_namespace(value: str) -> tuple[str, ...]:
     return tuple(parts)
 
 
-def get_current_thread_id() -> str | None:
-    try:
-        config = get_config()
-    except Exception:  # noqa: BLE001
-        return None
-    configurable = dict(config.get("configurable") or {})
-    value = configurable.get("thread_id")
-    return str(value) if value else None
-
-
 def _default_memory_namespaces(
     *,
     user_id: str | None = None,
@@ -49,7 +38,7 @@ def _default_memory_namespaces(
     project_id: str | None = None,
 ) -> list[tuple[str, ...]]:
     effective_user_id = (user_id or "default").strip() or "default"
-    effective_thread_id = (root_thread_id or get_current_thread_id() or "").strip()
+    effective_thread_id = (root_thread_id or "").strip()
     namespaces = [
         user_profile_namespace(effective_user_id),
     ]
@@ -83,14 +72,10 @@ def _resolve_memory_namespace(
     if scope == MemoryScope.PROJECT:
         return project_memory_namespace((project_id or "default").strip() or "default")
     if scope == MemoryScope.BRANCH and branch_id and branch_id.strip():
-        effective_thread_id = (
-            root_thread_id or get_current_thread_id() or "default"
-        ).strip() or "default"
+        effective_thread_id = (root_thread_id or "default").strip() or "default"
         return branch_local_memory_namespace(effective_thread_id, branch_id.strip())
     if scope == MemoryScope.ROOT_THREAD:
-        effective_thread_id = (
-            root_thread_id or get_current_thread_id() or "default"
-        ).strip() or "default"
+        effective_thread_id = (root_thread_id or "default").strip() or "default"
         if kind == MemoryKind.TURN_SUMMARY:
             return root_thread_episodic_namespace(effective_thread_id)
         return conversation_main_namespace(effective_thread_id)
@@ -239,15 +224,16 @@ def _json_safe_memory_item(item: Any, *, namespace: tuple[str, ...]) -> dict[str
 
 
 def build_memory_tools(
+    context: ToolBuildContext,
     *,
     store: Any,
     memory_repository: Any = None,
-    memory_embedding_service: Any = None,
-    retrieval_index: Any = None,
-    tool_catalog: Any,
-    emit_tool_event: Callable[..., None],
-    get_current_thread_id: Callable[[], str | None],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+    memory_embedding_service = context.memory_embedding_service
+    retrieval_index = context.retrieval_index
+
     def _validate_memory_save_args(args: dict[str, Any]) -> None:
         _require_non_empty_text_arg(args, "content")
 
@@ -290,7 +276,7 @@ def build_memory_tools(
                 kind=memory_kind,
                 scope=memory_scope,
                 user_id=user_id,
-                root_thread_id=root_thread_id,
+                root_thread_id=root_thread_id or context.get_current_thread_id(),
                 branch_id=branch_id,
                 project_id=project_id,
             )
@@ -302,7 +288,7 @@ def build_memory_tools(
                 content=content.strip(),
                 summary=(summary or content).strip()[:240],
                 tags=tags or [],
-                root_thread_id=root_thread_id or get_current_thread_id(),
+                root_thread_id=root_thread_id or context.get_current_thread_id(),
                 user_id=(user_id or "default").strip() or "default",
                 confidence=confidence,
                 importance=importance,
@@ -369,7 +355,7 @@ def build_memory_tools(
                 if namespace and namespace.strip()
                 else _default_memory_namespaces(
                     user_id=user_id,
-                    root_thread_id=root_thread_id,
+                    root_thread_id=root_thread_id or context.get_current_thread_id(),
                     branch_id=branch_id,
                     project_id=project_id,
                 )
@@ -461,7 +447,7 @@ def build_memory_tools(
                 if namespace and namespace.strip()
                 else _default_memory_namespaces(
                     user_id=user_id,
-                    root_thread_id=root_thread_id,
+                    root_thread_id=root_thread_id or context.get_current_thread_id(),
                     branch_id=branch_id,
                     project_id=project_id,
                 )

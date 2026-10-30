@@ -10,6 +10,7 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
+from focus_agent.capabilities.default_tool_modules import common as tool_common
 from focus_agent.capabilities.default_tool_modules import workspace as workspace_tools
 from focus_agent.capabilities.default_tool_modules.workspace_command import (
     validate_command_paths,
@@ -1054,7 +1055,8 @@ def test_artifact_tools_use_injected_metadata_repository_for_thread_scoped_listi
     artifact_dir.mkdir(parents=True)
     metadata_repo = _FakeArtifactMetadataRepository()
     monkeypatch.setattr(
-        "focus_agent.capabilities.default_tools._get_current_thread_id", lambda: "thread-1"
+        "focus_agent.capabilities.default_tool_modules.common._get_current_thread_id",
+        lambda: "thread-1",
     )
     tools = _tool_map(
         Settings(
@@ -2112,8 +2114,8 @@ def test_run_workspace_command_uses_unified_sandbox_service(tmp_path, monkeypatc
         "default_sandbox_execution_service",
         lambda: _SandboxService(),
     )
-    monkeypatch.setattr(workspace_tools, "_get_current_thread_id", lambda: "thread-1")
-    monkeypatch.setattr(workspace_tools, "_get_current_branch_id", lambda: None)
+    monkeypatch.setattr(tool_common, "_get_current_thread_id", lambda: "thread-1")
+    monkeypatch.setattr(tool_common, "_get_current_branch_id", lambda: None)
     tools = _tool_map(Settings(workspace_root=str(project)))
 
     payload = json.loads(

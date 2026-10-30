@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 from langchain.tools import tool
 
 from ..ask_user_question import ASK_USER_QUESTION_TOOL_NAME
+from .build_context import ToolBuildContext
 
 
 def _extract_checkpoint_state(checkpoint: dict[str, Any] | None) -> dict[str, Any]:
@@ -101,12 +102,13 @@ def _render_source_message(
 
 
 def build_conversation_tools(
+    context: ToolBuildContext,
     *,
     checkpointer: Any,
-    tool_catalog: Any,
-    emit_tool_event: Callable[..., None],
-    get_current_thread_id: Callable[[], str | None],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    tool_catalog = context.tool_catalog
+    emit_tool_event = context.emit_tool_event
+
     @tool
     def conversation_summary(
         thread_id: str = "",
@@ -131,7 +133,7 @@ def build_conversation_tools(
         try:
             if checkpointer is None:
                 raise RuntimeError("Conversation checkpointer is not configured.")
-            effective_thread_id = thread_id.strip() or get_current_thread_id()
+            effective_thread_id = thread_id.strip() or context.get_current_thread_id()
             if not effective_thread_id:
                 raise ValueError("thread_id is required outside an active graph run.")
             requested_messages = (
