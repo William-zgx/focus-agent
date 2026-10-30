@@ -51,13 +51,11 @@ from .agent_loop_helpers import (
     _latest_tool_result_content,
     _latest_turn_has_tool_result,
     _live_web_contract_needs_search,
-    _live_web_research_should_start_with_search_compat,
     _message_content_text,
     _pending_live_web_search_action_from_state,
     _registered_tool_names,
     _tool_intent_text,
     _tool_router_fallback_role,
-    _tools_for_policy_compat,
 )
 from .agent_loop_helpers_skill_planning import (
     _merge_active_skill_recommended_tools,
@@ -96,6 +94,7 @@ from .policy import (
     build_tool_intent_plan,
 )
 from .policy_notes import _tool_policy_note
+from .policy_tools import _live_web_research_should_start_with_search, _tools_for_policy
 from .retrieval_ledger import collect_retrieval_ledger, retrieval_ledger_note
 
 _logger = logging.getLogger(__name__)
@@ -173,7 +172,7 @@ def make_agent_loop_node(
         tool_exposure = _turn_tool_exposure_from_intent_plan(tool_intent_plan)
         temporal_anchor_forced = False
         forced_degraded_skill_recovery = False
-        available_tools = _tools_for_policy_compat(
+        available_tools = _tools_for_policy(
             tool_policy,
             all_tools,
             tool_intent_text,
@@ -356,7 +355,7 @@ def make_agent_loop_node(
             and _has_tool_named(available_tools, "web_search")
             and (
                 _live_web_contract_needs_search(state_messages)
-                or _live_web_research_should_start_with_search_compat(
+                or _live_web_research_should_start_with_search(
                     tool_intent_text, state_messages, available_tools, exposure=tool_exposure
                 )
             )

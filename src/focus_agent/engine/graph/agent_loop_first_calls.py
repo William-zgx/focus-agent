@@ -11,7 +11,6 @@ from .agent_loop_helpers import (
     _has_tool_named,
     _latest_tool_result_content,
     _latest_turn_has_tool_result,
-    _workspace_lookup_should_start_with_search_compat,
 )
 from .agent_loop_skill_helpers import skill_install_args_from_search_result
 from .agent_loop_support import _web_fetch_args
@@ -22,6 +21,7 @@ from .policy import (
 )
 from .policy_intent_parsing import _workspace_search_query
 from .policy_temporal import search_time_range
+from .policy_tools import _workspace_lookup_should_start_with_search
 
 
 def _tool_call_message(call_id: str, name: str, args: dict[str, Any]) -> AIMessage:
@@ -195,7 +195,7 @@ def skill_or_workspace_first_call(
         return _tool_call_message(
             f"skill-view-{call_index}", "skill_view", {"name": skill_view_name}
         )
-    if tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search_compat(
+    if tool_policy == "workspace_lookup" and _workspace_lookup_should_start_with_search(
         tool_intent_text,
         state_messages,
         available_tools,

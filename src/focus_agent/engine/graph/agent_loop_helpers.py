@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import inspect
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langchain.messages import AIMessage
@@ -15,71 +14,6 @@ from .policy import (
     _temporal_live_web_search_args,
     build_tool_intent_plan,
 )
-from .policy_tools import (
-    _live_web_research_should_start_with_search,
-    _tools_for_policy,
-    _workspace_lookup_should_start_with_search,
-)
-
-
-def _tools_for_policy_compat(
-    tool_policy: str,
-    tools: list[Any],
-    latest_user: str,
-    *,
-    exposure: Any | None,
-) -> list[Any]:
-    if exposure is not None and _accepts_keyword(_tools_for_policy, "exposure"):
-        return _tools_for_policy(tool_policy, tools, latest_user, exposure=exposure)
-    return _tools_for_policy(tool_policy, tools, latest_user)
-
-
-def _live_web_research_should_start_with_search_compat(
-    latest_user: str,
-    state_messages: list[Any],
-    available_tools: list[Any],
-    *,
-    exposure: Any | None,
-) -> bool:
-    if exposure is not None and _accepts_keyword(
-        _live_web_research_should_start_with_search,
-        "exposure",
-    ):
-        return _live_web_research_should_start_with_search(
-            latest_user,
-            state_messages,
-            available_tools,
-            exposure=exposure,
-        )
-    return _live_web_research_should_start_with_search(
-        latest_user,
-        state_messages,
-        available_tools,
-    )
-
-
-def _workspace_lookup_should_start_with_search_compat(
-    latest_user: str,
-    state_messages: list[Any],
-    available_tools: list[Any],
-    *,
-    exposure: Any | None,
-) -> bool:
-    if exposure is not None and _accepts_keyword(
-        _workspace_lookup_should_start_with_search,
-        "exposure",
-    ):
-        return _workspace_lookup_should_start_with_search(
-            latest_user,
-            state_messages,
-            available_tools,
-            exposure=exposure,
-        )
-    return _workspace_lookup_should_start_with_search(
-        latest_user,
-        state_messages,
-        available_tools,
-    )
 
 
 def _tool_router_fallback_role(tool_policy: str, exposure: Any | None) -> AgentRole:
@@ -482,14 +416,3 @@ def _registered_tool_names(tool_registry: ToolRegistry, tools: Sequence[Any]) ->
     for tool in tools:
         add(getattr(tool, "name", ""))
     return names
-
-
-def _accepts_keyword(function: Callable[..., Any], keyword: str) -> bool:
-    try:
-        signature = inspect.signature(function)
-    except (TypeError, ValueError):
-        return False
-    return keyword in signature.parameters or any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD
-        for parameter in signature.parameters.values()
-    )
