@@ -11,18 +11,20 @@ from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_QUARANTINE,
     STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
-    extract_tool_call_chunks,
-    extract_tool_requests_from_updates,
-    extract_tool_results_from_updates,
     extract_visible_text_candidate_delta,
     extract_visible_text_delta,
     looks_like_potential_stream_visible_text_artifact_prefix,
     looks_like_stream_visible_text_artifact,
-    map_custom_payload_to_event,
     safe_stream_visible_text_transition,
     sanitize_completed_visible_text,
     sanitize_stream_metadata,
     stream_visibility_phase_from_metadata,
+)
+from focus_agent.transport.tool_events import (
+    extract_tool_call_chunks,
+    extract_tool_requests_from_updates,
+    extract_tool_results_from_updates,
+    map_custom_payload_to_event,
 )
 
 

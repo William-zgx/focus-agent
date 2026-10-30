@@ -19,16 +19,18 @@ from focus_agent.services.chat import ChatService
 from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_VISIBLE,
     extract_reasoning_delta,
-    extract_tool_call_chunks,
-    extract_tool_requests_from_updates,
-    extract_tool_results_from_updates,
     extract_visible_text_candidate_delta,
     looks_like_stream_visible_text_artifact,
-    map_custom_payload_to_event,
     safe_stream_visible_text_transition,
     sanitize_stream_metadata,
     sanitize_stream_visible_text,
     stream_visibility_phase_from_metadata,
+)
+from focus_agent.transport.tool_events import (
+    extract_tool_call_chunks,
+    extract_tool_requests_from_updates,
+    extract_tool_results_from_updates,
+    map_custom_payload_to_event,
 )
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
