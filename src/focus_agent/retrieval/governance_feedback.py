@@ -59,14 +59,24 @@ class GovernanceFeedbackRetrievalService:
         user_id: str | None = None,
         limit: int = 5,
     ) -> list[RetrievalSearchHit]:
-        hits = embedded_search(
-            retrieval_index=self.retrieval_index,
-            embedding_provider=self.embedding_provider,
-            collection="focus_governance_feedback",
-            query=query,
-            limit=limit,
-            filters={"user_id": user_id} if user_id else None,
-        )
+        # Feedback recorded without a user is global and applies to every user.
+        # Index filters are equality-only, so search both scopes and merge.
+        scopes = [user_id, ""] if user_id else [None]
+        hits = sorted(
+            (
+                hit
+                for scope in scopes
+                for hit in embedded_search(
+                    retrieval_index=self.retrieval_index,
+                    embedding_provider=self.embedding_provider,
+                    collection="focus_governance_feedback",
+                    query=query,
+                    limit=limit,
+                    filters=None if scope is None else {"user_id": scope},
+                )
+            ),
+            key=lambda hit: (-hit.score, hit.doc_id),
+        )[: max(0, int(limit or 0))]
         return [
             hit
             for hit in (

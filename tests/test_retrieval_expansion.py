@@ -307,3 +307,32 @@ def test_retrieval_cli_accepts_expanded_backfill_targets():
     assert args.command == "backfill"
     assert args.target == "workspace"
     assert args.limit == 10
+
+
+def test_governance_feedback_user_search_includes_global_feedback():
+    index = InMemoryRetrievalIndex()
+    provider = _FakeEmbeddingProvider()
+    for event_id, user_id in (
+        ("feedback-own", "user-1"),
+        ("feedback-global", ""),
+        ("feedback-other", "user-2"),
+    ):
+        index_governance_feedback(
+            retrieval_index=index,
+            embedding_provider=provider,
+            item=FeedbackEvent(
+                event_id=event_id,
+                user_id=user_id,
+                source_kind="answer",
+                source_id="turn-1",
+                sentiment="negative",
+                category="retrieval",
+            ),
+        )
+
+    hits = GovernanceFeedbackRetrievalService(
+        retrieval_index=index,
+        embedding_provider=provider,
+    ).search_feedback(query="retrieval", user_id="user-1", limit=5)
+
+    assert {hit.source_id for hit in hits} == {"feedback-own", "feedback-global"}
