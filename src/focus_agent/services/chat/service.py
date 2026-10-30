@@ -43,16 +43,18 @@ from .branch_navigation import (  # noqa: F401
 )
 from .ports import ChatServicePorts
 from .runtime_coordination import ChatRuntimeCoordinationMixin
-from .threads import (
-    ChatThreadAccessMixin,
-    effective_thinking_mode,
+from .serialization import (
     json_safe,
     latest_final_ai_text,
     message_content_to_text,
-    response_payload,
     serialize_message,
     sse_frame,
     thread_state_messages,
+)
+from .threads import (
+    ChatThreadAccessMixin,
+    effective_thinking_mode,
+    response_payload,
 )
 from .turns import ChatContextCompactionMixin, ChatTurnRecordingMixin
 

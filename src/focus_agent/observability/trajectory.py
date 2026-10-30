@@ -399,7 +399,7 @@ def _build_metrics(
 def _latest_final_ai_text(messages: list[Any]) -> str | None:
     for message in reversed(messages or []):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
-            from ..services.chat.threads import confirmed_visible_ai_text
+            from ..services.chat.serialization import confirmed_visible_ai_text
 
             text = confirmed_visible_ai_text(getattr(message, "content", ""))
             if text:
@@ -419,7 +419,7 @@ def _count_human_messages(messages: list[Any]) -> int:
 
 
 def _message_content_to_text(content: Any) -> str:
-    from ..services.chat.threads import message_content_to_text
+    from ..services.chat.serialization import message_content_to_text
 
     return message_content_to_text(content)
 
