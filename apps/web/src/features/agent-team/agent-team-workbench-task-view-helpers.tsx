@@ -8,7 +8,6 @@ import {
 } from "./agent-team-workbench-task-output-utils";
 import {
 	compactTaskGoal,
-	isRecord,
 	isTaskDone,
 	isTaskQueued,
 	isTaskReady,
@@ -21,6 +20,7 @@ import type {
 	AgentTeamTask,
 	AgentTeamTaskOutput,
 } from "./types";
+import { isRecord } from "@/shared/records";
 
 export function shortText(value: string | null | undefined, fallback = "—") {
 	const normalized = value?.trim().replace(/\s+/g, " ");

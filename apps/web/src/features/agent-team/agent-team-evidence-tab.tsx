@@ -5,7 +5,6 @@ import { AdvancedDetailsPanel } from "./agent-team-workbench-merge-handoff";
 import { useAgentTeamWorkbenchViewModel } from "./agent-team-workbench-view-model";
 import { AgentTeamSessionState } from "./agent-team-session-state";
 import {
-	isRecord,
 	normalizeSessionView,
 	uniqueNonEmptyStrings,
 } from "./agent-team-workbench-utils";
@@ -15,6 +14,7 @@ import {
 	useAgentTeamReadiness,
 	useAgentTeamSession,
 } from "./use-agent-team";
+import { isRecord } from "@/shared/records";
 
 export function AgentTeamEvidenceTab({
 	sessionId,

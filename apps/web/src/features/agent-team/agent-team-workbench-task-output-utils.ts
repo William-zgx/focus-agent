@@ -1,4 +1,6 @@
-import { isRecord, uniqueNonEmptyStrings } from "./agent-team-workbench-utils";
+import { isRecord } from "@/shared/records";
+
+import { uniqueNonEmptyStrings } from "./agent-team-workbench-utils";
 import type {
 	AgentTeamArtifact,
 	AgentTeamTask,

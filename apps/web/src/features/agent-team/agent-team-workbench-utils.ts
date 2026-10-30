@@ -5,6 +5,7 @@ import type {
 	AgentTeamSessionView,
 	AgentTeamTask,
 } from "./types";
+import { isRecord } from "@/shared/records";
 
 export const STATUS_TONES: Record<
 	string,
@@ -48,10 +49,6 @@ export interface AgentTeamTaskDisplayState {
 	tone: "success" | "warning" | "danger" | "neutral";
 	incompleteDependencies: string[];
 	lastError: string | null;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function asStringArray(value: unknown): string[] {

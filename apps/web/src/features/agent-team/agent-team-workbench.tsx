@@ -20,6 +20,7 @@ import {
 	usePlanAgentTeamSession,
 	useRunAgentTeamSession,
 } from "./use-agent-team";
+import { isRecord } from "@/shared/records";
 
 type MissionRefineRequest = Partial<{
 	focus: string;
@@ -472,10 +473,6 @@ function executionModeForWorkbench(
 	if (normalized === "inline" || normalized === "observe")
 		return isChineseUi ? "真实模型执行" : "Real model execution";
 	return isChineseUi ? "执行模式待确认" : "Execution mode pending";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringFromUnknown(value: unknown) {
