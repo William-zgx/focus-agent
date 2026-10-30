@@ -150,7 +150,7 @@ def make_context_pipeline_node(
 
         # Latest user query for live-retrieval fallback path.
         try:
-            from focus_agent.engine.graph_turn_helpers import _latest_human_message_text
+            from focus_agent.engine.graph_tool_history_repair import _latest_human_message_text
 
             ctx.metadata["latest_user_query"] = _latest_human_message_text(messages) or ""
         except Exception:  # noqa: BLE001

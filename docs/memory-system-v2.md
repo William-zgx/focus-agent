@@ -657,7 +657,7 @@ Postgres runtime 注入 `MemoryEmbeddingService` 时，`accepted` 和 `merged` �
 - audit
 - canonical repository write
 
-在 graph 执行路径中，`graph_tool_executor_node` 会先调用 `authorize_memory_tool_args()` 绑定当前 `RequestContext`：
+在 graph 执行路径中，`engine/graph/tool_execution.py` 的工具执行节点会先调用 `authorize_memory_tool_args()` 绑定当前 `RequestContext`：
 
 - 未传 `user_id/root_thread_id` 时自动使用当前 context。
 - 传入不匹配的 `user_id/root_thread_id` 会返回结构化 ToolMessage error，工具不会执行。

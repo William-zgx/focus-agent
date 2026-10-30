@@ -14,11 +14,8 @@ from ..config import Settings
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
 from ..core.types import Plan, PlanStep, ReflectionVerdict
-from .graph_turn_helpers import (
-    _latest_final_ai_text,
-    _latest_human_message_text,
-    _message_text,
-)
+from .graph_tool_history_repair import _latest_human_message_text, _message_text
+from .graph_tool_result_fallback import _latest_final_ai_text
 
 _PLAN_TRIGGER_KEYWORDS = (
     "然后",

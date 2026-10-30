@@ -35,27 +35,26 @@ from ..graph_execution_contract import (
 )
 from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
 from ..graph_plan_nodes import _format_plan_block  # noqa: F401
-from ..graph_tool_result_fallback import (
-    _should_replace_unfound_workspace_answer,
-    _tool_result_synthesis_prompt,
-)
-from ..graph_turn_helpers import (
-    _context_budget_from_state,
-    _degraded_answer_from_tool_results,
-    _ensure_reasoning_content_for_tool_call_history,
-    _fallback_answer_from_tool_results,
-    _invoke_with_tool_result_fallback,
-    _known_tool_names,
-    _latest_human_message_text,
-    _latest_turn_messages,
+from ..graph_textual_tool_call_repair import (
     _looks_like_textual_tool_call_artifact,
-    _messages_for_model,
-    _repair_and_dedupe_tool_calls,
     _repair_textual_tool_call_response,
     _repair_tool_free_answer_response,
+)
+from ..graph_tool_call_repair import _known_tool_names, _repair_and_dedupe_tool_calls
+from ..graph_tool_history_repair import (
+    _ensure_reasoning_content_for_tool_call_history,
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _messages_for_model,
     _should_force_tool_free_answer,
-    _tool_policy_note,
-    _workspace_search_query,
+)
+from ..graph_tool_result_fallback import (
+    _context_budget_from_state,
+    _degraded_answer_from_tool_results,
+    _fallback_answer_from_tool_results,
+    _invoke_with_tool_result_fallback,
+    _should_replace_unfound_workspace_answer,
+    _tool_result_synthesis_prompt,
 )
 from . import agent_loop_support as _agent_loop_support
 from .agent_loop_helpers import (
@@ -127,6 +126,8 @@ from .policy import (
     _turn_tool_exposure_from_intent_plan,
     build_tool_intent_plan,
 )
+from .policy_intent_parsing import _workspace_search_query
+from .policy_notes import _tool_policy_note
 from .policy_temporal import search_time_range
 from .retrieval_ledger import collect_retrieval_ledger, retrieval_ledger_note
 
