@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextvars import copy_context
 from typing import Any
@@ -10,8 +11,16 @@ from focus_agent.runtime.thread_pool import shared_thread_pool
 
 
 class ToolExecutionTimeout(TimeoutError):  # noqa: N818 - public compatibility name
-    def __init__(self, message: str, *, active: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        active: bool = False,
+        future: Future[Any] | None = None,
+    ) -> None:
         self.active = active
+        # The still-running future when ``active`` is true, so callers can observe completion.
+        self.future = future
         super().__init__(message)
 
 
@@ -61,6 +70,7 @@ def run_in_sandbox_sync(
             raise ToolExecutionTimeout(
                 f"Tool {tool_name} exceeded {timeout_seconds:g}s.",
                 active=True,
+                future=future,
             ) from exc
         raise ToolExecutionTimeout(
             f"Tool {tool_name} exceeded {timeout_seconds:g}s.",

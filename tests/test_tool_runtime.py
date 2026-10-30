@@ -1,10 +1,16 @@
 import json
+import threading
 import time
 from concurrent.futures import CancelledError as FutureCancelledError
 
+import pytest
 from langchain.tools import tool
 
-from focus_agent.capabilities.tool_invocation import tool_invocation_runtime_snapshot
+from focus_agent.capabilities.tool_invocation import (
+    ToolInvocationTimeoutError,
+    invoke_tool,
+    tool_invocation_runtime_snapshot,
+)
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import (
     ToolExecutionInput,
@@ -593,6 +599,46 @@ def test_tool_runtime_times_out_read_only_tool_without_fallback_or_cache():
     after_snapshot = tool_invocation_runtime_snapshot()
     assert after_snapshot["timeout_total"] >= before_snapshot["timeout_total"] + 1
     assert after_snapshot["timeout_active"] >= 1
+
+
+def test_tool_timeout_active_gauge_drops_when_timed_out_tool_finishes():
+    release = threading.Event()
+    finished = threading.Event()
+
+    @tool
+    def blocked_lookup(name: str) -> str:
+        """Read-only lookup blocked until the test releases it."""
+        try:
+            release.wait(timeout=5)
+            return f"value:{name}"
+        finally:
+            finished.set()
+
+    blocked_lookup.metadata = {"parallel_safe": True, "timeout_seconds": 0.05}
+    before_active = tool_invocation_runtime_snapshot()["timeout_active"]
+
+    with pytest.raises(ToolInvocationTimeoutError):
+        invoke_tool(
+            ToolExecutionInput(
+                index=0,
+                tool_call_id="call-blocked",
+                tool_name="blocked_lookup",
+                args={"name": "alpha"},
+                tool=blocked_lookup,
+                runtime=ToolRuntimeMeta.from_tool(blocked_lookup),
+            )
+        )
+    assert tool_invocation_runtime_snapshot()["timeout_active"] == before_active + 1
+
+    release.set()
+    assert finished.wait(timeout=5)
+    deadline = time.monotonic() + 5
+    while (
+        tool_invocation_runtime_snapshot()["timeout_active"] != before_active
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+    assert tool_invocation_runtime_snapshot()["timeout_active"] == before_active
 
 
 def test_tool_runtime_reports_cancelled_tools_without_fallback_or_cache():

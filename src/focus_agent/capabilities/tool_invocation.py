@@ -90,6 +90,8 @@ def invoke_tool_with_timeout(*, item: ToolExecutionInput, timeout_seconds: float
     except ToolExecutionTimeout as exc:
         if exc.active:
             _mark_timed_out_future_active()
+            if exc.future is not None:
+                exc.future.add_done_callback(_mark_timed_out_future_done)
         else:
             _mark_timed_out_future_cancelled()
         raise ToolInvocationTimeoutError(
