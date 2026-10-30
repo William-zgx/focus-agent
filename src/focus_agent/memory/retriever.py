@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import re
 
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
@@ -19,6 +18,7 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .scorer import score_memory_hit
+from .text import memory_text_terms
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +533,7 @@ def _embedding_provider_metadata(provider: object | None) -> dict[str, object]:
 def _matched_terms(query: str, record: MemoryRecord) -> list[str]:
     haystack = f"{record.summary} {record.content}".casefold()
     terms = []
-    for term in _query_terms(query):
+    for term in memory_text_terms(query):
         if term.casefold() in haystack and term not in terms:
             terms.append(term)
     return terms
@@ -595,22 +595,3 @@ def _current_plan_step_goal(state: dict) -> str:
         if step.id == current_step_id:
             return str(step.goal or "").strip()
     return ""
-
-
-def _query_terms(query: str) -> list[str]:
-    lowered = str(query or "").casefold()
-    terms: list[str] = []
-    for token in re.findall(r"[a-z0-9]{2,}", lowered):
-        if token not in terms:
-            terms.append(token)
-    for sequence in re.findall(r"[\u4e00-\u9fff]+", str(query or "")):
-        compact = "".join(sequence.split())
-        if len(compact) <= 2:
-            if compact and compact not in terms:
-                terms.append(compact)
-            continue
-        for index in range(len(compact) - 1):
-            token = compact[index : index + 2]
-            if token not in terms:
-                terms.append(token)
-    return terms

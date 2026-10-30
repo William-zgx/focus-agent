@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from ..core.context_assembly_coercion import _finding_to_line
 from ..core.types import PromptMode
 from .models import MemoryRecord, MemorySearchHit, MemoryStatus, RetrievedMemoryBundle
+from .text import normalize_memory_dedupe_text
 
 _FENCE_TAG_RE = re.compile(r"</?\s*memory-context\s*>", re.IGNORECASE)
 _MEMORY_CONTEXT_GUARD = (
@@ -212,7 +213,7 @@ def _memory_source_label(record: MemoryRecord) -> str:
 def _memory_line_key(
     record: MemoryRecord, *, summary: str, recency_order: int
 ) -> tuple[str, str, str]:
-    normalized = _normalize_memory_text(summary)
+    normalized = normalize_memory_dedupe_text(summary)
     if normalized:
         return (
             normalized,
@@ -220,12 +221,6 @@ def _memory_line_key(
             record.root_thread_id or record.source_thread_id or "",
         )
     return (f"{record.memory_id}:{recency_order}", "", "")
-
-
-def _normalize_memory_text(text: str) -> str:
-    lowered = text.casefold()
-    lowered = re.sub(r"[^0-9a-z\u4e00-\u9fff/._:-]+", " ", lowered)
-    return " ".join(lowered.split())
 
 
 def _memory_line_preference(item: _RenderedMemoryLine) -> tuple[float, ...]:

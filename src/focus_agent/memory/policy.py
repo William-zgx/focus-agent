@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -17,6 +16,7 @@ from ..storage.namespaces import (
     user_profile_namespace,
 )
 from .models import MemoryRecord, MemoryVisibility, MemoryWriteRequest, RetrievedMemoryBundle
+from .text import memory_text_terms
 
 
 class MemoryQualityGate:
@@ -475,7 +475,7 @@ def _memory_relevant_for_query(hit: Any, *, query: str) -> bool:
 
 
 def _has_query_overlap(hit: Any, *, query: str) -> bool:
-    query_terms = set(_memory_query_terms(query))
+    query_terms = set(memory_text_terms(query))
     matched_terms = {str(term).casefold() for term in getattr(hit, "matched_terms", []) or []}
     if matched_terms.intersection(query_terms):
         return True
@@ -566,25 +566,6 @@ def _is_sticky_response_preference(text: str) -> bool:
             "格式",
         )
     )
-
-
-def _memory_query_terms(query: str) -> list[str]:
-    lowered = str(query or "").casefold()
-    terms: list[str] = []
-    for token in re.findall(r"[a-z0-9]{2,}", lowered):
-        if token not in terms:
-            terms.append(token)
-    for sequence in re.findall(r"[\u4e00-\u9fff]+", str(query or "")):
-        compact = "".join(sequence.split())
-        if len(compact) <= 2:
-            if compact and compact not in terms:
-                terms.append(compact)
-            continue
-        for index in range(len(compact) - 1):
-            token = compact[index : index + 2]
-            if token not in terms:
-                terms.append(token)
-    return terms
 
 
 def _section_name(record: MemoryRecord, *, prompt_mode: PromptMode) -> str:

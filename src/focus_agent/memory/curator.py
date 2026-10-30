@@ -17,6 +17,7 @@ from .models import (
     MemoryVisibility,
     MemoryWriteRequest,
 )
+from .text import normalize_memory_text
 
 
 class MemoryPromotionCandidate(MemoryModel):
@@ -168,16 +169,16 @@ class MemoryCurator:
                     existing_key = existing.semantic_key or memory_semantic_key(existing)
                     same_key_different_summary = (
                         existing_key == candidate.semantic_key
-                        and _normalize(existing.summary or existing.content)
-                        != _normalize(candidate.summary)
+                        and normalize_memory_text(existing.summary or existing.content)
+                        != normalize_memory_text(candidate.summary)
                     )
                     overlapping_branch_finding = (
                         existing.kind == MemoryKind.BRANCH_FINDING
                         and has_textual_overlap(
                             existing.summary or existing.content, candidate.summary
                         )
-                        and _normalize(existing.summary or existing.content)
-                        != _normalize(candidate.summary)
+                        and normalize_memory_text(existing.summary or existing.content)
+                        != normalize_memory_text(candidate.summary)
                     )
                     if same_key_different_summary or overlapping_branch_finding:
                         conflicts.append(
@@ -198,14 +199,16 @@ class MemoryCurator:
         for candidate in candidates:
             for existing in self._search_existing(namespace, candidate.summary):
                 existing_key = existing.semantic_key or memory_semantic_key(existing)
-                same_key_different_summary = existing_key == candidate.semantic_key and _normalize(
-                    existing.summary or existing.content
-                ) != _normalize(candidate.summary)
+                same_key_different_summary = (
+                    existing_key == candidate.semantic_key
+                    and normalize_memory_text(existing.summary or existing.content)
+                    != normalize_memory_text(candidate.summary)
+                )
                 overlapping_branch_finding = (
                     existing.kind == MemoryKind.BRANCH_FINDING
                     and has_textual_overlap(existing.summary or existing.content, candidate.summary)
-                    and _normalize(existing.summary or existing.content)
-                    != _normalize(candidate.summary)
+                    and normalize_memory_text(existing.summary or existing.content)
+                    != normalize_memory_text(candidate.summary)
                 )
                 if same_key_different_summary or overlapping_branch_finding:
                     conflicts.append(
@@ -318,10 +321,6 @@ class MemoryCurator:
         if isinstance(value, dict):
             return FindingItem.model_validate(value)
         return FindingItem(finding=str(value))
-
-
-def _normalize(value: str) -> str:
-    return " ".join((value or "").casefold().split())
 
 
 __all__ = [

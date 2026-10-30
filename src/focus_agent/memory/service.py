@@ -30,6 +30,7 @@ from .models import (
     MemoryWriteRequest,
 )
 from .policy import MemoryPolicy
+from .text import has_correction_signal, normalize_memory_text
 
 logger = logging.getLogger(__name__)
 
@@ -496,7 +497,7 @@ def _is_possible_conflict(existing: MemoryRecord, incoming: MemoryWriteRequest) 
         return False
     if existing.scope not in {MemoryScope.USER, MemoryScope.PROJECT}:
         return False
-    return _normalize_text(existing.summary or existing.content) != _normalize_text(
+    return normalize_memory_text(existing.summary or existing.content) != normalize_memory_text(
         incoming.summary or incoming.content
     )
 
@@ -514,33 +515,9 @@ def _should_replace(existing: MemoryRecord, incoming: MemoryWriteRequest) -> boo
     return (
         incoming.importance > existing.importance
         or incoming_confidence > existing_confidence
-        or _has_correction_signal(incoming.summary or incoming.content)
+        or has_correction_signal(incoming.summary or incoming.content)
         or has_textual_overlap(
             existing.summary or existing.content, incoming.summary or incoming.content
-        )
-    )
-
-
-def _normalize_text(text: str) -> str:
-    return " ".join((text or "").casefold().split())
-
-
-def _has_correction_signal(text: str) -> bool:
-    lowered = (text or "").casefold()
-    return any(
-        marker in lowered
-        for marker in (
-            "纠正",
-            "更正",
-            "修正",
-            "改成",
-            "改为",
-            "更新为",
-            "以此为准",
-            "instead",
-            "from now on",
-            "correction",
-            "corrected",
         )
     )
 

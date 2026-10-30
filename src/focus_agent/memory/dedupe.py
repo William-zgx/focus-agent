@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import UTC, datetime
 
 from .models import MemoryKind, MemoryRecord, MemoryWriteRequest
+from .text import memory_text_terms, normalize_memory_text
 
 
 def memory_fingerprint(record: MemoryWriteRequest | MemoryRecord) -> str:
@@ -31,7 +31,7 @@ def memory_semantic_key(record: MemoryWriteRequest | MemoryRecord) -> str:
     payload = {
         "kind": record.kind.value,
         "anchor": _semantic_anchor(record),
-        "gist": _normalize_semantic_text(record.summary or record.content),
+        "gist": normalize_memory_text(record.summary or record.content),
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -95,8 +95,8 @@ def merge_duplicate_records(existing: MemoryRecord, incoming: MemoryWriteRequest
 
 
 def has_textual_overlap(left: str, right: str, *, minimum_overlap: int = 2) -> bool:
-    left_tokens = _overlap_tokens(left)
-    right_tokens = _overlap_tokens(right)
+    left_tokens = set(memory_text_terms(left, min_latin_length=3))
+    right_tokens = set(memory_text_terms(right, min_latin_length=3))
     if not left_tokens or not right_tokens:
         return False
     return len(left_tokens & right_tokens) >= minimum_overlap
@@ -119,20 +119,3 @@ def _semantic_anchor(record: MemoryWriteRequest | MemoryRecord) -> str:
 
 def _namespace_anchor(namespace: tuple[str, ...]) -> str:
     return "/".join(namespace[:4]) if namespace else "global"
-
-
-def _normalize_semantic_text(text: str) -> str:
-    return " ".join((text or "").casefold().split())
-
-
-def _overlap_tokens(text: str) -> set[str]:
-    lowered = (text or "").casefold()
-    tokens = {token for token in re.findall(r"[a-z0-9]{3,}", lowered) if token}
-    cjk_sequences = re.findall(r"[\u4e00-\u9fff]+", text or "")
-    for sequence in cjk_sequences:
-        compact = "".join(sequence.split())
-        if len(compact) <= 2:
-            tokens.add(compact)
-            continue
-        tokens.update(compact[index : index + 2] for index in range(len(compact) - 1))
-    return tokens

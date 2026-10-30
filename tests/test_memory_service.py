@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from focus_agent.core.request_context import RequestContext
 from focus_agent.memory.embedding import (
     DeterministicTestEmbeddingProvider,
@@ -318,6 +320,41 @@ def test_memory_service_merges_same_semantic_key_and_marks_conflicts():
     assert conflict.action == "possible_conflict"
     assert repo.records[conflict.memory_id].status == MemoryStatus.CONFLICT
     assert repo.audit_events[-1].action == "possible_conflict"
+
+
+@pytest.mark.parametrize(
+    "correction",
+    [
+        "以这个为准：Release owner is platform operations.",
+        "发布负责人不是 QA 而是 platform operations.",
+        "发布负责人不再由 QA 负责，改为 platform operations.",
+    ],
+)
+def test_memory_service_treats_correction_phrasings_as_replacement(correction: str):
+    repo = _FakeMemoryRepository()
+    service = MemoryService(repository=repo)
+    original = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=project_memory_namespace("project-1"),
+        content="Default output language is Chinese.",
+        summary="Default output language is Chinese.",
+        user_id="user-1",
+        root_thread_id="root-1",
+        importance=0.7,
+        semantic_key="project-default",
+    )
+    corrected = original.model_copy(
+        update={"content": correction, "summary": correction, "semantic_key": "project-default"}
+    )
+
+    service.upsert_request(original, actor="unit-test", reason="project")
+    decision = service.upsert_request(corrected, actor="unit-test", reason="project")
+
+    assert decision.status == MemoryWriteDecisionStatus.MERGED
+    assert repo.records[decision.memory_id].status == MemoryStatus.ACTIVE
+    assert repo.records[decision.memory_id].content == correction
 
 
 def test_memory_service_resets_ready_embedding_status_when_merged_text_changes(monkeypatch):

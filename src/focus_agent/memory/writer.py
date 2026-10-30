@@ -30,6 +30,7 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .service import MemoryService
+from .text import has_correction_signal, normalize_memory_text
 
 
 class MemoryWriter:
@@ -309,7 +310,7 @@ class MemoryWriter:
         incoming_fp = memory_fingerprint(record)
         incoming_semantic_key = record.semantic_key or memory_semantic_key(record)
         incoming_resolution_key = memory_resolution_key(record)
-        normalized_incoming = _normalize_text(record.summary or record.content)
+        normalized_incoming = normalize_memory_text(record.summary or record.content)
         best_match: tuple[str, MemoryRecord] | None = None
         for raw in raw_hits:
             key = str(getattr(raw, "key", "") or "")
@@ -350,7 +351,7 @@ class MemoryWriter:
             )
             existing_fp = current.fingerprint or memory_fingerprint(current)
             existing_semantic_key = current.semantic_key or memory_semantic_key(current)
-            normalized_existing = _normalize_text(current.summary or current.content)
+            normalized_existing = normalize_memory_text(current.summary or current.content)
             if (
                 existing_fp == incoming_fp
                 or existing_semantic_key == incoming_semantic_key
@@ -381,7 +382,7 @@ class MemoryWriter:
             return False
         if existing.scope not in {MemoryScope.USER, MemoryScope.PROJECT}:
             return False
-        return _normalize_text(existing.summary or existing.content) != _normalize_text(
+        return normalize_memory_text(existing.summary or existing.content) != normalize_memory_text(
             incoming.summary or incoming.content
         )
 
@@ -399,7 +400,7 @@ class MemoryWriter:
         return (
             incoming.importance > existing.importance
             or incoming_confidence > existing_confidence
-            or _has_correction_signal(incoming.summary or incoming.content)
+            or has_correction_signal(incoming.summary or incoming.content)
         )
 
     def _records_can_conflict(
@@ -413,16 +414,12 @@ class MemoryWriter:
             return memory_resolution_key(existing) == incoming_resolution_key
         if incoming.scope != MemoryScope.PROJECT:
             return False
-        if not _has_correction_signal(incoming.summary or incoming.content):
+        if not has_correction_signal(incoming.summary or incoming.content):
             return False
         return has_textual_overlap(
             existing.summary or existing.content,
             incoming.summary or incoming.content,
         )
-
-
-def _normalize_text(text: str) -> str:
-    return " ".join((text or "").casefold().split())
 
 
 def _policy_skip_reason(
@@ -459,30 +456,3 @@ def _turn_summary_source_thread_id(*, context: RequestContext) -> str:
     if child_thread_id:
         return child_thread_id
     return context.branch_id
-
-
-def _has_correction_signal(text: str) -> bool:
-    lowered = (text or "").casefold()
-    if any(
-        marker in lowered
-        for marker in (
-            "纠正",
-            "更正",
-            "修正",
-            "改成",
-            "改为",
-            "更新为",
-            "以此为准",
-            "以这个为准",
-            "instead",
-            "from now on",
-            "correction",
-            "corrected",
-        )
-    ):
-        return True
-    return (
-        ("不是" in text and "而是" in text)
-        or ("不是" in text and "改为" in text)
-        or ("不再" in text and "改为" in text)
-    )
