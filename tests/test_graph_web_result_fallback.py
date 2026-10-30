@@ -295,3 +295,45 @@ def test_synthesis_keeps_middle_facts_when_pages_fit_context_budget():
     ]
     prompt = graph_tool_result_fallback._tool_result_synthesis_prompt(messages)[1].content
     assert body.strip() in prompt
+
+
+def test_tool_result_synthesis_on_model_error_honours_turn_budget():
+    import json as _json
+
+    from langchain.messages import AIMessage, HumanMessage, ToolMessage
+
+    from focus_agent.core.types import ContextBudget
+    from focus_agent.engine.graph_tool_result_fallback import _invoke_with_tool_result_fallback
+
+    class FailingThenSynthesizingModel:
+        def __init__(self):
+            self.prompts = []
+
+        def invoke(self, prompt_messages):
+            self.prompts.append(prompt_messages)
+            if len(self.prompts) == 1:
+                raise RuntimeError("provider rejected request")
+            return AIMessage(content="综合回答")
+
+    long_body = "官方说明。" + "细节内容 " * 20000
+    messages = [
+        HumanMessage(content="总结这个页面"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "fetch-1", "name": "web_fetch", "args": {"url": "https://a.example"}}
+            ],
+        ),
+        ToolMessage(
+            content=_json.dumps({"url": "https://a.example", "title": "A", "content": long_body}),
+            tool_call_id="fetch-1",
+        ),
+    ]
+    budget = ContextBudget(recent_message_token_limit=2000)
+    model = FailingThenSynthesizingModel()
+
+    response = _invoke_with_tool_result_fallback(model, messages, budget=budget)
+
+    assert response.content == "综合回答"
+    synthesis_chars = sum(len(str(message.content)) for message in model.prompts[1])
+    assert synthesis_chars <= 2000 * budget.chars_per_token

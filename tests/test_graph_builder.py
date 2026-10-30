@@ -6523,3 +6523,40 @@ def test_graph_tool_executor_reports_validator_failures_without_crashing(monkeyp
     assert tool_messages[-1].status == "error"
     assert isinstance(messages[-1], AIMessage)
     assert messages[-1].content == "validator handled"
+
+
+def test_tool_free_repair_rejects_synthesis_that_echoes_known_tool_markup():
+    class EchoingModel:
+        def invoke(self, _prompt_messages):
+            return AIMessage(content="[lookup_widget] assemble_context")
+
+    prompt_messages = [
+        SystemMessage(content="system"),
+        HumanMessage(content="找到 assemble_context"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "call-1", "name": "search_code", "args": {"query": "assemble_context"}}
+            ],
+        ),
+        ToolMessage(
+            content=(
+                '{"results":[{"path":"src/focus_agent/core/context_policy.py",'
+                '"line_number":42,"line":"def assemble_context(state, mode):"}]}'
+            ),
+            tool_call_id="call-1",
+        ),
+    ]
+
+    repaired = _repair_tool_free_answer_response(
+        response=AIMessage(content=""),
+        prompt_messages=prompt_messages,
+        context_budget=ContextBudget(),
+        selected_model="openai:fake",
+        selected_thinking_mode="",
+        model_for=lambda *_args: EchoingModel(),
+        known_tool_names={"lookup_widget"},
+    )
+
+    assert "[lookup_widget]" not in repaired.content
+    assert "context_policy.py:42" in repaired.content

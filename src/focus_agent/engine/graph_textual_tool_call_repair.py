@@ -89,6 +89,7 @@ def _repair_textual_tool_call_response(
         repaired_prompt,
         fallback_messages=fallback_messages or prompt_messages,
         known_tool_names=known_names,
+        budget=context_budget,
     )
     if not _looks_like_textual_tool_call_artifact(repaired, known_tool_names=known_names):
         return repaired
@@ -110,6 +111,7 @@ def _repair_textual_tool_call_response(
         fallback_prompt,
         fallback_messages=fallback_messages or prompt_messages,
         known_tool_names=known_names,
+        budget=context_budget,
     )
 
 
@@ -122,18 +124,21 @@ def _repair_tool_free_answer_response(
     selected_model: str,
     selected_thinking_mode: str,
     model_for,
+    known_tool_names: set[str] | None = None,
 ) -> Any:
     fallback_source_messages = fallback_messages or prompt_messages
     if not _message_text(response).strip() and _has_tool_result_messages(fallback_source_messages):
         synthesized = _invoke_tool_result_synthesis(
             model_for(selected_model, selected_thinking_mode),
             fallback_source_messages,
+            known_tool_names=known_tool_names,
+            budget=context_budget,
         )
         if synthesized is not None:
             return synthesized
         return _tool_result_fallback_message(fallback_source_messages)
 
-    if not _looks_like_textual_tool_call_artifact(response):
+    if not _looks_like_textual_tool_call_artifact(response, known_tool_names=known_tool_names):
         return response
 
     repair_request = build_context_request(
@@ -153,8 +158,10 @@ def _repair_tool_free_answer_response(
         model_for(selected_model, selected_thinking_mode),
         repaired_prompt,
         fallback_messages=fallback_source_messages,
+        known_tool_names=known_tool_names,
+        budget=context_budget,
     )
-    if not _looks_like_textual_tool_call_artifact(repaired):
+    if not _looks_like_textual_tool_call_artifact(repaired, known_tool_names=known_tool_names):
         return repaired
 
     final_request = build_context_request(
@@ -175,13 +182,17 @@ def _repair_tool_free_answer_response(
         model_for(selected_model, selected_thinking_mode),
         final_prompt,
         fallback_messages=fallback_source_messages,
+        known_tool_names=known_tool_names,
+        budget=context_budget,
     )
-    if not _looks_like_textual_tool_call_artifact(final_attempt):
+    if not _looks_like_textual_tool_call_artifact(final_attempt, known_tool_names=known_tool_names):
         return final_attempt
 
     synthesized = _invoke_tool_result_synthesis(
         model_for(selected_model, selected_thinking_mode),
         fallback_source_messages,
+        known_tool_names=known_tool_names,
+        budget=context_budget,
     )
     if synthesized is not None:
         return synthesized

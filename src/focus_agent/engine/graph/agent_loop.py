@@ -373,6 +373,7 @@ def make_agent_loop_node(
                     ],
                     fallback_messages=fallback_messages,
                     known_tool_names=known_names,
+                    budget=context_budget,
                 )
             except Exception:  # noqa: BLE001 — search can still proceed with the planned query
                 _logger.warning("Search query planning failed", exc_info=True)
@@ -404,6 +405,7 @@ def make_agent_loop_node(
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
+                budget=context_budget,
             )
             if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
                 tool_protocol_repair_count += 1
@@ -416,6 +418,7 @@ def make_agent_loop_node(
                 selected_model=selected_model,
                 selected_thinking_mode=selected_thinking_mode,
                 model_for=quarantined_model_for,
+                known_tool_names=known_names,
             )
         else:
             response = _invoke_with_tool_result_fallback(
@@ -426,6 +429,7 @@ def make_agent_loop_node(
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
+                budget=context_budget,
             )
             if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
                 tool_protocol_repair_count += 1

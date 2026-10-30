@@ -203,6 +203,7 @@ def finalize_agent_loop_turn(
                     repair_prompt,
                     fallback_messages=fallback_messages,
                     known_tool_names=known_names,
+                    budget=context_budget,
                 )
             )
             if _looks_like_textual_tool_call_artifact(

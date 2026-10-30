@@ -558,11 +558,12 @@ def _invoke_tool_result_synthesis(
     source_messages: list[Any],
     *,
     known_tool_names: set[str] | None = None,
+    budget: ContextBudget | None = None,
 ) -> Any | None:
     if not has_repo_method(model, "invoke"):
         return None
     try:
-        response = model.invoke(_tool_result_synthesis_prompt(source_messages))
+        response = model.invoke(_tool_result_synthesis_prompt(source_messages, budget=budget))
     except Exception:
         return None
     if getattr(response, "tool_calls", None):
@@ -582,6 +583,7 @@ def _invoke_with_tool_result_fallback(
     *,
     fallback_messages: list[Any] | None = None,
     known_tool_names: set[str] | None = None,
+    budget: ContextBudget | None = None,
 ) -> Any:
     try:
         return model.invoke(prompt_messages)
@@ -594,6 +596,7 @@ def _invoke_with_tool_result_fallback(
                 model,
                 source_messages,
                 known_tool_names=known_tool_names,
+                budget=budget,
             )
             if synthesized is not None:
                 return synthesized
