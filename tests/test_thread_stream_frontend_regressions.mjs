@@ -273,6 +273,10 @@ function loadMessageTranscriptFunctions() {
       "utf8",
     ),
     readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-tool-calls.ts"),
+      "utf8",
+    ),
+    readFileSync(
       path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-builder.ts"),
       "utf8",
     ),
@@ -307,6 +311,13 @@ function loadMessageTranscriptFunctions() {
     "skillIdFromSkillPath",
     "collectSkillIdsFromCwd",
     "collectSkillIdsFromSkillPayload",
+    "toolCallId",
+    "toolCallName",
+    "toolCallRawArgsValue",
+    "toolCallArgsText",
+    "toolCallArgsValue",
+    "collectSkillIdsFromToolCall",
+    "collectSkillIdsFromToolMessage",
     "buildTranscriptItems",
   ];
   const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
