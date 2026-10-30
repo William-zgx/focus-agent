@@ -7,12 +7,12 @@ from langchain.messages import AIMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from ..agent_context_engineering import build_context_engineering_decision
 from ..config import Settings
 from ..core.context_policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
 from ..core.types import PromptMode
+from ..delegation.context_engineering import build_context_engineering_decision
 from ..memory import (
     MemoryExtractor,
     MemoryRetriever,

@@ -8,7 +8,6 @@ from typing import Any
 from langchain.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
 
-from ...agent_delegation import build_failure_records, build_review_queue
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ...config import Settings
@@ -19,6 +18,7 @@ from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_task_outcome
 from ...core.state import AgentState, append_agent_state_record
 from ...core.types import Plan  # noqa: F401
+from ...delegation.delegation_repair import build_failure_records, build_review_queue
 from ...skills import SkillRegistry
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
 from ..graph_evidence import (

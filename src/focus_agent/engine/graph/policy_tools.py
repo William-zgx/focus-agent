@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from langchain.messages import ToolMessage
 
-from ...agent_roles import AgentRole
 from ...capabilities.tool_registry import ToolRuntimeMeta
 from ...capabilities.tool_router import CapabilityPolicyEngine
+from ...delegation.roles import AgentRole
 from .policy_intent_parsing import _ToolPolicy
 from .policy_markers import (
     _CODE_SEARCH_TOOL_INTENT_MARKERS,

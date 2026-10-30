@@ -8,10 +8,10 @@ from typing import Any
 
 from langchain.messages import AIMessage, ToolMessage
 
-from ...agent_roles import AgentRole
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import SkillExecutionPlan, ToolIntentPlan
 from ...core.state import AgentState
+from ...delegation.roles import AgentRole
 from ...skills import SkillRegistry
 from . import agent_loop_helpers_skill_planning as _skill_planning
 from .policy import (
