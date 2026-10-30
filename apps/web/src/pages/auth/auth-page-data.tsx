@@ -1,11 +1,3 @@
-import {
-	AdminConsoleIcon,
-	AgentTeamIcon,
-	BranchFocusIcon,
-	ChatBubbleIcon,
-	ProductivityIcon,
-	TokenUsageIcon,
-} from "@/shared/ui/toolbar-icons";
 import { appEnv } from "@/shared/config/env";
 
 function isEnabledDestination(path: string) {
@@ -16,81 +8,6 @@ function isEnabledDestination(path: string) {
 	if (path.startsWith("/productivity/")) return appEnv.features.productivity;
 	return true;
 }
-
-const LOGIN_DESTINATIONS_BASE = [
-	{
-		description: "继续长上下文对话、分支探索与结论回填。",
-		kicker: "Chat",
-		label: "主对话",
-		to: "/",
-		icon: <ChatBubbleIcon className="fa-auth-entry-card-icon" />,
-	},
-	{
-		description: "拆分复杂任务，跟踪并发执行与合并交接。",
-		kicker: "Team",
-		label: "Agent Team",
-		to: "/agent-team",
-		icon: <AgentTeamIcon className="fa-auth-entry-card-icon" />,
-	},
-	{
-		description: "管理角色、工具路由、记忆候选与策略变更。",
-		kicker: "Control",
-		label: "治理台",
-		to: "/agent/governance",
-		icon: <BranchFocusIcon className="fa-auth-entry-card-icon" />,
-	},
-	{
-		description: "查看运行轨迹、健康信号与复盘证据。",
-		kicker: "Review",
-		label: "复盘诊断",
-		to: "/observability/overview",
-		icon: <TokenUsageIcon className="fa-auth-entry-card-icon" />,
-	},
-	{
-		description: "沉淀任务与笔记，把对话行动落到清单。",
-		kicker: "Productivity",
-		label: "效率清单",
-		to: "/productivity/tasks",
-		icon: <ProductivityIcon className="fa-auth-entry-card-icon" />,
-	},
-	{
-		description: "维护用户、审计、模型与工具配置。",
-		kicker: "Admin",
-		label: "配置中心",
-		to: "/admin/config",
-		icon: <AdminConsoleIcon className="fa-auth-entry-card-icon" />,
-	},
-] as const;
-
-export const LOGIN_DESTINATIONS = LOGIN_DESTINATIONS_BASE.filter((item) =>
-	isEnabledDestination(item.to),
-);
-
-const LOGIN_CAPABILITIES_BASE = [
-	{
-		label: "会话",
-		value: "上下文 / 分支 / 结论",
-	},
-	{
-		label: "协作",
-		value: "任务分工 / 并发推进",
-	},
-	{
-		label: "治理",
-		value: "角色 / 工具 / 记忆",
-	},
-	{
-		label: "诊断",
-		value: "轨迹 / 健康 / 审计",
-	},
-] as const;
-
-export const LOGIN_CAPABILITIES = LOGIN_CAPABILITIES_BASE.filter((item) => {
-	if (item.label === "协作") return appEnv.features.agentTeam;
-	if (item.label === "诊断") return appEnv.features.observability;
-	if (item.label === "治理") return appEnv.features.agentGovernance;
-	return true;
-});
 
 export const ACCOUNT_ACTIONS = [
 	{

@@ -20,7 +20,7 @@ type UseBranchTreeViewportOptions = {
 	selectedThreadId: string;
 };
 
-export function clampBranchZoom(value: number) {
+function clampBranchZoom(value: number) {
 	return Math.min(
 		BRANCH_ZOOM_MAX,
 		Math.max(BRANCH_ZOOM_MIN, Number(value.toFixed(2))),

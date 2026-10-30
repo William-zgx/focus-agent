@@ -121,7 +121,7 @@ export function modelOption(): FocusAgentModelOption {
 	};
 }
 
-export function configSource(path = "android-local-runtime") {
+function configSource(path = "android-local-runtime") {
 	return {
 		path,
 		exists: true,
@@ -129,7 +129,7 @@ export function configSource(path = "android-local-runtime") {
 	};
 }
 
-export function localAdminTool(
+function localAdminTool(
 	name: string,
 	label: string,
 	description: string,
@@ -162,7 +162,7 @@ export function localAdminTool(
 	};
 }
 
-export function defaultAdminSkillConfig(): FocusAgentAdminConfig["skills"] {
+function defaultAdminSkillConfig(): FocusAgentAdminConfig["skills"] {
 	return {
 		source: configSource("android-local-runtime/skills"),
 		enabled: true,

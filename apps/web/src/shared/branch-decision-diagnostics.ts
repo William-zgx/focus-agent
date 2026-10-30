@@ -117,7 +117,7 @@ function semanticDisplayText(value: unknown): string {
 	return nonEmptyText(value);
 }
 
-export function diagnosticText(value: unknown): string {
+function diagnosticText(value: unknown): string {
 	const direct = nonEmptyText(value);
 	if (direct) return direct;
 	if (value && typeof value === "object" && !Array.isArray(value)) {

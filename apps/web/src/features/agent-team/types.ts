@@ -17,7 +17,7 @@ export type AgentTeamTaskStatus =
 	| "failed"
 	| "cancelled";
 
-export type AgentTeamRole =
+type AgentTeamRole =
 	| "planner"
 	| "architect"
 	| "backend_executor"
@@ -100,7 +100,7 @@ export interface AgentTeamSession {
 		| null;
 }
 
-export interface AgentTeamRunStatus {
+interface AgentTeamRunStatus {
 	status?: string | null;
 	state?: string | null;
 	run_id?: string | null;
@@ -336,7 +336,7 @@ export interface AgentTeamPlanningMetadata {
 	task_count?: number;
 }
 
-export type AgentTeamToolApprovalStatus =
+type AgentTeamToolApprovalStatus =
 	| "pending"
 	| "approved"
 	| "rejected"

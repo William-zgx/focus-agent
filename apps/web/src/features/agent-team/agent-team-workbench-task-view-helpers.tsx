@@ -139,7 +139,7 @@ export function taskAttentionItems(task: AgentTeamTask, isChineseUi: boolean) {
 		: [isChineseUi ? "暂无特别风险。" : "No special risks noted yet."];
 }
 
-export type UserTaskState =
+type UserTaskState =
 	| "waiting_dependency"
 	| "needs_attention"
 	| "failed"
@@ -288,10 +288,7 @@ function doneTaskIdSet(tasks: AgentTeamTask[]) {
 	return new Set(tasks.filter(isTaskDone).map((task) => task.task_id));
 }
 
-export function unresolvedDependencies(
-	task: AgentTeamTask,
-	tasks: AgentTeamTask[],
-) {
+function unresolvedDependencies(task: AgentTeamTask, tasks: AgentTeamTask[]) {
 	const doneIds = doneTaskIdSet(tasks);
 	return (task.dependencies ?? []).filter(
 		(dependency) => !doneIds.has(dependency),

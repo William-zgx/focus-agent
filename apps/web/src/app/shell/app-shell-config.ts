@@ -15,14 +15,14 @@ export const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreference = "zh";
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = "system";
 export const DEFAULT_COLOR_PREFERENCE: ColorPreference = "white";
 
-export const SIDEBAR_WIDTH_DEFAULT = 300;
+const SIDEBAR_WIDTH_DEFAULT = 300;
 export const SIDEBAR_WIDTH_MIN = 260;
-export const SIDEBAR_DEFAULT_RATIO = 1 / 3;
-export const SIDEBAR_MAX_RATIO = 1 / 2;
-export const SHELL_PADDING_DESKTOP = 18;
-export const SHELL_PADDING_MOBILE = 12;
-export const RESIZER_WIDTH_DESKTOP = 16;
-export const RESIZER_WIDTH_TABLET = 12;
+const SIDEBAR_DEFAULT_RATIO = 1 / 3;
+const SIDEBAR_MAX_RATIO = 1 / 2;
+const SHELL_PADDING_DESKTOP = 18;
+const SHELL_PADDING_MOBILE = 12;
+const RESIZER_WIDTH_DESKTOP = 16;
+const RESIZER_WIDTH_TABLET = 12;
 
 export const LANGUAGE_OPTIONS = [
 	{ value: "zh", shortLabel: "中", labelZh: "中文", labelEn: "Chinese" },
@@ -88,7 +88,7 @@ export function isAgentWorkbenchPath(pathname: string) {
 	return appEnv.features.agentMemory && pathname === "/agent/memory";
 }
 
-export function isAdminPath(pathname: string) {
+function isAdminPath(pathname: string) {
 	return (
 		pathname === "/admin/users" ||
 		pathname.startsWith("/admin/users/") ||
@@ -105,7 +105,7 @@ export function resolveShellMode(pathname: string): ShellMode {
 	return "chat";
 }
 
-export function getSidebarAvailableWidth() {
+function getSidebarAvailableWidth() {
 	if (typeof window === "undefined") {
 		return SIDEBAR_WIDTH_DEFAULT;
 	}

@@ -50,13 +50,13 @@ export interface AgentTeamWorkbenchFinalPreviewState
 	nextActionLabel: string;
 }
 
-export interface AgentTeamWorkbenchEvidenceRiskState {
+interface AgentTeamWorkbenchEvidenceRiskState {
 	changedFiles: string[];
 	evidenceItems: string[];
 	riskItems: string[];
 }
 
-export interface AgentTeamWorkbenchMissionProgressState {
+interface AgentTeamWorkbenchMissionProgressState {
 	total: number;
 	done: number;
 	completed: number;

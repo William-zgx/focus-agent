@@ -30,7 +30,7 @@ export const STATUS_TONES: Record<
 	running: "neutral",
 };
 
-export type AgentTeamTaskDisplayStateKind =
+type AgentTeamTaskDisplayStateKind =
 	| "completed"
 	| "queued"
 	| "running"
@@ -194,7 +194,7 @@ export function isTaskReady(task: AgentTeamTask, tasks: AgentTeamTask[]) {
 	);
 }
 
-export function deriveTaskDisplayState(
+function deriveTaskDisplayState(
 	task: AgentTeamTask,
 	tasks: AgentTeamTask[],
 	isChineseUi: boolean,
@@ -387,7 +387,7 @@ export function statusLabel(status: string, isChineseUi: boolean) {
 	return labels[status] ?? status.replaceAll("_", " ");
 }
 
-export function asMergeBundle(value: unknown): AgentTeamMergeBundle | null {
+function asMergeBundle(value: unknown): AgentTeamMergeBundle | null {
 	return isRecord(value) ? (value as unknown as AgentTeamMergeBundle) : null;
 }
 

@@ -82,15 +82,3 @@ export function WorkflowGuide({ compact = false }: { compact?: boolean }) {
 		</section>
 	);
 }
-
-export function StatusLegend() {
-	const { isChineseUi } = useShellUi();
-	const legendText = isChineseUi
-		? "待开始：任务已创建但未执行；执行中：Agent 正在工作；已完成：产出和验证已回传；需要处理：存在风险或缺口。"
-		: "Pending: task exists but has not run; Running: agent is working; Completed: outputs and evidence are returned; Needs attention: risk or gap needs handling.";
-	return (
-		<span className="fa-agent-team-legend-chip" {...tooltipProps(legendText)}>
-			{isChineseUi ? "状态图例" : "Status legend"}
-		</span>
-	);
-}

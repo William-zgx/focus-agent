@@ -117,7 +117,7 @@ export function missingProviderKeyReply(
 			].join("\n");
 }
 
-export function contentPartToText(part: unknown): string {
+function contentPartToText(part: unknown): string {
 	if (typeof part === "string") return part;
 	if (!isRecord(part)) return "";
 	if (typeof part.text === "string") return part.text;
@@ -125,7 +125,7 @@ export function contentPartToText(part: unknown): string {
 	return "";
 }
 
-export function extractAssistantContent(data: unknown): string {
+function extractAssistantContent(data: unknown): string {
 	if (!isRecord(data)) return "";
 	const choices = Array.isArray(data.choices) ? data.choices : [];
 	const [firstChoice] = choices;
@@ -144,7 +144,7 @@ export function abortIfRequested(signal?: AbortSignal): void {
 	}
 }
 
-export function parseModelSecrets(
+function parseModelSecrets(
 	value: string | null | undefined,
 ): Record<string, { apiKey?: string }> {
 	if (!value?.trim()) return {};

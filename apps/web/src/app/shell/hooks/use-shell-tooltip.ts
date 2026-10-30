@@ -8,7 +8,7 @@ import {
 	useState,
 } from "react";
 
-export type ShellTooltipState = {
+type ShellTooltipState = {
 	text: string;
 	anchorBottom: number;
 	anchorCenterX: number;

@@ -6,7 +6,7 @@ export type BranchGraphNode = {
 	y: number;
 };
 
-export type BranchGraphEdge = {
+type BranchGraphEdge = {
 	from: string;
 	to: string;
 	color: string;

@@ -1,4 +1,4 @@
-export const AGENT_TEAM_TAB_IDS = [
+const AGENT_TEAM_TAB_IDS = [
 	"mission",
 	"tasks",
 	"approvals",

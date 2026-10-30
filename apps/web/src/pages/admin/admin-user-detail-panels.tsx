@@ -14,7 +14,7 @@ import {
 import { AdminErrorMessage } from "./admin-page-chrome";
 import { AdminField, AdminPanelHeader } from "./admin-page-sections";
 
-export function messageNoticeTone(message: string) {
+function messageNoticeTone(message: string) {
 	const normalized = message.toLowerCase();
 	return normalized.includes("failed") ||
 		normalized.includes("invalid") ||

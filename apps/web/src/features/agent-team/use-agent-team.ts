@@ -317,28 +317,6 @@ export {
 	useAgentTeamReadiness,
 } from "./use-agent-team-v2";
 
-export function useCreateAgentTeamTask(sessionId: string | null) {
-	const { client } = useFocusAgent();
-	const queryClient = useQueryClient();
-	const agentTeam = agentTeamClient(client);
-
-	return useMutation<
-		AgentTeamTask | AgentTeamSessionView,
-		Error,
-		AgentTeamCreateTaskRequest
-	>({
-		mutationFn: (request) => {
-			if (!sessionId) throw new Error("Missing Agent Team session id.");
-			if (!agentTeam.createAgentTeamTask)
-				throw missingSdkMethod("createAgentTeamTask");
-			return agentTeam.createAgentTeamTask(sessionId, request);
-		},
-		onSuccess: (data) => {
-			updateSessionCache(queryClient, sessionId, data);
-		},
-	});
-}
-
 export function usePlanAgentTeamSession(sessionId: string | null) {
 	const { client } = useFocusAgent();
 	const queryClient = useQueryClient();
@@ -480,10 +458,6 @@ export function useCancelAgentTeamSession(sessionId: string | null) {
 			void queryClient.invalidateQueries({ queryKey: ["agent-team-sessions"] });
 		},
 	});
-}
-
-export function useDispatchAgentTeamSession(sessionId: string | null) {
-	return usePlanAgentTeamSession(sessionId);
 }
 
 export function useAgentTeamMergeProposal(sessionId: string | null) {

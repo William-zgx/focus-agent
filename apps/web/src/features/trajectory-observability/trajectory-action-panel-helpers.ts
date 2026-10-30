@@ -4,7 +4,7 @@ export type RunningTrajectoryAction =
 	| "batchReplay"
 	| "batchPromote";
 
-export interface TrajectoryActionOptions {
+interface TrajectoryActionOptions {
 	answerSubstringChars: string;
 	caseIdPrefix: string;
 	copyAnswerSubstring: boolean;

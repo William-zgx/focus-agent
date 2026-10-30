@@ -15,14 +15,14 @@ type AgentTeamTaskDisplayState = ReturnType<
 	typeof useAgentTeamWorkbenchViewModel
 >["taskDisplayStates"][number];
 
-export type TaskGraphNode = {
+type TaskGraphNode = {
 	index: number;
 	task: AgentTeamTask;
 	x: number;
 	y: number;
 };
 
-export type TaskGraph = {
+type TaskGraph = {
 	edges: Array<{ from: string; to: string }>;
 	height: number;
 	nodeById: Map<string, TaskGraphNode>;

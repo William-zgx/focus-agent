@@ -162,10 +162,6 @@ export function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
 	});
 }
 
-export function emptyResponse(init: ResponseInit = {}): Response {
-	return new Response(null, init);
-}
-
 export function errorResponse(status: number, message: string): Response {
 	return jsonResponse(
 		{
