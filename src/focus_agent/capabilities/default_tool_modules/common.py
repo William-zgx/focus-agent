@@ -100,6 +100,12 @@ def _require_non_empty_text_arg(args: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def _capped_int(value: Any, *, default: int, cap: int, floor: int = 1) -> int:
+    """Resolve an optional numeric tool argument to ``default`` and clamp it to [floor, cap]."""
+    requested = default if value is None else int(value)
+    return max(floor, min(requested, cap))
+
+
 def _make_display_event_emitter(
     *,
     base_emit_tool_event: Callable[..., None],

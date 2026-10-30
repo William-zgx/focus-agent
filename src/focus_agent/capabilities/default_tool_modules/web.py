@@ -13,7 +13,7 @@ from langchain.tools import tool
 from focus_agent.runtime.http_client import shared_sync_http_client
 
 from .build_context import ToolBuildContext
-from .common import _require_non_empty_text_arg
+from .common import _capped_int, _require_non_empty_text_arg
 from .web_helpers import (
     _binary_payload_kind,
     _head_tail_text_window,
@@ -319,10 +319,9 @@ def build_web_fetch_tool(
                     "Web fetch blocked by access policy "
                     f"({policy_violation['category']}): {policy_violation['message']}"
                 )
-            requested_chars = (
-                fetch_config.default_max_chars if max_chars is None else int(max_chars)
+            capped_chars = _capped_int(
+                max_chars, default=fetch_config.default_max_chars, cap=fetch_config.max_chars_cap
             )
-            capped_chars = max(1, min(requested_chars, fetch_config.max_chars_cap))
             raw, final_url, headers, charset, fetch_limited = fetcher.fetch(
                 urllib_parse_module.urlunparse(parsed),
                 max_bytes=_WEB_FETCH_MAX_BYTES,

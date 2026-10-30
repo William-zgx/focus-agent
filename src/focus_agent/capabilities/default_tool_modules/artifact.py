@@ -18,7 +18,7 @@ from ...core.context_tool_observation_references import (
 from ...retrieval.artifacts import artifact_content_hash, index_artifact_content
 from .artifact_backend import ArtifactBackend
 from .build_context import ToolBuildContext
-from .common import _coerce_relative_posix, _require_non_empty_text_arg
+from .common import _capped_int, _coerce_relative_posix, _require_non_empty_text_arg
 
 _MAX_ARTIFACT_READ_RANGE = 50_000
 
@@ -333,13 +333,10 @@ def build_artifact_list_tool(context: ToolBuildContext, *, backend: ArtifactBack
         tool_name = "artifact_list"
         emit_tool_event(tool_name=tool_name, stage="start", max_results=max_results)
         try:
-            requested_results = (
-                tool_catalog.artifact_list.default_max_results
-                if max_results is None
-                else int(max_results)
-            )
-            capped_results = max(
-                1, min(requested_results, tool_catalog.artifact_list.max_results_cap)
+            capped_results = _capped_int(
+                max_results,
+                default=tool_catalog.artifact_list.default_max_results,
+                cap=tool_catalog.artifact_list.max_results_cap,
             )
             repo = backend.metadata_repository()
             thread_id = context.get_current_thread_id()
@@ -557,10 +554,11 @@ def build_artifact_search_tool(context: ToolBuildContext, *, backend: ArtifactBa
         try:
             if not query.strip():
                 raise ValueError("query must not be empty.")
-            requested_limit = (
-                tool_catalog.artifact_search.default_limit if limit is None else int(limit)
+            capped_limit = _capped_int(
+                limit,
+                default=tool_catalog.artifact_search.default_limit,
+                cap=tool_catalog.artifact_search.max_limit,
             )
-            capped_limit = max(1, min(requested_limit, tool_catalog.artifact_search.max_limit))
             try:
                 results = _search_artifacts_from_index(
                     context, backend, query=query, limit=capped_limit

@@ -16,6 +16,7 @@ from ..sandbox_execution import SandboxExecutionRequest, default_sandbox_executi
 from ..workspace_files import WORKSPACE_SKIP_DIR_NAMES, language_for_path
 from .build_context import ToolBuildContext
 from .common import (
+    _capped_int,
     _coerce_relative_posix,
     _read_text_file,
     _require_non_empty_text_arg,
@@ -204,12 +205,11 @@ def build_list_files_tool(context: ToolBuildContext) -> Any:
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            requested_results = (
-                tool_catalog.list_files.default_max_results
-                if max_results is None
-                else int(max_results)
+            capped_results = _capped_int(
+                max_results,
+                default=tool_catalog.list_files.default_max_results,
+                cap=tool_catalog.list_files.max_results_cap,
             )
-            capped_results = max(1, min(requested_results, tool_catalog.list_files.max_results_cap))
             matches: list[str] = []
             truncated = False
             if root.is_file():
@@ -276,13 +276,10 @@ def build_search_code_tool(context: ToolBuildContext) -> Any:
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            requested_results = (
-                tool_catalog.search_code.default_max_results
-                if max_results is None
-                else int(max_results)
-            )
-            capped_results = max(
-                1, min(requested_results, tool_catalog.search_code.max_results_cap)
+            capped_results = _capped_int(
+                max_results,
+                default=tool_catalog.search_code.default_max_results,
+                cap=tool_catalog.search_code.max_results_cap,
             )
             normalized_query = query.strip()
             if not normalized_query:
@@ -357,12 +354,10 @@ def build_workspace_search_tool(context: ToolBuildContext) -> Any:
             normalized_query = query.strip()
             if not normalized_query:
                 raise ValueError("query must not be empty.")
-            requested_limit = (
-                tool_catalog.workspace_search.default_limit if limit is None else int(limit)
-            )
-            capped_limit = max(
-                1,
-                min(requested_limit, tool_catalog.workspace_search.max_limit),
+            capped_limit = _capped_int(
+                limit,
+                default=tool_catalog.workspace_search.default_limit,
+                cap=tool_catalog.workspace_search.max_limit,
             )
             provider = getattr(context.memory_embedding_service, "provider", None)
             from ...retrieval.workspace import WorkspaceSemanticSearchService
@@ -407,12 +402,11 @@ def build_codebase_stats_tool(context: ToolBuildContext) -> Any:
             root = _resolve_workspace_path(raw_path=path, workspace_root=workspace_root)
             if not root.exists():
                 raise FileNotFoundError(path)
-            requested_files = (
-                tool_catalog.codebase_stats.default_max_files
-                if max_files is None
-                else int(max_files)
+            capped_files = _capped_int(
+                max_files,
+                default=tool_catalog.codebase_stats.default_max_files,
+                cap=tool_catalog.codebase_stats.max_files_cap,
             )
-            capped_files = max(1, min(requested_files, tool_catalog.codebase_stats.max_files_cap))
             file_counter = 0
             total_lines = 0
             total_bytes = 0
@@ -555,19 +549,16 @@ def build_run_workspace_command_tool(
             resolve_command_executable(
                 normalized_command, resolve_path=_resolve_workspace_command_path
             )
-            requested_timeout = (
-                command_config.default_timeout_seconds
-                if timeout_seconds is None
-                else int(timeout_seconds)
+            capped_timeout = _capped_int(
+                timeout_seconds,
+                default=command_config.default_timeout_seconds,
+                cap=command_config.max_timeout_seconds,
             )
-            capped_timeout = max(1, min(requested_timeout, command_config.max_timeout_seconds))
-            requested_output_chars = (
-                command_config.max_output_chars
-                if max_output_chars is None
-                else int(max_output_chars)
-            )
-            capped_output_chars = max(
-                100, min(requested_output_chars, command_config.max_output_chars)
+            capped_output_chars = _capped_int(
+                max_output_chars,
+                default=command_config.max_output_chars,
+                cap=command_config.max_output_chars,
+                floor=100,
             )
             sandbox_result = default_sandbox_execution_service().run(
                 SandboxExecutionRequest(
