@@ -146,33 +146,18 @@ export function runStatusDetails(task: AgentTeamTask): string[] {
 
 export function isTaskRunning(task: AgentTeamTask) {
 	if (task.status === "running") return true;
-	if (typeof task.run_status === "string") return task.run_status === "running";
-	if (isRecord(task.run_status)) {
-		return (
-			task.run_status.status === "running" ||
-			task.run_status.state === "running"
-		);
-	}
+	if (task.run_status) return task.run_status === "running";
 	return task.execution_status === "running";
 }
 
 export function isTaskQueued(task: AgentTeamTask) {
 	if (task.status === "queued") return true;
-	if (typeof task.run_status === "string") return task.run_status === "queued";
-	if (isRecord(task.run_status)) {
-		return (
-			task.run_status.status === "queued" || task.run_status.state === "queued"
-		);
-	}
+	if (task.run_status) return task.run_status === "queued";
 	return task.execution_status === "queued";
 }
 
 export function isTaskDone(task: AgentTeamTask) {
-	return (
-		task.status === "done" ||
-		task.status === "completed" ||
-		runStatusText(task) === "done"
-	);
+	return task.status === "done" || runStatusText(task) === "done";
 }
 
 export function isTaskReady(task: AgentTeamTask, tasks: AgentTeamTask[]) {
@@ -181,8 +166,7 @@ export function isTaskReady(task: AgentTeamTask, tasks: AgentTeamTask[]) {
 		!task.run_status &&
 		!task.execution_status &&
 		!task.agent_run_id;
-	if (task.status !== "pending" && task.status !== "ready" && !legacyPrimedTask)
-		return false;
+	if (task.status !== "pending" && !legacyPrimedTask) return false;
 	const doneTaskIds = new Set(
 		tasks.filter(isTaskDone).map((item) => item.task_id),
 	);
@@ -332,11 +316,7 @@ function taskIncompleteDependencies(
 }
 
 function isTaskWaitingForDependencies(task: AgentTeamTask) {
-	return (
-		task.status === "pending" ||
-		task.status === "ready" ||
-		task.status === "running"
-	);
+	return task.status === "pending" || task.status === "running";
 }
 
 export function statusLabel(status: string, isChineseUi: boolean) {
@@ -400,15 +380,8 @@ export function normalizeSessionView(
 			outputs: data.outputs ?? [],
 			artifacts: data.artifacts ?? [],
 			merge_bundle:
-				data.merge_bundle ??
-				data.merge_suggestion ??
-				data.session.latest_merge_bundle ??
-				null,
+				data.merge_bundle ?? data.session.latest_merge_bundle ?? null,
 			planning,
-			evidence: data.evidence ?? [],
-			risks: data.risks ?? [],
-			dag: data.dag ?? null,
-			merge_suggestion: data.merge_suggestion ?? null,
 			run: data.run ?? null,
 			pending_tool_approvals: data.pending_tool_approvals ?? [],
 		};
@@ -431,10 +404,6 @@ export function normalizeSessionView(
 			data.latest_merge_bundle ??
 			null,
 		planning: isRecord(dataRecord.planning) ? dataRecord.planning : null,
-		evidence: asStringArray(dataRecord.evidence),
-		risks: asStringArray(dataRecord.risks),
-		dag: isRecord(dataRecord.dag) ? dataRecord.dag : null,
-		merge_suggestion: asMergeBundle(dataRecord.merge_suggestion),
 		run: isRecord(dataRecord.run) ? dataRecord.run : null,
 		pending_tool_approvals: Array.isArray(dataRecord.pending_tool_approvals)
 			? (dataRecord.pending_tool_approvals as AgentTeamSessionView["pending_tool_approvals"])

@@ -21,11 +21,12 @@ import {
 	useRunAgentTeamSession,
 } from "./use-agent-team";
 import { isRecord } from "@/shared/records";
+import type { AgentTeamPlanSessionRequest } from "./types";
 
-type MissionRefineRequest = Partial<{
-	focus: string;
-	granularity: string;
-}>;
+type MissionRefineRequest = Pick<
+	AgentTeamPlanSessionRequest,
+	"focus" | "granularity"
+>;
 
 export function AgentTeamWorkbench({
 	sessionId,
@@ -111,19 +112,20 @@ export function AgentTeamWorkbench({
 
 	const session = view.session;
 	const latestAutonomyDecision = autonomyEvidence.data?.items?.[0] ?? null;
-	const refineOptions = isChineseUi
-		? [
-				{ label: "调整为更细拆解", request: { granularity: "detailed" } },
-				{ label: "调整为更粗拆解", request: { granularity: "coarse" } },
-				{ label: "调整为偏实现", request: { focus: "implementation" } },
-				{ label: "调整为偏验证", request: { focus: "verification" } },
-			]
-		: [
-				{ label: "More detailed", request: { granularity: "detailed" } },
-				{ label: "Coarser", request: { granularity: "coarse" } },
-				{ label: "Implementation", request: { focus: "implementation" } },
-				{ label: "Verification", request: { focus: "verification" } },
-			];
+	const refineOptions: Array<{ label: string; request: MissionRefineRequest }> =
+		isChineseUi
+			? [
+					{ label: "调整为更细拆解", request: { granularity: "detailed" } },
+					{ label: "调整为更粗拆解", request: { granularity: "coarse" } },
+					{ label: "调整为偏实现", request: { focus: "implementation" } },
+					{ label: "调整为偏验证", request: { focus: "verification" } },
+				]
+			: [
+					{ label: "More detailed", request: { granularity: "detailed" } },
+					{ label: "Coarser", request: { granularity: "coarse" } },
+					{ label: "Implementation", request: { focus: "implementation" } },
+					{ label: "Verification", request: { focus: "verification" } },
+				];
 	const generatePlan = () => planSession.mutate({ create_branches: true });
 	const replanMission = () =>
 		planSession.mutate({ create_branches: true, replace_existing: true });
@@ -413,7 +415,6 @@ export function AgentTeamWorkbench({
 					artifacts={advancedMeta.artifacts}
 					bundle={activeBundle}
 					changedFiles={advancedMeta.changedFiles}
-					dag={advancedMeta.dag}
 					evidenceItems={advancedMeta.rawEvidence.evidenceItems}
 					openQuestions={advancedMeta.openQuestions}
 					planningMetadata={{
@@ -450,7 +451,7 @@ function InlineMutationError({
 }
 
 function executionModeForWorkbench(
-	outputs: Array<{ metadata?: Record<string, unknown> }>,
+	outputs: Array<{ metadata?: Record<string, unknown> | null }>,
 	isChineseUi: boolean,
 	runMetadata?: { execution_mode?: unknown } | null,
 ) {

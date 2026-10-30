@@ -260,15 +260,35 @@ export interface FocusAgentAgentTeamTask {
 export interface FocusAgentAgentTeamTaskOutput {
   output_id?: string;
   task_id: string;
+  task_run_id?: string | null;
   kind?: FocusAgentAgentTeamArtifactKind | null;
   artifact_id?: string | null;
+  /** @deprecated Never sent by the backend; read `kind`. */
   artifact_kind?: FocusAgentAgentTeamArtifactKind | null;
+  /** @deprecated Never sent by the backend; read `summary`. */
   content?: string | null;
   summary?: string | null;
   changed_files: string[];
   test_evidence?: string[];
+  /** @deprecated Never sent by the backend; read `test_evidence`. */
   verification_summary?: string | null;
   risk_notes: string[];
+  workspace_id?: string | null;
+  workspace_branch?: string | null;
+  workspace_path?: string | null;
+  base_commit?: string | null;
+  diff_summary?: string | null;
+  workspace_status?: string | null;
+  execution_profile?: string | null;
+  execution_class?: string | null;
+  evidence_level?: string;
+  evidence_verdict?: string;
+  evidence_summary?: string | null;
+  sandbox_id?: string | null;
+  revision_id?: string | null;
+  row_version?: number;
+  cancel_epoch?: number;
+  deliverable?: boolean;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 }
@@ -279,7 +299,10 @@ export interface FocusAgentAgentTeamArtifact {
   kind?: FocusAgentAgentTeamArtifactKind | string | null;
   title?: string | null;
   summary?: string | null;
+  payload?: Record<string, unknown> | null;
+  /** @deprecated Never sent by the backend; read `summary` / `payload`. */
   content?: string | null;
+  /** @deprecated Never sent by the backend; read `payload`. */
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 }
@@ -548,6 +571,7 @@ export interface FocusAgentAgentTeamSessionRunRequest {
   auto_fork_branch?: boolean | null;
   parent_thread_id?: string | null;
   task_ids?: string[];
+  run_ready_only?: boolean | null;
   metadata?: Record<string, unknown> | null;
 }
 
@@ -706,7 +730,19 @@ export interface FocusAgentAgentTeamMergeDecisionRequest {
   next_action?: FocusAgentAgentTeamMergeNextAction | null;
 }
 
+export interface FocusAgentAgentTeamMergeDecision {
+  decision_id: string;
+  session_id: string;
+  approved?: boolean;
+  action?: FocusAgentAgentTeamMergeNextAction;
+  rationale?: string | null;
+  accepted_tasks?: string[];
+  rejected_tasks?: string[];
+  created_at: string;
+}
+
 export interface FocusAgentAgentTeamMergeDecisionResponse {
+  decision: FocusAgentAgentTeamMergeDecision;
   session: FocusAgentAgentTeamSession;
   merge_bundle: FocusAgentAgentTeamMergeBundle;
   applied: boolean;

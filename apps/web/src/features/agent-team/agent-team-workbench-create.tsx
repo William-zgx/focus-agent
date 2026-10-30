@@ -22,7 +22,6 @@ import {
 	MISSION_PRESETS,
 } from "./agent-team-create-options";
 import { useCreateAgentTeamSession } from "./use-agent-team";
-import type { AgentTeamActionResponse, AgentTeamClientContract } from "./types";
 
 export function CreateSessionPanel() {
 	const { isChineseUi } = useShellUi();
@@ -122,32 +121,21 @@ export function CreateSessionPanel() {
 				.mutateAsync(sessionPayload)
 				.catch(() => null);
 			if (!response) return;
-			const session = "session" in response ? response.session : response;
-			const agentTeam = client as Partial<AgentTeamClientContract>;
-			let plannedResponse: AgentTeamActionResponse | null = null;
+			const session = response;
 			try {
-				if (agentTeam.planAgentTeamSession) {
-					plannedResponse = await agentTeam.planAgentTeamSession(
-						session.session_id,
-						{
-							create_branches: Boolean(nextRootThreadId),
-							focus: selectedCollaboration.focus,
-							granularity: selectedCollaboration.granularity,
-							max_tasks: selectedCollaboration.maxTasks,
-						},
-					);
-				} else if (agentTeam.dispatchAgentTeamSession) {
-					plannedResponse = await agentTeam.dispatchAgentTeamSession(
-						session.session_id,
-						{ create_branches: Boolean(nextRootThreadId) },
-					);
-				}
-				if (plannedResponse) {
-					queryClient.setQueryData(
-						queryKeys.agentTeamSession(session.session_id),
-						plannedResponse,
-					);
-				}
+				const plannedResponse = await client.planAgentTeamSession(
+					session.session_id,
+					{
+						create_branches: Boolean(nextRootThreadId),
+						focus: selectedCollaboration.focus,
+						granularity: selectedCollaboration.granularity,
+						max_tasks: selectedCollaboration.maxTasks,
+					},
+				);
+				queryClient.setQueryData(
+					queryKeys.agentTeamSession(session.session_id),
+					plannedResponse,
+				);
 			} catch (error) {
 				setPlanError(error instanceof Error ? error : new Error(String(error)));
 				void queryClient.invalidateQueries({

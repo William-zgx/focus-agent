@@ -282,7 +282,6 @@ export function useAgentTeamWorkbenchViewModel({
 			planHash: session?.plan_hash ?? view?.planning?.plan_hash ?? null,
 			error: session?.planning_error ?? view?.planning?.error ?? null,
 		},
-		dag: view?.dag ?? null,
 		rawEvidence: {
 			evidenceItems,
 			executionEvidence: activeBundle?.execution_evidence ?? [],

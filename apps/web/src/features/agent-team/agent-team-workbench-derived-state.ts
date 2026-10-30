@@ -85,7 +85,6 @@ export function deriveWorkbenchEvidenceRiskState({
 		tasks.flatMap((task) => task.output_artifact_ids ?? []),
 	);
 	const evidenceItems = uniqueNonEmptyStrings([
-		...(view?.evidence ?? []),
 		...outputArtifactIds,
 		...(view?.artifacts ?? []).map(
 			(artifact) => artifact.summary ?? artifact.title ?? artifact.artifact_id,
@@ -94,7 +93,6 @@ export function deriveWorkbenchEvidenceRiskState({
 		...(activeBundle?.test_evidence ?? []),
 	]);
 	const riskItems = uniqueNonEmptyStrings([
-		...(view?.risks ?? []),
 		...tasks.flatMap((task) => task.risk_notes ?? []),
 		...(activeBundle?.risk_items ?? []),
 	]);

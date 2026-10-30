@@ -71,7 +71,7 @@ export function taskResultSummary(
 			? "模拟回传：流程已完成，但没有生成真实任务结果。"
 			: "Simulated return: the flow completed, but no real task result was generated.";
 	}
-	if (task.status === "done" || task.status === "completed")
+	if (task.status === "done")
 		return isChineseUi
 			? "任务已完成，等待汇总结果。"
 			: "Task completed and ready for synthesis.";
@@ -163,7 +163,7 @@ export function userTaskState(
 		task.last_error
 	)
 		return "needs_attention";
-	if (task.status === "ready" || isTaskReady(task, tasks)) return "ready";
+	if (isTaskReady(task, tasks)) return "ready";
 	if (
 		(task.dependencies ?? []).length &&
 		unresolvedDependencies(task, tasks).length
@@ -329,7 +329,7 @@ export function taskRunAffordance({
 }) {
 	const state = userTaskState(task, tasks);
 	const waitingReason = dependencyWaitReason(task, tasks, isChineseUi);
-	const statusReady = task.status === "ready" || isTaskReady(task, tasks);
+	const statusReady = isTaskReady(task, tasks);
 
 	if (isPending) {
 		return {

@@ -125,7 +125,6 @@ export function AdvancedDetailsPanel({
 	artifacts = [],
 	bundle,
 	changedFiles = [],
-	dag,
 	evidenceItems = [],
 	openQuestions,
 	outputs = [],
@@ -136,7 +135,6 @@ export function AdvancedDetailsPanel({
 	artifacts?: AgentTeamArtifact[];
 	bundle?: AgentTeamMergeBundle | null;
 	changedFiles?: string[];
-	dag?: Record<string, unknown> | null;
 	evidenceItems?: string[];
 	openQuestions?: string[];
 	outputs?: AgentTeamTaskOutput[];
@@ -157,15 +155,11 @@ export function AdvancedDetailsPanel({
 		? bundle.changed_files
 		: changedFiles;
 	const artifactItems = artifacts.map(
-		(artifact) =>
-			artifact.summary ??
-			artifact.title ??
-			artifact.uri ??
-			artifact.artifact_id,
+		(artifact) => artifact.summary ?? artifact.title ?? artifact.artifact_id,
 	);
 	const sourceOutputItems = bundle?.source_output_ids?.length
 		? bundle.source_output_ids
-		: outputs.map((output) => output.output_id);
+		: uniqueStrings(outputs.map((output) => output.output_id));
 	const rawOutputItems = outputs.map((output) => formatUnknown(output));
 
 	return (
@@ -192,7 +186,7 @@ export function AdvancedDetailsPanel({
 				</section>
 				<section>
 					<h3>{isChineseUi ? "DAG / 分支线索" : "DAG / branch clues"}</h3>
-					<FieldList items={[...dagItems(dag), ...branchItems]} />
+					<FieldList items={branchItems} />
 				</section>
 				<section>
 					<h3>{isChineseUi ? "原始依据" : "Raw evidence"}</h3>
@@ -567,13 +561,6 @@ function branchCluesFromTasks(tasks: AgentTeamTask[]) {
 				);
 			return clues;
 		}),
-	);
-}
-
-function dagItems(dag: Record<string, unknown> | null | undefined) {
-	if (!dag) return [];
-	return Object.entries(dag).map(
-		([key, value]) => `${key}: ${formatUnknown(value)}`,
 	);
 }
 

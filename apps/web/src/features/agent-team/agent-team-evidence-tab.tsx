@@ -64,7 +64,6 @@ export function AgentTeamEvidenceTab({
 				artifacts={workbenchVm.advancedMeta.artifacts}
 				bundle={workbenchVm.activeBundle}
 				changedFiles={workbenchVm.advancedMeta.changedFiles}
-				dag={workbenchVm.advancedMeta.dag}
 				evidenceItems={[
 					...workbenchVm.advancedMeta.rawEvidence.evidenceItems,
 					...runEvidence,
