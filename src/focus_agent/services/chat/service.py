@@ -29,13 +29,12 @@ from ...observability.tracing import (
 )
 from ...observability.trajectory import utc_now
 from ...skills.models import SkillSelection
-from ..branch_actions import (
+from ..branches.actions import (
     latest_pending_branch_action,
     normalize_branch_actions,
     proposal_message,
     serialize_branch_actions,
 )
-from ..chat_turn_errors import ConcurrentTurnError  # noqa: F401
 from ..coordination import create_in_memory_coordination_backend
 from .branch_actions import ChatBranchActionFacadeMixin
 from .branch_navigation import (  # noqa: F401

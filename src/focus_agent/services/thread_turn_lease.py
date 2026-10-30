@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 
-from .chat_turn_errors import ConcurrentTurnError
+from .chat.errors import ConcurrentTurnError
 from .coordination import ThreadTurnLease, ThreadTurnLockBackend, new_thread_turn_owner
 
 logger = logging.getLogger("focus_agent.chat")

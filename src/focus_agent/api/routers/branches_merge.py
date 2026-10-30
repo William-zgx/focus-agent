@@ -6,7 +6,7 @@ from focus_agent.core.branching import MergeDecision, MergeMode, MergeTarget
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
-from focus_agent.services.chat_turn_errors import ConcurrentTurnError
+from focus_agent.services.chat.errors import ConcurrentTurnError
 
 from ..contracts import (
     ApplyMergeDecisionRequest,

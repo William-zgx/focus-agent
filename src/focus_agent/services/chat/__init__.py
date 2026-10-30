@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from .branch_actions import ChatBranchActionFacadeMixin
+from .errors import ConcurrentTurnError
 from .service import (
     ChatService,
     ChatServicePorts,
-    ConcurrentTurnError,
     execute_branch_action_navigation,
 )
 from .threads import (

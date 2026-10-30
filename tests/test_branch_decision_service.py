@@ -16,7 +16,7 @@ from focus_agent.core.governance import (
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.retrieval.branch_context import index_branch_decision_event
-from focus_agent.services.branch_actions import (
+from focus_agent.services.branches.actions import (
     build_branch_action_proposal,
     normalize_branch_actions,
 )

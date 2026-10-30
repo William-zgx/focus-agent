@@ -197,7 +197,7 @@ def test_focus_agent_harness_stream_chunks_applies_middleware(monkeypatch):
             return wrapped
 
     monkeypatch.setattr(
-        "focus_agent.services.chat_streaming.stream_graph_chunks",
+        "focus_agent.services.chat.streaming.stream_graph_chunks",
         fake_stream_graph_chunks,
     )
 

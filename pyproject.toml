@@ -83,7 +83,6 @@ ignore = [
 "src/focus_agent/delegation/__init__.py" = ["F403"]
 "src/focus_agent/services/agent_team.py" = ["F403"]
 "src/focus_agent/services/agent_team/run.py" = ["F403"]
-"src/focus_agent/services/branch_merge.py" = ["F403"]
 "src/focus_agent/services/branches.py" = ["F403"]
 
 [tool.ruff.format]
