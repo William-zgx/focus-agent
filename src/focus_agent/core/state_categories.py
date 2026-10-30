@@ -29,8 +29,6 @@ OBSERVABLE
 
 from __future__ import annotations
 
-from typing import Any
-
 # ---------------------------------------------------------------------------
 # Persistent fields: survive across turns; belong in durable storage.
 # ---------------------------------------------------------------------------
@@ -134,116 +132,9 @@ OBSERVABLE_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-# Sentinel defaults used when resetting transient fields. Mirrors
-# ``initial_agent_state()`` from .state without creating a circular import.
-_TRANSIENT_DEFAULTS: dict[str, Any] = {
-    "recent_messages": [],
-    "assembled_context": "",
-    "available_skills_block": "",
-    "active_skills_block": "",
-    "retrieved_memories": [],
-    "memory_prompt_block": "",
-    "memory_retrieval_plan": {},
-    "active_skill_ids": [],
-    "plan": None,
-    "current_step_id": "",
-    "reflection": None,
-    "branch_meta": None,
-    "branch_actions": [],
-    "merge_proposal": None,
-    "merge_decision": None,
-    "pending_tool_action": None,
-    "memory_write_requests": [],
-}
-
-
-def categorize_field(field_name: str) -> str:
-    """Return the lifecycle category for a single AgentState field.
-
-    Parameters
-    ----------
-    field_name:
-        Key name as it appears in ``AgentState``.
-
-    Returns
-    -------
-    str
-        One of ``"persistent"``, ``"transient"``, ``"observable"``, or
-        ``"unknown"`` for unrecognized fields.
-    """
-    if field_name in PERSISTENT_FIELDS:
-        return "persistent"
-    if field_name in TRANSIENT_FIELDS:
-        return "transient"
-    if field_name in OBSERVABLE_FIELDS:
-        return "observable"
-    return "unknown"
-
-
-def extract_persistent_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy containing only PERSISTENT fields."""
-    return {key: value for key, value in state.items() if key in PERSISTENT_FIELDS}
-
-
-def extract_transient_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy containing only TRANSIENT fields."""
-    return {key: value for key, value in state.items() if key in TRANSIENT_FIELDS}
-
-
-def extract_observable_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy containing only OBSERVABLE fields."""
-    return {key: value for key, value in state.items() if key in OBSERVABLE_FIELDS}
-
-
-def clear_transient_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Return a new dict with transient fields reset to their initial defaults.
-
-    Persistent and observable fields are preserved as-is. The returned dict
-    is a shallow copy; callers may mutate it safely without affecting the
-    input mapping.
-    """
-    cleared: dict[str, Any] = {
-        key: value for key, value in state.items() if key not in TRANSIENT_FIELDS
-    }
-    for key, default in _TRANSIENT_DEFAULTS.items():
-        cleared[key] = default
-    return cleared
-
-
-def merge_persistent_into_state(
-    persistent: dict[str, Any],
-    state: dict[str, Any],
-) -> dict[str, Any]:
-    """Merge a persistent-state snapshot into a working state dict.
-
-    Persistent keys from ``persistent`` overwrite those in ``state``.
-    Non-persistent keys in ``persistent`` are ignored. Existing non-persistent
-    keys in ``state`` are preserved. The return value is a new dict (the
-    inputs are not mutated).
-
-    Notes
-    -----
-    For list-valued fields annotated with ``operator.add`` (messages,
-    pinned_facts, user_constraints, etc.) this performs *replace* semantics:
-    the persistent snapshot is treated as the source of truth. Callers that
-    need incremental append semantics should merge at the LangGraph channel
-    level instead.
-    """
-    merged: dict[str, Any] = dict(state)
-    for key, value in persistent.items():
-        if key in PERSISTENT_FIELDS:
-            merged[key] = value
-    return merged
-
 
 __all__ = [
     "PERSISTENT_FIELDS",
     "TRANSIENT_FIELDS",
     "OBSERVABLE_FIELDS",
-    "categorize_field",
-    "clear_transient_state",
-    "extract_observable_state",
-    "extract_persistent_state",
-    "extract_transient_state",
-    "merge_persistent_into_state",
 ]

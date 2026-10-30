@@ -14,7 +14,6 @@ def test_graph_tool_result_fallback_reexports_web_fallback_symbols() -> None:
         "_contains_weather_marker",
         "_chinese_weather_summary_from_payloads",
         "_extract_concise_weather_text",
-        "_first_result_text",
         "_web_payload_sources",
         "_reference_sources",
         "_payload_results",

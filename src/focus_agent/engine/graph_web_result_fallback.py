@@ -304,21 +304,6 @@ def _extract_concise_weather_text(content: str) -> str:
     return _truncate_inline(text, max_chars=260)
 
 
-def _first_result_text(payload: dict[str, Any], *, prefer_chinese: bool) -> str:
-    fallback = ""
-    for result in _payload_results(payload):
-        content = str(result.get("content") or result.get("snippet") or "").strip()
-        title = str(result.get("title") or "").strip()
-        text = " ".join(part for part in (title, content) if part)
-        if not text:
-            continue
-        if prefer_chinese and re.search(r"[\u4e00-\u9fff]", text):
-            return text
-        if not fallback:
-            fallback = text
-    return fallback
-
-
 def _web_payload_sources(payloads: list[dict[str, Any]]) -> list[str]:
     sources: list[str] = []
     fetched_pages = _fetched_page_payloads(payloads)
@@ -422,7 +407,6 @@ __all__ = [
     "_contains_weather_marker",
     "_chinese_weather_summary_from_payloads",
     "_extract_concise_weather_text",
-    "_first_result_text",
     "_web_payload_sources",
     "_reference_sources",
     "_payload_results",

@@ -168,11 +168,6 @@ def _resolve_tokenizer_detail(tokenizer_id: str | None):
     return None, None
 
 
-def _resolve_tokenizer(tokenizer_id: str | None):
-    tokenizer, _resolved_id = _resolve_tokenizer_detail(tokenizer_id)
-    return tokenizer
-
-
 def _estimate_with_tokenizer(text: str, *, tokenizer_id: str | None) -> int | None:
     tokenizer, _resolved_id = _resolve_tokenizer_detail(tokenizer_id)
     if tokenizer is None:
