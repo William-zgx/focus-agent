@@ -34,7 +34,7 @@ Focus Agent 是一个 **自托管、Web-first 的 branch-aware Agent 工作台�
 发布/eval 证据链、TypeScript SDK，以及可选的 Android 本地 runtime。
 
 按代码体量，应按 **中型 monorepo 平台** 维护（约 560 个 Python 模块 / ~12.6 万行后端、
-OpenAPI ~159 paths、compat baseline 169 项），而不是“轻量脚手架”叙事。
+OpenAPI ~159 paths、compat baseline 90 项），而不是“轻量脚手架”叙事。
 
 它的核心假设是：复杂任务不是单线聊天。研究、调试、写作和验证往往需要并行探索，主线需要稳定沉淀，分支需要可丢弃、可合并、可审计。因此系统围绕以下能力设计：
 
@@ -816,7 +816,7 @@ make web-dev
 - Local fallback persistence 只适合本地，不适合生产多副本；裸跑 API 且无 `DATABASE_URI` 时 trajectory/artifact metadata 不具备 Postgres durability。
 - Agent Team v2 执行受 feature flag 保护；工作台 UI 可见、v1 API 可用，**不等于** v2 runtime ready 或真实执行已上线。
 - Android local runtime 与 server-backed Web 是并行集成模型，能力集合有意裁剪（例如部分 workbench/productivity 在 Android build flag 下关闭），不能假设与 Web 全量对等。
-- 1.x 兼容 facade（约 169 项）仍在；读代码时需区分 re-export 与真正实现路径。
+- 1.x 兼容 facade（约 90 项）仍在；读代码时需区分 re-export 与真正实现路径。
 - 平台工程完备度高于 Agent 结果质量证据：eval / golden failure / 成本延迟画像 / 多 Agent 质量门槛仍在扩展中（见 [roadmap.md](roadmap.md)）。
 - 企业 IdP/JWKS、不可伪造的部署控制面绑定、生产规模 RPO/RTO 演练仍是采用方集成与运维责任。
 
