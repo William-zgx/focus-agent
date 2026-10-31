@@ -864,3 +864,29 @@ def test_policy_prompt_budget_guard_honours_preserve_required_messages():
     assert guarded[0].content.startswith("Required rules")
     assert any(message.content == "keep this current user request" for message in guarded)
     assert not any("old context" in str(message.content) for message in guarded)
+
+
+def test_prompt_budget_guard_treats_fenced_memory_block_as_optional_context():
+    memory_block = (
+        "<memory-context>\n[System note: recalled background]\n"
+        "## User preferences and profile\n" + "- memory fact\n" * 80 + "</memory-context>"
+    )
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            memory_block,
+            "## Rolling summary\n" + "important summary " * 5,
+        ]
+    )
+    budget = ContextBudget(prompt_token_limit=400, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [SystemMessage(content=system_text), HumanMessage(content="what next")],
+        budget=budget,
+        preserve_required_messages=True,
+    )
+
+    rendered = str(guarded[0].content)
+    assert sum(len(str(message.content)) for message in guarded) <= 400
+    assert "<memory-context>" not in rendered
+    assert "## Rolling summary" in rendered
