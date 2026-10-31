@@ -12,7 +12,7 @@ from focus_agent.core.productivity import (
 )
 
 from ._sqlite_base import SQLiteRepositoryBase
-from .productivity_repository import ProductivityRepository, _task_event
+from .productivity_repository import ProductivityRepository, _normalize_tags, _task_event
 
 
 class SQLiteProductivityRepository(SQLiteRepositoryBase, ProductivityRepository):
@@ -203,6 +203,11 @@ class SQLiteProductivityRepository(SQLiteRepositoryBase, ProductivityRepository)
             clauses.append("(LOWER(title) LIKE ? OR LOWER(body) LIKE ?)")
             like = f"%{query_text.casefold()}%"
             params.extend([like, like])
+        for tag in _normalize_tags(tags):
+            clauses.append(
+                "EXISTS (SELECT 1 FROM json_each(data_json, '$.tags') WHERE json_each.value = ?)"
+            )
+            params.append(tag)
         sql = f"""
             SELECT data_json FROM focus_notes
             WHERE {" AND ".join(clauses)}
@@ -212,11 +217,7 @@ class SQLiteProductivityRepository(SQLiteRepositoryBase, ProductivityRepository)
         params.extend([max(0, limit), max(0, offset)])
         with self._connect() as conn:
             rows = conn.execute(sql, tuple(params)).fetchall()
-        notes = [self._note_from_row(row) for row in rows]
-        tag_filter = {str(tag).strip() for tag in (tags or []) if str(tag).strip()}
-        if tag_filter:
-            notes = [note for note in notes if tag_filter.issubset(set(note.tags))]
-        return notes
+        return [self._note_from_row(row) for row in rows]
 
     def create_task(self, task: FocusTask) -> None:
         self.save_task(task, event=_task_event(task, kind=FocusTaskEventKind.CREATED))

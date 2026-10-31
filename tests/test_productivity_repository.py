@@ -62,3 +62,19 @@ def test_sqlite_productivity_repository_round_trips_notes_and_tasks(tmp_path):
     assert (
         repository.list_task_events(task_id=task.task_id, user_id="user-1")[-1].kind == "completed"
     )
+
+
+def test_sqlite_list_notes_filters_tags_before_pagination(tmp_path):
+    repository = SQLiteProductivityRepository(str(tmp_path / "focus.sqlite3"))
+    service = ProductivityService(repository)
+    tagged = service.create_note(user_id="user-1", title="Tagged", body="x", tags=["x", "y"])
+    for index in range(3):
+        service.create_note(user_id="user-1", title=f"Plain {index}", body="x")
+
+    assert [n.note_id for n in repository.list_notes(user_id="user-1", tags=["x"], limit=1)] == [
+        tagged.note_id
+    ]
+    assert [n.note_id for n in repository.list_notes(user_id="user-1", tags=["x", "y"])] == [
+        tagged.note_id
+    ]
+    assert repository.list_notes(user_id="user-1", tags=["x", "z"]) == []
