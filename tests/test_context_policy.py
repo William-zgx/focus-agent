@@ -9,7 +9,13 @@ from focus_agent.core.context_policy import (
     assemble_context,
     trim_tool_observation,
 )
-from focus_agent.core.types import ArtifactRef, ContextBudget, FindingItem, PromptMode
+from focus_agent.core.types import (
+    ArtifactRef,
+    ConstraintItem,
+    ContextBudget,
+    FindingItem,
+    PromptMode,
+)
 from focus_agent.engine.graph_output_language import (
     enforce_temporal_anchor,
     repair_chinese_output,
@@ -388,6 +394,31 @@ def test_prompt_budget_guard_drops_tool_calls_together_with_their_results():
     result_ids = {message.tool_call_id for message in guarded if isinstance(message, ToolMessage)}
     assert call_ids == result_ids
     assert str(guarded[-1].content) == "latest q"
+
+
+def test_assemble_context_keeps_goal_first_and_newest_constraints_in_order():
+    constraints = [
+        ConstraintItem(constraint=f"constraint {index} " + "detail " * (12 - index))
+        for index in range(12)
+    ]
+    state = {
+        "messages": [HumanMessage(content="go")],
+        "active_goal": "ship X",
+        "user_constraints": [
+            *constraints,
+            ConstraintItem(constraint="constraint 0 " + "detail " * 12),
+            ConstraintItem(constraint="newest: be brief"),
+        ],
+    }
+
+    block = assemble_context(state, PromptMode.EXPLORE).constraints_block
+    lines = block.splitlines()[1:]
+
+    assert len(lines) == 10
+    assert lines[0] == "- Active goal: ship X"
+    assert lines[-1] == "- newest: be brief"
+    assert lines[-2].startswith("- constraint 0 ")
+    assert [line.split()[2] for line in lines[1:-2]] == [str(i) for i in range(5, 12)]
 
 
 def test_prompt_budget_guard_truncates_bulleted_blocks_without_breaking_bullet_lines():

@@ -114,16 +114,17 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     pinned_lines = _dedupe_text_lines(pinned_lines, limit=10)
 
     constraints = _coerce_constraints(normalized.get("user_constraints", []))
-    constraint_lines = [item.constraint for item in constraints]
     active_goal = str(normalized.get("active_goal") or "").strip()
     if not active_goal and fork_brief is not None:
         active_goal = str(fork_brief.get("goal") or "").strip()
-    if active_goal:
-        constraint_lines.insert(0, f"Active goal: {active_goal}")
     current_step_goal = _current_plan_step_goal(normalized)
-    if current_step_goal:
-        constraint_lines.insert(1 if constraint_lines else 0, f"Current step: {current_step_goal}")
-    constraint_lines = _dedupe_text_lines(constraint_lines, limit=10)
+    goal_lines = [
+        *([f"Active goal: {active_goal}"] if active_goal else []),
+        *([f"Current step: {current_step_goal}"] if current_step_goal else []),
+    ]
+    constraint_lines = goal_lines + _dedupe_text_lines(
+        [item.constraint for item in constraints], limit=10 - len(goal_lines)
+    )
 
     merge_queue = list(normalized.get("merge_queue", []) or [])
     approved_conclusions_block, rendered_entries = render_approved_conclusions(merge_queue)
@@ -225,8 +226,8 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         available_skills_block=available_skills_block,
         memory_block=memory_block,
         summary_block=f"## Rolling summary\n{summary or '(empty)'}",
-        pinned_block=_render_lines("Pinned facts", pinned_lines[-10:]),
-        constraints_block=_render_lines("Constraints and goals", constraint_lines[-10:]),
+        pinned_block=_render_lines("Pinned facts", pinned_lines),
+        constraints_block=_render_lines("Constraints and goals", constraint_lines),
         findings_block=findings_block,
         artifact_block=_render_lines("Artifacts in scope", artifact_lines),
         approved_conclusions_block=approved_conclusions_block,

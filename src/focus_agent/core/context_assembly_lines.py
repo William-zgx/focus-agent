@@ -269,9 +269,16 @@ def _extract_numeric(pattern: re.Pattern[str], text: str) -> float:
 
 
 def _dedupe_text_lines(lines: Iterable[str], *, limit: int) -> list[str]:
-    return _dedupe_ranked_lines(
-        lines, limit=limit, key_fn=_text_line_dedupe_key, rank_fn=lambda line: (len(line),)
-    )
+    """Drop repeated lines, keeping chronological order and the newest ``limit`` entries."""
+    if limit <= 0:
+        return []
+    selected: dict[str, str] = {}
+    for raw in (str(line).strip() for line in lines):
+        if raw:
+            key = _text_line_dedupe_key(raw)
+            selected.pop(key, None)
+            selected[key] = raw
+    return list(selected.values())[-limit:]
 
 
 def _dedupe_finding_lines(lines: Iterable[str], *, limit: int) -> list[str]:
