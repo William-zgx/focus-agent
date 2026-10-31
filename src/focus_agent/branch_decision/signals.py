@@ -5,11 +5,9 @@ from typing import Any
 
 from focus_agent.core.branching import BranchMeta, BranchStatus
 from focus_agent.core.governance import BranchDecisionAction, BranchDecisionSignal
-from focus_agent.services.branches.actions import (
-    has_negated_branch_action_request,
-    latest_pending_branch_action,
-)
+from focus_agent.services.branches.actions import latest_pending_branch_action
 
+from .intent import detect_branch_intent, topic_drift_match
 from .service_helpers import _message_text, _semantic_recommended_action
 
 _SPLIT_HINTS = (
@@ -46,105 +44,6 @@ _MERGE_HINTS = (
     "带回",
     "回主线",
     "导入",
-)
-_RECOMMEND_CHILD_HINTS = (
-    "child branch",
-    "sub-branch",
-    "sub branch",
-    "deep dive",
-    "drill down",
-    "deepen",
-    "子分支",
-    "子话题",
-    "深入",
-    "细化",
-    "深挖",
-    "展开",
-)
-_RECOMMEND_SIBLING_HINTS = (
-    "sibling branch",
-    "sibling",
-    "parallel",
-    "parallel branch",
-    "alternative",
-    "same level",
-    "同级",
-    "平级",
-    "并行",
-    "平行",
-    "并列",
-    "替代方案",
-    "备选方案",
-    "另一个方向",
-    "换个方向",
-)
-_RECOMMEND_FORK_HINTS = (
-    "fork",
-    "split",
-    "parallel",
-    "alternative",
-    "explore separately",
-    "new branch",
-    "create branch",
-    "create a branch",
-    "make a branch",
-    "open a branch",
-    "新建分支",
-    "创建分支",
-    "开分支",
-    "开一个分支",
-    "另开",
-    "新开",
-    "新建",
-    "并行",
-    "拆开",
-    "单独研究",
-)
-_RECOMMEND_CONTINUE_HINTS = (
-    "continue here",
-    "current thread",
-    "same thread",
-    "no branch",
-    "don't branch",
-    "do not branch",
-    "继续当前",
-    "当前线程",
-    "在这里",
-    "不用分支",
-    "不要分支",
-    "别开分支",
-)
-_RECOMMEND_TOPIC_DRIFT_HINTS = (
-    "change topic",
-    "switch topic",
-    "switch topics",
-    "new topic",
-    "another topic",
-    "different topic",
-    "another question",
-    "different question",
-    "separate question",
-    "separate issue",
-    "unrelated topic",
-    "unrelated question",
-    "different domain",
-    "look at another",
-    "换个主题",
-    "换个话题",
-    "换个问题",
-    "另一个问题",
-    "另一个话题",
-    "另一个主题",
-    "另一个议题",
-    "另一件事",
-    "不相关领域",
-    "不相关的问题",
-    "先看另一个",
-    "先聊另一个",
-    "新的议题",
-    "新议题",
-    "新问题",
-    "新的问题",
 )
 
 
@@ -223,10 +122,10 @@ def collect_branch_recommendation_signals(
     semantic_topic_relation: dict[str, Any] | None = None,
 ) -> list[BranchDecisionSignal]:
     messages = list(values.get("messages", []) or [])
-    normalized = _compact(message)
-    explicit_target = _recommendation_explicit_target(normalized, branch_meta=branch_meta)
-    explicit_source = _recommendation_explicit_source(normalized)
-    topic_drift = _recommendation_topic_drift(normalized, branch_meta=branch_meta)
+    intent = detect_branch_intent(message, on_branch=branch_meta is not None)
+    explicit_target = intent.target
+    explicit_source = intent.source
+    topic_drift = _recommendation_topic_drift(message, branch_meta=branch_meta)
     pending_action = latest_pending_branch_action(values.get("branch_actions")) is not None
     branch_status = branch_meta.branch_status if branch_meta is not None else BranchStatus.ACTIVE
     shape = _pre_turn_message_shape(
@@ -254,6 +153,18 @@ def collect_branch_recommendation_signals(
             rationale="Incoming user wording contains an explicit branch or continue hint."
             if explicit_source != "none"
             else "No explicit branch or continue hint was detected.",
+        ),
+        BranchDecisionSignal(
+            name="recommendation_intent",
+            value={
+                "strength": intent.strength,
+                "route": intent.route,
+                "matched": intent.matched,
+            },
+            score=1.0 if intent.source == "branch_hint" else 0.0,
+            weight=0.0,
+            evidence_refs=["incoming_user_message"],
+            rationale="Graded strength of the lexical branch intent (explicit, strong, none).",
         ),
         BranchDecisionSignal(
             name="recommendation_topic_drift",
@@ -318,66 +229,12 @@ def _explicit_hint(text: str) -> str:
     return "none"
 
 
-def _recommendation_explicit_target(
-    normalized_message: str,
-    *,
-    branch_meta: BranchMeta | None,
-) -> BranchDecisionAction:
-    if not normalized_message:
-        return BranchDecisionAction.CONTINUE_CURRENT
-    if has_negated_branch_action_request(normalized_message):
-        return BranchDecisionAction.CONTINUE_CURRENT
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CONTINUE_HINTS):
-        return BranchDecisionAction.CONTINUE_CURRENT
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CHILD_HINTS):
-        return BranchDecisionAction.FORK_CHILD_BRANCH
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_SIBLING_HINTS):
-        if branch_meta is not None:
-            return BranchDecisionAction.FORK_SIBLING_BRANCH
-        return BranchDecisionAction.FORK_CHILD_BRANCH
-    if _has_recommend_fork_hint(normalized_message):
-        return BranchDecisionAction.FORK_CHILD_BRANCH
-    return BranchDecisionAction.CONTINUE_CURRENT
-
-
-def _recommendation_explicit_source(normalized_message: str) -> str:
-    if not normalized_message:
-        return "none"
-    if has_negated_branch_action_request(normalized_message):
-        return "continue_hint"
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CONTINUE_HINTS):
-        return "continue_hint"
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_CHILD_HINTS):
-        return "branch_hint"
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_SIBLING_HINTS):
-        return "branch_hint"
-    if _has_recommend_fork_hint(normalized_message):
-        return "branch_hint"
-    return "none"
-
-
-def _has_recommend_fork_hint(normalized_message: str) -> bool:
-    if has_negated_branch_action_request(normalized_message):
-        return False
-    if any(_compact(marker) in normalized_message for marker in _RECOMMEND_FORK_HINTS):
-        return True
-    if "分支" not in normalized_message:
-        return False
-    return bool(
-        re.search(
-            r"(新建|创建|建立|新开|另开|开一个|切到|切换到|单独开|单独创建).{0,8}分支"
-            r"|分支.{0,8}(新建|创建|建立|新开|另开|切换)",
-            normalized_message,
-        )
-    )
-
-
 def _recommendation_topic_drift(
-    normalized_message: str,
+    message: str,
     *,
     branch_meta: BranchMeta | None,
 ) -> dict[str, Any]:
-    matched_hint = _topic_drift_match(normalized_message)
+    matched_hint = topic_drift_match(message)
     target = (
         BranchDecisionAction.FORK_SIBLING_BRANCH
         if branch_meta is not None
@@ -412,7 +269,7 @@ def _pre_turn_message_shape(
     has_new_direction = any(
         marker in compact for marker in ("another", "different", "另一个", "换个", "新方向")
     )
-    matched_topic_drift = _topic_drift_match(compact)
+    matched_topic_drift = topic_drift_match(message)
     has_branch_context = branch_meta is not None
     score = 0.45
     if has_question:
@@ -544,16 +401,6 @@ def _message_type(message: Any) -> str:
 
 def _compact(text: str) -> str:
     return re.sub(r"\s+", "", str(text or "").strip().lower())
-
-
-def _topic_drift_match(normalized_message: str) -> str | None:
-    if not normalized_message:
-        return None
-    for marker in _RECOMMEND_TOPIC_DRIFT_HINTS:
-        compact_marker = _compact(marker)
-        if compact_marker and compact_marker in normalized_message:
-            return marker
-    return None
 
 
 __all__ = ["collect_branch_decision_signals", "collect_branch_recommendation_signals"]

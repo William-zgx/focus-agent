@@ -447,7 +447,7 @@ def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
     payload = chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
-        message="深入细化一下下午东线每个时间段的安排。",
+        message="单独深入细化一下下午东线每个时间段的安排。",
     )
 
     assert graph.invoke_calls == 0
@@ -492,7 +492,7 @@ def test_send_message_pre_turn_recommendation_survives_stale_checkpoint_read(
     payload = chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
-        message="深入细化一下下午东线每个时间段的安排。",
+        message="单独深入细化一下下午东线每个时间段的安排。",
     )
 
     assert graph.invoke_calls == 0
@@ -530,7 +530,7 @@ def test_send_message_pre_turn_recommendation_uses_thread_turn_lock(tmp_path: Pa
             chat.send_message(
                 thread_id="root-1",
                 user_id="owner-1",
-                message="深入细化一下下午东线每个时间段的安排。",
+                message="单独深入细化一下下午东线每个时间段的安排。",
             )
     finally:
         chat._release_thread_turn(thread_id="root-1")

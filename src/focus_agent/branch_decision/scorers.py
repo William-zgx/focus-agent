@@ -155,19 +155,16 @@ def score_branch_recommendation(
             )
             routed_by = "semantic_topic_relation"
 
-    score = 0.72 if action == BranchDecisionAction.CONTINUE_CURRENT else 0.82
-    if bool(shape.get("has_alternative")):
-        score += 0.04
-    if bool(shape.get("has_new_direction")):
-        score += 0.06
-    if bool(shape.get("has_topic_drift")):
-        score += 0.08
-    if bool(topic_drift.get("has_topic_drift")):
-        score += 0.08
-    if routed_by == "semantic_topic_relation":
-        score = max(score, float(semantic_topic_relation.get("confidence") or 0.0))
-    if action == BranchDecisionAction.FORK_SIBLING_BRANCH and bool(shape.get("has_branch_context")):
-        score += 0.04
+    intent_value = _signal_value(by_name, "recommendation_intent", {})
+    intent = intent_value if isinstance(intent_value, dict) else {}
+    if routed_by == "branch_hint" and intent.get("route"):
+        routed_by = str(intent["route"])
+    score = _recommendation_score(
+        action=action,
+        routed_by=routed_by,
+        strength=str(intent.get("strength") or ""),
+        semantic_confidence=float(semantic_topic_relation.get("confidence") or 0.0),
+    )
     if pending_action and action != BranchDecisionAction.CONTINUE_CURRENT:
         score -= 0.35
 
@@ -177,6 +174,30 @@ def score_branch_recommendation(
         threshold=min_confidence,
         rationale=_recommendation_rationale(action=action, shape=shape, routed_by=routed_by),
     )
+
+
+# Score tiers keep confidence proportional to the evidence instead of giving every
+# fork the same value: explicit branch commands are near-certain, qualified
+# exploration and topic switches sit clearly above the default 0.72 threshold.
+_SCORE_CONTINUE = 0.72
+_SCORE_EXPLICIT = 0.95
+_SCORE_STRONG = 0.86
+
+
+def _recommendation_score(
+    *,
+    action: BranchDecisionAction,
+    routed_by: str,
+    strength: str,
+    semantic_confidence: float,
+) -> float:
+    if action == BranchDecisionAction.CONTINUE_CURRENT:
+        return _SCORE_CONTINUE
+    if routed_by == "semantic_topic_relation":
+        return semantic_confidence
+    if strength == "explicit" and routed_by == "explicit_branch":
+        return _SCORE_EXPLICIT
+    return _SCORE_STRONG
 
 
 def select_best_score(scores: list[BranchDecisionScore]) -> BranchDecisionScore:

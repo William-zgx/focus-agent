@@ -99,8 +99,16 @@ _NEGATED_REQUEST_RE = re.compile(
     r"\b(?:create|open|switch(?:\s+to)?)\b[^.?!\n]{0,80}\bbranch\b"
     r"|\bwithout\b[^.?!\n]{0,80}\b(?:creating|making|opening|switching(?:\s+to)?)\b"
     r"[^.?!\n]{0,80}\bbranch\b"
-    r"|\bno\s+branch\b",
+    r"|\bno\s+branch\b"
+    r"|\b(?:do\s+not|don't|dont|no\s+need\s+to|never)\s+(?:\w+\s+){0,2}?"
+    r"(?:fork|branch|branching)\b"
+    r"|\bno\s+(?:fork|forking|branching|branches|new\s+branch)\b"
+    r"|\bwithout\s+(?:a\s+)?(?:fork|forking|branching)\b",
     flags=re.IGNORECASE,
+)
+_NEGATED_REQUEST_ZH_RE = re.compile(
+    r"(?:不要|不用|别|无需|不需要|不必|没必要)(?:再)?"
+    r"(?:新建|创建|开|另开|新开|切换|切到|切|建|拉|进)?(?:一个|个)?(?:新的?|子|同级|平级)?分支"
 )
 _SIBLING_MARKERS = ("同级", "平级", "sibling")
 _CHILD_MARKERS = ("子分支", "下级", "child")
@@ -242,6 +250,8 @@ def has_negated_branch_action_request(message: str) -> bool:
     if not normalized:
         return False
     if any(_compact(marker) in normalized for marker in _NEGATED_REQUEST_MARKERS):
+        return True
+    if _NEGATED_REQUEST_ZH_RE.search(normalized):
         return True
     return bool(_NEGATED_REQUEST_RE.search(str(message or "")))
 
