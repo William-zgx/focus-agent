@@ -5580,6 +5580,11 @@ export interface components {
         BranchActionExecuteResponse: {
             branch_action: components["schemas"]["BranchActionProposal"];
             branch_record?: components["schemas"]["BranchRecord"] | null;
+            /**
+             * Handoff Message
+             * @description Message the client should auto-run in the navigated thread. Null when the new branch already contains the answered turn (answer-first child forks).
+             */
+            handoff_message?: string | null;
             navigation?: components["schemas"]["BranchActionNavigation"] | null;
             thread_state: components["schemas"]["ThreadStateResponse"];
         };
@@ -5605,6 +5610,8 @@ export interface components {
             confidence?: number | null;
             /** Created At */
             created_at: string;
+            /** Delivery */
+            delivery?: ("proposal" | "after_answer") | null;
             /** Dismissed At */
             dismissed_at?: string | null;
             /** Error */

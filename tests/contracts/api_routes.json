@@ -12689,6 +12689,16 @@
             }
           ]
         },
+        "handoff_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "navigation": {
           "anyOf": [
             {
@@ -12753,6 +12763,20 @@
         },
         "created_at": {
           "type": "string"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "enum": [
+                "proposal",
+                "after_answer"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "dismissed_at": {
           "anyOf": [

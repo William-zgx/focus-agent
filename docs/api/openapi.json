@@ -7188,6 +7188,18 @@
               }
             ]
           },
+          "handoff_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Message the client should auto-run in the navigated thread. Null when the new branch already contains the answered turn (answer-first child forks).",
+            "title": "Handoff Message"
+          },
           "navigation": {
             "anyOf": [
               {
@@ -7261,6 +7273,21 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": [
+                  "proposal",
+                  "after_answer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery"
           },
           "dismissed_at": {
             "anyOf": [
