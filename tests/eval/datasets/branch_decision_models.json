@@ -294,7 +294,7 @@
       {"role": "user", "content": "主线正在讨论 API 网关。"},
       {"role": "assistant", "content": "已确认基础请求链路。"}
     ],
-    "incoming": "I also need a separate Kubernetes cost monitoring plan; it is unrelated to the API bug.",
+    "incoming": "Separately, I want a plan for migrating our analytics warehouse to BigQuery; it has nothing to do with the gateway.",
     "branch_context": null,
     "expected_action": "fork_child_branch",
     "expected_model_action": "fork_child_branch",
@@ -311,7 +311,7 @@
       {"role": "user", "content": "这个分支专门研究方案 A。"},
       {"role": "assistant", "content": "方案 A 的限制已经列出。"}
     ],
-    "incoming": "The next question is an unrelated finance budget; analyze it separately.",
+    "incoming": "Unrelated to plan A: estimate the office relocation budget, separately.",
     "branch_context": {
       "branch_id": "branch-a",
       "root_thread_id": "root-1",
@@ -327,5 +327,474 @@
     "primary_model": "deepseek:deepseek-v4-pro",
     "fallback_model": "codiv:openjev-0.1",
     "evidence": "主模型使用本地拒绝连接 endpoint；备用使用真实 System One，需区分主请求失败与最终语义结果。"
+  },
+  {
+    "id": "bd_fp_deep_explain_code_cn",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "能不能深入解释一下这段代码为什么会死锁？",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "“深入”修饰解释且是代码上下文，不是分支意图。"
+  },
+  {
+    "id": "bd_fp_split_function_mixed",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "把这个函数 split 成两个更小的函数",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "split 指重构函数，代码上下文。"
+  },
+  {
+    "id": "bd_fp_expand_point_cn",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "展开说说第二点",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "“展开”是追问细节，不靠近分支词。"
+  },
+  {
+    "id": "bd_fp_new_file_cn",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "新建一个 config.yaml 文件",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "“新建”的对象是文件，不是分支。"
+  },
+  {
+    "id": "bd_fp_explore_logs_en",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "Can you explore the logs and tell me why it fails?",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "explore 指查看日志，不是并行探索。"
+  },
+  {
+    "id": "bd_fp_alternative_mutex_en",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "Is there an alternative to using a mutex here?",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "alternative 是当前实现的追问。"
+  },
+  {
+    "id": "bd_fp_parallelize_en",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "Let's parallelize the test runner",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "parallelize 不应按 parallel 子串匹配。"
+  },
+  {
+    "id": "bd_fp_fork_call_en",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "Please make the fork() call handle errors",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "fork() 是代码调用。"
+  },
+  {
+    "id": "bd_fp_new_question_mid_cn",
+    "category": "precision",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "这是一个新问题吗？还是之前那个 bug 复现了",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "“新问题”不在句首/冒号前，是对当前 bug 的追问。"
+  },
+  {
+    "id": "bd_fn_side_question_cn",
+    "category": "recall",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "顺便问一下，Python 的 GIL 在 3.13 还存在吗？",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "顺带提问，与当前任务无关。"
+  },
+  {
+    "id": "bd_fn_side_question_en",
+    "category": "recall",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "By the way, what's the difference between Redis streams and Kafka?",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "by the way 引出的旁支问题。"
+  },
+  {
+    "id": "bd_fn_comparison_cn",
+    "category": "recall",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "对比一下方案A（重试队列）和方案B（死信队列）的优缺点",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "方案对比适合单独分支。"
+  },
+  {
+    "id": "bd_fn_comparison_en",
+    "category": "recall",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "Compare approach A vs approach B for this migration",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "A vs B 方案对比。"
+  },
+  {
+    "id": "bd_fn_detour_cn",
+    "category": "recall",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "先暂停一下，我遇到一个奇怪的 CI 报错要先排查：pip install 超时",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "暂停当前任务去排查的临时支线。"
+  },
+  {
+    "id": "bd_tp_new_question_colon_cn",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "另一个问题：我们的前端打包为什么这么慢？",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "句首“另一个问题：”是明确的话题切换。"
+  },
+  {
+    "id": "bd_tp_explicit_branch_cn",
+    "category": "child",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "帮我开一个分支研究一下用 Temporal 替代自研重试",
+    "branch_context": null,
+    "expected_action": "fork_child_branch",
+    "expected_model_action": "fork_child_branch",
+    "expected_classifier": "bypass",
+    "evidence": "明确的开分支指令。"
+  },
+  {
+    "id": "bd_followup_add_tests_cn",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "好的，继续，把单测也补上",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "同一任务的直接追问。"
+  },
+  {
+    "id": "bd_followup_add_tests_en",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "OK, now add unit tests for that",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "同一任务的直接追问。"
+  },
+  {
+    "id": "bd_followup_configurable_cn",
+    "category": "continue",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "这个方案还是有问题，重试次数应该可配置？",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "对当前方案的修正。"
+  },
+  {
+    "id": "bd_merge_back_bring_main_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "这个结论可以带回主线了",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "子分支上明确的带回主线意图。"
+  },
+  {
+    "id": "bd_merge_back_merge_back_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "合并回去吧",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "合并回父分支。"
+  },
+  {
+    "id": "bd_merge_back_ready_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "可以合并了",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "表示分支结论已可合并。"
+  },
+  {
+    "id": "bd_merge_back_en",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "merge it back to main",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "merge back。"
+  },
+  {
+    "id": "bd_merge_back_bring_en",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "bring this back to main",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "bring back to main。"
+  },
+  {
+    "id": "bd_merge_back_return_main_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "回到主线继续",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "merge_candidate",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "回到主线：提供审阅合并或直接返回。"
+  },
+  {
+    "id": "bd_merge_back_negated_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "先别合并，还有两个问题",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "否定的合并说法。"
+  },
+  {
+    "id": "bd_merge_back_tidy_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "帮我整理一下要点",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "单独的“整理”不是合并证据。"
+  },
+  {
+    "id": "bd_merge_back_in_branch_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "这个分支在研究南网能源的财报。"},
+      {"role": "assistant", "content": "结论：现金流稳定，估值合理。"}
+    ],
+    "incoming": "在这个分支里继续研究分红政策，给出可合并回主线的明确结论。",
+    "branch_context": {
+      "branch_id": "branch-nw",
+      "root_thread_id": "root-1",
+      "parent_thread_id": "root-1",
+      "return_thread_id": "root-1",
+      "branch_name": "南网能源财报",
+      "branch_depth": 1
+    },
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "bypass",
+    "evidence": "“在这个分支里”是继续当前分支。"
+  },
+  {
+    "id": "bd_merge_back_on_root_cn",
+    "category": "merge_back",
+    "history": [
+      {"role": "user", "content": "帮我把订单服务的重试逻辑改成指数退避"},
+      {"role": "assistant", "content": "好的，这里是修改方案……"}
+    ],
+    "incoming": "可以合并了",
+    "branch_context": null,
+    "expected_action": "continue_current",
+    "expected_model_action": "continue_current",
+    "expected_classifier": "run",
+    "evidence": "主线上没有可合并的父分支。"
   }
 ]

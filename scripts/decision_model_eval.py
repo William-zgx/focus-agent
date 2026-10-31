@@ -130,6 +130,8 @@ def _load_dataset(path: Path) -> list[dict[str, Any]]:
             "continue_current",
             "fork_child_branch",
             "fork_sibling_branch",
+            # Deterministic merge-back on a child branch (review card, no classifier).
+            "merge_candidate",
         }:
             raise ValueError(f"{case_id}: invalid expected_action")
         if raw.get("expected_classifier") not in {"run", "bypass"}:
