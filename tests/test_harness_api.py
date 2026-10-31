@@ -1247,7 +1247,7 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
         manager = _RunManager()
         bridge = _Bridge()
         chat = _Chat()
-        request = SimpleNamespace(headers={"last-event-id": "evt-1"})
+        request = SimpleNamespace(headers={"last-event-id": "evt-1"}, query_params={})
         runtime = SimpleNamespace(
             run_manager=manager,
             event_store=None,

@@ -14,13 +14,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
-from focus_agent.harness.streaming import (
-    END_SENTINEL,
-    HEARTBEAT_SENTINEL,
-    StreamProxy,
-    StreamProxyConfig,
-    sse_frame,
-)
+from focus_agent.harness.streaming import StreamProxy, StreamProxyConfig, sse_frame
 
 SSE_MEDIA_TYPE = "text/event-stream"
 SSE_HEADERS = {
@@ -28,10 +22,15 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def sse_streaming_response(content: Any) -> StreamingResponse:
     return StreamingResponse(content, media_type=SSE_MEDIA_TYPE, headers=dict(SSE_HEADERS))
+
+
+def _is_truthy(value: str | None) -> bool:
+    return value is not None and value.strip().lower() in _TRUTHY
 
 
 def should_optimize_for_request(request: Request) -> bool:
@@ -43,24 +42,16 @@ def should_optimize_for_request(request: Request) -> bool:
       * ``Accept`` containing the token ``stream-optimized``
       * ``X-Stream-Optimize-Auto: 1`` together with a browser User-Agent
     """
-    try:
-        qp = request.query_params.get("optimize_stream")
-        if qp is not None and str(qp).strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-        for header_name in ("x-stream-optimize",):
-            v = request.headers.get(header_name)
-            if v is not None and str(v).strip().lower() in {"1", "true", "yes", "on"}:
-                return True
-        if "stream-optimized" in (request.headers.get("accept") or "").lower():
-            return True
-        auto = request.headers.get("x-stream-optimize-auto")
-        if auto is not None and str(auto).strip().lower() in {"1", "true", "yes", "on"}:
-            ua = (request.headers.get("user-agent") or "").lower()
-            if ua.startswith("mozilla/"):
-                return True
-    except Exception:  # noqa: BLE001
-        return False
-    return False
+    headers = request.headers
+    return (
+        _is_truthy(request.query_params.get("optimize_stream"))
+        or _is_truthy(headers.get("x-stream-optimize"))
+        or "stream-optimized" in (headers.get("accept") or "").lower()
+        or (
+            _is_truthy(headers.get("x-stream-optimize-auto"))
+            and (headers.get("user-agent") or "").lower().startswith("mozilla/")
+        )
+    )
 
 
 def build_stream_proxy(request: Request) -> StreamProxy | None:
@@ -76,22 +67,10 @@ def build_stream_proxy(request: Request) -> StreamProxy | None:
     )
 
 
-def optimized_sse_frame(event: Any) -> str | None:
-    """Render a single StreamEvent (or sentinel) as an SSE frame string.
-
-    Returns ``None`` for the HEARTBEAT_SENTINEL / END_SENTINEL sentinels --
-    callers should handle those explicitly.
-    """
-    if event is HEARTBEAT_SENTINEL or event is END_SENTINEL:
-        return None
-    return sse_frame(event=event.event, event_id=event.id, data=event.data)
-
-
 __all__ = [
     "SSE_HEADERS",
     "SSE_MEDIA_TYPE",
     "build_stream_proxy",
-    "optimized_sse_frame",
     "should_optimize_for_request",
     "sse_frame",
     "sse_streaming_response",
