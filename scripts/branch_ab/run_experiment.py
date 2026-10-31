@@ -248,7 +248,18 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
         user_id = "branch-ab-user"
         main_thread = f"ab-{task['id']}-{arm}-r{repeat}-{uuid4().hex[:8]}"
 
+        def settle(timeout_s: float = 180.0) -> None:
+            # Real users pause between turns, so post-turn background work
+            # (compaction, titles) finishes first. Wait for it in both arms.
+            deadline = time.monotonic() + timeout_s
+            while time.monotonic() < deadline:
+                snap = runtime.background_work.snapshot()
+                if not snap["queue_depth"] and not snap["active_workers"]:
+                    return
+                time.sleep(0.2)
+
         def send(thread_id: str, phase: str, message: str) -> dict[str, Any]:
+            settle()
             _CURRENT_PHASE[0] = phase
             started = time.monotonic()
             payload = chat.send_message(
@@ -272,6 +283,7 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
             for message in task["detour_turns"]:
                 send(main_thread, "detour", message)
         else:
+            settle()
             _CURRENT_PHASE[0] = "fork"
             branch = runtime.branch_service.fork_branch(
                 parent_thread_id=main_thread,
@@ -282,6 +294,7 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
             )
             for message in task["detour_turns"]:
                 send(branch.child_thread_id, "detour", message)
+            settle()
             _CURRENT_PHASE[0] = "merge_proposal"
             proposal = runtime.branch_service.prepare_merge_proposal(
                 child_thread_id=branch.child_thread_id, user_id=user_id
