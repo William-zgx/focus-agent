@@ -433,3 +433,20 @@ def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkey
     ]
     assert fake_embedding_repo.upsert_calls == 1
     assert len(fake_embedding_repo.embeddings) == 1
+
+
+def test_build_focus_memory_records_keeps_zero_importance():
+    from focus_agent.migrations.local.loader import LocalStoreItemRecord
+    from focus_agent.migrations.local.transformer import build_focus_memory_records
+
+    def item(value):
+        return LocalStoreItemRecord(
+            namespace=("user", "u1"),
+            key="k",
+            value={"kind": "user_preference", "content": "c", **value},
+            created_at=None,
+            updated_at=None,
+        )
+
+    records, _ = build_focus_memory_records([item({"importance": 0}), item({})])
+    assert [record.importance for record in records] == [0.0, 0.5]

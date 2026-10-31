@@ -225,7 +225,7 @@ def _focus_memory_record_from_store_item(
         user_id=_legacy_payload_text(item.value.get("user_id"))
         or _namespace_user_id(item.namespace),
         confidence=_legacy_payload_float(item.value.get("confidence")),
-        importance=_legacy_payload_float(item.value.get("importance"), default=0.5) or 0.5,
+        importance=_legacy_payload_float(item.value.get("importance"), default=0.5),
         promoted_to_main=(
             _legacy_payload_bool(item.value.get("promoted_to_main"))
             or payload_type in {"imported_conclusion", "promoted_branch_finding"}

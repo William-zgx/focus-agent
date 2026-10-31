@@ -57,7 +57,6 @@ _MODULE_EXPORTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         ".runtime",
         (
-            "ConflictError",
             "DisconnectMode",
             "MultitaskStrategy",
             "RunConflictError",
@@ -171,7 +170,6 @@ __all__ = [
     "CircuitBreakerConfig",
     "CircuitBreakerOpenError",
     "CircuitBreakerSnapshot",
-    "ConflictError",
     "ConversationStateSlice",
     "DanglingToolCallMiddleware",
     "DisconnectMode",

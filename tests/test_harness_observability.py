@@ -286,3 +286,24 @@ def test_sqlite_run_journal_db_work_does_not_block_event_loop(tmp_path):
         await put_task
 
     asyncio.run(scenario())
+
+
+def test_run_journals_accept_string_tool_args(tmp_path):
+    async def scenario(journal):
+        await journal.put("run-1", thread_id="thread-1", status="running")
+        await journal.append_event(
+            "run-1",
+            "tool.requested",
+            {"tool_call_id": "call-1", "tool_name": "search", "args": '{"q": "x"}'},
+        )
+        await journal.append_event(
+            "run-1",
+            "tool.requested",
+            {"tool_call_id": "call-2", "tool_name": "search", "args": '{"q": "trunc'},
+        )
+        assert await journal.count_events("run-1") == 2
+        return [event.args for event in await journal.list_tool_events("run-1")]
+
+    expected = [{"q": "x"}, {"preview": '{"q": "trunc'}]
+    assert asyncio.run(scenario(InMemoryRunJournal())) == expected
+    assert asyncio.run(scenario(SQLiteRunJournal(tmp_path / "runs.sqlite3"))) == expected

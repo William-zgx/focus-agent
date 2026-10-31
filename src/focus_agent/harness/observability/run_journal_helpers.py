@@ -128,7 +128,7 @@ def _tool_event_from_journal_event(event: JournalEvent) -> JournalToolEvent | No
         tool_name=tool_name,
         status=status,
         sequence=event.sequence,
-        args=dict(data.get("args") or data.get("arguments") or {}),
+        args=_tool_args(data.get("args") or data.get("arguments")),
         result=data.get("result") if "result" in data else data.get("observation"),
         error=_first_str(data, "error"),
         duration_ms=_optional_float(data.get("duration_ms")),
@@ -235,6 +235,18 @@ def _dict_data(data: Any) -> dict[str, Any]:
     if isinstance(data, dict):
         return _copy_json(data)
     return {"value": _copy_json(data)}
+
+
+def _tool_args(value: Any) -> dict[str, Any]:
+    """Coerce tool args to a dict; string args (JSON or previews) must not drop the event."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {"preview": value}
+    if isinstance(value, dict):
+        return dict(value)
+    return {} if value is None else {"value": value}
 
 
 def _first_str(data: dict[str, Any], *keys: str) -> str | None:

@@ -18,6 +18,7 @@ from focus_agent.core.branching import (
 )
 from focus_agent.core.types import ConversationRecord
 from focus_agent.repositories.branch_repository import BranchRepository
+from focus_agent.repositories.in_memory_branch_repository import InMemoryBranchRepository
 from focus_agent.repositories.postgres_branch_repository import PostgresBranchRepository
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.security.ownership import OwnershipAuditEvent
@@ -28,6 +29,8 @@ class RepositoryFactory:
     backend: str
 
     def create(self, tmp_path: Path) -> BranchRepository:
+        if self.backend == "memory":
+            return InMemoryBranchRepository()
         if self.backend == "sqlite":
             return SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
         if self.backend == "postgres":
@@ -42,7 +45,10 @@ POSTGRES_SKIP_REASON = "DATABASE_URI is not set; skipping Postgres BranchReposit
 
 
 def _repository_params() -> list[pytest.ParameterSet]:
-    params = [pytest.param(RepositoryFactory("sqlite"), id="sqlite")]
+    params = [
+        pytest.param(RepositoryFactory("memory"), id="memory"),
+        pytest.param(RepositoryFactory("sqlite"), id="sqlite"),
+    ]
     postgres_mark = []
     if not os.environ.get("DATABASE_URI"):
         postgres_mark.append(pytest.mark.skip(reason=POSTGRES_SKIP_REASON))
