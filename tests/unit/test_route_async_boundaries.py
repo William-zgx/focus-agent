@@ -79,3 +79,40 @@ def test_branch_handoff_journal_helper_does_not_block_event_loop() -> None:
         assert (await blocking).decision_id == "decision-1"
 
     asyncio.run(scenario())
+
+
+def test_thread_snapshot_route_does_not_block_event_loop() -> None:
+    from focus_agent.api.routers.conversation_chat_context import get_thread_snapshot
+
+    class Chat:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def get_thread_state(self, **_kwargs):
+            _wait_for_release(self.started, self.release, "done")
+            return {"thread_id": "thread-1"}
+
+    async def scenario() -> None:
+        chat = Chat()
+        blocking = asyncio.create_task(
+            get_thread_snapshot(
+                thread_id="thread-1",
+                request=SimpleNamespace(state=SimpleNamespace(request_id=None)),
+                chat=chat,
+                principal=SimpleNamespace(user_id="user-1"),
+                runtime=SimpleNamespace(),
+            )
+        )
+
+        await _wait_until_started(chat.started)
+        assert await asyncio.sleep(0.01, result="tick") == "tick"
+        assert not blocking.done()
+
+        chat.release.set()
+        try:
+            await blocking
+        except ValueError:  # Stub payload fails response validation; only the loop matters.
+            pass
+
+    asyncio.run(scenario())

@@ -30,6 +30,7 @@ from ..contracts import (
     UpdateConversationRequest,
 )
 from ..deps import get_app_runtime, get_chat_service, get_current_principal
+from ..route_helpers import run_sync_route_call
 from ..route_utils.branch_handoff_decisions import ensure_branch_handoff_decision_from_journal
 from ..route_utils.conversations import _conversation_response, _list_or_bootstrap_conversations
 from ..route_utils.service_errors import (
@@ -230,7 +231,8 @@ async def get_thread_snapshot(
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
         )
-        result = chat.get_thread_state(
+        result = await run_sync_route_call(
+            chat.get_thread_state,
             thread_id=thread_id,
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
