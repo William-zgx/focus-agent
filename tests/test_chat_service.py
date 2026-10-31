@@ -3496,3 +3496,54 @@ def test_get_thread_state_caps_history_window_for_large_threads(tmp_path: Path):
     assert len(payload["messages"]) == chat._THREAD_STATE_MESSAGE_LIMIT
     assert payload["messages"][0]["content"] == "message-50"
     assert payload["messages"][-1]["content"] == "message-249"
+
+
+def test_get_thread_state_keeps_state_fork_brief_alongside_repo_branch_meta(tmp_path: Path):
+    repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
+    repo.ensure_thread_owner(thread_id="root-1", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.ensure_thread_owner(thread_id="child-3", root_thread_id="root-1", owner_user_id="owner-1")
+    repo.create(
+        BranchRecord(
+            branch_id="b-3",
+            root_thread_id="root-1",
+            parent_thread_id="root-1",
+            child_thread_id="child-3",
+            return_thread_id="root-1",
+            owner_user_id="owner-1",
+            branch_name="Repo Name",
+            branch_role=BranchRole.DEEP_DIVE,
+            branch_depth=1,
+            branch_status=BranchStatus.ACTIVE,
+        )
+    )
+    fork_brief = {
+        "goal": "Compare cost under $2k/mo",
+        "parent_summary": "Rejected MySQL.",
+        "parent_recent_turns": [{"role": "user", "content": "Shortlist Yugabyte"}],
+        "forked_at": "2026-10-31T00:00:00+00:00",
+        "parent_message_count": 4,
+    }
+
+    class StateGraph:
+        def get_state(self, _config):
+            return SimpleNamespace(
+                values={
+                    "branch_meta": {
+                        "branch_id": "b-3",
+                        "root_thread_id": "root-1",
+                        "parent_thread_id": "root-1",
+                        "return_thread_id": "root-1",
+                        "branch_name": "Stale State Name",
+                        "branch_role": "deep_dive",
+                        "branch_depth": 1,
+                        "fork_brief": fork_brief,
+                    }
+                }
+            )
+
+    chat = ChatService(SimpleNamespace(settings=Settings(), graph=StateGraph(), repo=repo))
+
+    payload = chat.get_thread_state(thread_id="child-3", user_id="owner-1")
+
+    assert payload["branch_meta"]["branch_name"] == "Repo Name"
+    assert payload["branch_meta"]["fork_brief"] == fork_brief

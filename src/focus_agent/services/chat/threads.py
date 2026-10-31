@@ -295,7 +295,13 @@ class ChatThreadAccessMixin:
             branch_meta = BranchMeta.model_validate(meta)
         except ValidationError:
             return repo_meta
-        return repo_meta or branch_meta
+        if repo_meta is None:
+            return branch_meta
+        # The repository is canonical for identity/status; the fork brief only
+        # lives in graph state, so carry it over.
+        if branch_meta.fork_brief and not repo_meta.fork_brief:
+            return repo_meta.model_copy(update={"fork_brief": branch_meta.fork_brief})
+        return repo_meta
 
     def _thread_resolution(self, *, thread_id: str, user_id: str) -> ThreadResolution:
         resolver = getattr(self.runtime.repo, "resolve_thread_ref", None)
