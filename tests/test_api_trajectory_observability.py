@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import focus_agent.api.main as api_main
 import focus_agent.api.routers.health_metrics as health_metrics_router
 from focus_agent.api.deps import get_current_principal
 from focus_agent.api.main import create_app
+from focus_agent.observability import trajectory_actions
 from focus_agent.observability.trajectory import TurnTrajectoryRecord
 from focus_agent.security.tokens import Principal
 from focus_agent.services.users import UserInactiveError
@@ -335,7 +335,7 @@ def test_trajectory_batch_promote_preview_filters_failed_turns_and_honors_limit(
             "jsonl": f'{{"id":"{case_id}"}}',
         }
 
-    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
 
     response = client.post(
         "/v1/observability/trajectory/batch/promote-preview",
@@ -371,7 +371,7 @@ def test_trajectory_batch_promote_preview_returns_empty_result(
         called = True
         raise AssertionError("promote helper should not run for an empty batch")
 
-    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
 
     response = client.post(
         "/v1/observability/trajectory/batch/promote-preview",
@@ -446,8 +446,8 @@ def test_trajectory_batch_replay_compare_returns_summary(
             },
         }
 
-    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
-    monkeypatch.setattr(api_main, "run_replay_for_turn", _fake_replay)
+    monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(trajectory_actions, "run_replay_for_turn", _fake_replay)
 
     response = client.post(
         "/v1/observability/trajectory/batch/replay-compare",

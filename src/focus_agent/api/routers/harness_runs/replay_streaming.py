@@ -34,6 +34,7 @@ from focus_agent.transport.tool_events import (
 )
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
+from ...route_helpers import run_sync_route_call
 from ...route_utils.branch_handoff_decisions import (
     mark_branch_handoff_decision_outcome,
     record_branch_handoff_decision_for_run,
@@ -57,7 +58,6 @@ from .replay_helpers import (
     _run_branch_action_turn_to_completion,
     _run_event_streaming_response,
     _run_message_from_payload,
-    _safe_chat_values,
     _safe_completed_visible_text,
     _source_node,
     _task_stream_event_payload,
@@ -70,8 +70,6 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
-_is_cancel_cleanup_exception = _streaming_lifecycle._is_cancel_cleanup_exception
-_safe_failed_thread_state = _streaming_lifecycle._safe_failed_thread_state
 _task_outcome_event_payload = _streaming_lifecycle._task_outcome_event_payload
 
 
@@ -84,7 +82,8 @@ async def stream_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    graph_payload, context, branch_meta, initial_values = _prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = await run_sync_route_call(
+        _prepare_run_payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
@@ -163,7 +162,8 @@ async def stream_harness_resume(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    command, context, branch_meta, initial_values = _prepare_resume_payload(
+    command, context, branch_meta, initial_values = await run_sync_route_call(
+        _prepare_resume_payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
@@ -532,8 +532,6 @@ async def _produce_run_stream(
             publish=publish,
             handoff_decision=handoff_decision,
             handoff_message=message or _message_text_from_graph_payload(payload),
-            mark_handoff=True,
-            safe_chat_values=_safe_chat_values,
         )
     except Exception as exc:  # noqa: BLE001
         interrupted = await _streaming_lifecycle._handle_stream_exception(
@@ -554,19 +552,16 @@ async def _produce_run_stream(
             started_at=started_at,
             handoff_decision=handoff_decision,
             handoff_message=message or _message_text_from_graph_payload(payload),
-            mark_handoff=True,
-            safe_chat_values=_safe_chat_values,
             record_harness_turn=_record_harness_turn_and_schedule,
         )
         if interrupted:
             return
     finally:
-        await _streaming_lifecycle._close_stream(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
             sequence=publish.sequence,
-            close_run_stream=_close_run_stream,
         )
 
 
@@ -663,7 +658,6 @@ async def _produce_branch_action_run_stream(
             branch_meta=branch_meta,
             trace_correlation=trace_correlation,
             publish=publish,
-            safe_chat_values=_safe_chat_values,
         )
     except Exception as exc:  # noqa: BLE001
         interrupted = await _streaming_lifecycle._handle_stream_exception(
@@ -682,16 +676,14 @@ async def _produce_branch_action_run_stream(
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
-            safe_chat_values=_safe_chat_values,
             record_harness_turn=_record_harness_turn_and_schedule,
         )
         if interrupted:
             return
     finally:
-        await _streaming_lifecycle._close_stream(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
             sequence=publish.sequence,
-            close_run_stream=_close_run_stream,
         )

@@ -1,8 +1,4 @@
-"""Compatibility imports for API route helpers.
-
-Routers should import narrower helpers from ``focus_agent.api.route_utils`` directly.
-This module keeps explicit compatibility exports for tests and legacy imports.
-"""
+"""Shared helpers for API route handlers."""
 
 from __future__ import annotations
 
@@ -10,32 +6,13 @@ import asyncio
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
 
-from focus_agent.observability.trajectory_actions import (
-    build_promoted_dataset_payload,
-    load_turn_export,
-    run_replay_for_turn,
-)
-
-from .route_utils.lifespan import app_lifespan
-from .route_utils.token_usage import (
-    _aggregate_token_usage_from_turns,
-    _annotate_branch_tree_token_usage,
-)
-
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
 async def run_sync_route_call(func: Callable[P, R], /, *args: P.args, **kwargs: P.kwargs) -> R:
+    """Run blocking service/repository code off the event loop from an async route."""
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
-__all__ = [
-    "_aggregate_token_usage_from_turns",
-    "_annotate_branch_tree_token_usage",
-    "app_lifespan",
-    "build_promoted_dataset_payload",
-    "load_turn_export",
-    "run_sync_route_call",
-    "run_replay_for_turn",
-]
+__all__ = ["run_sync_route_call"]

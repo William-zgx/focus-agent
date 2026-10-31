@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from time import monotonic
 from typing import Any
 
+import anyio
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
@@ -37,6 +38,7 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.transport.stream_events import sanitize_stream_metadata
 
+from ...route_helpers import run_sync_route_call
 from ...route_utils.harness_run_helpers import (
     _canonical_custom_event,
     _canonical_payload_extras,
@@ -55,6 +57,7 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest, HarnessRunRe
 from .replay_payloads import (
     _is_branch_handoff_auto_run,
     _message_text_from_graph_payload,
+    _preflight_thread_access,
     _prepare_resume_payload,
     _prepare_run_payload,
     _run_message_from_payload,
@@ -65,6 +68,10 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
+_DISCONNECT_CANCEL_ACTIONS = {
+    DisconnectMode.CANCEL: "interrupt",
+    DisconnectMode.ROLLBACK: "rollback",
+}
 
 
 def _task_stream_event_payload(
@@ -524,7 +531,9 @@ async def _load_authorized_run_payload(
     run_payload = await _load_run_payload(runtime, run_id)
     if run_payload is None:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    await run_sync_route_call(
+        _authorize_run_access, chat=chat, principal=principal, run_payload=run_payload
+    )
     return run_payload
 
 
@@ -540,15 +549,13 @@ def _authorize_run_access(
     thread_id = run_payload.get("thread_id")
     if not isinstance(thread_id, str) or not thread_id:
         raise HTTPException(status_code=404, detail="Run thread not found.")
-    try:
-        chat._preflight_thread_access(
-            thread_id=thread_id,
-            user_id=principal.user_id,
-            explicit_skill_hints=(),
-            require_writable=False,
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    _preflight_thread_access(
+        chat,
+        thread_id=thread_id,
+        user_id=principal.user_id,
+        explicit_skill_hints=(),
+        require_writable=False,
+    )
 
 
 def _run_event_streaming_response(
@@ -605,11 +612,12 @@ def _run_event_streaming_response(
         finally:
             if cancel_on_disconnect:
                 record = runtime.run_manager.get(run_id)
-                if record is not None and record.inflight:
-                    if record.on_disconnect is DisconnectMode.CANCEL:
-                        await runtime.run_manager.cancel(run_id, action="interrupt")
-                    elif record.on_disconnect is DisconnectMode.ROLLBACK:
-                        await runtime.run_manager.cancel(run_id, action="rollback")
+                action = _DISCONNECT_CANCEL_ACTIONS.get(record.on_disconnect) if record else None
+                if action is not None and record.inflight:
+                    # A client disconnect cancels this generator; shield the cleanup so
+                    # the cancel/rollback is not itself cancelled at its first await.
+                    with anyio.CancelScope(shield=True):
+                        await runtime.run_manager.cancel(run_id, action=action)
 
     return sse_streaming_response(event_stream())
 

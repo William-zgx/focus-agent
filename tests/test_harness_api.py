@@ -22,7 +22,7 @@ from focus_agent.api.routers.harness_runs import (
 )
 from focus_agent.api.routers.harness_runs import list as list_routes
 from focus_agent.harness.observability import InMemoryRunJournal, JournaledStreamBridge
-from focus_agent.harness.runtime import RunStatus
+from focus_agent.harness.runtime import DisconnectMode, RunStatus
 from focus_agent.harness.runtime.rollback import (
     ROLLBACK_TARGET_METADATA_KEY,
     CheckpointRollbackTarget,
@@ -1247,7 +1247,7 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
         manager = _RunManager()
         bridge = _Bridge()
         chat = _Chat()
-        request = SimpleNamespace(headers={"last-event-id": "evt-1"})
+        request = SimpleNamespace(headers={"last-event-id": "evt-1"}, query_params={})
         runtime = SimpleNamespace(
             run_manager=manager,
             event_store=None,
@@ -1276,6 +1276,56 @@ def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelli
         assert "event: message.delta" in "".join(chunks)
         assert "continued" in "".join(chunks)
         assert manager.cancelled is False
+
+    asyncio.run(scenario())
+
+
+def test_run_event_stream_disconnect_cleanup_survives_cancellation():
+    class _RunManager:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+
+        def get(self, run_id: str):
+            return SimpleNamespace(inflight=True, on_disconnect=DisconnectMode.ROLLBACK)
+
+        async def cancel(self, run_id: str, *, action: str):
+            self.calls.append(("started", action))
+            await asyncio.sleep(0)
+            self.calls.append(("finished", action))
+            return True
+
+    class _Bridge:
+        async def subscribe(self, run_id, *, last_event_id, heartbeat_interval):
+            yield StreamEvent(id="evt-1", event="run.status", data={"phase": "running"})
+            await asyncio.Event().wait()
+
+    async def scenario():
+        manager = _RunManager()
+        runtime = SimpleNamespace(
+            run_manager=manager,
+            stream_bridge=_Bridge(),
+            settings=SimpleNamespace(sse_heartbeat_seconds=15),
+        )
+        response = replay_helpers._run_event_streaming_response(
+            runtime=runtime,
+            run_id="run-1",
+            thread_id="thread-1",
+            request=SimpleNamespace(headers={}, query_params={}),
+            cancel_on_disconnect=True,
+        )
+        first_body = asyncio.Event()
+
+        async def send(message):
+            if message.get("body"):
+                first_body.set()
+
+        async def receive():
+            await first_body.wait()
+            return {"type": "http.disconnect"}
+
+        # ASGI < 2.4 servers (uvicorn) cancel the body iterator on client disconnect.
+        await response({"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send)
+        assert manager.calls == [("started", "rollback"), ("finished", "rollback")]
 
     asyncio.run(scenario())
 
