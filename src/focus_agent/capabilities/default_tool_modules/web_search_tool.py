@@ -414,8 +414,10 @@ class _WebSearchRunner:
             raise RuntimeError("No fallback web search provider is configured.")
         errors = _errors_from_exception(_error)
         attempted_providers = _attempted_providers_from_errors(errors)
-        if "duckduckgo" not in attempted_providers:
-            attempted_providers.append("duckduckgo")
+        if "duckduckgo" in attempted_providers:
+            # The provider chain already ran DuckDuckGo; retrying it only doubles the wait.
+            raise _error
+        attempted_providers.append("duckduckgo")
         payload = self._run_provider_attempt(
             provider="duckduckgo",
             query=normalized_query,

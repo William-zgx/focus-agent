@@ -760,15 +760,14 @@ def test_web_search_does_not_retry_tavily_auth_failures_before_fallback(monkeypa
 
 def test_web_search_raises_when_both_providers_fail(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = []
-    _FakeDDGS.raised = RuntimeError("ddg down")
+    _prepare_fake_ddgs(monkeypatch, raised=RuntimeError("ddg down"))
     tools = _tool_map(Settings())
 
     status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
 
     assert status == "error"
     assert "ddg down" in content
+    assert _FakeDDGS.call_count == 1
 
 
 def test_default_tools_expose_only_one_web_search_tool(monkeypatch):
