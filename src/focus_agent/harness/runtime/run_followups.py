@@ -6,6 +6,8 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from .coalesced_wakeup import CoalescedWakeupHelper
+
 logger = logging.getLogger("focus_agent.harness.runtime")
 
 
@@ -20,20 +22,9 @@ class RunFollowupsMixin:
         #             turn completes.
         self._steer_queues: dict[str, asyncio.Queue[str]] = {}
         self._followup_queues: dict[str, asyncio.Queue[str]] = {}
-        # P2 wiring: optional coalesced-wakeup drain worker for follow-up
-        # messages. Opt-in (``enable_followup_drain=True``) and must be
-        # started explicitly via :meth:`start_followup_drain`; it is *not*
-        # auto-started in ``__init__`` so existing callers see no behavior
-        # change.
-        self._enable_followup_drain = bool(enable_followup_drain)
-        # Lazy import to avoid a hard dependency when the helper module
-        # hasn't been vendored yet (keep RunManager importable in isolation).
-        try:
-            from .coalesced_wakeup import CoalescedWakeupHelper
-
-            self._coalesced_wakeup = CoalescedWakeupHelper()
-        except Exception:  # noqa: BLE001 - optional dependency
-            self._coalesced_wakeup = None
+        # Optional coalesced-wakeup drain worker for follow-up messages; it is
+        # never auto-started and must be started via :meth:`start_followup_drain`.
+        self._coalesced_wakeup = CoalescedWakeupHelper()
         self._drain_worker_task: asyncio.Task[None] | None = None
         # Optional callback the runtime wires up to actually start a new
         # turn when a followup arrives. Signature:
@@ -90,10 +81,8 @@ class RunFollowupsMixin:
         async with self._lock:
             queue = self._get_or_create_queue(thread_id, self._followup_queues)
         queue.put_nowait(message)
-        # Signal the drain worker if available. wake() is synchronous and
-        # coalesces multiple rapid signals into one pass.
-        if self._coalesced_wakeup is not None:
-            self._coalesced_wakeup.wake()
+        # wake() is synchronous and coalesces rapid signals into one drain pass.
+        self._coalesced_wakeup.wake()
         logger.debug(
             "Follow-up message queued for thread %s (depth=%d)",
             thread_id,
@@ -147,8 +136,7 @@ class RunFollowupsMixin:
 
     def wake(self) -> None:
         """Signal the drain worker that new follow-up work is available."""
-        if self._coalesced_wakeup is not None:
-            self._coalesced_wakeup.wake()
+        self._coalesced_wakeup.wake()
 
     def set_followup_handler(
         self,
@@ -159,8 +147,6 @@ class RunFollowupsMixin:
 
     def start_followup_drain(self) -> bool:
         """Start the background follow-up drain worker."""
-        if self._coalesced_wakeup is None:
-            return False
         if self._drain_worker_task is not None and not self._drain_worker_task.done():
             return False
         self._drain_worker_task = asyncio.create_task(
@@ -184,8 +170,6 @@ class RunFollowupsMixin:
 
     async def _drain_worker_loop(self) -> None:
         """Drain follow-up queues using coalesced wakeups."""
-        if self._coalesced_wakeup is None:
-            return
         logger.info("RunManager follow-up drain worker started")
         try:
             while True:

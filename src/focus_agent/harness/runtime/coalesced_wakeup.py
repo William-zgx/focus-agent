@@ -52,16 +52,6 @@ class CoalescedWakeupHelper:
         self._pending_wake: bool = False
         self._lock: asyncio.Lock = asyncio.Lock()
 
-    @property
-    def active(self) -> bool:
-        """Return ``True`` if a drain is currently executing."""
-        return self._active
-
-    @property
-    def pending_wake(self) -> bool:
-        """Return ``True`` if a coalesced wake is pending."""
-        return self._pending_wake
-
     def wake(self) -> None:
         """Signal that new work is available.
 
@@ -73,15 +63,7 @@ class CoalescedWakeupHelper:
         This method is synchronous and non-blocking; it is safe to call
         from any task (including from inside the drain function itself).
         """
-        if self._active:
-            self._pending_wake = True
-            logger.debug("CoalescedWakeupHelper: wake coalesced (active drain)")
-        else:
-            # When idle we still set the flag so the next
-            # execute_with_coalescing call proceeds; the drain loop is
-            # responsible for clearing it when it decides to stop.
-            self._pending_wake = True
-            logger.debug("CoalescedWakeupHelper: wake recorded (idle)")
+        self._pending_wake = True
 
     async def execute_with_coalescing(self, drain_fn: Callable[..., Any]) -> None:
         """Run ``drain_fn``, re-running it if extra wakes arrived.
@@ -127,11 +109,6 @@ class CoalescedWakeupHelper:
             # Defensive: ensure _active is reset even on exception.
             async with self._lock:
                 self._active = False
-
-    def reset(self) -> None:
-        """Force-reset all internal state (intended for tests/shutdown)."""
-        self._active = False
-        self._pending_wake = False
 
 
 __all__ = ["CoalescedWakeupHelper"]

@@ -1,7 +1,6 @@
 """Runtime lifecycle and configuration primitives for the Focus Agent harness."""
 
 from .config import HarnessConfig, RuntimeFeatures
-from .message_queue import DrainMode, PendingMessageQueue
 from .rollback import (
     CheckpointRollbackResult,
     CheckpointRollbackTarget,
@@ -22,12 +21,10 @@ from .runs import (
 
 __all__ = [
     "DisconnectMode",
-    "DrainMode",
     "HarnessConfig",
     "CheckpointRollbackResult",
     "CheckpointRollbackTarget",
     "MultitaskStrategy",
-    "PendingMessageQueue",
     "RunManager",
     "RunLifecyclePublisher",
     "RunRecord",
