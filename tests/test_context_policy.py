@@ -343,6 +343,53 @@ def test_prompt_budget_guard_prioritizes_imported_findings_over_summary_and_avai
     assert "low priority skill one" not in rendered
 
 
+def test_prompt_budget_guard_drops_oldest_history_first():
+    budget = ContextBudget(prompt_token_limit=60, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="OLD-H1 OLD-H1"),
+            AIMessage(content="OLD-A1 OLD-A1"),
+            HumanMessage(content="NEW-H2 NEW-H2"),
+            AIMessage(content="NEW-A2 NEW-A2"),
+            HumanMessage(content="latest q"),
+        ],
+        budget=budget,
+    )
+
+    contents = [str(message.content) for message in guarded]
+    assert contents[-1] == "latest q"
+    assert "NEW-A2 NEW-A2" in contents
+    assert "OLD-H1 OLD-H1" not in contents
+
+
+def test_prompt_budget_guard_drops_tool_calls_together_with_their_results():
+    budget = ContextBudget(prompt_token_limit=95, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="old q"),
+            AIMessage(content="", tool_calls=[{"id": "c0", "name": "lookup", "args": {}}]),
+            ToolMessage(content="x" * 20, tool_call_id="c0"),
+            AIMessage(content="old answer " * 3),
+            HumanMessage(content="latest q"),
+        ],
+        budget=budget,
+    )
+
+    call_ids = {
+        call["id"]
+        for message in guarded
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    result_ids = {message.tool_call_id for message in guarded if isinstance(message, ToolMessage)}
+    assert call_ids == result_ids
+    assert str(guarded[-1].content) == "latest q"
+
+
 def test_prompt_budget_guard_truncates_bulleted_blocks_without_breaking_bullet_lines():
     budget = ContextBudget(prompt_token_limit=120, chars_per_token=1)
     system_text = "\n\n".join(
