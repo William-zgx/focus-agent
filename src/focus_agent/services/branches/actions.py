@@ -145,7 +145,8 @@ _HANDOFF_TRAILING_CONTROL_RE = re.compile(
     flags=re.IGNORECASE,
 )
 _BRANCH_NAME_LABEL_RE = re.compile(
-    r"(?:标题|名字|名称|分支名)(?:叫|为|是|[:：])\s*(?P<name>[^，,。；;！？!?\n]+)",
+    r"(?:(?:标题|名字|名称|分支名)(?:叫做|叫|为|是|[:：])|分支(?:就)?(?:叫做|叫|名为)"
+    r"|命名为|取名(?:为|叫))\s*(?P<name>[^，,。；;！？!?\n]+)",
     flags=re.IGNORECASE,
 )
 _ENGLISH_BRANCH_TITLE_PREFIX_RE = re.compile(
