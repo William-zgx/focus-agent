@@ -3,12 +3,10 @@ from types import SimpleNamespace
 from langchain.messages import AIMessage
 
 from focus_agent.api.contracts import ApplyMergeDecisionRequest
-from focus_agent.api.main import (
+from focus_agent.api.main import create_app
+from focus_agent.api.route_utils.token_usage import (
     _aggregate_token_usage_from_turns,
     _annotate_branch_tree_token_usage,
-    create_app,
-)
-from focus_agent.api.route_utils.token_usage import (
     _token_usage_by_thread_for_root,
     _token_usage_for_root_thread,
 )

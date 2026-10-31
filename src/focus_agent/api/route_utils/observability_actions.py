@@ -5,6 +5,7 @@ from typing import Any
 
 from focus_agent.config import Settings
 from focus_agent.engine.runtime import AppRuntime
+from focus_agent.observability import trajectory_actions
 
 from ..contracts import (
     TrajectoryBatchPromotionPreviewResponse,
@@ -27,14 +28,8 @@ def _promotion_payload_kwargs(payload: Any) -> dict[str, Any]:
     }
 
 
-def _trajectory_action(name: str):
-    from focus_agent.api import main as api_main
-
-    return getattr(api_main, name)
-
-
 def load_exported_turn(repo: Any, *, turn_id: str) -> dict[str, Any] | None:
-    return _trajectory_action("load_turn_export")(repo, turn_id=turn_id)
+    return trajectory_actions.load_turn_export(repo, turn_id=turn_id)
 
 
 def build_trajectory_promotion_response(
@@ -43,7 +38,7 @@ def build_trajectory_promotion_response(
     payload: Any,
 ) -> TrajectoryPromotionResponse:
     return TrajectoryPromotionResponse.model_validate(
-        _trajectory_action("build_promoted_dataset_payload")(
+        trajectory_actions.build_promoted_dataset_payload(
             record,
             **_promotion_payload_kwargs(payload),
         )
@@ -57,11 +52,11 @@ def build_trajectory_replay_response(
     settings: Settings,
     model_used: str,
 ) -> TrajectoryReplayResponse:
-    promoted = _trajectory_action("build_promoted_dataset_payload")(
+    promoted = trajectory_actions.build_promoted_dataset_payload(
         record,
         **_promotion_payload_kwargs(payload),
     )
-    replay = _trajectory_action("run_replay_for_turn")(
+    replay = trajectory_actions.run_replay_for_turn(
         record,
         settings=settings,
         model=getattr(payload, "model", None),

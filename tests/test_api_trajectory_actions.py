@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import focus_agent.api.main as api_main
 from focus_agent.api.main import create_app
+from focus_agent.observability import trajectory_actions
 
 
 def _with_stub_frontend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -63,7 +63,7 @@ def test_trajectory_replay_action_returns_display_payload(
     client = _build_client(monkeypatch, tmp_path)
 
     monkeypatch.setattr(
-        api_main,
+        trajectory_actions,
         "load_turn_export",
         lambda repo, *, turn_id: {
             "id": turn_id,
@@ -152,8 +152,8 @@ def test_trajectory_replay_action_returns_display_payload(
             },
         }
 
-    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
-    monkeypatch.setattr(api_main, "run_replay_for_turn", _fake_replay)
+    monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(trajectory_actions, "run_replay_for_turn", _fake_replay)
 
     response = client.post(
         "/v1/observability/trajectory/turn-1/replay",
@@ -186,7 +186,7 @@ def test_trajectory_promote_action_returns_dataset_preview(
     client = _build_client(monkeypatch, tmp_path)
 
     monkeypatch.setattr(
-        api_main,
+        trajectory_actions,
         "load_turn_export",
         lambda repo, *, turn_id: {
             "id": turn_id,
@@ -215,7 +215,7 @@ def test_trajectory_promote_action_returns_dataset_preview(
             "jsonl": '{"id":"traj-turn-2"}',
         }
 
-    monkeypatch.setattr(api_main, "build_promoted_dataset_payload", _fake_promote)
+    monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
 
     response = client.post(
         "/v1/observability/trajectory/turn-2/promote",
@@ -241,7 +241,7 @@ def test_trajectory_action_returns_404_when_turn_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     client = _build_client(monkeypatch, tmp_path)
-    monkeypatch.setattr(api_main, "load_turn_export", lambda repo, *, turn_id: None)
+    monkeypatch.setattr(trajectory_actions, "load_turn_export", lambda repo, *, turn_id: None)
 
     response = client.post("/v1/observability/trajectory/missing/promote", json={})
 
