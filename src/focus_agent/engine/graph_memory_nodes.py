@@ -8,6 +8,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..config import Settings
+from ..core.branch_brief import fork_brief_goal_update
 from ..core.context.policy import assemble_context as build_context_slice
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
@@ -125,6 +126,8 @@ def make_assemble_context_node(
             "available_skills_block": available_skills_block,
             # Reset per-turn pipeline extras so they don't accumulate across turns.
             "context_extra_blocks": [],
+            # Pin the branch goal once the first local user turn supplies it.
+            **fork_brief_goal_update(state),
         }
         if settings.agent_context_engineering_v2_enabled:
             decision = build_context_engineering_decision(

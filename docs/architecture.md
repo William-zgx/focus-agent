@@ -513,6 +513,7 @@ main thread
 - `local_snapshot_seed` fork 会先净化父线程快照：移除复制过来的 Branch Action 控制消息、已执行确认回执、临时 tool / prompt / agent 状态，并用 `branch_fork_message_count` 记录新分支初始可见消息边界。
 - Branch Action 的 `handoff_message` 会在新 child / sibling thread 中作为唯一交接 user message 注入；如果 seed 中已经有相同 human message，auto-run 不会重复追加。
 - UI transcript、模型消息组装和 context preview 都使用 branch-visible message 过滤，避免同级分支上下文或旧确认卡泄漏进新分支。
+- fork 时写入 `branch_meta.fork_brief`（`goal`、`parent_summary`、`parent_recent_turns`、`forked_at`、`parent_message_count`）：父线程的压缩/rolling summary 与最近 2-3 轮可见对话。分支 prompt 在 `## Branch brief` 块中以“背景”身份渲染它（受 prompt budget 分块裁剪），不改变 UI transcript。`goal` 取 pending Branch Action 的 handoff，否则在分支第一条 user message 到达时固定下来，并同步写入 `active_goal`；sibling 分支拿到的是共同父线程的 brief。
 - `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。

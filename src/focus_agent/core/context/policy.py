@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain.messages import AnyMessage
 
+from ..branch_brief import resolve_fork_brief
 from ..context_compaction import select_recent_messages
 from ..state import normalize_agent_state
 from ..types import ContextBudget, PromptMode
@@ -82,6 +83,9 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
     budget = ContextBudget.coerce(normalized.get("context_budget"))
     branch_meta = normalized.get("branch_meta") or {}
     is_branch = bool(branch_meta)
+    fork_brief = resolve_fork_brief(normalized) if is_branch else None
+    if fork_brief is not None:
+        branch_meta = {**branch_meta, "fork_brief": fork_brief}
 
     messages = select_recent_messages({**normalized, "context_budget": budget})
     recent_messages = _conversation_safe_messages(messages, limit=max(1, len(messages)))
@@ -108,8 +112,11 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
 
     constraints = _coerce_constraints(normalized.get("user_constraints", []))
     constraint_lines = [item.constraint for item in constraints]
-    if normalized.get("active_goal"):
-        constraint_lines.insert(0, f"Active goal: {normalized['active_goal']}")
+    active_goal = str(normalized.get("active_goal") or "").strip()
+    if not active_goal and fork_brief is not None:
+        active_goal = str(fork_brief.get("goal") or "").strip()
+    if active_goal:
+        constraint_lines.insert(0, f"Active goal: {active_goal}")
     current_step_goal = _current_plan_step_goal(normalized)
     if current_step_goal:
         constraint_lines.insert(1 if constraint_lines else 0, f"Current step: {current_step_goal}")

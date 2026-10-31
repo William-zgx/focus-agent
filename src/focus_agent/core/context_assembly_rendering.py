@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .branch_brief import render_branch_brief
 from .context_policy_helpers import render_block_order as _render_block_order_helper
 from .types import PromptMode
 
@@ -25,7 +26,9 @@ def _branch_scope_block(*, branch_meta: dict[str, Any], is_branch: bool) -> str:
         f"- branch_role: {branch_meta.get('branch_role')}",
         *policy_lines,
     ]
-    return "\n".join(lines)
+    # The brief is a separate block so prompt-budget trimming can rank it on its own.
+    brief = render_branch_brief(branch_meta.get("fork_brief"))
+    return "\n".join(lines) + (f"\n\n{brief}" if brief else "")
 
 
 def _mode_instructions(mode: PromptMode) -> str:
@@ -101,6 +104,8 @@ def _context_block_header(block: str) -> str:
         return "prompt_mode"
     if lowered.startswith("## branch scope"):
         return "branch_scope"
+    if lowered.startswith("## branch brief"):
+        return "branch_brief"
     if lowered.startswith("## scene"):
         return "scene"
     if lowered.startswith("## skill system"):
@@ -131,6 +136,7 @@ def _block_priority_map(prompt_mode: PromptMode) -> dict[str, int]:
         "findings": 1,
         "pinned": 2,
         "branch_findings": 2,
+        "branch_brief": 2,
         "artifacts": 3,
         "preamble": 3,
         "scene": 4,

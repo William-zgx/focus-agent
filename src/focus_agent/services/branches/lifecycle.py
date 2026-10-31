@@ -4,6 +4,7 @@ import logging
 import uuid
 from copy import deepcopy
 
+from ...core.branch_brief import build_fork_brief, pending_fork_handoff_goal
 from ...core.branch_messages import branch_seed_messages
 from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from ...core.types import ConversationRecord, PromptMode
@@ -146,6 +147,11 @@ class BranchLifecycleCoordinator:
             branch_role == BranchRole.EXPLORE_ALTERNATIVES
         )
         branch_meta_payload["branch_fork_message_count"] = seed_message_count
+        fork_brief = build_fork_brief(
+            parent_values,
+            goal=pending_fork_handoff_goal(parent_values, parent_thread_id=parent_thread_id),
+        )
+        branch_meta_payload["fork_brief"] = fork_brief
         if name_source is not None:
             branch_meta_payload["branch_name_source"] = name_source
 
@@ -175,6 +181,7 @@ class BranchLifecycleCoordinator:
                 {"configurable": {"thread_id": child_thread_id}},
                 {
                     "branch_meta": branch_meta_payload,
+                    "active_goal": fork_brief["goal"],
                     "rolling_summary": "",
                     "context_compaction": {},
                     "merge_proposal": None,
