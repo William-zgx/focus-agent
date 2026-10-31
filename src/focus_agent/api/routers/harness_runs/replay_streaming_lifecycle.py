@@ -9,7 +9,6 @@ from focus_agent.services.chat import ChatService
 
 from ...route_utils.branch_handoff_decisions import mark_branch_handoff_decision_outcome
 from .replay_helpers import (
-    _close_run_stream,
     _publish_run_event,
     _record_harness_turn_and_schedule,
     _safe_chat_values,
@@ -18,10 +17,7 @@ from .replay_helpers import (
 PublishRunEvent = Callable[..., Awaitable[None]]
 SafeChatValues = Callable[..., dict[str, Any]]
 SafeFailedThreadState = Callable[..., dict[str, Any] | None]
-TaskOutcomeEventPayload = Callable[[Any], dict[str, Any]]
-MarkHandoffOutcome = Callable[..., None]
 RecordHarnessTurn = Callable[..., None]
-CloseRunStream = Callable[..., Awaitable[None]]
 
 
 class _RunEventPublisher:
@@ -101,22 +97,18 @@ async def _handle_cancelled_stream(
     publish: PublishRunEvent,
     handoff_decision: Any = None,
     handoff_message: str | None = None,
-    mark_handoff: bool = False,
     safe_chat_values: SafeChatValues = _safe_chat_values,
     safe_failed_thread_state: SafeFailedThreadState = _safe_failed_thread_state,
-    task_outcome_event_payload: TaskOutcomeEventPayload = _task_outcome_event_payload,
-    mark_handoff_outcome: MarkHandoffOutcome = mark_branch_handoff_decision_outcome,
 ) -> None:
     await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-    if mark_handoff:
-        mark_handoff_outcome(
-            runtime=runtime,
-            decision=handoff_decision,
-            run_status=RunStatus.INTERRUPTED.value,
-            run_id=run_id,
-            message=handoff_message,
-            error="CancelledError",
-        )
+    mark_branch_handoff_decision_outcome(
+        runtime=runtime,
+        decision=handoff_decision,
+        run_status=RunStatus.INTERRUPTED.value,
+        run_id=run_id,
+        message=handoff_message,
+        error="CancelledError",
+    )
     record = runtime.run_manager.get(run_id)
     if record is not None and record.abort_event.is_set():
         return
@@ -134,7 +126,7 @@ async def _handle_cancelled_stream(
         error="CancelledError",
         message="Run was cancelled.",
         **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-        **task_outcome_event_payload(failed_values.get("task_outcome")),
+        **_task_outcome_event_payload(failed_values.get("task_outcome")),
     )
 
 
@@ -157,38 +149,29 @@ async def _handle_stream_exception(
     started_at: Any,
     handoff_decision: Any = None,
     handoff_message: str | None = None,
-    mark_handoff: bool = False,
     safe_chat_values: SafeChatValues = _safe_chat_values,
     safe_failed_thread_state: SafeFailedThreadState = _safe_failed_thread_state,
-    task_outcome_event_payload: TaskOutcomeEventPayload = _task_outcome_event_payload,
-    mark_handoff_outcome: MarkHandoffOutcome = mark_branch_handoff_decision_outcome,
     record_harness_turn: RecordHarnessTurn = _record_harness_turn_and_schedule,
 ) -> bool:
+    """Record a failed run and publish ``run.failed``; return True when it was an abort."""
     record = runtime.run_manager.get(run_id)
     if record is not None and record.abort_event.is_set() and _is_cancel_cleanup_exception(exc):
-        await runtime.run_manager.set_status(run_id, RunStatus.INTERRUPTED)
-        if mark_handoff:
-            mark_handoff_outcome(
-                runtime=runtime,
-                decision=handoff_decision,
-                run_status=RunStatus.INTERRUPTED.value,
-                run_id=run_id,
-                message=handoff_message,
-                error=str(exc),
-            )
+        run_status = RunStatus.INTERRUPTED
+    elif isinstance(exc, TimeoutError):
+        run_status = RunStatus.TIMEOUT
+    else:
+        run_status = RunStatus.ERROR
+    mark_branch_handoff_decision_outcome(
+        runtime=runtime,
+        decision=handoff_decision,
+        run_status=run_status.value,
+        run_id=run_id,
+        message=handoff_message,
+        error=str(exc),
+    )
+    if run_status is RunStatus.INTERRUPTED:
+        await runtime.run_manager.set_status(run_id, run_status)
         return True
-    if mark_handoff:
-        mark_handoff_outcome(
-            runtime=runtime,
-            decision=handoff_decision,
-            run_status=(
-                RunStatus.TIMEOUT.value if isinstance(exc, TimeoutError) else RunStatus.ERROR.value
-            ),
-            run_id=run_id,
-            message=handoff_message,
-            error=str(exc),
-        )
-    run_status = RunStatus.TIMEOUT if isinstance(exc, TimeoutError) else RunStatus.ERROR
     await runtime.run_manager.set_status(run_id, run_status, error=str(exc))
     failed_values = safe_chat_values(chat=chat, thread_id=thread_id)
     failed_thread_state = safe_failed_thread_state(
@@ -220,22 +203,6 @@ async def _handle_stream_exception(
         error=exc.__class__.__name__,
         message=str(exc),
         **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-        **task_outcome_event_payload(failed_values.get("task_outcome")),
+        **_task_outcome_event_payload(failed_values.get("task_outcome")),
     )
     return False
-
-
-async def _close_stream(
-    *,
-    runtime: AppRuntime,
-    run_id: str,
-    thread_id: str,
-    sequence: int,
-    close_run_stream: CloseRunStream = _close_run_stream,
-) -> None:
-    await close_run_stream(
-        runtime=runtime,
-        run_id=run_id,
-        thread_id=thread_id,
-        sequence=sequence,
-    )

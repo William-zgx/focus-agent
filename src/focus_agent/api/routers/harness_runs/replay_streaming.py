@@ -58,7 +58,6 @@ from .replay_helpers import (
     _run_branch_action_turn_to_completion,
     _run_event_streaming_response,
     _run_message_from_payload,
-    _safe_chat_values,
     _safe_completed_visible_text,
     _source_node,
     _task_stream_event_payload,
@@ -71,8 +70,6 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
-_is_cancel_cleanup_exception = _streaming_lifecycle._is_cancel_cleanup_exception
-_safe_failed_thread_state = _streaming_lifecycle._safe_failed_thread_state
 _task_outcome_event_payload = _streaming_lifecycle._task_outcome_event_payload
 
 
@@ -535,8 +532,6 @@ async def _produce_run_stream(
             publish=publish,
             handoff_decision=handoff_decision,
             handoff_message=message or _message_text_from_graph_payload(payload),
-            mark_handoff=True,
-            safe_chat_values=_safe_chat_values,
         )
     except Exception as exc:  # noqa: BLE001
         interrupted = await _streaming_lifecycle._handle_stream_exception(
@@ -557,19 +552,16 @@ async def _produce_run_stream(
             started_at=started_at,
             handoff_decision=handoff_decision,
             handoff_message=message or _message_text_from_graph_payload(payload),
-            mark_handoff=True,
-            safe_chat_values=_safe_chat_values,
             record_harness_turn=_record_harness_turn_and_schedule,
         )
         if interrupted:
             return
     finally:
-        await _streaming_lifecycle._close_stream(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
             sequence=publish.sequence,
-            close_run_stream=_close_run_stream,
         )
 
 
@@ -666,7 +658,6 @@ async def _produce_branch_action_run_stream(
             branch_meta=branch_meta,
             trace_correlation=trace_correlation,
             publish=publish,
-            safe_chat_values=_safe_chat_values,
         )
     except Exception as exc:  # noqa: BLE001
         interrupted = await _streaming_lifecycle._handle_stream_exception(
@@ -685,16 +676,14 @@ async def _produce_branch_action_run_stream(
             initial_message_count=initial_message_count,
             initial_llm_calls=initial_llm_calls,
             started_at=started_at,
-            safe_chat_values=_safe_chat_values,
             record_harness_turn=_record_harness_turn_and_schedule,
         )
         if interrupted:
             return
     finally:
-        await _streaming_lifecycle._close_stream(
+        await _close_run_stream(
             runtime=runtime,
             run_id=run_id,
             thread_id=thread_id,
             sequence=publish.sequence,
-            close_run_stream=_close_run_stream,
         )

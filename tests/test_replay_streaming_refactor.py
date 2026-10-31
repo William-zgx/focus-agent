@@ -7,16 +7,13 @@ from focus_agent.api.routers.harness_runs import replay_streaming_lifecycle as l
 from focus_agent.harness.runtime import RunStatus
 
 
-def test_replay_streaming_preserves_lifecycle_compatibility_exports_and_line_budget():
+def test_replay_streaming_stays_within_line_budget():
     streaming_path = Path(replay_streaming.__file__)
 
-    assert replay_streaming._task_outcome_event_payload is lifecycle._task_outcome_event_payload
-    assert replay_streaming._safe_failed_thread_state is lifecycle._safe_failed_thread_state
-    assert replay_streaming._is_cancel_cleanup_exception is lifecycle._is_cancel_cleanup_exception
     assert len(streaming_path.read_text(encoding="utf-8").splitlines()) <= 700
 
 
-def test_lifecycle_helpers_report_failures_and_close_the_stream():
+def test_lifecycle_helpers_report_failures():
     class _Manager:
         def __init__(self):
             self.record = SimpleNamespace(abort_event=asyncio.Event())
@@ -34,13 +31,9 @@ def test_lifecycle_helpers_report_failures_and_close_the_stream():
         runtime = SimpleNamespace(run_manager=manager)
         published = []
         recorded = []
-        closed = []
 
         async def publish(event_name, **data):
             published.append((event_name, data))
-
-        async def close_run_stream(**kwargs):
-            closed.append(kwargs)
 
         interrupted = await lifecycle._handle_stream_exception(
             runtime=runtime,
@@ -62,13 +55,6 @@ def test_lifecycle_helpers_report_failures_and_close_the_stream():
             safe_failed_thread_state=lambda **kwargs: {"thread_id": "thread-1"},
             record_harness_turn=lambda **kwargs: recorded.append(kwargs),
         )
-        await lifecycle._close_stream(
-            runtime=runtime,
-            run_id="run-1",
-            thread_id="thread-1",
-            sequence=3,
-            close_run_stream=close_run_stream,
-        )
 
         assert interrupted is False
         assert manager.statuses == [
@@ -86,14 +72,6 @@ def test_lifecycle_helpers_report_failures_and_close_the_stream():
                     "task_outcome": {"status": "failed"},
                 },
             )
-        ]
-        assert closed == [
-            {
-                "runtime": runtime,
-                "run_id": "run-1",
-                "thread_id": "thread-1",
-                "sequence": 3,
-            }
         ]
 
     asyncio.run(scenario())
