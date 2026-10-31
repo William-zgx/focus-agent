@@ -42,10 +42,6 @@ class InMemoryBranchRepository(BranchRepository):
         return record.model_copy(deep=True)
 
     @staticmethod
-    def _copy_conversation(record: ConversationRecord) -> ConversationRecord:
-        return record.model_copy(deep=True)
-
-    @staticmethod
     def _row_to_record(record: BranchRecord) -> BranchRecord:
         return record
 
@@ -54,25 +50,24 @@ class InMemoryBranchRepository(BranchRepository):
         return record
 
     def _backfill_conversations(self, *, owner_user_id: str) -> None:
-        for thread_id, owner in list(self._thread_roots.items()):
-            if owner != owner_user_id:
-                continue
-            root_thread_id = self._thread_roots[thread_id]
-            if thread_id != root_thread_id:
-                continue
-            if root_thread_id in self._conversations:
-                continue
-            self._conversations[root_thread_id] = ConversationRecord(
-                root_thread_id=root_thread_id,
-                owner_user_id=owner_user_id,
-                title=self._default_conversation_title(root_thread_id),
-                title_pending_ai=True,
-                is_archived=False,
-                archived_at=None,
-                created_at=_now_iso(),
-                updated_at=_now_iso(),
-                token_usage={},
-            )
+        with self._lock:
+            for thread_id, owner in self._thread_access.items():
+                root_thread_id = self._thread_roots.get(thread_id)
+                if owner != owner_user_id or thread_id != root_thread_id:
+                    continue
+                if root_thread_id in self._conversations:
+                    continue
+                self._conversations[root_thread_id] = ConversationRecord(
+                    root_thread_id=root_thread_id,
+                    owner_user_id=owner_user_id,
+                    title=self._default_conversation_title(root_thread_id),
+                    title_pending_ai=True,
+                    is_archived=False,
+                    archived_at=None,
+                    created_at=_now_iso(),
+                    updated_at=_now_iso(),
+                    token_usage={},
+                )
 
     def create(self, record: BranchRecord) -> None:
         with self._lock:
@@ -185,7 +180,6 @@ class InMemoryBranchRepository(BranchRepository):
             if existing_owner is None:
                 self._thread_access[thread_id] = owner_user_id
                 self._thread_roots[thread_id] = root_thread_id
-                self._backfill_conversations(owner_user_id=owner_user_id)
                 allow_ownership(
                     events,
                     principal=owner_user_id,
