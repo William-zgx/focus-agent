@@ -732,3 +732,45 @@ def test_docker_backend_missing_image_error_includes_preflight_command(tmp_path,
     assert "missing-sandbox:latest" in message
     assert "scripts/ensure_sandbox_image.py" in message
     assert "--image missing-sandbox:latest" in message
+
+
+def test_generated_runner_copies_nested_workspace_and_runs_command(tmp_path):
+    source = tmp_path / "input"
+    (source / "pkg" / "node_modules").mkdir(parents=True)
+    (source / "pkg" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (source / "pkg" / "node_modules" / "dep.js").write_text("x\n", encoding="utf-8")
+    workspace, output = tmp_path / "ws", tmp_path / "out"
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "command": [sys.executable, "-c", "print(open('pkg/module.py').read())"],
+                "cwd": ".",
+                "timeout_seconds": 30,
+                "workspace_mode": "copy_discard",
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner_path = tmp_path / "runner.py"
+    sandbox_execution._write_runner(runner_path)
+
+    subprocess.run(
+        [sys.executable, str(runner_path)],
+        env={
+            **os.environ,
+            "SANDBOX_INPUT": str(source),
+            "SANDBOX_WORKSPACE": str(workspace),
+            "SANDBOX_OUTPUT": str(output),
+            "SANDBOX_CACHE": str(tmp_path / "cache"),
+            "SANDBOX_REQUEST": str(request_path),
+        },
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    result = json.loads((output / "result.json").read_text(encoding="utf-8"))
+    assert result["exit_code"] == 0, result["stderr"]
+    assert result["stdout"] == "VALUE = 1\n\n"
+    assert not (workspace / "pkg" / "node_modules").exists()

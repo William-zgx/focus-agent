@@ -122,7 +122,7 @@ SEED_MARKER = WORKSPACE / ".focus-agent-workspace-seeded"
 
 
 def _ignore(_dir, names):
-    return {{name for name in names if name in SKIP_NAMES or name == ".focus_agent"}}
+    return {name for name in names if name in SKIP_NAMES or name == ".focus_agent"}
 
 
 def _copy_workspace():
