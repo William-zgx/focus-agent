@@ -227,6 +227,7 @@ GET  /v1/branch-decisions/config
 GET  /v1/threads/{thread_id}/branch-decisions
 GET  /v1/threads/{thread_id}/resolution
 GET  /v1/branches/tree/{thread_id}
+POST /v1/branches/fork
 POST /v1/threads/{thread_id}/branch-decisions/{decision_id}/promote
 POST /v1/threads/{thread_id}/branch-decisions/{decision_id}/dismiss
 POST /v1/threads/{thread_id}/branch-actions/{action_id}/execute
@@ -242,12 +243,39 @@ The Web SDK exposes:
 
 - `getThreadResolution()`
 - `getBranchTree()`
+- `forkBranch()`
 - `getBranchDecisionConfig()`
 - `listThreadBranchDecisions()`
 - `promoteBranchDecision()`
 - `dismissBranchDecision()`
 - `executeBranchAction()`
 - `dismissBranchAction()`
+
+`POST /v1/branches/fork` (`ForkBranchRequest`) forks from the parent's latest
+state by default; that is what the manual "New branch" button does. The
+message action "Branch from here" sends `fork_at_message_id`, the `id` of a
+visible parent message, and the child is seeded only with the parent messages
+up to and including it (plus the tool results answering it):
+
+- It always uses the `local_snapshot_seed` strategy, even when a LangGraph
+  thread client could copy the thread.
+- `branch_fork_message_count`, `fork_brief` (`parent_recent_turns`,
+  `parent_message_count`) and `fork_inherited_counts` are computed from the cut
+  parent view, so later parent turns reach neither the transcript nor the
+  prompt.
+- When the cut drops later messages, turn-scoped parent state from those turns
+  is dropped too: pending Branch Actions (so their handoff is not used as the
+  goal), `task_outcome`, and `tool_outcomes` whose ToolMessage was cut.
+- `parent_summary` is kept only when `context_compaction.source_message_tail_id`
+  is not one of the dropped messages; without that stamp the summary is kept.
+- Pinned facts, constraints, imported findings, merge queue, citations and
+  artifacts carry no turn attribution and are inherited unchanged.
+- An id that is not a visible parent message returns 400. The id is recorded
+  as `branch_meta.fork_at_message_id`. `fork_checkpoint_id` keeps its existing
+  behaviour: it is recorded, and the child is still seeded from the latest
+  parent state.
+
+The Android local runtime applies the same message cut in `forkBranchRecord`.
 
 `ThreadStateResponse` includes `branch_actions` and
 `branch_decision_summary`. Stream `run.completed` may include
