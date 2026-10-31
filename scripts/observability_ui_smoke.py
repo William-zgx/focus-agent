@@ -366,7 +366,9 @@ def run_observability_ui_smoke_test(
         turn_ids = dict(seed.get("turn_ids") or {})
 
         port = pick_free_port()
-        temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-observability-ui-smoke-")
+        temp_dir = tempfile.TemporaryDirectory(
+            prefix="focus-agent-observability-ui-smoke-", ignore_cleanup_errors=True
+        )
         chrome_process = subprocess.Popen(  # noqa: S603
             [
                 chrome_path,

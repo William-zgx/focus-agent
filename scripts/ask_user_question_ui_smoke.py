@@ -342,7 +342,9 @@ def run_smoke(
         )
 
     port = pick_free_port()
-    temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-ask-user-question-ui-smoke-")
+    temp_dir = tempfile.TemporaryDirectory(
+        prefix="focus-agent-ask-user-question-ui-smoke-", ignore_cleanup_errors=True
+    )
     chrome_process = subprocess.Popen(  # noqa: S603
         [
             chrome_path,

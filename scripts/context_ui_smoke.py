@@ -409,6 +409,7 @@ def run(args: argparse.Namespace) -> int:
                     """
               const old = location.pathname;
               (await qa.wait(() => qa.button('Fork branch','New branch','新建分支','创建分支'), 'fork')).click();
+              (await qa.wait(() => document.querySelector('[role="dialog"] button[type="submit"]:not([disabled])'), 'fork dialog submit')).click();
               await qa.wait(() => location.pathname !== old, 'branch route');
               await qa.wait(() => document.querySelector('textarea'), 'branch composer');
               return JSON.stringify({path: location.pathname});

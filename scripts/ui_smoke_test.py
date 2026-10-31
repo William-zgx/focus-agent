@@ -492,6 +492,12 @@ def build_smoke_expression(
     return button || null;
   }}, 20000, 'new branch button enabled');
   clickEnabledButton(...newBranchLabels);
+  const forkDialogSubmit = await waitFor(
+    () => document.querySelector('[role="dialog"] button[type="submit"]:not([disabled])'),
+    20000,
+    'fork dialog submit'
+  );
+  forkDialogSubmit.click();
   await waitFor(() => hasThreadRoute() && location.pathname !== result.threadPath, 20000, 'branch route');
   result.branchPath = location.pathname;
   await openReviewFlow();
@@ -545,7 +551,9 @@ def run_ui_smoke_test(
     ensure_health(health_url)
     demo_access_token = create_demo_access_token(health_url)
     port = pick_free_port()
-    temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-ui-smoke-")
+    temp_dir = tempfile.TemporaryDirectory(
+        prefix="focus-agent-ui-smoke-", ignore_cleanup_errors=True
+    )
     chrome_process = subprocess.Popen(  # noqa: S603
         [
             chrome_path,

@@ -407,7 +407,9 @@ def capture_pages(
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     port = pick_free_port()
-    temp_dir = tempfile.TemporaryDirectory(prefix="focus-agent-doc-screenshots-")
+    temp_dir = tempfile.TemporaryDirectory(
+        prefix="focus-agent-doc-screenshots-", ignore_cleanup_errors=True
+    )
     chrome_process = subprocess.Popen(  # noqa: S603
         [
             chrome_path,
