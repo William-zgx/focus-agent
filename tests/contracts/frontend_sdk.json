@@ -320,7 +320,7 @@
     "BranchDecisionMode": "export type BranchDecisionMode = \"shadow\" | \"suggest\" | \"execute\";",
     "BranchDecisionRecommendationTarget": "export type BranchDecisionRecommendationTarget = | \"continue_current\" | \"fork_sibling_branch\" | \"fork_child_branch\";",
     "BranchDecisionStatus": "export type BranchDecisionStatus = | \"shadowed\" | \"suggested\" | \"promoted\" | \"dismissed\" | \"skipped\" | \"blocked\" | \"error\";",
-    "BranchMeta": "export interface BranchMeta { branch_id: string; root_thread_id: string; parent_thread_id: string; return_thread_id: string; branch_name: string; branch_role: BranchRole; branch_depth: number; branch_status: BranchStatus; is_archived?: boolean; archived_at?: string | null; fork_checkpoint_id?: string | null; fork_strategy: string; }",
+    "BranchMeta": "export interface BranchMeta { branch_id: string; root_thread_id: string; parent_thread_id: string; return_thread_id: string; branch_name: string; branch_role: BranchRole; branch_depth: number; branch_status: BranchStatus; is_archived?: boolean; archived_at?: string | null; fork_checkpoint_id?: string | null; fork_strategy: string; /** Absent on branches created before fork briefs existed. */ fork_brief?: FocusAgentForkBrief | null; }",
     "BranchRole": "export type BranchRole = | \"main\" | \"explore_alternatives\" | \"deep_dive\" | \"execute\" | \"verify\" | \"writeup\";",
     "BranchStatus": "export type BranchStatus = | \"active\" | \"paused\" | \"preparing_merge_review\" | \"awaiting_merge_review\" | \"merged\" | \"discarded\" | \"closed\";",
     "BranchTreeNode": "export interface BranchTreeNode { thread_id: string; root_thread_id: string; parent_thread_id?: string | null; branch_id?: string | null; branch_name: string; branch_role: BranchRole; branch_status: BranchStatus; is_archived?: boolean; archived_at?: string | null; branch_depth: number; fork_strategy?: string | null; token_usage?: FocusAgentTokenUsageSummary; /** Latest checkpoint timestamp of the thread (last turn or state update). */ last_activity_at?: string | null; children: BranchTreeNode[]; }",
@@ -475,6 +475,8 @@
     "FocusAgentForgetMemoryRequest": "export interface FocusAgentForgetMemoryRequest { namespace?: FocusAgentMemoryNamespace | null; reason?: string | null; }",
     "FocusAgentForgetMemoryResponse": "export interface FocusAgentForgetMemoryResponse { memory_id: string; forgotten: boolean; status?: string | null; tombstone_id?: string | null; audit_id?: string | null; decision?: Record<string, unknown>; }",
     "FocusAgentForkBranchRequest": "export interface FocusAgentForkBranchRequest { parent_thread_id: string; branch_name?: string; name_source?: string; branch_role?: BranchRole; fork_checkpoint_id?: string; language?: \"en\" | \"zh\"; }",
+    "FocusAgentForkBrief": "export interface FocusAgentForkBrief { goal: string; parent_summary: string; parent_recent_turns: FocusAgentForkBriefTurn[]; forked_at: string; parent_message_count: number; }",
+    "FocusAgentForkBriefTurn": "export interface FocusAgentForkBriefTurn { role: \"user\" | \"assistant\"; content: string; }",
     "FocusAgentHarnessResumeRequest": "export interface FocusAgentHarnessResumeRequest { resume: unknown; metadata?: Record<string, unknown>; on_disconnect?: \"cancel\" | \"continue\" | \"rollback\"; multitask_strategy?: \"reject\" | \"interrupt\" | \"rollback\" | \"enqueue\"; }",
     "FocusAgentHarnessRunCancelRequest": "export interface FocusAgentHarnessRunCancelRequest { action?: \"interrupt\" | \"rollback\"; }",
     "FocusAgentHarnessRunRecord": "export interface FocusAgentHarnessRunRecord { run_id: string; thread_id?: string; assistant_id?: string | null; status?: string; created_at?: string; updated_at?: string; started_at?: string | null; finished_at?: string | null; error?: string | null; metadata?: Record<string, unknown>; kwargs?: Record<string, unknown>; [key: string]: unknown; }",
@@ -820,6 +822,8 @@
     "FocusAgentForgetMemoryRequest",
     "FocusAgentForgetMemoryResponse",
     "FocusAgentForkBranchRequest",
+    "FocusAgentForkBrief",
+    "FocusAgentForkBriefTurn",
     "FocusAgentHarnessResumeRequest",
     "FocusAgentHarnessRunCancelRequest",
     "FocusAgentHarnessRunRecord",
@@ -1377,6 +1381,10 @@
       "createInitialStreamState",
       "createToolApprovalDecision",
       "reduceStreamEvent"
+    ],
+    "apps/web/src/features/thread/thread-branch-brief.tsx": [
+      "BranchMeta",
+      "FocusAgentForkBrief"
     ],
     "apps/web/src/features/thread/thread-header-action-buttons.tsx": [
       "BranchMeta"

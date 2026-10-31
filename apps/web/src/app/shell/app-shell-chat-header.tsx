@@ -7,6 +7,7 @@ import type {
 import { useState } from "react";
 
 import { ConversationToolbar } from "@/features/conversations/conversation-toolbar";
+import { ThreadBranchBrief } from "@/features/thread/thread-branch-brief";
 import { ThreadHeaderActions } from "@/features/thread/thread-header-actions";
 import { FocusAgentBrand } from "@/shared/ui/focus-agent-brand";
 import { tooltipProps } from "@/shared/ui/tooltip";
@@ -76,6 +77,7 @@ export function AppShellChatHeader({
 					/>
 				</div>
 			</div>
+			<ThreadBranchBrief />
 			{shellStatus && shellStatus.display !== "chat-floating" ? (
 				<div className={`fa-shell-status-line is-${shellStatus.tone}`}>
 					{shellStatus.text}

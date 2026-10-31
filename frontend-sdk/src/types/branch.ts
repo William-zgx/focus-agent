@@ -71,6 +71,20 @@ export type MergeMode =
 	| "selected_artifacts";
 export type MergeTarget = "return_thread" | "root_thread";
 
+export interface FocusAgentForkBriefTurn {
+	role: "user" | "assistant";
+	content: string;
+}
+
+/** What a branch inherited from its parent at fork time. */
+export interface FocusAgentForkBrief {
+	goal: string;
+	parent_summary: string;
+	parent_recent_turns: FocusAgentForkBriefTurn[];
+	forked_at: string;
+	parent_message_count: number;
+}
+
 export interface BranchMeta {
 	branch_id: string;
 	root_thread_id: string;
@@ -84,6 +98,8 @@ export interface BranchMeta {
 	archived_at?: string | null;
 	fork_checkpoint_id?: string | null;
 	fork_strategy: string;
+	/** Absent on branches created before fork briefs existed. */
+	fork_brief?: FocusAgentForkBrief | null;
 }
 
 export interface BranchTreeNode {
