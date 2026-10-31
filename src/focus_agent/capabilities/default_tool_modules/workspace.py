@@ -52,12 +52,17 @@ def _matches_glob_pattern(path_text: str, pattern: str) -> bool:
         candidate = candidate.replace(marker, "", 1)
 
 
-def _iter_workspace_files(root: Path) -> Iterable[Path]:
+def _iter_workspace_files(root: Path, workspace_root: Path) -> Iterable[Path]:
+    # os.walk does not descend symlinked dirs, but it does yield symlinked files;
+    # drop those that point outside the workspace, as read_file would refuse them.
     for current_root, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(name for name in dirnames if name not in WORKSPACE_SKIP_DIR_NAMES)
         current_path = Path(current_root)
         for filename in sorted(filenames):
-            yield current_path / filename
+            path = current_path / filename
+            if path.is_symlink() and not path.resolve().is_relative_to(workspace_root):
+                continue
+            yield path
 
 
 def _format_numbered_lines(lines: list[str], *, start_line: int) -> str:
@@ -218,7 +223,7 @@ def build_list_files_tool(context: ToolBuildContext) -> Any:
                     matches = [relative]
             else:
                 normalized_pattern = pattern or "**/*"
-                for candidate in _iter_workspace_files(root):
+                for candidate in _iter_workspace_files(root, workspace_root):
                     relative = _coerce_relative_posix(candidate, workspace_root)
                     if not _matches_glob_pattern(relative, normalized_pattern):
                         continue
@@ -288,7 +293,7 @@ def build_search_code_tool(context: ToolBuildContext) -> Any:
                 normalized_query, literal=literal, case_sensitive=case_sensitive
             )
 
-            candidates = [root] if root.is_file() else _iter_workspace_files(root)
+            candidates = [root] if root.is_file() else _iter_workspace_files(root, workspace_root)
             matches: list[dict[str, Any]] = []
             truncated = False
             for candidate in candidates:
@@ -414,7 +419,7 @@ def build_codebase_stats_tool(context: ToolBuildContext) -> Any:
             language_counter: Counter[str] = Counter()
             line_counter: Counter[str] = Counter()
 
-            candidates = [root] if root.is_file() else _iter_workspace_files(root)
+            candidates = [root] if root.is_file() else _iter_workspace_files(root, workspace_root)
             for candidate in candidates:
                 file_counter += 1
                 if file_counter > capped_files:

@@ -1841,6 +1841,28 @@ def test_search_code_skips_local_focus_agent_runtime_dir(tmp_path):
     assert [item["path"] for item in payload["results"]] == ["src/state.py"]
 
 
+def test_workspace_scans_skip_file_symlinks_that_escape_the_workspace(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("SECRET_TOKEN=leak\n", encoding="utf-8")
+    (project / "inside.txt").write_text("SECRET_TOKEN=ok\n", encoding="utf-8")
+    try:
+        (project / "escape.txt").symlink_to(outside)
+        (project / "alias.txt").symlink_to(project / "inside.txt")
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    search = json.loads(tools["search_code"].invoke({"query": "SECRET_TOKEN", "literal": True}))
+    stats = json.loads(tools["codebase_stats"].invoke({}))
+    listing = json.loads(tools["list_files"].invoke({}))
+
+    assert [item["path"] for item in search["results"]] == ["alias.txt", "inside.txt"]
+    assert stats["files_scanned"] == 2
+    assert listing["results"] == ["alias.txt", "inside.txt"]
+
+
 def test_search_code_includes_context_for_block_start_matches(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
