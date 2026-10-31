@@ -52,6 +52,7 @@ interface ThreadPageContentProps {
 		interrupt: FocusAgentAskUserQuestionInterrupt,
 		answers: FocusAgentAskUserQuestionAnswer[],
 	) => void;
+	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onPreviewContextUsage: (draftMessage: string) => void;
@@ -110,6 +111,7 @@ export function ThreadPageContent({
 	onDismissBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
+	onBranchFromMessage,
 	onEditMessage,
 	onExecuteBranchAction,
 	onPreviewContextUsage,
@@ -152,6 +154,7 @@ export function ThreadPageContent({
 		askUserQuestionErrorId,
 		askUserQuestionInFlightId,
 		isChineseUi,
+		onBranchFromMessage,
 		onEditMessage,
 		onContinueCurrentBranchAction,
 		onExecuteBranchAction,

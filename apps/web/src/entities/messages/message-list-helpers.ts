@@ -86,6 +86,39 @@ export function editMessageLabel(isChineseUi: boolean) {
 	return isChineseUi ? "编辑并重发" : "Edit and resend";
 }
 
+export function branchFromMessageLabel(isChineseUi: boolean) {
+	return isChineseUi ? "从这里开分支" : "Branch from here";
+}
+
+export function mergedBranchForkLabel(isChineseUi: boolean) {
+	return isChineseUi
+		? "已合并分支不能新建分支"
+		: "Merged branches cannot create new branches";
+}
+
+const BRANCH_GOAL_QUOTE_LIMIT = 600;
+
+/** Pre-fills the fork dialog's goal from the message the user branched on. */
+export function branchGoalDraftFromMessage(
+	content: string,
+	isHuman: boolean,
+	isChineseUi: boolean,
+) {
+	const text = content.trim();
+	if (isHuman) return text;
+	const excerpt =
+		text.length > BRANCH_GOAL_QUOTE_LIMIT
+			? `${text.slice(0, BRANCH_GOAL_QUOTE_LIMIT).trimEnd()}…`
+			: text;
+	const quote = excerpt
+		.split("\n")
+		.map((line) => `> ${line}`)
+		.join("\n");
+	return isChineseUi
+		? `针对这段回答继续深入：\n${quote}\n\n`
+		: `Dig deeper into this answer:\n${quote}\n\n`;
+}
+
 export function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
 	return isChineseUi
 		? "已合并分支不允许继续对话"

@@ -38,7 +38,11 @@ interface ShellUiContextValue {
 		status: ShellStatus | null,
 		options?: { autoClearMs?: number },
 	) => void;
-	createBranch: (options?: { parentThreadId?: string }) => Promise<void>;
+	/** Opens the "New branch" dialog; `goalDraft` pre-fills the goal field. */
+	createBranch: (options?: {
+		parentThreadId?: string;
+		goalDraft?: string;
+	}) => Promise<void>;
 	isCreatingBranch: boolean;
 	mergeProposalGeneration: Record<string, MergeProposalGenerationState>;
 	markMergeProposalPreparing: (threadId: string) => void;

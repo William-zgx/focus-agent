@@ -22,8 +22,16 @@ import { useShellResizer } from "@/app/shell/hooks/use-shell-resizer";
 import { useShellRouteState } from "@/app/shell/hooks/use-shell-route-state";
 import { useShellTooltipState } from "@/app/shell/hooks/use-shell-tooltip";
 import { MergeReviewModalHost } from "@/app/shell/merge-review-modal-host";
+import {
+	BranchForkDialog,
+	type BranchForkRequest,
+	type BranchForkSubmission,
+} from "@/features/branch-tree/branch-fork-dialog";
+import { findNode } from "@/features/branch-tree/branch-tree-helpers";
 import { BranchTreePanel } from "@/features/branch-tree/branch-tree-panel";
+import { setPendingBranchGoal } from "@/features/branch-tree/pending-branch-goal";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
+import { useBranchTree } from "@/features/branch-tree/use-branch-tree";
 import { useThreadState } from "@/features/thread/use-thread-state";
 import {
 	ShellUiProvider,
@@ -109,6 +117,11 @@ export function AppShell({ children }: PropsWithChildren) {
 		getMergeProposalError,
 	} = useShellMergeProposalState();
 	const [branchCreateBusy, setBranchCreateBusy] = useState(false);
+	const [forkRequest, setForkRequest] = useState<BranchForkRequest | null>(
+		null,
+	);
+	const [forkError, setForkError] = useState<string | null>(null);
+	const { data: branchTreeData } = useBranchTree(threadId || conversationId);
 	const [shellStatus, setShellStatus] = useTransientShellStatus();
 	const { data: activeThreadState } = useThreadState(threadId);
 	const { forkBranch } = useBranchActions({
@@ -177,20 +190,48 @@ export function AppShell({ children }: PropsWithChildren) {
 			? "收起侧栏"
 			: "Collapse sidebar";
 
-	async function createBranch(options?: { parentThreadId?: string }) {
+	async function createBranch(options?: {
+		parentThreadId?: string;
+		goalDraft?: string;
+	}) {
 		const parentThreadId = options?.parentThreadId ?? threadId ?? null;
 		if (!conversationId || !parentThreadId || branchCreateBusy) return;
+		const parentLabel =
+			findNode(branchTreeData?.root, parentThreadId)?.branch_name ||
+			(parentThreadId === threadId
+				? activeThreadState?.branch_meta?.branch_name
+				: undefined);
+		setForkError(null);
+		setForkRequest({
+			parentThreadId,
+			parentLabel,
+			goalDraft: options?.goalDraft,
+			fromMessage: options?.goalDraft !== undefined,
+		});
+	}
+
+	const closeForkDialog = useCallback(() => {
+		setForkRequest(null);
+		setForkError(null);
+	}, []);
+
+	async function submitForkDialog(submission: BranchForkSubmission) {
+		const request = forkRequest;
+		if (!conversationId || !request || branchCreateBusy) return;
 		setBranchCreateBusy(true);
+		setForkError(null);
 		try {
-			setShellStatus({
-				tone: "warn",
-				text: languagePreference === "zh" ? "正在创建分支" : "Creating branch",
-				display: "chat-floating",
-			});
 			const record = await forkBranch({
-				parentThreadId,
+				parentThreadId: request.parentThreadId,
+				branchName: submission.branchName,
+				branchRole: submission.branchRole,
+				nameSource: submission.goal,
 				language: languagePreference,
 			});
+			setForkRequest(null);
+			if (submission.goal) {
+				setPendingBranchGoal(record.child_thread_id, submission.goal);
+			}
 			await navigate({
 				to: "/c/$conversationId/t/$threadId",
 				params: {
@@ -207,16 +248,13 @@ export function AppShell({ children }: PropsWithChildren) {
 				{ autoClearMs: 2400 },
 			);
 		} catch (error) {
-			setShellStatus({
-				tone: "danger",
-				text:
-					error instanceof Error
-						? error.message
-						: languagePreference === "zh"
-							? "创建分支失败"
-							: "Create branch failed",
-				display: "chat-floating",
-			});
+			setForkError(
+				error instanceof Error
+					? error.message
+					: languagePreference === "zh"
+						? "创建分支失败"
+						: "Create branch failed",
+			);
 		} finally {
 			setBranchCreateBusy(false);
 		}
@@ -433,6 +471,15 @@ export function AppShell({ children }: PropsWithChildren) {
 					</div>
 				</main>
 			</div>
+
+			<BranchForkDialog
+				errorMessage={forkError}
+				isChineseUi={isChineseUi}
+				isSubmitting={branchCreateBusy}
+				onClose={closeForkDialog}
+				onSubmit={(submission) => void submitForkDialog(submission)}
+				request={forkRequest}
+			/>
 
 			<MergeReviewModalHost
 				activeThreadState={activeThreadState}

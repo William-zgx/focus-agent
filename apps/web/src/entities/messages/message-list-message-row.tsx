@@ -1,6 +1,7 @@
 import type { RunFailedPayload } from "@focus-agent/web-sdk";
 
 import {
+	branchGoalDraftFromMessage,
 	bubbleClass,
 	failureText,
 	messageLayoutClass,
@@ -17,6 +18,7 @@ export function MessageRow({
 	id,
 	isChineseUi,
 	isReadOnly,
+	onBranchFromMessage,
 	onEditMessage,
 	totalTokens,
 	type,
@@ -25,11 +27,14 @@ export function MessageRow({
 	id: string;
 	isChineseUi: boolean;
 	isReadOnly: boolean;
+	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	totalTokens?: number;
 	type: unknown;
 }) {
-	const isHuman = normalizeMessageType(type) === "human";
+	const messageType = normalizeMessageType(type);
+	const isHuman = messageType === "human";
+	const canBranchFrom = isHuman || messageType === "ai";
 	return (
 		<div className={messageLayoutClass(type)}>
 			<div className="fa-message-stack">
@@ -50,6 +55,19 @@ export function MessageRow({
 					content={content}
 					isChineseUi={isChineseUi}
 					isReadOnly={isReadOnly}
+					onBranch={
+						canBranchFrom && onBranchFromMessage
+							? () =>
+									onBranchFromMessage({
+										id,
+										content: branchGoalDraftFromMessage(
+											content,
+											isHuman,
+											isChineseUi,
+										),
+									})
+							: null
+					}
 					onEdit={
 						isHuman && onEditMessage
 							? () => onEditMessage({ id, content })

@@ -54,13 +54,17 @@ export function useBranchActions(scope: BranchScope) {
 
 	async function forkBranch(input: {
 		parentThreadId: string;
+		/** An explicit name: the backend keeps it instead of AI-naming the branch. */
 		branchName?: string;
 		branchRole?: BranchRole;
+		/** Seed text for AI naming when no explicit name is given. */
+		nameSource?: string;
 		language?: "en" | "zh";
 	}): Promise<FocusAgentBranchRecord> {
 		const record = await client.forkBranch({
 			parent_thread_id: input.parentThreadId,
-			branch_name: input.branchName,
+			branch_name: input.branchName || undefined,
+			name_source: input.branchName ? undefined : input.nameSource || undefined,
 			branch_role: input.branchRole,
 			language: input.language,
 		});

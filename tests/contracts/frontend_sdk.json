@@ -1278,6 +1278,9 @@
       "FocusAgentBranchDecisionDismissRequest",
       "FocusAgentBranchDecisionEvent"
     ],
+    "apps/web/src/features/branch-tree/branch-fork-dialog.tsx": [
+      "BranchRole"
+    ],
     "apps/web/src/features/branch-tree/branch-tree-archived-sections.tsx": [
       "BranchTreeNode",
       "FocusAgentConversationSummary"

@@ -1,7 +1,9 @@
 import { useState } from "react";
 
 import {
+	branchFromMessageLabel,
 	editMessageLabel,
+	mergedBranchForkLabel,
 	mergedBranchReadOnlyLabel,
 	messageCopyLabel,
 } from "./message-list-helpers";
@@ -80,15 +82,74 @@ function EditButton({
 	);
 }
 
+function BranchButton({
+	disabled = false,
+	label,
+	onBranch,
+}: {
+	disabled?: boolean;
+	label: string;
+	onBranch: () => void;
+}) {
+	return (
+		<button
+			aria-label={label}
+			className="fa-message-action-button"
+			disabled={disabled}
+			onClick={onBranch}
+			title={label}
+			type="button"
+		>
+			<span className="fa-message-action-icon" aria-hidden="true">
+				<svg aria-hidden="true" viewBox="0 0 20 20">
+					<circle
+						cx="6"
+						cy="4.5"
+						r="1.9"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+					/>
+					<circle
+						cx="6"
+						cy="15.5"
+						r="1.9"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+					/>
+					<circle
+						cx="14.5"
+						cy="7.5"
+						r="1.9"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+					/>
+					<path
+						d="M6 6.4v7.2M14.5 9.4c0 2.6-2.2 3.4-6.6 4.6"
+						fill="none"
+						stroke="currentColor"
+						strokeLinecap="round"
+						strokeWidth="1.5"
+					/>
+				</svg>
+			</span>
+		</button>
+	);
+}
+
 export function MessageActions({
 	content,
 	isChineseUi,
 	isReadOnly = false,
+	onBranch,
 	onEdit,
 }: {
 	content: string;
 	isChineseUi: boolean;
 	isReadOnly?: boolean;
+	onBranch?: (() => void) | null;
 	onEdit?: (() => void) | null;
 }) {
 	const [copied, setCopied] = useState(false);
@@ -114,6 +175,17 @@ export function MessageActions({
 					label={editMessageLabel(isChineseUi)}
 					onEdit={onEdit}
 					title={editTitle}
+				/>
+			) : null}
+			{onBranch ? (
+				<BranchButton
+					disabled={isReadOnly}
+					label={
+						isReadOnly
+							? mergedBranchForkLabel(isChineseUi)
+							: branchFromMessageLabel(isChineseUi)
+					}
+					onBranch={onBranch}
 				/>
 			) : null}
 		</div>

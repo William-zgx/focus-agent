@@ -8,6 +8,10 @@ import type {
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
+	takePendingBranchGoal,
+	usePendingBranchGoalThreadId,
+} from "@/features/branch-tree/pending-branch-goal";
+import {
 	useCompactThreadContext,
 	usePreviewThreadContext,
 } from "@/features/thread/use-thread-context";
@@ -38,7 +42,8 @@ export function ThreadPage() {
 		},
 	});
 	const { data, isLoading, error } = useThreadState(threadId);
-	const { isChineseUi } = useShellUi();
+	const { createBranch, isChineseUi } = useShellUi();
+	const pendingBranchGoalThreadId = usePendingBranchGoalThreadId();
 	const isMergedReadOnlyThread = data?.branch_meta?.branch_status === "merged";
 	const composerSelectionOverridesRef = useRef<SendMessageOverrides>({});
 	const {
@@ -184,6 +189,26 @@ export function ThreadPage() {
 		return sendMessage(message, overrides);
 	}
 
+	const sendMessageRef = useRef(handleSendMessage);
+	sendMessageRef.current = handleSendMessage;
+	useEffect(() => {
+		// The fork dialog's goal becomes the new branch's first message.
+		if (!threadId || pendingBranchGoalThreadId !== threadId) return;
+		const goal = takePendingBranchGoal(threadId);
+		if (goal) void sendMessageRef.current(goal);
+	}, [pendingBranchGoalThreadId, threadId]);
+
+	const handleBranchFromMessage = useCallback(
+		(message: { content: string }) => {
+			if (!threadId || isMergedReadOnlyThread) return;
+			void createBranch({
+				parentThreadId: threadId,
+				goalDraft: message.content,
+			});
+		},
+		[createBranch, isMergedReadOnlyThread, threadId],
+	);
+
 	const handlePreviewContextUsage = useCallback(
 		(draftMessage: string) => {
 			if (!threadId) return;
@@ -286,6 +311,7 @@ export function ThreadPage() {
 				void continueCurrentBranchAction(action)
 			}
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
+			onBranchFromMessage={handleBranchFromMessage}
 			onEditMessage={setEditDraft}
 			onExecuteBranchAction={(action) => void executeBranchAction(action)}
 			onPreviewContextUsage={handlePreviewContextUsage}

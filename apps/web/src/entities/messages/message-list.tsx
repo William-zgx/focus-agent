@@ -54,6 +54,7 @@ interface MessageListProps {
 	askUserQuestionErrorId?: string | null;
 	askUserQuestionInFlightId?: string | null;
 	isChineseUi?: boolean;
+	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onContinueCurrentBranchAction?: (
@@ -92,6 +93,7 @@ export function MessageList({
 	askUserQuestionErrorId = null,
 	askUserQuestionInFlightId = null,
 	isChineseUi = false,
+	onBranchFromMessage,
 	onEditMessage,
 	onExecuteBranchAction,
 	onContinueCurrentBranchAction,
@@ -163,6 +165,7 @@ export function MessageList({
 						id={item.id}
 						isChineseUi={isChineseUi}
 						isReadOnly={isReadOnly}
+						onBranchFromMessage={onBranchFromMessage}
 						onEditMessage={onEditMessage}
 						totalTokens={item.totalTokens}
 						type={item.type}
