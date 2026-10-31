@@ -16,12 +16,13 @@ from ...core.branching import (
     MergeProposalOverrides,
     MergeTarget,
 )
-from ...core.merge_review_inputs import branch_owned_findings, finding_text
+from ...core.merge_review_inputs import UPSTREAM_STATE_KEY, branch_owned_findings, finding_text
 from ...core.request_context import RequestContext
 from ...core.types import FindingItem
 from ...memory import MemoryCurator, MemoryWriter
 from ...memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
 from ...storage.namespaces import branch_namespace, conversation_main_namespace
+from .merge_upstream import sibling_conflicts, upstream_changes
 
 logger = logging.getLogger("focus_agent.branches")
 
@@ -60,10 +61,21 @@ class BranchMergeCoordinator:
             findings=list(values.get("branch_local_findings", [])),
         )
         try:
+            upstream = upstream_changes(
+                branch_id=branch_record.branch_id,
+                child_values=values,
+                parent_values=_thread_values(svc, branch_record.parent_thread_id),
+            )
             proposal = svc.proposal_generator(
                 svc.proposal_model,
-                values,
+                {**values, UPSTREAM_STATE_KEY: upstream},
                 values.get("branch_meta"),
+            )
+            proposal = proposal.model_copy(
+                update={
+                    "parent_moved_on": upstream["parent_moved_on"],
+                    "conflicts": sibling_conflicts(proposal, upstream["sibling_imports"]),
+                }
             )
             svc.repo.save_merge_proposal(branch_record.branch_id, proposal)
             svc.repo.update_status(branch_record.branch_id, BranchStatus.AWAITING_MERGE_REVIEW)
@@ -305,6 +317,15 @@ class BranchMergeCoordinator:
             as_node="bootstrap_turn",
         )
         return imported
+
+
+def _thread_values(svc, thread_id: str) -> dict | None:
+    try:
+        snapshot = svc.graph.get_state({"configurable": {"thread_id": thread_id}})
+    except Exception:  # noqa: BLE001 - staleness check is advisory
+        logger.warning("failed to read parent thread for merge staleness", exc_info=True)
+        return None
+    return dict(getattr(snapshot, "values", {}) or {})
 
 
 def _record_approved_local_findings(

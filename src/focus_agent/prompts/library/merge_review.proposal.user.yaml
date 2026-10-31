@@ -42,6 +42,7 @@ versions:
       - inherited_context
       - branch_summary
       - received_imports
+      - parent_updates
       - local_interaction_summary
       - findings
       - evidence
@@ -61,6 +62,7 @@ versions:
       - Only use evidence_refs listed under "Evidence available in this branch" (citation label, URL, or evidence id). Never invent refs.
       - A key_findings item may be an object {{"finding": str, "evidence_refs": [str]}} to attach evidence to that finding only.
       - If this branch has not reached any conclusion, return an empty summary and empty key_findings.
+      - If the parent thread moved on since the fork, say where this conclusion is stale or contradicts the newer parent turns or sibling imports, and list unresolved contradictions as open_questions.
 
       Inherited upstream context (brief):
       {inherited_context}
@@ -70,6 +72,9 @@ versions:
 
       Conclusions imported into this branch after the fork:
       {received_imports}
+
+      Parent thread changes since this branch forked:
+      {parent_updates}
 
       Recorded findings:
       {findings}

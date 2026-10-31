@@ -68,6 +68,12 @@ class BranchMeta(BaseModel):
     fork_brief: dict[str, Any] | None = None
 
 
+class MergeConflict(BaseModel):
+    branch_name: str
+    finding: str
+    conflicting_finding: str
+
+
 class MergeProposal(BaseModel):
     summary: str = Field(description="Compact summary that can be imported to the parent thread.")
     key_findings: list[str] = Field(default_factory=list)
@@ -78,6 +84,10 @@ class MergeProposal(BaseModel):
     # Optional per-finding evidence keyed by key_findings text; findings without
     # an entry fall back to the flat ``evidence_refs`` list on merge apply.
     finding_evidence_refs: dict[str, list[str]] = Field(default_factory=dict)
+    # Set during proposal prep: the parent gained turns or sibling imports since
+    # the fork, and lexical conflicts with those sibling imports.
+    parent_moved_on: bool = False
+    conflicts: list[MergeConflict] = Field(default_factory=list)
 
 
 class MergeProposalOverrides(BaseModel):

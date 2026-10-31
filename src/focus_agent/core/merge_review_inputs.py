@@ -238,6 +238,30 @@ def render_received_imports(values: Mapping[str, Any]) -> str:
     return "\n".join(lines) or "(none)"
 
 
+UPSTREAM_STATE_KEY = "_merge_review_upstream"
+
+
+def render_parent_updates(values: Mapping[str, Any]) -> str:
+    """New parent turns and sibling imports since the fork (set during proposal prep)."""
+    upstream = values.get(UPSTREAM_STATE_KEY)
+    if not isinstance(upstream, Mapping) or not upstream.get("parent_moved_on"):
+        return "(none)"
+    lines: list[str] = []
+    for turn in upstream.get("new_parent_turns") or []:
+        if isinstance(turn, Mapping) and turn.get("content"):
+            lines.append(
+                f"- Parent {turn.get('role') or 'user'}: {clip_text(turn['content'], 400)}"
+            )
+    for entry in upstream.get("sibling_imports") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        name = clip_text(entry.get("branch_name") or entry.get("branch_id") or "branch", 60)
+        lines.append(f"- Sibling import [{name}]: {clip_text(entry.get('summary') or '', 400)}")
+        for finding in list(entry.get("key_findings") or [])[:6]:
+            lines.append(f"  - {clip_text(finding, 300)}")
+    return "\n".join(lines) or "- The parent thread changed since this branch forked."
+
+
 def branch_owned_findings(values: Mapping[str, Any]) -> list[Any]:
     return [
         item for item in split_at_fork(values, "branch_local_findings")[1] if finding_text(item)
@@ -294,6 +318,8 @@ __all__ = [
     "known_evidence_refs",
     "received_import_entries",
     "received_import_findings",
+    "UPSTREAM_STATE_KEY",
+    "render_parent_updates",
     "render_received_imports",
     "render_transcript",
     "split_at_fork",
