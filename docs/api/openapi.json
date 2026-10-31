@@ -7173,6 +7173,38 @@
         "title": "BackgroundJobSummaryResponse",
         "type": "object"
       },
+      "BranchActionExecuteRequest": {
+        "properties": {
+          "branch_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Card-edited branch name; used as the explicit name of the new branch.",
+            "title": "Branch Name"
+          },
+          "handoff_message": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Card-edited goal carried into (and run in) the new branch.",
+            "title": "Handoff Message"
+          }
+        },
+        "title": "BranchActionExecuteRequest",
+        "type": "object"
+      },
       "BranchActionExecuteResponse": {
         "properties": {
           "branch_action": {
@@ -7443,6 +7475,17 @@
               }
             ],
             "title": "Suggested Branch Name Source"
+          },
+          "target_parent_branch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Parent Branch Name"
           },
           "target_parent_thread_id": {
             "title": "Target Parent Thread Id",
@@ -24440,6 +24483,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BranchActionExecuteRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

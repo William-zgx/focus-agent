@@ -5697,7 +5697,16 @@
         }
       ],
       "path": "/v1/threads/{thread_id}/branch-actions/{action_id}/execute",
-      "request": null,
+      "request": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BranchActionExecuteRequest"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "responses": {
         "200": {
           "$ref": "#/components/schemas/BranchActionExecuteResponse"
@@ -12674,6 +12683,33 @@
       ],
       "type": "object"
     },
+    "BranchActionExecuteRequest": {
+      "properties": {
+        "branch_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "handoff_message": {
+          "anyOf": [
+            {
+              "maxLength": 8000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "BranchActionExecuteResponse": {
       "properties": {
         "branch_action": {
@@ -12911,6 +12947,16 @@
                 "explicit",
                 "inferred"
               ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_parent_branch_name": {
+          "anyOf": [
+            {
               "type": "string"
             },
             {

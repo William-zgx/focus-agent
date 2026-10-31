@@ -5576,6 +5576,19 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** BranchActionExecuteRequest */
+        BranchActionExecuteRequest: {
+            /**
+             * Branch Name
+             * @description Card-edited branch name; used as the explicit name of the new branch.
+             */
+            branch_name?: string | null;
+            /**
+             * Handoff Message
+             * @description Card-edited goal carried into (and run in) the new branch.
+             */
+            handoff_message?: string | null;
+        };
         /** BranchActionExecuteResponse */
         BranchActionExecuteResponse: {
             branch_action: components["schemas"]["BranchActionProposal"];
@@ -5647,6 +5660,8 @@ export interface components {
             suggested_branch_name?: string | null;
             /** Suggested Branch Name Source */
             suggested_branch_name_source?: ("explicit" | "inferred") | null;
+            /** Target Parent Branch Name */
+            target_parent_branch_name?: string | null;
             /** Target Parent Thread Id */
             target_parent_thread_id: string;
         };
@@ -13405,7 +13420,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BranchActionExecuteRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
