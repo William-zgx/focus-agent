@@ -1,3 +1,5 @@
+import type { FocusAgentMergeQueueEntry } from "@focus-agent/web-sdk";
+
 import { normalizeText } from "./message-transcript-normalize";
 import { recordValue, stringListValue } from "./message-transcript-tool-calls";
 
@@ -11,9 +13,23 @@ export interface BranchImportView {
 	openQuestions: string[];
 	evidenceRefs: string[];
 	artifacts: string[];
+	/** Evidence per key finding (finding text -> refs), when the merge kept it. */
+	findingEvidenceRefs: Record<string, string[]>;
 	importedAt?: string;
 	/** Body text of a legacy notice that only carried plain text. */
 	legacyBody?: string;
+}
+
+export function findingEvidenceRefsValue(
+	value: unknown,
+): Record<string, string[]> {
+	const record = recordValue(value);
+	const refs: Record<string, string[]> = {};
+	for (const [finding, items] of Object.entries(record ?? {})) {
+		const list = stringListValue(items);
+		if (normalizeText(finding) && list.length > 0) refs[finding] = list;
+	}
+	return refs;
 }
 
 export function branchImportFromMessage(
@@ -34,6 +50,9 @@ export function branchImportFromMessage(
 				openQuestions: stringListValue(metadata.open_questions),
 				evidenceRefs: stringListValue(metadata.evidence_refs),
 				artifacts: stringListValue(metadata.artifacts),
+				findingEvidenceRefs: findingEvidenceRefsValue(
+					metadata.finding_evidence_refs,
+				),
 				importedAt: normalizeText(metadata.imported_at) || undefined,
 			};
 		}
@@ -50,7 +69,47 @@ export function branchImportFromMessage(
 		openQuestions: [],
 		evidenceRefs: [],
 		artifacts: [],
+		findingEvidenceRefs: {},
 		legacyBody: content.trim().slice(legacy[0].length).trim(),
+	};
+}
+
+/**
+ * Fills what the notice lacks from the target thread's `merge_queue` entry:
+ * per-finding evidence, the child thread link, and structure for legacy text.
+ */
+export function withMergeQueueDetails(
+	view: BranchImportView,
+	mergeQueue: FocusAgentMergeQueueEntry[] | undefined,
+): BranchImportView {
+	const entry = [...(mergeQueue ?? [])]
+		.reverse()
+		.find((item) =>
+			view.branchId
+				? item.branch_id === view.branchId
+				: item.branch_name === view.branchName,
+		);
+	if (!entry) return view;
+	const merged: BranchImportView = {
+		...view,
+		branchId: view.branchId ?? entry.branch_id,
+		childThreadId: view.childThreadId ?? entry.child_thread_id ?? undefined,
+		findingEvidenceRefs:
+			Object.keys(view.findingEvidenceRefs).length > 0
+				? view.findingEvidenceRefs
+				: findingEvidenceRefsValue(entry.finding_evidence_refs),
+	};
+	if (view.legacyBody === undefined || !normalizeText(entry.summary)) {
+		return merged;
+	}
+	return {
+		...merged,
+		summary: normalizeText(entry.summary),
+		keyFindings: stringListValue(entry.key_findings),
+		openQuestions: stringListValue(entry.open_questions),
+		evidenceRefs: stringListValue(entry.evidence_refs),
+		artifacts: stringListValue(entry.artifacts),
+		legacyBody: undefined,
 	};
 }
 

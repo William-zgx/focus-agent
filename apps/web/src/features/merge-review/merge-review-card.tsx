@@ -20,6 +20,7 @@ import {
 	createMergeReviewPayload,
 	type MergeReviewDraft,
 	mergedBranchReadOnlyLabel,
+	mergeReviewNeedsSummary,
 } from "./merge-review-utils";
 
 interface MergeReviewCardProps {
@@ -117,6 +118,8 @@ export function MergeReviewCard({
 			setErrorMessage(mergedBranchReadOnlyLabel(isChineseUi));
 			return;
 		}
+
+		if (mergeReviewNeedsSummary(draft)) return;
 
 		setIsSubmitting(true);
 		setErrorMessage(null);

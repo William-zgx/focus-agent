@@ -9,7 +9,7 @@ import type {
 	FocusAgentBranchActionNavigation,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchRecord,
-	FocusAgentImportedConclusion,
+	FocusAgentMergeQueueEntry,
 	FocusAgentMergeProposal,
 } from "./branch.js";
 import type { FocusAgentBranchDecisionSummary } from "./branch-decision.js";
@@ -176,7 +176,7 @@ export interface ThreadStateResponse {
 	branch_meta?: BranchMeta | null;
 	merge_proposal?: FocusAgentMergeProposal | null;
 	merge_decision?: Record<string, unknown> | null;
-	merge_queue: FocusAgentImportedConclusion[];
+	merge_queue: FocusAgentMergeQueueEntry[];
 	active_skill_ids: string[];
 	active_skills: ThreadActiveSkillResponse[];
 	tool_outcomes?: FocusAgentRuntimeOutcome[];

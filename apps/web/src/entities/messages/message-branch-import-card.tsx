@@ -30,6 +30,21 @@ function isUrl(value: string) {
 	return /^https?:\/\/\S+$/i.test(value.trim());
 }
 
+function EvidenceRef({ value }: { value: string }) {
+	return isUrl(value) ? (
+		<a
+			className={linkClass}
+			href={value}
+			rel="noreferrer noopener"
+			target="_blank"
+		>
+			{value}
+		</a>
+	) : (
+		value
+	);
+}
+
 function ImportList({
 	items,
 	label,
@@ -63,6 +78,13 @@ export const BranchImportCard = forwardRef<HTMLElement, BranchImportCardProps>(
 				? "已合并分支结论"
 				: "Merged branch conclusion";
 		const childThreadId = view.childThreadId;
+		const findingRefs = view.findingEvidenceRefs ?? {};
+		const refsShownWithFindings = new Set(
+			view.keyFindings.flatMap((finding) => findingRefs[finding] ?? []),
+		);
+		const looseEvidenceRefs = view.evidenceRefs.filter(
+			(ref) => !refsShownWithFindings.has(ref),
+		);
 		const showLink = variant !== "preview" && childThreadId && threadLinks;
 
 		function handleOpenBranch(event: MouseEvent<HTMLAnchorElement>) {
@@ -116,28 +138,42 @@ export const BranchImportCard = forwardRef<HTMLElement, BranchImportCardProps>(
 				<ImportList
 					items={view.keyFindings}
 					label={isChineseUi ? "关键发现" : "Key findings"}
+					renderItem={(finding) => {
+						const refs = findingRefs[finding] ?? [];
+						if (refs.length === 0) return finding;
+						return (
+							<>
+								{finding}
+								<ul className="m-0 mt-0.5 grid list-none gap-0.5 p-0 text-[length:var(--fa-fs-xs)] text-[color:var(--fa-text-muted)]">
+									{refs.map((ref) => (
+										<li key={ref}>
+											<span className="sr-only">
+												{isChineseUi ? "证据：" : "Evidence: "}
+											</span>
+											<EvidenceRef value={ref} />
+										</li>
+									))}
+								</ul>
+							</>
+						);
+					}}
 				/>
 				<ImportList
 					items={view.openQuestions}
 					label={isChineseUi ? "开放问题" : "Open questions"}
 				/>
 				<ImportList
-					items={view.evidenceRefs}
-					label={isChineseUi ? "证据引用" : "Evidence"}
-					renderItem={(item) =>
-						isUrl(item) ? (
-							<a
-								className={linkClass}
-								href={item}
-								rel="noreferrer noopener"
-								target="_blank"
-							>
-								{item}
-							</a>
-						) : (
-							item
-						)
+					items={looseEvidenceRefs}
+					label={
+						refsShownWithFindings.size > 0
+							? isChineseUi
+								? "其他证据"
+								: "Other evidence"
+							: isChineseUi
+								? "证据引用"
+								: "Evidence"
 					}
+					renderItem={(item) => <EvidenceRef value={item} />}
 				/>
 				<ImportList
 					items={view.artifacts}

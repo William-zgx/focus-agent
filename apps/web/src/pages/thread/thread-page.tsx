@@ -312,6 +312,7 @@ export function ThreadPage() {
 			isLoading={isLoading}
 			isMergedReadOnlyThread={isMergedReadOnlyThread}
 			isStreaming={isStreaming}
+			mergeQueue={data?.merge_queue}
 			messages={transcriptMessages}
 			onClearEditDraft={() => setEditDraft(null)}
 			onCompactContext={handleCompactContext}

@@ -86,6 +86,11 @@ export function mergeReviewStatusLabel(
 	}
 }
 
+/** Approving needs a summary: the backend rejects empty conclusions (400). */
+export function mergeReviewNeedsSummary(draft: MergeReviewDraft) {
+	return draft.decision === "approve" && !draft.summary.trim();
+}
+
 export function mergedBranchReadOnlyLabel(isChineseUi: boolean) {
 	return isChineseUi
 		? "已合并分支不能继续生成或合并结论。"
@@ -118,17 +123,31 @@ export function createMergeReviewDraft(
 export function createMergeReviewImportPreview(
 	draft: MergeReviewDraft,
 	branchName: string,
+	findingEvidenceRefs?: Record<string, string[]> | null,
 ): BranchImportView {
 	const artifacts = parseLineList(draft.artifacts);
 	const selected = new Set(parseLineList(draft.selectedArtifacts));
+	const keyFindings = parseLineList(draft.findings);
+	// The backend drops evidence refs in summary-only mode.
+	const evidenceRefs =
+		draft.mode === "summary_only" ? [] : parseLineList(draft.evidenceRefs);
+	// Per-finding refs are keyed by the proposal's finding text and limited to
+	// refs still listed; edited findings lose theirs, as on merge apply.
+	const allowedRefs = new Set(evidenceRefs);
+	const perFinding: Record<string, string[]> = {};
+	for (const finding of keyFindings) {
+		const refs = (findingEvidenceRefs?.[finding] ?? []).filter((ref) =>
+			allowedRefs.has(ref),
+		);
+		if (refs.length > 0) perFinding[finding] = refs;
+	}
 	return {
 		branchName,
 		summary: draft.summary.trim(),
-		keyFindings: parseLineList(draft.findings),
+		keyFindings,
 		openQuestions: parseLineList(draft.openQuestions),
-		// The backend drops evidence refs in summary-only mode.
-		evidenceRefs:
-			draft.mode === "summary_only" ? [] : parseLineList(draft.evidenceRefs),
+		evidenceRefs,
+		findingEvidenceRefs: perFinding,
 		artifacts:
 			draft.mode === "selected_artifacts" && selected.size > 0
 				? artifacts.filter((item) => selected.has(item))

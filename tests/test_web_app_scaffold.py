@@ -431,7 +431,7 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
     assert 'activeThreadState?.branch_meta?.branch_status === "merged"' in app_shell_text
     assert "Merged branches cannot generate or merge conclusions." in app_shell_text
     assert 'const isMergedBranch = pendingStatus === "merged";' in merge_review_text
-    assert "disabled={isSubmitting || isMergedBranch}" in merge_review_text
+    assert "disabled={isSubmitting || isMergedBranch || needsSummary}" in merge_review_text
 
 
 def test_react_primitives_keep_modal_and_drawer_backdrops_out_of_tab_order():

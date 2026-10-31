@@ -322,6 +322,7 @@ function loadMessageTranscriptFunctions() {
     "toolCallArgsValue",
     "collectSkillIdsFromToolCall",
     "collectSkillIdsFromToolMessage",
+    "findingEvidenceRefsValue",
     "branchImportFromMessage",
     "buildTranscriptItems",
   ];
@@ -3729,6 +3730,7 @@ test("Transcript parses merged-branch import notices from metadata and legacy te
           evidence_refs: ["https://example.com/report"],
           artifacts: [],
           imported_at: "2026-10-30T10:00:00Z",
+          finding_evidence_refs: { "Tier 2 converts best": ["https://example.com/report"] },
         },
       },
     },
@@ -3746,6 +3748,10 @@ test("Transcript parses merged-branch import notices from metadata and legacy te
   assert.equal(withMetadata.branchImport.childThreadId, "child-1");
   assert.deepEqual([...withMetadata.branchImport.keyFindings], ["Tier 2 converts best"]);
   assert.deepEqual([...withMetadata.branchImport.openQuestions], ["Annual discount?"]);
+  assert.deepEqual(
+    [...withMetadata.branchImport.findingEvidenceRefs["Tier 2 converts best"]],
+    ["https://example.com/report"],
+  );
   assert.equal(legacy.branchImport.branchName, "Old run");
   assert.equal(legacy.branchImport.childThreadId, undefined);
   assert.match(legacy.branchImport.legacyBody, /^Legacy summary\./);
@@ -3769,7 +3775,8 @@ test("Merge review preview mirrors what the import will carry for each mode", ()
     },
   };
   vm.runInNewContext(transpiled, context);
-  const { createMergeReviewDraft, createMergeReviewImportPreview } = context.module.exports;
+  const { createMergeReviewDraft, createMergeReviewImportPreview, mergeReviewNeedsSummary } =
+    context.module.exports;
   const draft = createMergeReviewDraft({
     summary: " Ship tiered pricing ",
     key_findings: ["Tier 2 converts best"],
@@ -3779,17 +3786,38 @@ test("Merge review preview mirrors what the import will carry for each mode", ()
     recommended_import_mode: "summary_only",
   });
 
-  const summaryOnly = createMergeReviewImportPreview(draft, "Pricing");
+  const findingRefs = {
+    "Tier 2 converts best": ["https://example.com/report", "https://example.com/dropped"],
+  };
+  const summaryOnly = createMergeReviewImportPreview(draft, "Pricing", findingRefs);
   assert.equal(summaryOnly.branchName, "Pricing");
   assert.equal(summaryOnly.summary, "Ship tiered pricing");
   assert.deepEqual([...summaryOnly.keyFindings], ["Tier 2 converts best"]);
   assert.deepEqual([...summaryOnly.openQuestions], ["Annual discount?"]);
   assert.deepEqual([...summaryOnly.evidenceRefs], []);
+  assert.deepEqual(Object.keys(summaryOnly.findingEvidenceRefs), []);
 
   const selected = createMergeReviewImportPreview(
     { ...draft, mode: "selected_artifacts", selectedArtifacts: "model.xlsx" },
     "Pricing",
+    findingRefs,
   );
   assert.deepEqual([...selected.evidenceRefs], ["https://example.com/report"]);
   assert.deepEqual([...selected.artifacts], ["model.xlsx"]);
+  // Only refs still listed in the draft evidence survive under each finding.
+  assert.deepEqual(
+    [...selected.findingEvidenceRefs["Tier 2 converts best"]],
+    ["https://example.com/report"],
+  );
+  const edited = createMergeReviewImportPreview(
+    { ...draft, mode: "full", findings: "Tier 3 converts best" },
+    "Pricing",
+    findingRefs,
+  );
+  assert.deepEqual(Object.keys(edited.findingEvidenceRefs), []);
+
+  // Approving an empty conclusion is blocked client-side (the API returns 400).
+  assert.equal(mergeReviewNeedsSummary({ ...draft, summary: "  " }), true);
+  assert.equal(mergeReviewNeedsSummary({ ...draft, summary: "  ", decision: "reject" }), false);
+  assert.equal(mergeReviewNeedsSummary(draft), false);
 });

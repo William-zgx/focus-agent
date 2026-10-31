@@ -4,6 +4,7 @@ import type {
 	MergeMode,
 	MergeTarget,
 } from "@focus-agent/web-sdk";
+import { useId } from "react";
 
 import { BranchImportCard } from "@/entities/messages/message-branch-import-card";
 
@@ -13,6 +14,7 @@ import type {
 } from "./merge-review-utils";
 import {
 	createMergeReviewImportPreview,
+	mergeReviewNeedsSummary,
 	mergeReviewStatusLabel,
 	modeOptionLabel,
 	recommendedImportModeLabel,
@@ -239,6 +241,8 @@ export function MergeReviewProposalForm({
 }) {
 	const shouldShowSelectedArtifacts =
 		draft.decision === "approve" && draft.mode === "selected_artifacts";
+	const needsSummary = mergeReviewNeedsSummary(draft);
+	const summaryHintId = useId();
 	const conflicts = (proposal.conflicts ?? []).filter(
 		(conflict) => conflict?.finding || conflict?.conflicting_finding,
 	);
@@ -333,7 +337,11 @@ export function MergeReviewProposalForm({
 					<BranchImportCard
 						isChineseUi={isChineseUi}
 						variant="preview"
-						view={createMergeReviewImportPreview(draft, branchName ?? "")}
+						view={createMergeReviewImportPreview(
+							draft,
+							branchName ?? "",
+							proposal.finding_evidence_refs,
+						)}
 					/>
 				</div>
 			) : null}
@@ -438,6 +446,14 @@ export function MergeReviewProposalForm({
 				</label>
 			</div>
 
+			{needsSummary ? (
+				<p className="fa-focus-modal-note is-danger" id={summaryHintId}>
+					{isChineseUi
+						? "这个分支还没有可合并的结论。请先在「摘要」中写一段结论再批准，或将决定改为「拒绝」。"
+						: "This branch has no conclusion to merge yet. Write a summary before approving, or set the decision to Reject."}
+				</p>
+			) : null}
+
 			<div className="fa-focus-modal-actions">
 				{onClose ? (
 					<button
@@ -449,7 +465,8 @@ export function MergeReviewProposalForm({
 					</button>
 				) : null}
 				<button
-					disabled={isSubmitting || isMergedBranch}
+					aria-describedby={needsSummary ? summaryHintId : undefined}
+					disabled={isSubmitting || isMergedBranch || needsSummary}
 					onClick={onSubmit}
 					type="button"
 				>

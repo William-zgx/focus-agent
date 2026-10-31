@@ -139,6 +139,8 @@ export interface FocusAgentMergeProposal {
 	evidence_refs: string[];
 	artifacts: string[];
 	recommended_import_mode: MergeMode;
+	/** Evidence per finding, keyed by the finding text; else use evidence_refs. */
+	finding_evidence_refs?: Record<string, string[]>;
 	/** True when the parent advanced after the fork and the proposal accounts for it. */
 	parent_moved_on?: boolean;
 	conflicts?: FocusAgentMergeConflict[];
@@ -178,6 +180,15 @@ export interface FocusAgentBranchImportMetadata {
 	evidence_refs: string[];
 	artifacts: string[];
 	imported_at: string;
+	finding_evidence_refs?: Record<string, string[]>;
+}
+
+/** `merge_queue` entry on the target thread; newer entries carry the extras. */
+export interface FocusAgentMergeQueueEntry extends FocusAgentImportedConclusion {
+	child_thread_id?: string;
+	open_questions?: string[];
+	finding_evidence_refs?: Record<string, string[]>;
+	imported_at?: string;
 }
 
 export interface FocusAgentBranchRecord {

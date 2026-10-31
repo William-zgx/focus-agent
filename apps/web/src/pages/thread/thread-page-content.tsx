@@ -4,6 +4,7 @@ import type {
 	FocusAgentAskUserQuestionInterrupt,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchDecisionSummary,
+	FocusAgentMergeQueueEntry,
 	FocusAgentStreamState,
 	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
@@ -38,6 +39,7 @@ interface ThreadPageContentProps {
 	isLoading: boolean;
 	isMergedReadOnlyThread: boolean;
 	isStreaming: boolean;
+	mergeQueue?: FocusAgentMergeQueueEntry[];
 	messages: Array<Record<string, unknown>>;
 	onClearEditDraft: () => void;
 	onCompactContext: () => Promise<void> | void;
@@ -106,6 +108,7 @@ export function ThreadPageContent({
 	isLoading,
 	isMergedReadOnlyThread,
 	isStreaming,
+	mergeQueue,
 	messages,
 	onClearEditDraft,
 	onCompactContext,
@@ -143,6 +146,7 @@ export function ThreadPageContent({
 		assistantMessage,
 		isReadOnly: isMergedReadOnlyThread,
 		isStreaming,
+		mergeQueue,
 		messages,
 		branchActions,
 		branchDecisionSummary,

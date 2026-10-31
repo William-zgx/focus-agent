@@ -4,6 +4,7 @@ import {
 	type FocusAgentAskUserQuestionInterrupt,
 	type FocusAgentBranchActionProposal,
 	type FocusAgentBranchDecisionSummary,
+	type FocusAgentMergeQueueEntry,
 	type FocusAgentStreamStep,
 	type FocusAgentToolApprovalInterrupt,
 	type RunFailedPayload,
@@ -14,6 +15,7 @@ import { AskUserQuestionCard } from "./message-list-ask-user-question-card";
 import {
 	clearPendingBranchImportHighlight,
 	matchPendingBranchImportHighlight,
+	withMergeQueueDetails,
 } from "./message-branch-import";
 import type { ThreadLinks } from "./message-branch-import-card";
 import { BranchActionCard } from "./message-list-branch-action-card";
@@ -76,6 +78,8 @@ interface MessageListProps {
 		answers: FocusAgentAskUserQuestionAnswer[],
 	) => void;
 	threadLinks?: ThreadLinks | null;
+	/** Target-thread merge queue; enriches import notices with extra detail. */
+	mergeQueue?: FocusAgentMergeQueueEntry[];
 }
 
 export function MessageList({
@@ -108,6 +112,7 @@ export function MessageList({
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
 	threadLinks = null,
+	mergeQueue,
 }: MessageListProps) {
 	const isCurrentTurnActive =
 		isStreaming ||
@@ -170,7 +175,11 @@ export function MessageList({
 				return (
 					<MessageRow
 						key={item.id}
-						branchImport={item.branchImport}
+						branchImport={
+							item.branchImport
+								? withMergeQueueDetails(item.branchImport, mergeQueue)
+								: null
+						}
 						content={item.content}
 						id={item.id}
 						isChineseUi={isChineseUi}
