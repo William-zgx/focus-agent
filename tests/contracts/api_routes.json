@@ -12867,6 +12867,16 @@
         "kind": {
           "$ref": "#/components/schemas/BranchActionKind"
         },
+        "merge_review_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "navigation": {
           "anyOf": [
             {

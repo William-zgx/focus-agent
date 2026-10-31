@@ -5636,6 +5636,8 @@ export interface components {
             /** Handoff Message */
             handoff_message?: string | null;
             kind: components["schemas"]["BranchActionKind"];
+            /** Merge Review Thread Id */
+            merge_review_thread_id?: string | null;
             navigation?: components["schemas"]["BranchActionNavigation"] | null;
             /** Rationale */
             rationale?: string | null;
