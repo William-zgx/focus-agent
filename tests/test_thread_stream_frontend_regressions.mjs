@@ -3751,3 +3751,45 @@ test("Transcript parses merged-branch import notices from metadata and legacy te
   assert.match(legacy.branchImport.legacyBody, /^Legacy summary\./);
   assert.equal(plain.branchImport, null);
 });
+
+test("Merge review preview mirrors what the import will carry for each mode", () => {
+  const sourceText = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/merge-review/merge-review-utils.ts"),
+    "utf8",
+  );
+  const transpiled = ts.transpileModule(sourceText, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const moduleExports = {};
+  const context = {
+    exports: moduleExports,
+    module: { exports: moduleExports },
+    require(moduleName) {
+      throw new Error(`Unexpected module import: ${moduleName}`);
+    },
+  };
+  vm.runInNewContext(transpiled, context);
+  const { createMergeReviewDraft, createMergeReviewImportPreview } = context.module.exports;
+  const draft = createMergeReviewDraft({
+    summary: " Ship tiered pricing ",
+    key_findings: ["Tier 2 converts best"],
+    open_questions: ["Annual discount?"],
+    evidence_refs: ["https://example.com/report"],
+    artifacts: ["deck.pdf", "model.xlsx"],
+    recommended_import_mode: "summary_only",
+  });
+
+  const summaryOnly = createMergeReviewImportPreview(draft, "Pricing");
+  assert.equal(summaryOnly.branchName, "Pricing");
+  assert.equal(summaryOnly.summary, "Ship tiered pricing");
+  assert.deepEqual([...summaryOnly.keyFindings], ["Tier 2 converts best"]);
+  assert.deepEqual([...summaryOnly.openQuestions], ["Annual discount?"]);
+  assert.deepEqual([...summaryOnly.evidenceRefs], []);
+
+  const selected = createMergeReviewImportPreview(
+    { ...draft, mode: "selected_artifacts", selectedArtifacts: "model.xlsx" },
+    "Pricing",
+  );
+  assert.deepEqual([...selected.evidenceRefs], ["https://example.com/report"]);
+  assert.deepEqual([...selected.artifacts], ["model.xlsx"]);
+});

@@ -125,6 +125,13 @@ export interface BranchTreeResponse {
 	archived_branches: BranchTreeNode[];
 }
 
+/** A branch finding that contradicts one already merged into the target. */
+export interface FocusAgentMergeConflict {
+	branch_name: string;
+	finding: string;
+	conflicting_finding: string;
+}
+
 export interface FocusAgentMergeProposal {
 	summary: string;
 	key_findings: string[];
@@ -132,6 +139,9 @@ export interface FocusAgentMergeProposal {
 	evidence_refs: string[];
 	artifacts: string[];
 	recommended_import_mode: MergeMode;
+	/** True when the parent advanced after the fork and the proposal accounts for it. */
+	parent_moved_on?: boolean;
+	conflicts?: FocusAgentMergeConflict[];
 }
 
 export interface FocusAgentMergeProposalOverrides {

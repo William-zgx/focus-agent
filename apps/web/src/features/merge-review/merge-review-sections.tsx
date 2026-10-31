@@ -1,4 +1,5 @@
 import type {
+	FocusAgentMergeConflict,
 	FocusAgentMergeProposal,
 	MergeMode,
 	MergeTarget,
@@ -67,6 +68,100 @@ function MergeReviewTextSection({
 					value={value}
 				/>
 			</label>
+		</div>
+	);
+}
+
+function lineListIncludes(value: string, item: string) {
+	const target = item.trim();
+	return value.split("\n").some((line) => line.trim() === target);
+}
+
+function removeLine(value: string, item: string) {
+	const target = item.trim();
+	return value
+		.split("\n")
+		.filter((line) => line.trim() !== target)
+		.join("\n");
+}
+
+function MergeReviewConflicts({
+	conflicts,
+	findings,
+	isChineseUi,
+	onDraftChange,
+}: {
+	conflicts: FocusAgentMergeConflict[];
+	findings: string;
+	isChineseUi: boolean;
+	onDraftChange: (
+		next: (current: MergeReviewDraft) => MergeReviewDraft,
+	) => void;
+}) {
+	return (
+		<div className="fa-focus-modal-section">
+			<h4>
+				{isChineseUi
+					? `与已合并结论冲突（${conflicts.length}）`
+					: `Conflicts with merged conclusions (${conflicts.length})`}
+			</h4>
+			<p className="fa-focus-modal-note">
+				{isChineseUi
+					? "合并前请确认取舍：可移除本分支的发现，或在下方「关键发现」中改写。"
+					: "Decide before merging: drop this branch's finding, or rewrite it under Key findings below."}
+			</p>
+			<ul className="m-0 grid list-none gap-2 p-0">
+				{conflicts.map((conflict) => {
+					const stillListed = lineListIncludes(findings, conflict.finding);
+					return (
+						<li
+							key={`${conflict.branch_name}:${conflict.finding}:${conflict.conflicting_finding}`}
+							className="grid gap-2 rounded-[var(--fa-radius-md)] border border-[color:var(--fa-warning)] bg-[color:var(--fa-warning-surface)] p-3 text-[length:var(--fa-fs-sm)] text-[color:var(--fa-text)]"
+						>
+							<div className="grid gap-1 sm:grid-cols-2 sm:gap-3">
+								<div className="grid gap-0.5">
+									<span className="text-[length:var(--fa-fs-xs)] font-semibold text-[color:var(--fa-status-warning-text)]">
+										{isChineseUi ? "本分支的发现" : "This branch found"}
+									</span>
+									<span>{conflict.finding}</span>
+								</div>
+								<div className="grid gap-0.5">
+									<span className="text-[length:var(--fa-fs-xs)] font-semibold text-[color:var(--fa-status-warning-text)]">
+										{conflict.branch_name
+											? isChineseUi
+												? `「${conflict.branch_name}」已合并的结论`
+												: `Already merged from "${conflict.branch_name}"`
+											: isChineseUi
+												? "已合并的结论"
+												: "Already merged"}
+									</span>
+									<span>{conflict.conflicting_finding}</span>
+								</div>
+							</div>
+							<div className="fa-focus-modal-actions">
+								<button
+									disabled={!stillListed}
+									onClick={() =>
+										onDraftChange((current) => ({
+											...current,
+											findings: removeLine(current.findings, conflict.finding),
+										}))
+									}
+									type="button"
+								>
+									{stillListed
+										? isChineseUi
+											? "从关键发现中移除"
+											: "Remove from key findings"
+										: isChineseUi
+											? "已从关键发现中移除"
+											: "Removed from key findings"}
+								</button>
+							</div>
+						</li>
+					);
+				})}
+			</ul>
 		</div>
 	);
 }
@@ -144,6 +239,9 @@ export function MergeReviewProposalForm({
 }) {
 	const shouldShowSelectedArtifacts =
 		draft.decision === "approve" && draft.mode === "selected_artifacts";
+	const conflicts = (proposal.conflicts ?? []).filter(
+		(conflict) => conflict?.finding || conflict?.conflicting_finding,
+	);
 
 	return (
 		<>
@@ -160,6 +258,21 @@ export function MergeReviewProposalForm({
 							)}`
 						: null}
 				</div>
+			) : null}
+			{proposal.parent_moved_on ? (
+				<output className="block rounded-[var(--fa-radius-md)] border border-[color:var(--fa-info)] bg-[color:var(--fa-info-surface)] px-3 py-2 text-[length:var(--fa-fs-sm)] text-[color:var(--fa-info-text)]">
+					{isChineseUi
+						? "主线在分叉后有新进展，结论已参考最新主线。"
+						: "The parent moved on after this branch forked; the conclusion already accounts for its latest state."}
+				</output>
+			) : null}
+			{conflicts.length > 0 ? (
+				<MergeReviewConflicts
+					conflicts={conflicts}
+					findings={draft.findings}
+					isChineseUi={isChineseUi}
+					onDraftChange={onDraftChange}
+				/>
 			) : null}
 			<MergeReviewTextSection
 				field="summary"
