@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from focus_agent.core.branching import (
     BranchActionNavigation,
@@ -72,6 +72,14 @@ class BranchTreeNodeView(BranchTreeNode):
     )
     children: list[BranchTreeNodeView] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_core_node(cls, data: Any) -> Any:
+        # Keep accepting plain core nodes so existing callers still validate.
+        if isinstance(data, BranchTreeNode) and not isinstance(data, cls):
+            return data.model_dump()
+        return data
+
     @classmethod
     def from_node(
         cls, node: BranchTreeNode, *, activity_by_thread: dict[str, str]
@@ -79,8 +87,7 @@ class BranchTreeNodeView(BranchTreeNode):
         payload = node.model_dump(exclude={"children"})
         payload["last_activity_at"] = activity_by_thread.get(node.thread_id)
         payload["children"] = [
-            cls.from_node(child, activity_by_thread=activity_by_thread)
-            for child in node.children
+            cls.from_node(child, activity_by_thread=activity_by_thread) for child in node.children
         ]
         return cls(**payload)
 
