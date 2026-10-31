@@ -196,6 +196,27 @@ def test_assemble_context_requires_chinese_answers_for_chinese_requests():
     assert "English-only answer" in context_slice.system_instructions
 
 
+def test_chinese_output_rewrite_skips_english_questions_about_chinese_topics():
+    class RewritingModel:
+        def invoke(self, _messages):
+            return AIMessage(
+                content="2027 年春节在 2 月 6 日，农历羊年由此开始，这是一个完整的中文改写版本。"
+            )
+
+    draft = AIMessage(
+        content="Chinese New Year in 2027 falls on February 6, starting the Year of the Goat."
+    )
+
+    assert (
+        repair_chinese_output(
+            response=draft,
+            user_text="When is Chinese New Year in 2027?",
+            model=RewritingModel(),
+        )
+        is None
+    )
+
+
 def test_chinese_output_rewrite_rejects_missing_locked_time_and_source():
     class RewritingModel:
         def invoke(self, _messages):
