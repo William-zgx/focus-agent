@@ -5,6 +5,8 @@ The detector grades how strongly the incoming message asks for a branch:
 * ``explicit`` – the user literally asks for a branch ("新建分支", "open a new branch").
 * ``strong``   – an exploration verb qualified by branch/separate wording, or a clear
   topic switch at the start of the message.
+* ``weak``     – a side question, an A-vs-B comparison or a "pause and debug" detour.
+  These yield a lower-confidence, non-blocking recommendation.
 * ``none``     – nothing branch-shaped; the semantic classifier may still run.
 
 Ambiguous single words ("新建", "split", "fork", "深入", "展开" ...) never count on
@@ -22,6 +24,7 @@ from focus_agent.services.branches.actions import has_negated_branch_action_requ
 
 STRENGTH_EXPLICIT = "explicit"
 STRENGTH_STRONG = "strong"
+STRENGTH_WEAK = "weak"
 STRENGTH_NONE = "none"
 
 _CONTINUE_HINTS_ZH = (
@@ -167,6 +170,38 @@ _LEADING_FILLER_RE = re.compile(
 )
 _POSITIONAL_FOLLOWER = "：:，,"
 
+# Weak detour signals (item: recall). Matched on compacted Chinese / spaced English.
+_SIDE_QUESTION_ZH_RE = re.compile(
+    r"顺便问(?:一下|下|个|一句)?|顺带问(?:一下|下)?|顺带一提|另外问(?:一下|下|个)"
+    r"|插(?:个|一个|一句)?题外话|题外话|插一句|岔开一下|跑个题|跑题一下|离题一下"
+)
+_SIDE_QUESTION_EN_RE = re.compile(
+    r"\b(?:by\s+the\s+way|btw|side\s+question|off[\s-]topic|tangent(?:ially)?|"
+    r"unrelated,?\s+but)\b"
+)
+_EN_QUESTION_RE = re.compile(
+    r"\?|\b(?:what|how|why|which|when|where|who|is|are|does|do|can|could|should)\b"
+)
+_COMPARISON_ZH_RE = re.compile(
+    r"(?:对比|比较|权衡)(?:一下|下)?.{1,40}?(?:和|与|跟|还是|vs|以及)"
+    r"|.{1,30}还是.{1,30}(?:哪个|哪种|哪一个)(?:好|更好|更合适|合适)"
+)
+_COMPARISON_EN_RE = re.compile(
+    r"\bcompare\b[^.?!\n]{1,80}?\b(?:vs\.?|versus|and|with|to|against)\b"
+    r"|\b\w+\s+(?:vs\.?|versus)\s+\w+"
+    r"|\bor\b[^.?!\n]{1,60}\bwhich\b|\bwhich\b[^.?!\n]{1,60}\bor\b"
+)
+_DETOUR_ZH_RE = re.compile(
+    r"(?:先)?(?:暂停|停)(?:一下|下)?.{0,40}(?:排查|调试|debug|修复|修一下|处理|查一下|看一下)"
+    r"|先(?:放一放|搁置一下|插(?:个|一个)(?:问题|事))"
+)
+_DETOUR_EN_RE = re.compile(
+    r"\b(?:pause|hold\s+on|hold\s+that\s+thought|put\s+(?:this|that)\s+on\s+hold|"
+    r"step\s+aside)\b[^.?!\n]{0,80}?\b(?:debug|investigate|look\s+into|fix|check|"
+    r"troubleshoot)\b"
+    r"|\b(?:quick\s+)?detour\b"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BranchIntent:
@@ -250,6 +285,29 @@ def topic_drift_match(message: str) -> str | None:
     return None
 
 
+def weak_detour_match(message: str) -> tuple[str, str] | None:
+    """Return ``(route, matched)`` for side questions, comparisons and detours."""
+    raw = _normalize_space(message)
+    compact = compact_text(message)
+    if not compact:
+        return None
+    side = _SIDE_QUESTION_ZH_RE.search(compact)
+    if side:
+        return "side_question", side.group(0)
+    side_en = _SIDE_QUESTION_EN_RE.search(raw)
+    if side_en and _EN_QUESTION_RE.search(raw[side_en.end() :]):
+        return "side_question", side_en.group(0)
+    detour = _DETOUR_ZH_RE.search(compact) or _DETOUR_EN_RE.search(raw)
+    if detour:
+        return "detour", detour.group(0)
+    if _CODE_CONTEXT_RE.search(raw):
+        return None
+    comparison = _COMPARISON_ZH_RE.search(compact) or _COMPARISON_EN_RE.search(raw)
+    if comparison:
+        return "comparison", comparison.group(0)
+    return None
+
+
 def compact_text(text: str) -> str:
     return re.sub(r"\s+", "", str(text or "").strip().lower())
 
@@ -324,8 +382,10 @@ __all__ = [
     "STRENGTH_EXPLICIT",
     "STRENGTH_NONE",
     "STRENGTH_STRONG",
+    "STRENGTH_WEAK",
     "BranchIntent",
     "compact_text",
     "detect_branch_intent",
     "topic_drift_match",
+    "weak_detour_match",
 ]

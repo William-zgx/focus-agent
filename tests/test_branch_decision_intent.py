@@ -124,3 +124,58 @@ def test_scores_are_graded_by_signal_strength() -> None:
     drift = _recommend("另一个问题：我们的前端打包为什么这么慢？")
 
     assert explicit.score > drift.score > 0.72
+
+
+@pytest.mark.parametrize(
+    ("message", "route"),
+    [
+        ("顺便问一下，Python 的 GIL 在 3.13 还存在吗？", "side_question"),
+        ("By the way, what's the difference between Redis streams and Kafka?", "side_question"),
+        ("btw is Kafka exactly-once by default?", "side_question"),
+        ("对比一下方案A（重试队列）和方案B（死信队列）的优缺点", "comparison"),
+        ("Compare approach A vs approach B for this migration", "comparison"),
+        ("Postgres or MySQL, which one fits this workload?", "comparison"),
+        ("先暂停一下，我遇到一个奇怪的 CI 报错要先排查：pip install 超时", "detour"),
+        ("Hold on, I need to debug a flaky CI job first", "detour"),
+    ],
+)
+def test_detours_produce_low_confidence_recommendation(message: str, route: str) -> None:
+    score = _recommend(message)
+
+    assert score.action.value == "fork_child_branch"
+    assert f"route={route}" in score.rationale
+    assert 0.72 < score.score < 0.86
+
+
+def test_side_question_on_branch_targets_sibling() -> None:
+    score = _recommend("顺便问一下，Cadence 的授权协议是什么？", on_branch=True)
+
+    assert score.action.value == "fork_sibling_branch"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "顺便把单测也补上",
+        "btw, also rename the variable to retry_count.",
+        "对比一下这两个函数的实现",
+        "这个方案还是有问题，重试次数应该可配置？",
+    ],
+)
+def test_detour_lookalikes_continue(message: str) -> None:
+    assert _recommend(message).action.value == "continue_current"
+
+
+def test_detours_require_history() -> None:
+    score = _recommend("Could you compare option A and B?", values={"messages": []})
+
+    assert score.action.value == "continue_current"
+
+
+def test_detour_handoff_drops_side_question_prefix() -> None:
+    from focus_agent.services.branches.actions import branch_handoff_message_from_text
+
+    assert (
+        branch_handoff_message_from_text("顺便问一下，Python 的 GIL 在 3.13 还存在吗？")
+        == "Python 的 GIL 在 3.13 还存在吗？"
+    )

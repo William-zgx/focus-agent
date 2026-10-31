@@ -130,6 +130,8 @@ def score_branch_recommendation(
     pending_action = bool(_signal_value(by_name, "pending_branch_action", False))
     has_history_context = bool(shape.get("has_history_context"))
 
+    intent_value = _signal_value(by_name, "recommendation_intent", {})
+    intent = intent_value if isinstance(intent_value, dict) else {}
     action = _recommendation_action(target)
     routed_by = explicit_source
     if (
@@ -145,6 +147,9 @@ def score_branch_recommendation(
         elif bool(shape.get("has_topic_drift")) and shape_target:
             action = _recommendation_action(str(shape_target))
             routed_by = "shape_topic_drift"
+        elif intent.get("weak_route") and intent.get("weak_target"):
+            action = _recommendation_action(str(intent["weak_target"]))
+            routed_by = str(intent["weak_route"])
         elif _semantic_topic_shift_confident(
             semantic_topic_relation,
             min_confidence=min_confidence,
@@ -155,8 +160,6 @@ def score_branch_recommendation(
             )
             routed_by = "semantic_topic_relation"
 
-    intent_value = _signal_value(by_name, "recommendation_intent", {})
-    intent = intent_value if isinstance(intent_value, dict) else {}
     if routed_by == "branch_hint" and intent.get("route"):
         routed_by = str(intent["route"])
     score = _recommendation_score(
@@ -178,10 +181,13 @@ def score_branch_recommendation(
 
 # Score tiers keep confidence proportional to the evidence instead of giving every
 # fork the same value: explicit branch commands are near-certain, qualified
-# exploration and topic switches sit clearly above the default 0.72 threshold.
+# exploration and topic switches sit clearly above the default 0.72 threshold, and
+# weak detours (side questions, comparisons, debugging pauses) sit just above it.
 _SCORE_CONTINUE = 0.72
 _SCORE_EXPLICIT = 0.95
 _SCORE_STRONG = 0.86
+_SCORE_WEAK = 0.76
+WEAK_RECOMMENDATION_ROUTES = frozenset({"side_question", "comparison", "detour"})
 
 
 def _recommendation_score(
@@ -197,6 +203,8 @@ def _recommendation_score(
         return semantic_confidence
     if strength == "explicit" and routed_by == "explicit_branch":
         return _SCORE_EXPLICIT
+    if routed_by in WEAK_RECOMMENDATION_ROUTES:
+        return _SCORE_WEAK
     return _SCORE_STRONG
 
 

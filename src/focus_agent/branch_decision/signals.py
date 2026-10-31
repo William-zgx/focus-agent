@@ -7,7 +7,7 @@ from focus_agent.core.branching import BranchMeta, BranchStatus
 from focus_agent.core.governance import BranchDecisionAction, BranchDecisionSignal
 from focus_agent.services.branches.actions import latest_pending_branch_action
 
-from .intent import detect_branch_intent, topic_drift_match
+from .intent import detect_branch_intent, topic_drift_match, weak_detour_match
 from .service_helpers import _message_text, _semantic_recommended_action
 
 _SPLIT_HINTS = (
@@ -123,6 +123,7 @@ def collect_branch_recommendation_signals(
 ) -> list[BranchDecisionSignal]:
     messages = list(values.get("messages", []) or [])
     intent = detect_branch_intent(message, on_branch=branch_meta is not None)
+    weak = weak_detour_match(message) if intent.source == "none" else None
     explicit_target = intent.target
     explicit_source = intent.source
     topic_drift = _recommendation_topic_drift(message, branch_meta=branch_meta)
@@ -160,11 +161,14 @@ def collect_branch_recommendation_signals(
                 "strength": intent.strength,
                 "route": intent.route,
                 "matched": intent.matched,
+                "weak_route": weak[0] if weak else None,
+                "weak_matched": weak[1] if weak else None,
+                "weak_target": _weak_target(weak[0], branch_meta=branch_meta) if weak else None,
             },
             score=1.0 if intent.source == "branch_hint" else 0.0,
             weight=0.0,
             evidence_refs=["incoming_user_message"],
-            rationale="Graded strength of the lexical branch intent (explicit, strong, none).",
+            rationale="Graded strength of the lexical branch intent (explicit, strong, weak).",
         ),
         BranchDecisionSignal(
             name="recommendation_topic_drift",
@@ -227,6 +231,14 @@ def _explicit_hint(text: str) -> str:
     if any(_compact(marker) in normalized for marker in _CONCLUDE_HINTS):
         return "conclude"
     return "none"
+
+
+def _weak_target(route: str, *, branch_meta: BranchMeta | None) -> str:
+    # An unrelated side question on a branch belongs next to it; comparisons and
+    # debugging detours are sub-work of the current thread.
+    if route == "side_question" and branch_meta is not None:
+        return BranchDecisionAction.FORK_SIBLING_BRANCH.value
+    return BranchDecisionAction.FORK_CHILD_BRANCH.value
 
 
 def _recommendation_topic_drift(

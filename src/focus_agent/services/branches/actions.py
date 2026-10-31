@@ -121,6 +121,9 @@ _BRANCH_HANDOFF_PATTERNS = (
 _TOPIC_DRIFT_HANDOFF_PATTERNS = (
     r"^(?:换个主题|换个方向|另一个问题|另外一个问题|不相关的问题)[，,。；;：:\s]*(?P<task>.+)$",
     r"^(?:先看|先研究|先探索|单独看|单独研究|单独探索)(?:一下)?(?:另一个|另外一个|新的)?问题[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:顺便问(?:一下|下|个)?|顺带问(?:一下|下)?|另外问(?:一下|下)?|题外话|插一句|先暂停一下|暂停一下)"
+    r"[，,。；;：:\s]*(?P<task>.+)$",
+    r"^(?:by\s+the\s+way|btw|side\s+question)[,，:：\s]+(?P<task>.+)$",
 )
 _HANDOFF_LEADING_FILLER_RE = re.compile(
     r"^(?:然后|并且|来|去|用于|用来|继续|先|单独|帮我|请|麻烦你|and|then|to|for)\s*",
