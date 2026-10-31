@@ -14,50 +14,21 @@ from .web_helpers import (
 )
 
 
-def _make_provider_error(
-    *,
-    provider: str,
-    category: str,
-    message: str,
-    retryable: bool = False,
-    status_code: int | None = None,
-    attempt: int | None = None,
-    errors: list[dict[str, Any]] | None = None,
-) -> _WebSearchProviderError:
+def _tavily_status_error(exc: httpx.HTTPStatusError, *, attempt: int) -> _WebSearchProviderError:
+    status_code = int(exc.response.status_code)
+    if status_code == 429:
+        category, retryable = "rate_limited", True
+    elif status_code == 408:
+        category, retryable = "timeout", False
+    else:
+        category, retryable = "provider_error", 500 <= status_code < 600
     return _WebSearchProviderError(
-        provider=provider,
+        provider="tavily",
         category=category,
-        message=message,
+        message=f"Tavily search failed with HTTP {status_code}: {exc.response.text[:300]}",
         retryable=retryable,
         status_code=status_code,
         attempt=attempt,
-        errors=errors,
-    )
-
-
-def _tavily_status_error(exc: Exception) -> _WebSearchProviderError | None:
-    if not isinstance(exc, httpx.HTTPStatusError):
-        return None
-    status_code = int(exc.response.status_code)
-    body = exc.response.text
-    if status_code == 429:
-        category = "rate_limited"
-        retryable = True
-    elif status_code == 408:
-        category = "timeout"
-        retryable = False
-    elif 500 <= status_code < 600:
-        category = "provider_error"
-        retryable = True
-    else:
-        category = "provider_error"
-        retryable = False
-    return _make_provider_error(
-        provider="tavily",
-        category=category,
-        message=f"Tavily search failed with HTTP {status_code}: {body[:300]}",
-        retryable=retryable,
-        status_code=status_code,
     )
 
 
@@ -80,11 +51,7 @@ def _tavily_post_raw(
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        status_error = _tavily_status_error(exc)
-        if status_error is not None:
-            status_error.attempt = attempt
-            raise status_error from exc
-        raise
+        raise _tavily_status_error(exc, attempt=attempt) from exc
     return response.text
 
 
@@ -100,7 +67,7 @@ def _run_tavily_search(
     exclude_domains: list[str],
 ) -> dict[str, Any]:
     if not tavily_api_key:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="missing_api_key",
             message="TAVILY_API_KEY is not configured.",
@@ -127,7 +94,7 @@ def _run_tavily_search(
     except _WebSearchProviderError:
         raise
     except httpx.TimeoutException as exc:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="timeout",
             message=f"Tavily search failed: {exc}",
@@ -135,7 +102,7 @@ def _run_tavily_search(
             attempt=attempt,
         ) from exc
     except httpx.HTTPError as exc:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="provider_error",
             message=f"Tavily search failed: {exc}",
@@ -144,7 +111,7 @@ def _run_tavily_search(
         ) from exc
     except OSError as exc:
         category = "timeout" if _is_timeout_exception(exc) else "provider_error"
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category=category,
             message=f"Tavily search failed: {exc}",
@@ -155,7 +122,7 @@ def _run_tavily_search(
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="invalid_payload",
             message="Tavily search returned invalid JSON.",
@@ -163,7 +130,7 @@ def _run_tavily_search(
         ) from exc
 
     if not isinstance(data, dict):
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="invalid_payload",
             message="Tavily search returned an unusable payload.",
@@ -171,7 +138,7 @@ def _run_tavily_search(
         )
     results = data.get("results")
     if not isinstance(results, list):
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="invalid_payload",
             message="Tavily search returned an unusable payload.",
@@ -181,7 +148,7 @@ def _run_tavily_search(
     normalized_results: list[dict[str, Any]] = []
     for item in results[:max_results]:
         if not isinstance(item, dict):
-            raise _make_provider_error(
+            raise _WebSearchProviderError(
                 provider="tavily",
                 category="invalid_payload",
                 message="Tavily search returned an unusable result item.",
@@ -196,7 +163,7 @@ def _run_tavily_search(
             )
         )
     if not normalized_results:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="tavily",
             category="empty_results",
             message="Tavily search returned no results.",
@@ -229,7 +196,7 @@ def _run_duckduckgo_search(
     try:
         from ddgs import DDGS
     except ImportError as exc:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="duckduckgo",
             category="provider_error",
             message="DuckDuckGo fallback is unavailable because 'ddgs' is not installed.",
@@ -269,7 +236,7 @@ def _run_duckduckgo_search(
         message = str(exc).lower()
         if "429" in message or "rate limit" in message or "rate_limited" in message:
             category = "rate_limited"
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="duckduckgo",
             category=category,
             message=f"DuckDuckGo search failed: {exc}",
@@ -279,7 +246,7 @@ def _run_duckduckgo_search(
     normalized_results: list[dict[str, Any]] = []
     for item in raw_results[:max_results]:
         if not isinstance(item, dict):
-            raise _make_provider_error(
+            raise _WebSearchProviderError(
                 provider="duckduckgo",
                 category="invalid_payload",
                 message="DuckDuckGo search returned an unusable result item.",
@@ -294,7 +261,7 @@ def _run_duckduckgo_search(
             )
         )
     if not normalized_results:
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="duckduckgo",
             category="empty_results",
             message="DuckDuckGo search returned no results.",

@@ -15,11 +15,7 @@ from .web_helpers import (
     _unsupported_search_time_range,
     _WebSearchProviderError,
 )
-from .web_search_providers import (
-    _make_provider_error,
-    _run_duckduckgo_search,
-    _run_tavily_search,
-)
+from .web_search_providers import _run_duckduckgo_search, _run_tavily_search
 
 _TAVILY_MAX_QUERY_CHARS = 400
 
@@ -57,13 +53,6 @@ def _validate_search_filters(
         normalized_include_domains,
         normalized_exclude_domains,
     )
-
-
-def _record_error(
-    errors: list[dict[str, Any]],
-    error: _WebSearchProviderError,
-) -> None:
-    errors.append(_provider_error_record(error))
 
 
 def _errors_from_exception(error: Exception) -> list[dict[str, Any]]:
@@ -229,7 +218,7 @@ class _WebSearchRunner:
                     exclude_domains=exclude_domains,
                 )
             else:
-                raise _make_provider_error(
+                raise _WebSearchProviderError(
                     provider=provider,
                     category="provider_error",
                     message=f"Unsupported web search provider: {provider}",
@@ -264,7 +253,8 @@ class _WebSearchRunner:
         **search_args: Any,
     ) -> dict[str, Any]:
         max_attempts = _TAVILY_MAX_ATTEMPTS if provider == "tavily" else 1
-        for attempt in range(1, max_attempts + 1):
+        attempt = 1
+        while True:
             try:
                 return self._run_provider_attempt(
                     provider=provider,
@@ -273,15 +263,10 @@ class _WebSearchRunner:
                     **search_args,
                 )
             except _WebSearchProviderError as exc:
-                _record_error(errors, exc)
-                if exc.retryable and attempt < max_attempts:
-                    continue
-                raise
-        raise _make_provider_error(
-            provider="tavily",
-            category="provider_error",
-            message="Tavily search failed before producing a result.",
-        )
+                errors.append(_provider_error_record(exc))
+                if not exc.retryable or attempt >= max_attempts:
+                    raise
+            attempt += 1
 
     def _fail(self, *, tool_name: str, message: str, error_type: type[Exception]) -> Exception:
         self._emit(tool_name=tool_name, stage="error", error=message)
@@ -390,7 +375,7 @@ class _WebSearchRunner:
             category=category,
             error=message,
         )
-        raise _make_provider_error(
+        raise _WebSearchProviderError(
             provider="web_search",
             category=category,
             message=message,
