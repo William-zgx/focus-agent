@@ -7,7 +7,7 @@ from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
 from ..repositories.memory_repository import MemoryListQuery
 from ..retrieval import RetrievalIndex
-from .branch_visibility import visible_branch_ids
+from .branch_visibility import branch_origin_visible, visible_branch_ids
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
@@ -22,6 +22,10 @@ from .scorer import score_memory_hit
 from .text import memory_text_terms
 
 logger = logging.getLogger(__name__)
+
+# Namespace searches fetch extra candidates so records hidden from this branch
+# (unpromoted sibling-branch summaries) do not crowd visible ones out of top_k.
+_CANDIDATE_OVERFETCH = 4
 
 
 class MemoryRetriever:
@@ -65,6 +69,11 @@ class MemoryRetriever:
         )
         namespaces = self._candidate_namespaces(context=context)
         visible_ids = visible_branch_ids(branch_id=context.branch_id, state=state)
+        candidate_limit = self.default_limit * _CANDIDATE_OVERFETCH
+
+        def visible(found: list[MemorySearchHit]) -> list[MemorySearchHit]:
+            return [hit for hit in found if branch_origin_visible(hit.record, visible_ids)]
+
         hits: list[MemorySearchHit] = []
         vector_hits: list[MemorySearchHit] = []
         vector_statuses: list[str] = []
@@ -85,11 +94,11 @@ class MemoryRetriever:
                     self._search_retrieval_namespace(
                         namespace,
                         effective_query,
-                        limit=self.default_limit,
+                        limit=candidate_limit,
                         query_vector=query_vector,
                     )
                 )
-                retrieval_hits.extend(namespace_retrieval_hits)
+                retrieval_hits.extend(visible(namespace_retrieval_hits))
                 if namespace_retrieval_status == "failed":
                     retrieval_failed = True
                     break
@@ -124,8 +133,8 @@ class MemoryRetriever:
                 update={"retrieval_plan": retrieval_plan.model_dump(mode="json")}
             )
         for namespace in namespaces:
-            namespace_hits = self._search_namespace(
-                namespace, effective_query, limit=self.default_limit
+            namespace_hits = visible(
+                self._search_namespace(namespace, effective_query, limit=candidate_limit)
             )
             if not namespace_hits and _is_user_profile_namespace(namespace):
                 namespace_hits = self._recent_user_profile_hits(
@@ -139,10 +148,10 @@ class MemoryRetriever:
                     namespace_vector_hits, namespace_vector_status = self._search_vector_namespace(
                         namespace,
                         effective_query,
-                        limit=self.default_limit,
+                        limit=candidate_limit,
                         query_vector=query_vector,
                     )
-                vector_hits.extend(namespace_vector_hits)
+                vector_hits.extend(visible(namespace_vector_hits))
                 vector_statuses.append(namespace_vector_status)
         vector_status = _combined_vector_status(
             vector_statuses,

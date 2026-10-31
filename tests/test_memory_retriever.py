@@ -836,7 +836,7 @@ def test_memory_retriever_records_embedding_provider_metadata_in_plan():
         [0.1, 0.2, 0.3],
         "fake_embedder",
         "fake-embedding-model",
-        8,
+        8 * 4,  # default_limit x candidate overfetch for branch visibility filtering
     )
     assert bundle.retrieval_plan["embedding_provider"] == {
         "provider_id": "fake_embedder",

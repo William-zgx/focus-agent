@@ -124,6 +124,33 @@ def test_scoped_render_drops_unmerged_branch_records_on_main():
     assert "branch-only claim" in branch_block
 
 
+def test_hidden_branch_memories_do_not_take_main_thread_recall_slots(tmp_path):
+    store = PersistentInMemoryStore(tmp_path / "store.pkl")
+    writer = MemoryWriter(store=store)
+    writer.write_records(
+        [
+            *[
+                _turn_summary(f"yugabyte pricing branch detail {index}", branch_id="b1")
+                for index in range(6)
+            ],
+            *[
+                _turn_summary(f"yugabyte pricing main note {index}", branch_id=None)
+                for index in range(4)
+            ],
+        ]
+    )
+    bundle = MemoryRetriever(store=store, default_limit=4).retrieve_for_turn(
+        context=RequestContext(user_id="user-1", root_thread_id=ROOT),
+        state={},
+        query="yugabyte pricing",
+        prompt_mode=PromptMode.EXPLORE,
+    )
+
+    summaries = {hit.record.summary for hit in bundle.hits}
+    assert not any("branch detail" in summary for summary in summaries)
+    assert len(summaries) == 4
+
+
 def test_fork_records_ancestor_branch_ids():
     service = _service(
         {
