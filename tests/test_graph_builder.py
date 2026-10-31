@@ -245,6 +245,30 @@ def test_messages_for_model_keeps_current_tool_exchange():
     assert isinstance(messages[2], ToolMessage)
 
 
+def test_messages_for_model_keeps_every_tool_round_of_the_current_turn():
+    messages = [
+        HumanMessage(content="old question"),
+        AIMessage(content="old answer"),
+        HumanMessage(content="research question"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "web_search", "args": {}}]),
+        ToolMessage(content="first result", tool_call_id="c1"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "web_fetch", "args": {}}]),
+        ToolMessage(content="second result", tool_call_id="c2"),
+    ]
+
+    selected = _messages_for_model({"messages": messages, "recent_messages": messages[:3]})
+
+    assert [message.content for message in selected if isinstance(message, ToolMessage)] == [
+        "first result",
+        "second result",
+    ]
+    assert [message.content for message in selected[:3]] == [
+        "old question",
+        "old answer",
+        "research question",
+    ]
+
+
 def test_live_web_search_first_guard_uses_full_tool_history():
     @tool
     def web_search(query: str) -> str:
