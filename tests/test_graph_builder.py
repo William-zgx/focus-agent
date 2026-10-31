@@ -245,6 +245,30 @@ def test_messages_for_model_keeps_current_tool_exchange():
     assert isinstance(messages[2], ToolMessage)
 
 
+def test_messages_for_model_keeps_every_tool_round_of_the_current_turn():
+    messages = [
+        HumanMessage(content="old question"),
+        AIMessage(content="old answer"),
+        HumanMessage(content="research question"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "web_search", "args": {}}]),
+        ToolMessage(content="first result", tool_call_id="c1"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "web_fetch", "args": {}}]),
+        ToolMessage(content="second result", tool_call_id="c2"),
+    ]
+
+    selected = _messages_for_model({"messages": messages, "recent_messages": messages[:3]})
+
+    assert [message.content for message in selected if isinstance(message, ToolMessage)] == [
+        "first result",
+        "second result",
+    ]
+    assert [message.content for message in selected[:3]] == [
+        "old question",
+        "old answer",
+        "research question",
+    ]
+
+
 def test_live_web_search_first_guard_uses_full_tool_history():
     @tool
     def web_search(query: str) -> str:
@@ -1466,6 +1490,23 @@ def test_tool_intent_plan_recovers_pending_web_search_from_phrase_confirmation()
     assert plan.preferred_first_tool == "web_search"
     assert plan.preferred_first_args == {"query": "今天有哪个国家总统访问中国？"}
     assert plan.temporal_anchor_required is True
+
+
+def test_tool_intent_plan_ignores_refusals_and_new_requests_as_pending_confirmation():
+    pending = {
+        "policy": "live_web_research",
+        "preferred_first_tool": "web_search",
+        "preferred_first_args": {"query": "帮我查一下今天北京天气"},
+    }
+
+    for text in ("不可以，别再查了", "可以解释一下 parse_config 函数吗", "不用继续了"):
+        plan = build_tool_intent_plan(text, pending_tool_action=pending)
+        assert plan.source != "pending_tool_action", text
+        assert plan.preferred_first_args != pending["preferred_first_args"], text
+
+    for text in ("可以，查一下吧", "继续查", "Go ahead"):
+        plan = build_tool_intent_plan(text, pending_tool_action=pending)
+        assert plan.source == "pending_tool_action", text
 
 
 def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
@@ -6560,3 +6601,83 @@ def test_tool_free_repair_rejects_synthesis_that_echoes_known_tool_markup():
 
     assert "[lookup_widget]" not in repaired.content
     assert "context_policy.py:42" in repaired.content
+
+
+def test_graph_does_not_carry_plan_or_repair_budgets_into_next_turn(monkeypatch, tmp_path):
+    planner_calls: list[str] = []
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            system_text = str(getattr(prompt_messages[0], "content", ""))
+            if "任务规划器" in system_text:
+                planner_calls.append(str(prompt_messages[-1].content))
+                return AIMessage(
+                    content='{"steps": [{"id": "s1", "goal": "迁移数据库"}], '
+                    '"success_criteria": "迁移方案完整"}'
+                )
+            if "计划审计员" in system_text:
+                return AIMessage(content='{"status": "done", "reasoning": "ok"}')
+            return AIMessage(content="好的，这是答复。")
+
+    class FakeModel(FakeRunnable):
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph.builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=()),
+    )
+    config = {"configurable": {"thread_id": "thread-plan-carryover"}}
+    context = RequestContext(user_id="user-1", root_thread_id="thread-plan-carryover")
+    first_brief = "请帮我制定一个把订单服务从 MySQL 迁移到 Postgres 的完整方案。" * 6
+
+    first = graph.invoke(
+        {
+            "messages": [HumanMessage(content=first_brief)],
+            "task_brief": first_brief,
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+    assert first.value["plan"] is not None
+    assert len(planner_calls) == 1
+    # A repair retry spent in an earlier turn must not exhaust later turns' budget.
+    graph.update_state(
+        config,
+        {
+            "plan_meta": {
+                **first.value["plan_meta"],
+                "live_web_answer_repair_count": 1,
+                "skill_execution_answer_repair_count": 1,
+            }
+        },
+    )
+
+    second = graph.invoke(
+        {
+            "messages": [HumanMessage(content="顺便问一下，今天周几？")],
+            "task_brief": "顺便问一下，今天周几？",
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    assert second.value["plan"] is None
+    assert second.value["current_step_id"] == ""
+    assert second.value["reflection"] is None
+    assert len(planner_calls) == 1
+    assert "live_web_answer_repair_count" not in second.value["plan_meta"]
+    assert "skill_execution_answer_repair_count" not in second.value["plan_meta"]
+    assert second.value["plan_meta"]["plan_calls"] == 1

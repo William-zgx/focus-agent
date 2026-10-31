@@ -76,11 +76,22 @@ def _drop_leading_messages_before_first_human(messages: list[Any]) -> list[Any]:
     return messages
 
 
+def _current_turn_tool_start(messages: list[Any]) -> int | None:
+    """Start of this turn's tool exchanges, so earlier rounds stay visible to the model."""
+    trailing_start = _find_trailing_tool_span_start(messages)
+    if trailing_start is None:
+        return None
+    for index in range(trailing_start - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return index + 1
+    return trailing_start
+
+
 def _messages_for_model(state: AgentState) -> list[Any]:
     raw_recent_messages = list(state.get("recent_messages") or [])
     source_messages = list(state.get("messages", []) or [])
     messages = branch_context_messages(source_messages, values=state)
-    trailing_tool_span_start = _find_trailing_tool_span_start(messages)
+    trailing_tool_span_start = _current_turn_tool_start(messages)
     recent_messages = raw_recent_messages
     if raw_recent_messages and branch_fork_message_count(state) is not None:
         source_objects = {id(message) for message in source_messages}

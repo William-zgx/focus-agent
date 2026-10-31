@@ -73,18 +73,7 @@ def apply_prompt_budget_guard(
     if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
-    mandatory_indices = _mandatory_prompt_indices(guarded)
-    removable = [
-        index
-        for index, message in enumerate(guarded)
-        if index not in mandatory_indices and not isinstance(message, SystemMessage)
-    ]
-    for index in reversed(removable):
-        if _within_prompt_budget(guarded, budget=budget, counter=counter):
-            break
-        del guarded[index]
-        mandatory_indices = _mandatory_prompt_indices(guarded)
-
+    guarded = _drop_oldest_history_to_fit(guarded, budget=budget, counter=counter)
     if _within_prompt_budget(guarded, budget=budget, counter=counter):
         return guarded
 
@@ -98,6 +87,38 @@ def apply_prompt_budget_guard(
         counter=counter,
         preserve_required_messages=preserve_required_messages,
     )
+
+
+def _drop_oldest_history_to_fit(
+    messages: list[AnyMessage],
+    *,
+    budget: ContextBudget,
+    counter: _PromptBudgetCounter,
+) -> list[AnyMessage]:
+    """Drop optional history oldest-first, keeping tool calls paired with their results."""
+
+    mandatory_indices = _mandatory_prompt_indices(messages)
+    units: list[list[int]] = []
+    for index, message in enumerate(messages):
+        if isinstance(message, ToolMessage) and units and units[-1][-1] == index - 1:
+            first = messages[units[-1][0]]
+            if isinstance(first, AIMessage) and getattr(first, "tool_calls", None):
+                units[-1].append(index)
+                continue
+        units.append([index])
+
+    dropped: set[int] = set()
+    for unit in units:
+        if any(
+            index in mandatory_indices or isinstance(messages[index], SystemMessage)
+            for index in unit
+        ):
+            continue
+        kept = [message for index, message in enumerate(messages) if index not in dropped]
+        if _within_prompt_budget(kept, budget=budget, counter=counter):
+            break
+        dropped.update(unit)
+    return [message for index, message in enumerate(messages) if index not in dropped]
 
 
 def _prompt_char_limit(budget: ContextBudget) -> int:

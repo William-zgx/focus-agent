@@ -9,7 +9,13 @@ from focus_agent.core.context_policy import (
     assemble_context,
     trim_tool_observation,
 )
-from focus_agent.core.types import ArtifactRef, ContextBudget, FindingItem, PromptMode
+from focus_agent.core.types import (
+    ArtifactRef,
+    ConstraintItem,
+    ContextBudget,
+    FindingItem,
+    PromptMode,
+)
 from focus_agent.engine.graph_output_language import (
     enforce_temporal_anchor,
     repair_chinese_output,
@@ -190,6 +196,27 @@ def test_assemble_context_requires_chinese_answers_for_chinese_requests():
     assert "English-only answer" in context_slice.system_instructions
 
 
+def test_chinese_output_rewrite_skips_english_questions_about_chinese_topics():
+    class RewritingModel:
+        def invoke(self, _messages):
+            return AIMessage(
+                content="2027 年春节在 2 月 6 日，农历羊年由此开始，这是一个完整的中文改写版本。"
+            )
+
+    draft = AIMessage(
+        content="Chinese New Year in 2027 falls on February 6, starting the Year of the Goat."
+    )
+
+    assert (
+        repair_chinese_output(
+            response=draft,
+            user_text="When is Chinese New Year in 2027?",
+            model=RewritingModel(),
+        )
+        is None
+    )
+
+
 def test_chinese_output_rewrite_rejects_missing_locked_time_and_source():
     class RewritingModel:
         def invoke(self, _messages):
@@ -341,6 +368,78 @@ def test_prompt_budget_guard_prioritizes_imported_findings_over_summary_and_avai
     assert "Approved finding:" in rendered or "...[1 omitted]" in rendered
     assert "old summary old summary" not in rendered
     assert "low priority skill one" not in rendered
+
+
+def test_prompt_budget_guard_drops_oldest_history_first():
+    budget = ContextBudget(prompt_token_limit=60, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="OLD-H1 OLD-H1"),
+            AIMessage(content="OLD-A1 OLD-A1"),
+            HumanMessage(content="NEW-H2 NEW-H2"),
+            AIMessage(content="NEW-A2 NEW-A2"),
+            HumanMessage(content="latest q"),
+        ],
+        budget=budget,
+    )
+
+    contents = [str(message.content) for message in guarded]
+    assert contents[-1] == "latest q"
+    assert "NEW-A2 NEW-A2" in contents
+    assert "OLD-H1 OLD-H1" not in contents
+
+
+def test_prompt_budget_guard_drops_tool_calls_together_with_their_results():
+    budget = ContextBudget(prompt_token_limit=95, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [
+            SystemMessage(content="sys"),
+            HumanMessage(content="old q"),
+            AIMessage(content="", tool_calls=[{"id": "c0", "name": "lookup", "args": {}}]),
+            ToolMessage(content="x" * 20, tool_call_id="c0"),
+            AIMessage(content="old answer " * 3),
+            HumanMessage(content="latest q"),
+        ],
+        budget=budget,
+    )
+
+    call_ids = {
+        call["id"]
+        for message in guarded
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    result_ids = {message.tool_call_id for message in guarded if isinstance(message, ToolMessage)}
+    assert call_ids == result_ids
+    assert str(guarded[-1].content) == "latest q"
+
+
+def test_assemble_context_keeps_goal_first_and_newest_constraints_in_order():
+    constraints = [
+        ConstraintItem(constraint=f"constraint {index} " + "detail " * (12 - index))
+        for index in range(12)
+    ]
+    state = {
+        "messages": [HumanMessage(content="go")],
+        "active_goal": "ship X",
+        "user_constraints": [
+            *constraints,
+            ConstraintItem(constraint="constraint 0 " + "detail " * 12),
+            ConstraintItem(constraint="newest: be brief"),
+        ],
+    }
+
+    block = assemble_context(state, PromptMode.EXPLORE).constraints_block
+    lines = block.splitlines()[1:]
+
+    assert len(lines) == 10
+    assert lines[0] == "- Active goal: ship X"
+    assert lines[-1] == "- newest: be brief"
+    assert lines[-2].startswith("- constraint 0 ")
+    assert [line.split()[2] for line in lines[1:-2]] == [str(i) for i in range(5, 12)]
 
 
 def test_prompt_budget_guard_truncates_bulleted_blocks_without_breaking_bullet_lines():
@@ -786,3 +885,29 @@ def test_policy_prompt_budget_guard_honours_preserve_required_messages():
     assert guarded[0].content.startswith("Required rules")
     assert any(message.content == "keep this current user request" for message in guarded)
     assert not any("old context" in str(message.content) for message in guarded)
+
+
+def test_prompt_budget_guard_treats_fenced_memory_block_as_optional_context():
+    memory_block = (
+        "<memory-context>\n[System note: recalled background]\n"
+        "## User preferences and profile\n" + "- memory fact\n" * 80 + "</memory-context>"
+    )
+    system_text = "\n\n".join(
+        [
+            "You are Focus Agent.",
+            memory_block,
+            "## Rolling summary\n" + "important summary " * 5,
+        ]
+    )
+    budget = ContextBudget(prompt_token_limit=400, chars_per_token=1)
+
+    guarded = apply_prompt_budget_guard(
+        [SystemMessage(content=system_text), HumanMessage(content="what next")],
+        budget=budget,
+        preserve_required_messages=True,
+    )
+
+    rendered = str(guarded[0].content)
+    assert sum(len(str(message.content)) for message in guarded) <= 400
+    assert "<memory-context>" not in rendered
+    assert "## Rolling summary" in rendered

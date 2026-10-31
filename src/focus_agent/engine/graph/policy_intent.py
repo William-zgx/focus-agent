@@ -23,6 +23,14 @@ _TOOL_CARRYOVER_CONFIRMATION_MARKERS = frozenset(
         "go ahead",
     }
 )
+# Longest first so "帮我查吧" is removed before its "查吧" suffix.
+_CJK_CARRYOVER_MARKERS = sorted(
+    (marker for marker in _TOOL_CARRYOVER_CONFIRMATION_MARKERS if not marker.isascii()),
+    key=len,
+    reverse=True,
+)
+_CARRYOVER_NEGATIONS = ("不", "别", "没", "勿")
+_CARRYOVER_FILLER_CHARS = frozenset("的啊吧呀呢嗯了哈呗请查搜一下")
 
 
 def pending_live_web_search_intent(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -61,12 +69,15 @@ def is_tool_carryover_confirmation(text: str) -> bool:
     normalized = normalize_carryover_text(text)
     if normalized in _TOOL_CARRYOVER_CONFIRMATION_MARKERS:
         return True
+    # Short CJK confirmations ("好的，帮我查吧") count only when nothing but markers and
+    # filler particles remain; "不可以" or "可以解释一下…吗" are not consent.
     compact = re.sub(r"[\s,，。.!！?？;；:：]+", "", text.strip().lower())
-    return any(
-        marker in compact
-        for marker in _TOOL_CARRYOVER_CONFIRMATION_MARKERS
-        if len(marker) > 1 and not re.fullmatch(r"[a-z0-9]+(?:\s+[a-z0-9]+)*", marker)
-    )
+    if not compact or any(negation in compact for negation in _CARRYOVER_NEGATIONS):
+        return False
+    residual = compact
+    for marker in _CJK_CARRYOVER_MARKERS:
+        residual = residual.replace(marker, "")
+    return residual != compact and all(char in _CARRYOVER_FILLER_CHARS for char in residual)
 
 
 def normalize_carryover_text(text: str) -> str:

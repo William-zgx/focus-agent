@@ -29,15 +29,6 @@ _CURRENT_TIME_CUE_RE = re.compile(
     re.IGNORECASE,
 )
 _TIME_NOUN_AFTER_UTC_RE = re.compile(r"^\s*(?:时间|time\b)", re.IGNORECASE)
-_CHINESE_OUTPUT_MARKERS = (
-    "中文",
-    "用中文",
-    "以中文",
-    "中文回答",
-    "中文回复",
-    "chinese",
-    "in chinese",
-)
 _LANGUAGE_REPAIR_SYSTEM_NOTE = (
     "Rewrite the draft into a final Chinese answer. Preserve verified facts, "
     "source names, URLs, dates, numbers, and uncertainty. Do not call tools, "
@@ -67,10 +58,8 @@ def _ascii_letter_count(value: str) -> int:
 
 
 def _requires_chinese_output(user_text: str) -> bool:
-    normalized = user_text.lower()
-    return bool(_cjk_count(user_text)) or any(
-        marker in normalized for marker in _CHINESE_OUTPUT_MARKERS
-    )
+    # A bare "chinese" would also match topics such as "Chinese New Year".
+    return bool(_cjk_count(user_text)) or "in chinese" in user_text.lower()
 
 
 def _is_english_dominant(value: str) -> bool:

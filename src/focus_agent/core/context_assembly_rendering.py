@@ -116,7 +116,7 @@ def _context_block_header(block: str) -> str:
         return "active_skills"
     if lowered.startswith("## rolling summary"):
         return "summary"
-    if lowered.startswith("## retrieved long-term memories"):
+    if lowered.startswith(("## retrieved long-term memories", "<memory-context>")):
         return "memory"
     if lowered.startswith("## available skills"):
         return "available_skills"
