@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from time import monotonic
 from typing import Any
 
+import anyio
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
@@ -65,6 +66,10 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
+_DISCONNECT_CANCEL_ACTIONS = {
+    DisconnectMode.CANCEL: "interrupt",
+    DisconnectMode.ROLLBACK: "rollback",
+}
 
 
 def _task_stream_event_payload(
@@ -605,11 +610,12 @@ def _run_event_streaming_response(
         finally:
             if cancel_on_disconnect:
                 record = runtime.run_manager.get(run_id)
-                if record is not None and record.inflight:
-                    if record.on_disconnect is DisconnectMode.CANCEL:
-                        await runtime.run_manager.cancel(run_id, action="interrupt")
-                    elif record.on_disconnect is DisconnectMode.ROLLBACK:
-                        await runtime.run_manager.cancel(run_id, action="rollback")
+                action = _DISCONNECT_CANCEL_ACTIONS.get(record.on_disconnect) if record else None
+                if action is not None and record.inflight:
+                    # A client disconnect cancels this generator; shield the cleanup so
+                    # the cancel/rollback is not itself cancelled at its first await.
+                    with anyio.CancelScope(shield=True):
+                        await runtime.run_manager.cancel(run_id, action=action)
 
     return sse_streaming_response(event_stream())
 
