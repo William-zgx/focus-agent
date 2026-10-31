@@ -71,6 +71,10 @@ from .tool_execution import HarnessToolServices, make_tool_executor_node
 
 logger = logging.getLogger(__name__)
 
+_TURN_SCOPED_PLAN_META_KEYS = frozenset(
+    {"replan_requested", "live_web_answer_repair_count", "skill_execution_answer_repair_count"}
+)
+
 
 # ------------------------------------------------------------------
 # System agent trigger helper (fire-and-forget from sync nodes)
@@ -225,7 +229,20 @@ def build_graph(
                 "first_user_message",
                 _build_system_agent_ctx(state, runtime),
             )
-        return {"llm_calls": state.get("llm_calls", 0)}
+        # Plan/reflect state and answer-repair budgets are scoped to one turn;
+        # bootstrap runs only at START, so interrupt resumes keep them.
+        plan_meta = {
+            key: value
+            for key, value in (state.get("plan_meta") or {}).items()
+            if key not in _TURN_SCOPED_PLAN_META_KEYS
+        }
+        return {
+            "llm_calls": state.get("llm_calls", 0),
+            "plan": None,
+            "current_step_id": "",
+            "reflection": None,
+            "plan_meta": plan_meta,
+        }
 
     retrieve_memory = make_retrieve_memory_node(effective_memory_retriever)
     assemble_context = make_assemble_context_node(

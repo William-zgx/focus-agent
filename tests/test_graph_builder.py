@@ -6560,3 +6560,83 @@ def test_tool_free_repair_rejects_synthesis_that_echoes_known_tool_markup():
 
     assert "[lookup_widget]" not in repaired.content
     assert "context_policy.py:42" in repaired.content
+
+
+def test_graph_does_not_carry_plan_or_repair_budgets_into_next_turn(monkeypatch, tmp_path):
+    planner_calls: list[str] = []
+
+    class FakeRunnable:
+        def with_config(self, _config):
+            return self
+
+        def invoke(self, prompt_messages):
+            system_text = str(getattr(prompt_messages[0], "content", ""))
+            if "任务规划器" in system_text:
+                planner_calls.append(str(prompt_messages[-1].content))
+                return AIMessage(
+                    content='{"steps": [{"id": "s1", "goal": "迁移数据库"}], '
+                    '"success_criteria": "迁移方案完整"}'
+                )
+            if "计划审计员" in system_text:
+                return AIMessage(content='{"status": "done", "reasoning": "ok"}')
+            return AIMessage(content="好的，这是答复。")
+
+    class FakeModel(FakeRunnable):
+        def bind_tools(self, _tools):
+            return FakeRunnable()
+
+    monkeypatch.setattr(
+        "focus_agent.engine.graph.builder.create_chat_model",
+        lambda *args, **kwargs: FakeModel(),
+    )
+    graph = build_graph(
+        settings=Settings(workspace_root=str(tmp_path)),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=()),
+    )
+    config = {"configurable": {"thread_id": "thread-plan-carryover"}}
+    context = RequestContext(user_id="user-1", root_thread_id="thread-plan-carryover")
+    first_brief = "请帮我制定一个把订单服务从 MySQL 迁移到 Postgres 的完整方案。" * 6
+
+    first = graph.invoke(
+        {
+            "messages": [HumanMessage(content=first_brief)],
+            "task_brief": first_brief,
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+    assert first.value["plan"] is not None
+    assert len(planner_calls) == 1
+    # A repair retry spent in an earlier turn must not exhaust later turns' budget.
+    graph.update_state(
+        config,
+        {
+            "plan_meta": {
+                **first.value["plan_meta"],
+                "live_web_answer_repair_count": 1,
+                "skill_execution_answer_repair_count": 1,
+            }
+        },
+    )
+
+    second = graph.invoke(
+        {
+            "messages": [HumanMessage(content="顺便问一下，今天周几？")],
+            "task_brief": "顺便问一下，今天周几？",
+            "selected_model": "openai:fake",
+        },
+        config=config,
+        context=context,
+        version="v2",
+    )
+
+    assert second.value["plan"] is None
+    assert second.value["current_step_id"] == ""
+    assert second.value["reflection"] is None
+    assert len(planner_calls) == 1
+    assert "live_web_answer_repair_count" not in second.value["plan_meta"]
+    assert "skill_execution_answer_repair_count" not in second.value["plan_meta"]
+    assert second.value["plan_meta"]["plan_calls"] == 1
