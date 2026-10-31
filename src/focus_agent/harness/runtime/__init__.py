@@ -9,9 +9,7 @@ from .rollback import (
     restore_graph_rollback_target,
 )
 from .runs import (
-    ConflictError,
     DisconnectMode,
-    HarnessRunStore,
     MultitaskStrategy,
     RunConflictError,
     RunLifecyclePublisher,
@@ -23,10 +21,8 @@ from .runs import (
 )
 
 __all__ = [
-    "ConflictError",
     "DisconnectMode",
     "DrainMode",
-    "HarnessRunStore",
     "HarnessConfig",
     "CheckpointRollbackResult",
     "CheckpointRollbackTarget",

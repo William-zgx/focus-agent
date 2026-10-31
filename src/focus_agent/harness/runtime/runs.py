@@ -33,12 +33,6 @@ class RunStatus(StrEnum):
     ERROR = "error"
     TIMEOUT = "timeout"
     INTERRUPTED = "interrupted"
-    pending = "pending"
-    running = "running"
-    success = "success"
-    error = "error"
-    timeout = "timeout"
-    interrupted = "interrupted"
 
 
 class DisconnectMode(StrEnum):
@@ -46,8 +40,6 @@ class DisconnectMode(StrEnum):
 
     CANCEL = "cancel"
     CONTINUE = "continue"
-    cancel = "cancel"
-    continue_ = "continue"
     ROLLBACK = "rollback"
 
 
@@ -58,10 +50,6 @@ class MultitaskStrategy(StrEnum):
     INTERRUPT = "interrupt"
     ROLLBACK = "rollback"
     ENQUEUE = "enqueue"
-    reject = "reject"
-    interrupt = "interrupt"
-    rollback = "rollback"
-    enqueue = "enqueue"
 
 
 RunCancelAction = Literal["interrupt", "rollback"]
@@ -144,9 +132,6 @@ class RunStore(Protocol):
 
     async def update_run_completion(self, run_id: str, **kwargs: Any) -> None:
         """Persist completion metadata such as token usage."""
-
-
-HarnessRunStore = RunStore
 
 
 @dataclass(slots=True)
@@ -295,7 +280,7 @@ class RunManager(RunFollowupsMixin):
                 and (user_id is None or run.user_id == user_id)
             ]
             if strategy == MultitaskStrategy.REJECT and inflight:
-                raise ConflictError(f"Thread {thread_id} already has an active run")
+                raise RunConflictError(f"Thread {thread_id} already has an active run")
             if strategy in {MultitaskStrategy.INTERRUPT, MultitaskStrategy.ROLLBACK}:
                 for run in inflight:
                     self._cancel_record(run, action=strategy.value)
@@ -632,11 +617,8 @@ class RunManager(RunFollowupsMixin):
             )
 
 
-class ConflictError(Exception):
+class RunConflictError(Exception):
     """Raised when a thread already has an active run and strategy is reject."""
-
-
-RunConflictError = ConflictError
 
 
 class UnsupportedStrategyError(Exception):
@@ -685,7 +667,6 @@ def _augment_rollback_result(
 
 
 __all__ = [
-    "ConflictError",
     "DisconnectMode",
     "MultitaskStrategy",
     "RunConflictError",
@@ -696,6 +677,5 @@ __all__ = [
     "RunRequest",
     "RunStatus",
     "RunStore",
-    "HarnessRunStore",
     "UnsupportedStrategyError",
 ]
