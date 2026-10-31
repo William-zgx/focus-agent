@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from ..core.context_assembly_coercion import _finding_to_line
 from ..core.types import PromptMode
+from .branch_visibility import branch_origin_visible, visible_branch_ids
 from .models import MemoryRecord, MemorySearchHit, MemoryStatus, RetrievedMemoryBundle
 from .text import normalize_memory_dedupe_text
 
@@ -97,6 +98,7 @@ def render_scoped_context_memories(
 ) -> str:
     """Deduplicate only represented claims with matching provenance and evidence."""
     branch_id = (state.get("branch_meta") or {}).get("branch_id")
+    visible_ids = visible_branch_ids(branch_id=branch_id, state=state)
     represented: set[tuple[str, str, frozenset[str]]] = set()
     for item in [*state.get("imported_findings", []), *state.get("branch_local_findings", [])]:
         if _finding_to_line(item) not in represented_lines:
@@ -129,6 +131,8 @@ def render_scoped_context_memories(
             continue
         valid_records += 1
         if record.status != MemoryStatus.ACTIVE:
+            continue
+        if not branch_origin_visible(record, visible_ids):
             continue
         if record.scope.value == "branch" and not record.promoted_to_main:
             if record.source_branch_id != branch_id or prompt_mode == PromptMode.SYNTHESIZE:

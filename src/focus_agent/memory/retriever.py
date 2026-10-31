@@ -7,6 +7,7 @@ from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
 from ..repositories.memory_repository import MemoryListQuery
 from ..retrieval import RetrievalIndex
+from .branch_visibility import visible_branch_ids
 from .dedupe import memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
@@ -63,6 +64,7 @@ class MemoryRetriever:
             prompt_mode=prompt_mode,
         )
         namespaces = self._candidate_namespaces(context=context)
+        visible_ids = visible_branch_ids(branch_id=context.branch_id, state=state)
         hits: list[MemorySearchHit] = []
         vector_hits: list[MemorySearchHit] = []
         vector_statuses: list[str] = []
@@ -101,7 +103,9 @@ class MemoryRetriever:
                 namespaces=namespaces,
                 total_hits=len(deduped),
             )
-            filtered = self.policy.filter_bundle_for_prompt(bundle, prompt_mode=prompt_mode)
+            filtered = self.policy.filter_bundle_for_prompt(
+                bundle, prompt_mode=prompt_mode, visible_branch_ids=visible_ids
+            )
             selected_ids = [hit.record.memory_id for hit in filtered.hits]
             retrieval_plan = MemoryRetrievalPlan(
                 query=effective_query,
@@ -161,7 +165,9 @@ class MemoryRetriever:
             namespaces=namespaces,
             total_hits=len(deduped),
         )
-        filtered = self.policy.filter_bundle_for_prompt(bundle, prompt_mode=prompt_mode)
+        filtered = self.policy.filter_bundle_for_prompt(
+            bundle, prompt_mode=prompt_mode, visible_branch_ids=visible_ids
+        )
         selected_ids = [hit.record.memory_id for hit in filtered.hits]
         retrieval_plan = MemoryRetrievalPlan(
             query=effective_query,

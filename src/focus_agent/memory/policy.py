@@ -15,6 +15,7 @@ from ..storage.namespaces import (
     skill_memory_namespace,
     user_profile_namespace,
 )
+from .branch_visibility import branch_origin_visible
 from .models import MemoryRecord, MemoryVisibility, MemoryWriteRequest, RetrievedMemoryBundle
 from .text import memory_text_terms
 
@@ -164,12 +165,16 @@ class MemoryPolicy:
         bundle: RetrievedMemoryBundle,
         *,
         prompt_mode: PromptMode,
+        visible_branch_ids: frozenset[str] = frozenset(),
     ) -> RetrievedMemoryBundle:
+        # Unpromoted branch-origin records only reach their own branch lineage,
+        # in every prompt mode; synthesize additionally drops them there.
         hits = [
             hit
             for hit in list(bundle.hits)
             if str(getattr(hit.record.status, "value", hit.record.status)) == "active"
             and hit.record.deleted_at is None
+            and branch_origin_visible(hit.record, visible_branch_ids)
             and _memory_relevant_for_query(hit, query=bundle.query)
         ]
         if prompt_mode == PromptMode.SYNTHESIZE:

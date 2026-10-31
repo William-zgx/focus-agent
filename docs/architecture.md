@@ -530,7 +530,8 @@ Memory 的 canonical 文档是 [memory-system-v2.md](memory-system-v2.md)。架�
 - `MemoryExtractor`：从 turn 中提取候选记忆。
 - `MemoryWriter`：按 policy、dedupe、semantic key 和 conflict 规则写入；Postgres 模式下委托 `MemoryService` 和 `MemoryRepository`。
 - `MemoryEmbeddingService`：对长期语义 memory best-effort 写入 `focus_memory_embeddings`；短期上下文、规则、工作记忆、artifact/citation/tool observation 默认不进入向量索引。
-- `MemoryCurator`：只治理 branch-local finding 是否 promotion 到主线。
+- `MemoryCurator`：只治理 branch-local finding 是否 promotion 到主线。`branch_local_findings` 由两处写入：分支内 `memory_save(scope="branch")` 成功的调用（extract_memories 节点），以及 merge apply 时已批准 proposal 的 key findings；因此 BRANCH_FINDING promotion 与 curator 冲突检查会真实运行。
+- 分支来源可见性（`memory/branch_visibility.py`）：`source_branch_id` 非空且未 `promoted_to_main` 的记录，在所有 prompt mode 下只对该分支及其后代（`branch_meta.ancestor_branch_ids`，fork 时写入）可见；主线和 sibling 分支看不到未合并分支的 turn summary 等记录，promotion 后的记录可见性不变。
 
 Namespace 由 `src/focus_agent/storage/namespaces.py` 管理，区分 root thread、conversation main、branch local memory 等作用域。
 

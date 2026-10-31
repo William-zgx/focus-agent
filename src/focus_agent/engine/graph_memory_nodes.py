@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 
-from langchain.messages import AIMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ..config import Settings
 from ..core.branch_brief import fork_brief_goal_update
 from ..core.context.policy import assemble_context as build_context_slice
+from ..core.merge_review_inputs import finding_text
 from ..core.request_context import RequestContext
 from ..core.state import AgentState
-from ..core.types import PromptMode
+from ..core.types import FindingItem, PromptMode
 from ..delegation.context_engineering import build_context_engineering_decision
 from ..memory import (
     MemoryExtractor,
@@ -198,6 +200,56 @@ def _should_extract_memories(state: AgentState) -> bool:
     return bool(_latest_final_ai_text(messages))
 
 
+def _saved_branch_memory(result: ToolMessage) -> bool:
+    try:
+        payload = json.loads(str(result.content or ""))
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and bool(payload.get("saved"))
+        and payload.get("scope") == "branch"
+    )
+
+
+def branch_memory_tool_findings(
+    state: AgentState, *, branch_id: str | None
+) -> list[dict[str, Any]]:
+    """Branch-scoped ``memory_save`` calls from the latest turn, as branch-local findings."""
+    if not branch_id:
+        return []
+    messages = list(state.get("messages", []) or [])
+    start = max(
+        (index for index, message in enumerate(messages) if isinstance(message, HumanMessage)),
+        default=0,
+    )
+    turn = messages[start:]
+    results = {
+        str(message.tool_call_id): message for message in turn if isinstance(message, ToolMessage)
+    }
+    known = {
+        " ".join(finding_text(item).split())
+        for item in state.get("branch_local_findings", []) or []
+    }
+    findings: list[dict[str, Any]] = []
+    for message in turn:
+        for call in getattr(message, "tool_calls", None) or []:
+            if call.get("name") != "memory_save":
+                continue
+            result = results.get(str(call.get("id") or ""))
+            if result is None or not _saved_branch_memory(result):
+                continue
+            args = call.get("args") or {}
+            text = " ".join(str(args.get("summary") or args.get("content") or "").split())[:400]
+            if not text or text in known:
+                continue
+            known.add(text)
+            findings.append(
+                FindingItem(finding=text, source_branch_id=str(branch_id)).model_dump(mode="json")
+            )
+    return findings
+
+
 def make_extract_memories_node(
     memory_extractor: MemoryExtractor,
 ) -> Any:
@@ -205,6 +257,8 @@ def make_extract_memories_node(
         state: AgentState,
         runtime: Runtime[RequestContext],
     ) -> dict[str, Any]:
+        tool_findings = branch_memory_tool_findings(state, branch_id=runtime.context.branch_id)
+        branch_updates = {"branch_local_findings": tool_findings} if tool_findings else {}
         if not _should_extract_memories(state):
             verification = state.get("answer_verification") or (state.get("plan_meta") or {}).get(
                 "answer_verification"
@@ -222,6 +276,7 @@ def make_extract_memories_node(
                     }
                 )
             return {
+                **branch_updates,
                 "memory_write_requests": [],
                 "memory_write_result": {
                     "prepared": 0,
@@ -233,6 +288,7 @@ def make_extract_memories_node(
             }
         extraction = memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
         return {
+            **branch_updates,
             "memory_write_requests": [
                 record.model_dump(mode="json") for record in extraction.records
             ],
@@ -294,6 +350,7 @@ def maybe_interrupt_for_merge(state: AgentState) -> dict[str, Any]:
 
 __all__ = [
     "_resolve_prompt_mode",
+    "branch_memory_tool_findings",
     "_should_extract_memories",
     "make_assemble_context_node",
     "make_extract_memories_node",

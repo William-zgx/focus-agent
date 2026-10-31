@@ -75,6 +75,15 @@ def _local_snapshot_seed_values(parent_values: dict) -> dict:
     return seed_values
 
 
+def _ancestor_branch_ids(parent_values: dict) -> list[str]:
+    """Branch ids whose unreviewed memory this child may see (its lineage)."""
+    parent_meta = parent_values.get("branch_meta")
+    if not isinstance(parent_meta, dict) or not parent_meta.get("branch_id"):
+        return []
+    ancestors = [str(item) for item in parent_meta.get("ancestor_branch_ids") or [] if item]
+    return [*ancestors, str(parent_meta["branch_id"])]
+
+
 class BranchLifecycleCoordinator:
     """Owns branch lifecycle operations behind the BranchService facade."""
 
@@ -154,6 +163,7 @@ class BranchLifecycleCoordinator:
         )
         branch_meta_payload["fork_brief"] = fork_brief
         branch_meta_payload["fork_inherited_counts"] = fork_inherited_counts_for(seed_values)
+        branch_meta_payload["ancestor_branch_ids"] = _ancestor_branch_ids(parent_values)
         if name_source is not None:
             branch_meta_payload["branch_name_source"] = name_source
 

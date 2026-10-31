@@ -16,6 +16,7 @@ from ...core.branching import (
     MergeProposalOverrides,
     MergeTarget,
 )
+from ...core.merge_review_inputs import branch_owned_findings, finding_text
 from ...core.request_context import RequestContext
 from ...core.types import FindingItem
 from ...memory import MemoryCurator, MemoryWriter
@@ -240,6 +241,19 @@ class BranchMergeCoordinator:
             },
             as_node="bootstrap_turn",
         )
+        local_findings = _record_approved_local_findings(
+            svc,
+            child_config=child_config,
+            values=values,
+            approved=[
+                FindingItem(
+                    finding=item,
+                    evidence_refs=_finding_evidence_refs(proposal, item),
+                    source_branch_id=branch_record.branch_id,
+                )
+                for item in proposal.key_findings
+            ],
+        )
         is_returning_to_root_main = target_thread_id == branch_record.root_thread_id
         if svc.store is not None and is_returning_to_root_main:
             memory_context = RequestContext(
@@ -256,7 +270,7 @@ class BranchMergeCoordinator:
             )
             svc.promote_branch_findings_to_main_memory(
                 branch_record=branch_record,
-                findings=list(values.get("branch_local_findings", [])),
+                findings=local_findings,
                 memory_context=memory_context,
             )
             if svc._last_memory_curator_decision is not None:
@@ -291,6 +305,27 @@ class BranchMergeCoordinator:
             as_node="bootstrap_turn",
         )
         return imported
+
+
+def _record_approved_local_findings(
+    svc, *, child_config: dict, values: dict, approved: list[FindingItem]
+) -> list[object]:
+    """Append approved proposal findings to the branch's ``branch_local_findings``.
+
+    Returns the branch-owned findings used for BRANCH_FINDING promotion and the
+    memory curator's conflict check.
+    """
+    owned = list(branch_owned_findings(values))
+    known = {" ".join(finding_text(item).split()) for item in owned}
+    added = [item for item in approved if " ".join(item.finding.split()) not in known]
+    if added:
+        # branch_local_findings uses an additive reducer: write only the delta.
+        svc.graph.update_state(
+            child_config,
+            {"branch_local_findings": [item.model_dump(mode="json") for item in added]},
+            as_node="bootstrap_turn",
+        )
+    return [*owned, *added]
 
 
 def _finding_evidence_refs(proposal: MergeProposal, finding: str) -> list[str]:
