@@ -144,8 +144,8 @@ def citation_lines(values: Mapping[str, Any]) -> list[str]:
     lines: list[str] = []
     for item in split_at_fork(values, "citations")[1][-_LIST_LIMIT:]:
         payload = _payload(item)
-        label = clip_text(payload.get("label") or "", 120)
-        uri = clip_text(payload.get("uri") or "", 200)
+        label = clip_text(payload.get("label") or payload.get("title") or "", 120)
+        uri = clip_text(payload.get("uri") or payload.get("url") or "", 200)
         if label or uri:
             lines.append(f"{label} ({uri})" if label and uri else label or uri)
     return lines
@@ -272,7 +272,9 @@ def known_evidence_refs(values: Mapping[str, Any]) -> set[str]:
     known: set[str] = set()
     for item in list(values.get("citations") or []):
         payload = _payload(item)
-        known.update(str(payload.get(key) or "").strip() for key in ("label", "uri"))
+        known.update(
+            str(payload.get(key) or "").strip() for key in ("label", "uri", "title", "url")
+        )
     for item in list(values.get("evidence_ledger") or []):
         payload = _payload(item)
         known.update(str(payload.get(key) or "").strip() for key in ("id", "url", "title"))
