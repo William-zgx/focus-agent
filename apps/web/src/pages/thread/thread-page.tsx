@@ -1,5 +1,5 @@
-import { useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useRouterState } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	FocusAgentAskUserQuestionAnswer,
 	FocusAgentAskUserQuestionInterrupt,
@@ -42,6 +42,21 @@ export function ThreadPage() {
 		},
 	});
 	const { data, isLoading, error } = useThreadState(threadId);
+	const router = useRouter();
+	const linkRootThreadId = data?.root_thread_id ?? conversationId;
+	const threadLinks = useMemo(() => {
+		const location = (targetThreadId: string) => ({
+			to: "/c/$conversationId/t/$threadId" as const,
+			params: { conversationId: linkRootThreadId, threadId: targetThreadId },
+		});
+		return {
+			href: (targetThreadId: string) =>
+				router.buildLocation(location(targetThreadId)).href,
+			open: (targetThreadId: string) => {
+				void router.navigate(location(targetThreadId));
+			},
+		};
+	}, [linkRootThreadId, router]);
 	const { createBranch, isChineseUi } = useShellUi();
 	const pendingBranchGoalThreadId = usePendingBranchGoalThreadId();
 	const isMergedReadOnlyThread = data?.branch_meta?.branch_status === "merged";
@@ -324,6 +339,7 @@ export function ThreadPage() {
 			stickToBottom={stickToBottom}
 			streamState={streamState}
 			threadError={error}
+			threadLinks={threadLinks}
 			threadId={threadId}
 			rootThreadId={data?.root_thread_id ?? conversationId}
 			toolApprovalError={toolApprovalError}

@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
+import { requestBranchImportHighlight } from "@/entities/messages/message-branch-import";
 import { useBranchActions } from "@/features/branch-tree/use-branch-actions";
 
 import {
@@ -48,6 +49,7 @@ export function MergeReviewCard({
 		markMergeProposalReady,
 		markMergeProposalFailed,
 		isMergeProposalPreparing,
+		setShellStatus,
 	} = useShellUi();
 	const navigate = useNavigate();
 	const [isPreparing, setIsPreparing] = useState(false);
@@ -123,7 +125,15 @@ export function MergeReviewCard({
 				threadId,
 				createMergeReviewPayload(draft),
 			);
-			setLastImported(response.imported ?? null);
+			const imported = response.imported ?? null;
+			setLastImported(imported);
+			if (imported) {
+				// The target transcript scrolls to and highlights the new import card.
+				requestBranchImportHighlight({
+					branchId: imported.branch_id,
+					branchName: imported.branch_name,
+				});
+			}
 			const targetThreadId = response.target_thread_id || threadId;
 			await navigate({
 				to: "/c/$conversationId/t/$threadId",
@@ -132,6 +142,20 @@ export function MergeReviewCard({
 					threadId: targetThreadId,
 				},
 			});
+			setShellStatus(
+				{
+					tone: "success",
+					text: imported
+						? isChineseUi
+							? `已合并「${imported.branch_name}」的结论`
+							: `Merged the conclusion from "${imported.branch_name}"`
+						: isChineseUi
+							? "已放弃合并这个分支"
+							: "Branch conclusion discarded",
+					display: "chat-floating",
+				},
+				{ autoClearMs: 3200 },
+			);
 		} catch (error) {
 			setErrorMessage(
 				error instanceof Error

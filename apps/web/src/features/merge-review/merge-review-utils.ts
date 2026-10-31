@@ -5,6 +5,8 @@ import type {
 	MergeTarget,
 } from "@focus-agent/web-sdk";
 
+import type { BranchImportView } from "@/entities/messages/message-branch-import";
+
 export type MergeReviewDecision = "approve" | "reject";
 
 export type MergeReviewDraft = {
@@ -109,6 +111,28 @@ export function createMergeReviewDraft(
 		selectedArtifacts: "",
 		summary: proposal?.summary ?? "",
 		target: "return_thread",
+	};
+}
+
+/** What the import notice in the target thread will contain for this draft. */
+export function createMergeReviewImportPreview(
+	draft: MergeReviewDraft,
+	branchName: string,
+): BranchImportView {
+	const artifacts = parseLineList(draft.artifacts);
+	const selected = new Set(parseLineList(draft.selectedArtifacts));
+	return {
+		branchName,
+		summary: draft.summary.trim(),
+		keyFindings: parseLineList(draft.findings),
+		openQuestions: parseLineList(draft.openQuestions),
+		// The backend drops evidence refs in summary-only mode.
+		evidenceRefs:
+			draft.mode === "summary_only" ? [] : parseLineList(draft.evidenceRefs),
+		artifacts:
+			draft.mode === "selected_artifacts" && selected.size > 0
+				? artifacts.filter((item) => selected.has(item))
+				: artifacts,
 	};
 }
 

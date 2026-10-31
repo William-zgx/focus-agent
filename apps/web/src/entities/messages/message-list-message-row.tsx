@@ -9,29 +9,60 @@ import {
 	roleLabel,
 	tokenUsageLabel,
 } from "./message-list-helpers";
+import type { BranchImportView } from "./message-branch-import";
+import {
+	BranchImportCard,
+	type ThreadLinks,
+} from "./message-branch-import-card";
 import { MessageMarkdown } from "./message-markdown";
 import { MessageActions } from "./message-list-actions";
 import { normalizeMessageType } from "./message-transcript";
 
+export function branchImportCardDomId(messageId: string) {
+	return `fa-branch-import-${messageId}`;
+}
+
 export function MessageRow({
+	branchImport,
 	content,
 	id,
+	isHighlighted = false,
 	isChineseUi,
 	isReadOnly,
 	onBranchFromMessage,
 	onEditMessage,
+	threadLinks,
 	totalTokens,
 	type,
 }: {
+	branchImport?: BranchImportView | null;
 	content: string;
 	id: string;
+	isHighlighted?: boolean;
 	isChineseUi: boolean;
 	isReadOnly: boolean;
 	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage?: (message: { id: string; content: string }) => void;
+	threadLinks?: ThreadLinks | null;
 	totalTokens?: number;
 	type: unknown;
 }) {
+	if (branchImport) {
+		return (
+			<div className={messageLayoutClass(type)}>
+				<div className="fa-message-stack">
+					<BranchImportCard
+						id={branchImportCardDomId(id)}
+						isChineseUi={isChineseUi}
+						isHighlighted={isHighlighted}
+						threadLinks={threadLinks}
+						view={branchImport}
+					/>
+				</div>
+			</div>
+		);
+	}
+
 	const messageType = normalizeMessageType(type);
 	const isHuman = messageType === "human";
 	const canBranchFrom = isHuman || messageType === "ai";

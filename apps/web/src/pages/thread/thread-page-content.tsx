@@ -9,6 +9,7 @@ import type {
 } from "@focus-agent/web-sdk";
 import type { StickToBottomInstance } from "use-stick-to-bottom";
 
+import type { ThreadLinks } from "@/entities/messages/message-branch-import-card";
 import { MessageList } from "@/entities/messages/message-list";
 import { BranchDecisionSummaryPanel } from "@/features/branch-decisions/branch-decision-summary-panel";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
@@ -77,6 +78,7 @@ interface ThreadPageContentProps {
 	threadContextUsage?: ContextUsageResponse | null;
 	threadError?: unknown;
 	threadId: string;
+	threadLinks?: ThreadLinks;
 	rootThreadId?: string;
 	toolApprovalError?: string;
 	toolApprovalErrorId?: string | null;
@@ -127,6 +129,7 @@ export function ThreadPageContent({
 	threadContextUsage,
 	threadError,
 	threadId,
+	threadLinks,
 	rootThreadId,
 	toolApprovalError = "",
 	toolApprovalErrorId = null,
@@ -161,6 +164,7 @@ export function ThreadPageContent({
 		onDismissBranchAction,
 		onDecideToolApproval,
 		onSubmitAskUserQuestion,
+		threadLinks,
 		streamFailed: streamState?.failed,
 		streamVisibleText: streamState?.visibleText,
 		streamReasoningText: streamState?.reasoningText,

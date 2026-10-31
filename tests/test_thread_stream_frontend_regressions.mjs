@@ -277,6 +277,10 @@ function loadMessageTranscriptFunctions() {
       "utf8",
     ),
     readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-branch-import.ts"),
+      "utf8",
+    ),
+    readFileSync(
       path.join(repoRoot, "apps/web/src/entities/messages/message-transcript-builder.ts"),
       "utf8",
     ),
@@ -318,6 +322,7 @@ function loadMessageTranscriptFunctions() {
     "toolCallArgsValue",
     "collectSkillIdsFromToolCall",
     "collectSkillIdsFromToolMessage",
+    "branchImportFromMessage",
     "buildTranscriptItems",
   ];
   const snippet = functionNames.map((name) => extractFunction(sources, name)).join("\n\n");
@@ -3704,4 +3709,45 @@ test("SDK merge-review requests use backend request field names", async () => {
   assert.equal(preview.diffstat, " src/a.ts | 2 +-");
   assert.equal(preview.diff, "diff --git a/src/a.ts b/src/a.ts\n");
   assert.equal(preview.review.review_id, "review-1");
+});
+
+test("Transcript parses merged-branch import notices from metadata and legacy text", () => {
+  const { buildTranscriptItems } = loadMessageTranscriptFunctions();
+  const items = buildTranscriptItems([
+    {
+      id: "import-1",
+      type: "system",
+      content: "Imported conclusion from branch 'Pricing':\nUse tiered plans.",
+      metadata: {
+        branch_import: {
+          branch_id: "b-1",
+          branch_name: "Pricing",
+          child_thread_id: "child-1",
+          summary: "Use tiered plans.",
+          key_findings: ["Tier 2 converts best"],
+          open_questions: ["Annual discount?"],
+          evidence_refs: ["https://example.com/report"],
+          artifacts: [],
+          imported_at: "2026-10-30T10:00:00Z",
+        },
+      },
+    },
+    {
+      id: "import-legacy",
+      type: "system",
+      content: "Imported conclusion from branch 'Old run':\nLegacy summary.\n\nKey findings:\n- one",
+    },
+    { id: "plain-system", type: "system", content: "Context compacted." },
+  ]);
+
+  assert.equal(items.length, 3);
+  const [withMetadata, legacy, plain] = items;
+  assert.equal(withMetadata.branchImport.branchName, "Pricing");
+  assert.equal(withMetadata.branchImport.childThreadId, "child-1");
+  assert.deepEqual([...withMetadata.branchImport.keyFindings], ["Tier 2 converts best"]);
+  assert.deepEqual([...withMetadata.branchImport.openQuestions], ["Annual discount?"]);
+  assert.equal(legacy.branchImport.branchName, "Old run");
+  assert.equal(legacy.branchImport.childThreadId, undefined);
+  assert.match(legacy.branchImport.legacyBody, /^Legacy summary\./);
+  assert.equal(plain.branchImport, null);
 });

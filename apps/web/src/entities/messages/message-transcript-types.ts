@@ -1,9 +1,13 @@
+import type { BranchImportView } from "./message-branch-import";
+
 export interface TranscriptDisplayMessage {
 	kind: "message";
 	id: string;
 	type: string;
 	content: string;
 	totalTokens?: number;
+	/** Set on system notices that import a merged branch's conclusion. */
+	branchImport?: BranchImportView | null;
 }
 
 export interface ToolDetailEntry {

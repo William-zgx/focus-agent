@@ -1,5 +1,6 @@
 import { safeVisibleText } from "@focus-agent/web-sdk";
 
+import { branchImportFromMessage } from "./message-branch-import";
 import {
 	normalizeMessageType,
 	normalizeText,
@@ -439,6 +440,8 @@ export function buildTranscriptItems(
 				type === "ai"
 					? totalTokensFromUsageMetadata(message.usage_metadata)
 					: 0,
+			branchImport:
+				type === "system" ? branchImportFromMessage(message, content) : null,
 		} as const;
 		items.push(item);
 		if (type === "ai" && index > latestHumanIndex) {

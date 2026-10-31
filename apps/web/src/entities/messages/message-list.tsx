@@ -8,11 +8,17 @@ import {
 	type FocusAgentToolApprovalInterrupt,
 	type RunFailedPayload,
 } from "@focus-agent/web-sdk";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AskUserQuestionCard } from "./message-list-ask-user-question-card";
+import {
+	clearPendingBranchImportHighlight,
+	matchPendingBranchImportHighlight,
+} from "./message-branch-import";
+import type { ThreadLinks } from "./message-branch-import-card";
 import { BranchActionCard } from "./message-list-branch-action-card";
 import {
+	branchImportCardDomId,
 	MessageRow,
 	StreamingReplyRow,
 	SystemFailureRow,
@@ -69,6 +75,7 @@ interface MessageListProps {
 		interrupt: FocusAgentAskUserQuestionInterrupt,
 		answers: FocusAgentAskUserQuestionAnswer[],
 	) => void;
+	threadLinks?: ThreadLinks | null;
 }
 
 export function MessageList({
@@ -100,6 +107,7 @@ export function MessageList({
 	onDismissBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
+	threadLinks = null,
 }: MessageListProps) {
 	const isCurrentTurnActive =
 		isStreaming ||
@@ -121,6 +129,7 @@ export function MessageList({
 		() => buildMessageListRenderItems(transcriptItems, branchActions),
 		[branchActions, transcriptItems],
 	);
+	const highlightedImportId = useBranchImportHighlight(transcriptItems);
 
 	return (
 		<div className="fa-message-list">
@@ -161,12 +170,15 @@ export function MessageList({
 				return (
 					<MessageRow
 						key={item.id}
+						branchImport={item.branchImport}
 						content={item.content}
 						id={item.id}
 						isChineseUi={isChineseUi}
+						isHighlighted={highlightedImportId === item.id}
 						isReadOnly={isReadOnly}
 						onBranchFromMessage={onBranchFromMessage}
 						onEditMessage={onEditMessage}
+						threadLinks={threadLinks}
 						totalTokens={item.totalTokens}
 						type={item.type}
 					/>
@@ -225,6 +237,52 @@ export function MessageList({
 			) : null}
 		</div>
 	);
+}
+
+const BRANCH_IMPORT_HIGHLIGHT_MS = 2400;
+
+/** Scrolls to and briefly highlights an import the merge review asked for. */
+function useBranchImportHighlight(transcriptItems: TranscriptItem[]) {
+	const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+	useEffect(() => {
+		const match = [...transcriptItems]
+			.reverse()
+			.find(
+				(item): item is TranscriptDisplayMessage =>
+					item.kind === "message" &&
+					Boolean(item.branchImport) &&
+					matchPendingBranchImportHighlight(
+						item.branchImport as NonNullable<typeof item.branchImport>,
+					),
+			);
+		if (!match) return;
+		clearPendingBranchImportHighlight();
+		setHighlightedId(match.id);
+		const frame = window.requestAnimationFrame(() => {
+			const element = document.getElementById(branchImportCardDomId(match.id));
+			const reduceMotion = window.matchMedia(
+				"(prefers-reduced-motion: reduce)",
+			).matches;
+			element?.scrollIntoView({
+				behavior: reduceMotion ? "auto" : "smooth",
+				block: "center",
+			});
+			element?.focus({ preventScroll: true });
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [transcriptItems]);
+
+	useEffect(() => {
+		if (!highlightedId) return;
+		const timer = window.setTimeout(
+			() => setHighlightedId(null),
+			BRANCH_IMPORT_HIGHLIGHT_MS,
+		);
+		return () => window.clearTimeout(timer);
+	}, [highlightedId]);
+
+	return highlightedId;
 }
 
 function buildMessageListRenderItems(

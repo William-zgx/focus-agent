@@ -4,11 +4,14 @@ import type {
 	MergeTarget,
 } from "@focus-agent/web-sdk";
 
+import { BranchImportCard } from "@/entities/messages/message-branch-import-card";
+
 import type {
 	MergeReviewDecision,
 	MergeReviewDraft,
 } from "./merge-review-utils";
 import {
+	createMergeReviewImportPreview,
 	mergeReviewStatusLabel,
 	modeOptionLabel,
 	recommendedImportModeLabel,
@@ -208,6 +211,19 @@ export function MergeReviewProposalForm({
 				placeholderZh="每行输入一个 artifact 路径或 id"
 				value={draft.artifacts}
 			/>
+
+			{draft.decision === "approve" ? (
+				<div className="fa-focus-modal-section">
+					<h4>
+						{isChineseUi ? "合并后的效果预览" : "Preview in the target thread"}
+					</h4>
+					<BranchImportCard
+						isChineseUi={isChineseUi}
+						variant="preview"
+						view={createMergeReviewImportPreview(draft, branchName ?? "")}
+					/>
+				</div>
+			) : null}
 
 			<div className="fa-focus-modal-note">
 				{recommendedImportModeLabel(

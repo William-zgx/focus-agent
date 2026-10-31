@@ -154,6 +154,22 @@ export interface FocusAgentImportedConclusion {
 	rationale?: string | null;
 }
 
+/**
+ * `message.metadata.branch_import` on the system notice that a merge appends to
+ * the target thread's transcript.
+ */
+export interface FocusAgentBranchImportMetadata {
+	branch_id: string;
+	branch_name: string;
+	child_thread_id: string;
+	summary: string;
+	key_findings: string[];
+	open_questions: string[];
+	evidence_refs: string[];
+	artifacts: string[];
+	imported_at: string;
+}
+
 export interface FocusAgentBranchRecord {
 	branch_id: string;
 	root_thread_id: string;
