@@ -732,6 +732,33 @@ def test_postgres_memory_repository_embedding_payload_aliases(monkeypatch):
     assert repo.get_memory_embedding("mem-1") is None
 
 
+def test_postgres_get_embedding_metadata_selects_latest_live_row(monkeypatch):
+    # A memory can have several live rows (one per provider/model); the
+    # stale-marking UPDATE only covers the same provider/model.
+    executed: list[str] = []
+
+    class _RecordingCursor(_FakeCursor):
+        def execute(self, sql: str, params=None) -> None:
+            executed.append(" ".join(sql.split()))
+            super().execute(sql, params)
+
+    class _RecordingConnection(_FakeConnection):
+        def cursor(self) -> _FakeCursor:
+            return _RecordingCursor(self.db)
+
+    db = _FakePostgresMemoryDB()
+    monkeypatch.setattr(
+        "focus_agent.repositories.postgres_memory_repository.psycopg.connect",
+        lambda uri, row_factory=None: _RecordingConnection(db),
+    )
+    PostgresMemoryRepository("postgresql://example").get_embedding_metadata("mem-1")
+
+    assert executed[-1].endswith(
+        "WHERE memory_id = %s AND deleted_at IS NULL "
+        "ORDER BY updated_at DESC, embedding_id DESC LIMIT 1"
+    )
+
+
 def test_postgres_memory_forgotten_payload_sanitize_migration_is_idempotent():
     executed: list[str] = []
     migrations = dict(_MIGRATIONS)

@@ -353,6 +353,8 @@ class PostgresMemoryEmbeddingMixin:
                         updated_at
                     FROM focus_memory_embeddings
                     WHERE memory_id = %s AND deleted_at IS NULL
+                    ORDER BY updated_at DESC, embedding_id DESC
+                    LIMIT 1
                     """,
                 (memory_id,),
             )
