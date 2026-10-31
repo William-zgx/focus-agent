@@ -52,6 +52,8 @@ class ForkBranchRequest(BaseModel):
     name_source: str | None = None
     branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES
     fork_checkpoint_id: str | None = None
+    # Fork from this visible parent message: the child sees nothing after it.
+    fork_at_message_id: str | None = None
     language: Literal["en", "zh"] | None = None
     user_id: str | None = None
 

@@ -64,6 +64,7 @@ class BranchMeta(BaseModel):
     archived_at: str | None = None
     fork_checkpoint_id: str | None = None
     fork_strategy: str = "copy_thread"
+    fork_at_message_id: str | None = None
     # {"goal", "parent_summary", "parent_recent_turns", "forked_at", "parent_message_count"}
     fork_brief: dict[str, Any] | None = None
 

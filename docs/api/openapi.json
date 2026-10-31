@@ -10226,6 +10226,17 @@
             "$ref": "#/components/schemas/BranchRole",
             "default": "explore_alternatives"
           },
+          "fork_at_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fork At Message Id"
+          },
           "fork_checkpoint_id": {
             "anyOf": [
               {

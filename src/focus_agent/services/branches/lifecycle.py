@@ -5,7 +5,12 @@ import uuid
 from copy import deepcopy
 
 from ...core.branch_brief import build_fork_brief, pending_fork_handoff_goal
-from ...core.branch_messages import branch_seed_messages
+from ...core.branch_messages import (
+    _is_tool_message_type,
+    _message_type_name,
+    branch_seed_messages,
+    branch_visible_messages,
+)
 from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from ...core.merge_review_inputs import fork_inherited_counts_for
 from ...core.types import ConversationRecord, PromptMode
@@ -75,6 +80,78 @@ def _local_snapshot_seed_values(parent_values: dict) -> dict:
     return seed_values
 
 
+def _message_id(message: object) -> str:
+    if isinstance(message, dict):
+        value = message.get("id")
+    else:
+        value = getattr(message, "id", None)
+    return str(value or "").strip()
+
+
+def _summary_written_after(values: dict, later_messages: list) -> bool:
+    """Whether the parent's summary already covers messages after the cut.
+
+    Each summarize pass stamps ``context_compaction.source_message_tail_id`` with
+    the last message it saw. When that id belongs to a dropped message the
+    summary describes later turns. Without a recognisable stamp (legacy rolling
+    summaries, id-less messages) there is no reliable way to tell, so the summary
+    is kept: it is only background in the fork brief, never transcript.
+    """
+    compaction = values.get("context_compaction")
+    if not isinstance(compaction, dict):
+        return False
+    tail_id = str(compaction.get("source_message_tail_id") or "").strip()
+    return bool(tail_id) and tail_id in {_message_id(message) for message in later_messages}
+
+
+def _parent_values_at_message(parent_values: dict, message_id: str) -> dict:
+    """Parent state as seen right after ``message_id``, minus later-turn state.
+
+    Raises ``ValueError`` when the id is not one of the parent's visible messages.
+    """
+    messages = list(parent_values.get("messages") or [])
+    visible_ids = {
+        _message_id(message) for message in branch_visible_messages(messages, values=parent_values)
+    }
+    if not message_id or message_id not in visible_ids:
+        raise ValueError(f"Message {message_id!r} is not a visible message of the parent thread.")
+    cut = next(index for index, item in enumerate(messages) if _message_id(item) == message_id) + 1
+    # Keep tool results that answer the cut message so the seed never ends on
+    # an unanswered tool call.
+    while cut < len(messages) and _is_tool_message_type(_message_type_name(messages[cut])):
+        cut += 1
+    later_messages = messages[cut:]
+    if not later_messages:
+        return parent_values
+
+    cut_values = dict(parent_values)
+    cut_values["messages"] = messages[:cut]
+    # Pending branch proposals and the task outcome belong to the latest turn,
+    # which is after the cut. Resolved actions stay: they only filter copied
+    # branch-control chatter out of the seed.
+    cut_values["branch_actions"] = [
+        item
+        for item in list(parent_values.get("branch_actions") or [])
+        if not (isinstance(item, dict) and str(item.get("status") or "") == "pending")
+    ]
+    cut_values["task_outcome"] = None
+    # Tool outcomes are keyed by tool call; drop those whose ToolMessage was cut.
+    later_tool_call_ids = {
+        str(getattr(item, "tool_call_id", "") or "")
+        for item in later_messages
+        if _is_tool_message_type(_message_type_name(item))
+    } - {""}
+    cut_values["tool_outcomes"] = [
+        item
+        for item in list(parent_values.get("tool_outcomes") or [])
+        if not (isinstance(item, dict) and item.get("tool_call_id") in later_tool_call_ids)
+    ]
+    if _summary_written_after(parent_values, later_messages):
+        cut_values["rolling_summary"] = ""
+        cut_values["context_compaction"] = {}
+    return cut_values
+
+
 def _ancestor_branch_ids(parent_values: dict) -> list[str]:
     """Branch ids whose unreviewed memory this child may see (its lineage)."""
     parent_meta = parent_values.get("branch_meta")
@@ -100,6 +177,7 @@ class BranchLifecycleCoordinator:
         language: str | None = None,
         branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
         fork_checkpoint_id: str | None = None,
+        fork_at_message_id: str | None = None,
     ) -> BranchRecord:
         svc = self.service
         svc._ensure_parent_thread_access(parent_thread_id=parent_thread_id, user_id=user_id)
@@ -110,6 +188,10 @@ class BranchLifecycleCoordinator:
             parent_thread_id=parent_thread_id,
             parent_values=parent_values,
         )
+        if fork_at_message_id is not None:
+            # The child must not see parent turns after the chosen message, so
+            # everything below (seed, brief, inherited counts) uses the cut view.
+            parent_values = _parent_values_at_message(parent_values, fork_at_message_id)
         root_thread_id = svc._derive_root_thread_id(parent_thread_id, parent_values)
         next_branch_depth = svc._ensure_branch_depth_allowed(
             parent_thread_id=parent_thread_id,
@@ -124,7 +206,7 @@ class BranchLifecycleCoordinator:
         )
         branch_id = str(uuid.uuid4())
 
-        if svc.thread_client and fork_checkpoint_id is None:
+        if svc.thread_client and fork_checkpoint_id is None and fork_at_message_id is None:
             copied = svc.thread_client.threads.copy(parent_thread_id)
             child_thread_id = copied["thread_id"]
             fork_strategy = "copy_thread"
@@ -150,6 +232,7 @@ class BranchLifecycleCoordinator:
             branch_status=BranchStatus.ACTIVE,
             fork_checkpoint_id=fork_checkpoint_id,
             fork_strategy=fork_strategy,
+            fork_at_message_id=fork_at_message_id,
         )
         branch_meta_payload = branch_meta.model_dump(mode="json")
         branch_meta_payload["branch_name_pending_ai"] = branch_name is None

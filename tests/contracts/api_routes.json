@@ -15370,6 +15370,16 @@
         "branch_role": {
           "$ref": "#/components/schemas/BranchRole"
         },
+        "fork_at_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "fork_checkpoint_id": {
           "anyOf": [
             {

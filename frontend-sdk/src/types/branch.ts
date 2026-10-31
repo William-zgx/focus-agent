@@ -110,6 +110,8 @@ export interface BranchMeta {
 	archived_at?: string | null;
 	fork_checkpoint_id?: string | null;
 	fork_strategy: string;
+	/** Parent message the branch was forked from; null when forked from the latest state. */
+	fork_at_message_id?: string | null;
 	/** Absent on branches created before fork briefs existed. */
 	fork_brief?: FocusAgentForkBrief | null;
 }
@@ -228,6 +230,8 @@ export interface FocusAgentForkBranchRequest {
 	name_source?: string;
 	branch_role?: BranchRole;
 	fork_checkpoint_id?: string;
+	/** Fork from this visible parent message; the branch sees nothing after it. */
+	fork_at_message_id?: string;
 	language?: "en" | "zh";
 }
 

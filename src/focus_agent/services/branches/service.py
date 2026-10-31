@@ -376,6 +376,7 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
         language: str | None = None,
         branch_role: BranchRole = BranchRole.EXPLORE_ALTERNATIVES,
         fork_checkpoint_id: str | None = None,
+        fork_at_message_id: str | None = None,
     ) -> BranchRecord:
         return self._lifecycle_coordinator().fork_branch(
             parent_thread_id=parent_thread_id,
@@ -385,6 +386,7 @@ class BranchService(BranchMemoryPromotionMixin, BranchNamingPolicyMixin):
             language=language,
             branch_role=branch_role,
             fork_checkpoint_id=fork_checkpoint_id,
+            fork_at_message_id=fork_at_message_id,
         )
 
     def refresh_branch_role(

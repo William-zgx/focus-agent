@@ -6639,6 +6639,8 @@ export interface components {
             branch_name?: string | null;
             /** @default explore_alternatives */
             branch_role: components["schemas"]["BranchRole"];
+            /** Fork At Message Id */
+            fork_at_message_id?: string | null;
             /** Fork Checkpoint Id */
             fork_checkpoint_id?: string | null;
             /** Language */

@@ -53,6 +53,7 @@ def create_branch(
             language=payload.language,
             branch_role=payload.branch_role,
             fork_checkpoint_id=payload.fork_checkpoint_id,
+            fork_at_message_id=payload.fork_at_message_id,
         )
     return record.model_dump(mode="json")
 
