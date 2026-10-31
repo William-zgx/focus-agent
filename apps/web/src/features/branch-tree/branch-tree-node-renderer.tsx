@@ -1,5 +1,5 @@
 import type { BranchTreeNode } from "@focus-agent/web-sdk";
-import type { CSSProperties, RefObject } from "react";
+import type { CSSProperties } from "react";
 
 import type { BranchGraphNode } from "@/features/branch-tree/branch-tree-helpers";
 import {
@@ -19,7 +19,6 @@ const focusRing =
 	"focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--fa-focus-ring)]";
 
 type BranchTreeNodeRendererProps = {
-	detailOverlayRef: RefObject<HTMLDivElement | null>;
 	detailThreadId: string;
 	graphNode: BranchGraphNode;
 	isChineseUi: boolean;
@@ -28,11 +27,6 @@ type BranchTreeNodeRendererProps = {
 	isFocused: boolean;
 	isRouteThread: boolean;
 	onOpenThread: (threadId: string) => void;
-	onRequestDetail: (
-		node: BranchTreeNode,
-		anchorElement: HTMLElement | null,
-	) => void;
-	onRequestHideDetail: () => void;
 	onToggleDetailPinned: (
 		node: BranchTreeNode,
 		anchorElement: HTMLElement | null,
@@ -40,7 +34,6 @@ type BranchTreeNodeRendererProps = {
 };
 
 export function BranchTreeNodeRenderer({
-	detailOverlayRef,
 	detailThreadId,
 	graphNode,
 	isChineseUi,
@@ -49,8 +42,6 @@ export function BranchTreeNodeRenderer({
 	isFocused,
 	isRouteThread,
 	onOpenThread,
-	onRequestDetail,
-	onRequestHideDetail,
 	onToggleDetailPinned,
 }: BranchTreeNodeRendererProps) {
 	const node = graphNode.node;
@@ -59,13 +50,6 @@ export function BranchTreeNodeRenderer({
 	const detailsLabel = isChineseUi
 		? `查看「${node.branch_name}」详情`
 		: `Details for ${node.branch_name}`;
-
-	function shouldKeepDetailOpen(relatedTarget: EventTarget | null) {
-		return (
-			relatedTarget instanceof Node &&
-			detailOverlayRef.current?.contains(relatedTarget)
-		);
-	}
 
 	return (
 		<div
@@ -84,16 +68,6 @@ export function BranchTreeNodeRenderer({
 				aria-current={isRouteThread ? "page" : undefined}
 				className={`fa-branch-graph-node-hit flex min-w-0 items-center gap-2 rounded-[var(--fa-radius-md)] border-0 bg-transparent p-0 text-left text-[color:var(--fa-text)] ${focusRing}`}
 				onClick={() => onOpenThread(node.thread_id)}
-				onFocus={(event) => onRequestDetail(node, event.currentTarget)}
-				onMouseEnter={(event) => onRequestDetail(node, event.currentTarget)}
-				onMouseLeave={(event) => {
-					if (shouldKeepDetailOpen(event.relatedTarget)) return;
-					onRequestHideDetail();
-				}}
-				onBlur={(event) => {
-					if (shouldKeepDetailOpen(event.relatedTarget)) return;
-					onRequestHideDetail();
-				}}
 				type="button"
 			>
 				<span

@@ -110,7 +110,6 @@ export function BranchTreePanel() {
 		hideBranchDetail,
 		isDetailPinned,
 		scheduleHideBranchDetail,
-		showBranchDetail,
 		toggleBranchDetailPinned,
 		updateBranchDetailPosition,
 	} = useBranchDetailOverlayState({ root: data?.root });
@@ -249,7 +248,6 @@ export function BranchTreePanel() {
 						/>
 						<BranchTreeGraphCanvas
 							branchZoom={branchZoom}
-							detailOverlayRef={detailOverlayRef}
 							detailThreadId={detailThreadId}
 							graph={graph}
 							graphShellRef={graphShellRef}
@@ -258,8 +256,6 @@ export function BranchTreePanel() {
 							isLoading={isLoading}
 							nodeIndex={nodeIndex}
 							onOpenThread={(threadId) => void openThread(threadId)}
-							onRequestDetail={showBranchDetail}
-							onRequestHideDetail={scheduleHideBranchDetail}
 							onToggleDetailPinned={toggleBranchDetailPinned}
 							previewNode={previewNode}
 							previewThreadId={previewThreadId}

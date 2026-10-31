@@ -35,7 +35,11 @@ export function useBranchDetailOverlayState({
 
 	const getBranchDetailStyle = useCallback(
 		(anchor: HTMLElement): CSSProperties => {
-			const rect = anchor.getBoundingClientRect();
+			// Position against the whole node row so the overlay sits beside or
+			// below it instead of covering the row the user just opened.
+			const rect = (
+				anchor.closest<HTMLElement>(".fa-branch-graph-node-shell") ?? anchor
+			).getBoundingClientRect();
 			const scrollFrame =
 				anchor.closest<HTMLElement>(".fa-sidebar-scroll") ??
 				anchor.closest<HTMLElement>(".fa-sidebar-panel");
