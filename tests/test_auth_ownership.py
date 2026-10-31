@@ -110,6 +110,14 @@ class _OwnershipChatService:
         self._assert_owner(user_id)
         return _thread_payload(thread_id)
 
+    def _select_skills_for_message(self, *, message: str, explicit_skill_hints):
+        return SimpleNamespace(skill_ids=(), stripped_message=message, prompt_mode=None)
+
+    def _preflight_thread_access(self, *, thread_id: str, user_id: str, **kwargs):
+        del thread_id, kwargs
+        self._assert_owner(user_id)
+        return SimpleNamespace(root_thread_id="root-1"), None, {}
+
 
 class _OwnershipBranchService:
     def _assert_owner(self, user_id: str) -> None:
@@ -548,6 +556,10 @@ def test_principal_user_id_is_ownership_key_tenant_and_scopes_are_claim_metadata
         ("GET", "/v1/branches/tree/root-1", None),
         ("POST", "/v1/branches/child-1/proposal", {}),
         ("POST", "/v1/branches/child-1/merge", {"approved": True, "mode": "summary_only"}),
+        ("POST", "/v2/threads/root-1/runs", {"message": "hello"}),
+        ("POST", "/v2/threads/root-1/runs/stream", {"message": "hello"}),
+        ("POST", "/v2/threads/root-1/runs/resume/stream", {"resume": "ok"}),
+        ("POST", "/v2/threads/root-1/runs/cancel", {}),
     ]
 
     for method, path, payload in denied_requests:

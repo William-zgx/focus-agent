@@ -56,6 +56,7 @@ from .replay_models import HarnessResumeRequest, HarnessRunRequest, HarnessRunRe
 from .replay_payloads import (
     _is_branch_handoff_auto_run,
     _message_text_from_graph_payload,
+    _preflight_thread_access,
     _prepare_resume_payload,
     _prepare_run_payload,
     _run_message_from_payload,
@@ -545,15 +546,13 @@ def _authorize_run_access(
     thread_id = run_payload.get("thread_id")
     if not isinstance(thread_id, str) or not thread_id:
         raise HTTPException(status_code=404, detail="Run thread not found.")
-    try:
-        chat._preflight_thread_access(
-            thread_id=thread_id,
-            user_id=principal.user_id,
-            explicit_skill_hints=(),
-            require_writable=False,
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    _preflight_thread_access(
+        chat,
+        thread_id=thread_id,
+        user_id=principal.user_id,
+        explicit_skill_hints=(),
+        require_writable=False,
+    )
 
 
 def _run_event_streaming_response(

@@ -15,6 +15,14 @@ from focus_agent.services.chat import ChatService
 from .replay_models import HarnessResumeRequest, HarnessRunRequest
 
 
+def _preflight_thread_access(chat: ChatService, **kwargs: Any) -> tuple[Any, Any, dict[str, Any]]:
+    """Check thread ownership/writability, reporting denials as 403 instead of 500."""
+    try:
+        return chat._preflight_thread_access(**kwargs)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 def _prepare_run_payload(
     *,
     thread_id: str,
@@ -45,7 +53,8 @@ def _prepare_run_payload(
         message=message,
         explicit_skill_hints=tuple(payload.skill_hints),
     )
-    context, branch_meta, initial_values = chat._preflight_thread_access(
+    context, branch_meta, initial_values = _preflight_thread_access(
+        chat,
         thread_id=thread_id,
         user_id=user_id,
         require_writable=True,
@@ -61,7 +70,8 @@ def _prepare_run_payload(
             initial_values.get("active_skill_ids", []),
         )
     if active_skill_ids:
-        context, branch_meta, initial_values = chat._preflight_thread_access(
+        context, branch_meta, initial_values = _preflight_thread_access(
+            chat,
             thread_id=thread_id,
             user_id=user_id,
             explicit_skill_hints=active_skill_ids,
@@ -173,7 +183,8 @@ def _prepare_resume_payload(
     payload: HarnessResumeRequest,
     chat: ChatService,
 ) -> tuple[Command, Any, Any, dict[str, Any]]:
-    context, branch_meta, initial_values = chat._preflight_thread_access(
+    context, branch_meta, initial_values = _preflight_thread_access(
+        chat,
         thread_id=thread_id,
         user_id=user_id,
         explicit_skill_hints=(),
@@ -224,6 +235,7 @@ __all__ = [
     "_message_from_payload",
     "_message_text_from_graph_payload",
     "_normalized_message_text",
+    "_preflight_thread_access",
     "_prepare_resume_payload",
     "_prepare_run_payload",
     "_run_input_messages_for_state",
