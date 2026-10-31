@@ -169,6 +169,18 @@ def _make_string_tool(name: str, result: str, *, metadata: dict[str, object] | N
     return tool_obj
 
 
+def test_skill_registry_skips_undecodable_skill_file(tmp_path):
+    skill_root = tmp_path / "skills"
+    _write_skill(skill_root, name="good-skill", description="Still discoverable.")
+    broken = skill_root / "broken-skill"
+    broken.mkdir(parents=True)
+    (broken / "SKILL.md").write_bytes(b"---\nname: broken-skill\ndescription: caf\xe9\n---\n")
+
+    registry = SkillRegistry([skill_root])
+
+    assert [skill.skill_id for skill in registry.all_skills()] == ["good-skill"]
+
+
 def test_skill_registry_parses_declared_entrypoints(tmp_path):
     skill_root = tmp_path / "skills"
     _write_skill(

@@ -760,15 +760,14 @@ def test_web_search_does_not_retry_tavily_auth_failures_before_fallback(monkeypa
 
 def test_web_search_raises_when_both_providers_fail(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    _install_fake_ddgs(monkeypatch)
-    _FakeDDGS.results = []
-    _FakeDDGS.raised = RuntimeError("ddg down")
+    _prepare_fake_ddgs(monkeypatch, raised=RuntimeError("ddg down"))
     tools = _tool_map(Settings())
 
     status, content = _runtime_invoke(tools["web_search"], {"query": "hello"})
 
     assert status == "error"
     assert "ddg down" in content
+    assert _FakeDDGS.call_count == 1
 
 
 def test_default_tools_expose_only_one_web_search_tool(monkeypatch):
@@ -1841,6 +1840,28 @@ def test_search_code_skips_local_focus_agent_runtime_dir(tmp_path):
     assert [item["path"] for item in payload["results"]] == ["src/state.py"]
 
 
+def test_workspace_scans_skip_file_symlinks_that_escape_the_workspace(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("SECRET_TOKEN=leak\n", encoding="utf-8")
+    (project / "inside.txt").write_text("SECRET_TOKEN=ok\n", encoding="utf-8")
+    try:
+        (project / "escape.txt").symlink_to(outside)
+        (project / "alias.txt").symlink_to(project / "inside.txt")
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    tools = _tool_map(Settings(workspace_root=str(project)))
+
+    search = json.loads(tools["search_code"].invoke({"query": "SECRET_TOKEN", "literal": True}))
+    stats = json.loads(tools["codebase_stats"].invoke({}))
+    listing = json.loads(tools["list_files"].invoke({}))
+
+    assert [item["path"] for item in search["results"]] == ["alias.txt", "inside.txt"]
+    assert stats["files_scanned"] == 2
+    assert listing["results"] == ["alias.txt", "inside.txt"]
+
+
 def test_search_code_includes_context_for_block_start_matches(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -2348,6 +2369,34 @@ def test_run_workspace_command_path_validation_ignores_scoped_package_filters(tm
         validate_command_paths(command, resolve_path=resolve_path)
 
     assert resolved_paths == []
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["npm", "i", "evil-pkg", "test"],
+        ["npm", "x", "--yes", "evil-pkg", "test"],
+        ["npm", "ci", "build"],
+        ["pnpm", "i", "evil-pkg", "check"],
+        ["pnpm", "--filter", "@focus-agent/web-app", "i", "evil-pkg", "check"],
+    ],
+)
+def test_package_commands_reject_install_aliases_before_allowed_script(command):
+    assert not workspace_command_allowed(command, {"npm", "pnpm"})
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["npm", "test"],
+        ["npm", "run", "lint"],
+        ["npm", "-w", "apps/web", "run", "build"],
+        ["pnpm", "-r", "build"],
+        ["pnpm", "-C", "apps/web", "check"],
+    ],
+)
+def test_package_commands_allow_script_subcommands(command):
+    assert workspace_command_allowed(command, {"npm", "pnpm"})
 
 
 def test_git_tools_return_status_diff_and_log(tmp_path):

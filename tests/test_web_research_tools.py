@@ -574,6 +574,20 @@ def _published_at(html: str) -> str | None:
     return parser.published_at
 
 
+def test_svg_icon_titles_do_not_leak_into_page_title():
+    from focus_agent.capabilities.default_tool_modules.web_helpers import _ReadableHTMLExtractor
+
+    parser = _ReadableHTMLExtractor(base_url="https://example.com/")
+    parser.feed(
+        "<html><head><title>Release notes</title></head><body>"
+        '<a href="/"><svg><title>Home icon</title><path/></svg></a>'
+        "<p>Version 2 ships today.</p></body></html>"
+    )
+    parser.close()
+    assert parser.title == "Release notes"
+    assert parser.text == "Version 2 ships today."
+
+
 def test_article_body_is_not_replaced_by_related_article_cards():
     from focus_agent.capabilities.default_tool_modules.web_helpers import _ReadableHTMLExtractor
 

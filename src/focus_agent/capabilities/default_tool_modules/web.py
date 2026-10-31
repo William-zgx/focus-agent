@@ -16,6 +16,7 @@ from .build_context import ToolBuildContext
 from .common import _capped_int, _require_non_empty_text_arg
 from .web_helpers import (
     _binary_payload_kind,
+    _decode_page_bytes,
     _head_tail_text_window,
     _ReadableHTMLExtractor,
     _resolve_public_fetch_addresses,
@@ -89,7 +90,7 @@ class _WebFetcher:
             )
         return parsed_next
 
-    def fetch(self, url: str, *, max_bytes: int) -> tuple[bytes, str, Any, str, bool]:
+    def fetch(self, url: str, *, max_bytes: int) -> tuple[bytes, str, Any, str | None, bool]:
         urllib_parse_module = self._urllib_parse
         current_url = url
         client = self._http()
@@ -149,7 +150,7 @@ class _WebFetcher:
             fetch_limited = len(response.content) > len(raw) or int(content_length or 0) > max_bytes
         except (TypeError, ValueError):
             fetch_limited = len(response.content) > len(raw)
-        return raw, current_url, response.headers, response.encoding or "utf-8", fetch_limited
+        return raw, current_url, response.headers, response.charset_encoding, fetch_limited
 
 
 def _extract_readable_content(
@@ -347,7 +348,7 @@ def build_web_fetch_tool(
                 emit_tool_event(tool_name=tool_name, stage="end", output=result[:800])
                 return result
             title, content, published_at = _extract_readable_content(
-                raw.decode(charset, errors="replace"),
+                _decode_page_bytes(raw, charset),
                 content_type=content_type,
                 final_url=final_url,
             )

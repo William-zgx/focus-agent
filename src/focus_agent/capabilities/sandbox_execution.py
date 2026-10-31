@@ -26,11 +26,9 @@ _FALLBACK_POLICY_ALLOW_DEV_LOCAL = "allow_dev_local"
 _DEFAULT_MEMORY_MB = _runner._DEFAULT_MEMORY_MB
 _DEFAULT_PIDS_LIMIT = _runner._DEFAULT_PIDS_LIMIT
 _DEFAULT_RUN_TTL_SECONDS = _runner._DEFAULT_RUN_TTL_SECONDS
-_MAX_OUTPUT_FILES = _runner._MAX_OUTPUT_FILES
 _REQUEST_FILENAME = _runner._REQUEST_FILENAME
 _RESULT_FILENAME = _runner._RESULT_FILENAME
 _RUNNER_FILENAME = _runner._RUNNER_FILENAME
-_SENSITIVE_ENV_NAME_MARKERS = _runner._SENSITIVE_ENV_NAME_MARKERS
 _cleanup_old_run_dirs = _runner._cleanup_old_run_dirs
 _coerce_output = _runner._coerce_output
 _docker_image_available = _runner._docker_image_available
@@ -40,34 +38,19 @@ _looks_like_container_missing_or_stopped = _runner._looks_like_container_missing
 _looks_like_docker_unavailable = _runner._looks_like_docker_unavailable
 _result_from_parts = _runner._result_from_parts
 _run_docker_command = _runner._run_docker_command
-_run_outputs = _runner._run_outputs
 _sandbox_env = _runner._sandbox_env
-_trim_output = _runner._trim_output
 _write_runner = _runner._write_runner
 
-_COPY_SKIP_NAMES = _snapshot._COPY_SKIP_NAMES
-_SANDBOX_ID_UNSAFE_RE = _snapshot._SANDBOX_ID_UNSAFE_RE
-_WORKSPACE_MANIFEST_FILENAME = _snapshot._WORKSPACE_MANIFEST_FILENAME
 _WORKSPACE_MODE_COPY_DISCARD = _snapshot._WORKSPACE_MODE_COPY_DISCARD
 _WORKSPACE_MODE_HOST = _snapshot._WORKSPACE_MODE_HOST
 _WORKSPACE_MODE_THREAD_PERSISTENT_COPY = _snapshot._WORKSPACE_MODE_THREAD_PERSISTENT_COPY
-_add_snapshot_manifest_entry = _snapshot._add_snapshot_manifest_entry
-_copytree_ignore = _snapshot._copytree_ignore
-_delete_removed_snapshot_paths = _snapshot._delete_removed_snapshot_paths
-_is_safe_manifest_path = _snapshot._is_safe_manifest_path
 _optional_string = _snapshot._optional_string
-_prune_snapshot_entry_to_manifest = _snapshot._prune_snapshot_entry_to_manifest
-_prune_workspace_to_manifest = _snapshot._prune_workspace_to_manifest
-_read_workspace_snapshot_manifest = _snapshot._read_workspace_snapshot_manifest
-_remove_snapshot_path = _snapshot._remove_snapshot_path
 _sandbox_id_for_parts = _snapshot._sandbox_id_for_parts
 _sandbox_id_for_request = _snapshot._sandbox_id_for_request
 _sandbox_paths = _snapshot._sandbox_paths
 _sanitize_sandbox_identifier = _snapshot._sanitize_sandbox_identifier
 _sync_workspace_snapshot = _snapshot._sync_workspace_snapshot
-_workspace_snapshot_manifest = _snapshot._workspace_snapshot_manifest
 _write_request = _snapshot._write_request
-_write_workspace_snapshot_manifest = _snapshot._write_workspace_snapshot_manifest
 
 
 _sandbox_run_locks_guard = threading.Lock()
@@ -352,9 +335,6 @@ class DockerSandboxBackend:
                     request=request,
                     run_id=run_id,
                     container_name=container_name,
-                    run_root=run_root,
-                    runner_path=runner_path,
-                    request_path=request_path,
                     sandbox_workspace=sandbox_workspace,
                     sandbox_tmp=sandbox_tmp,
                     sandbox_cache=sandbox_cache,
@@ -484,22 +464,19 @@ class DockerSandboxBackend:
         request: SandboxExecutionRequest,
         run_id: str,
         container_name: str,
-        run_root: Path,
-        runner_path: Path,
-        request_path: Path,
         sandbox_workspace: Path,
         sandbox_tmp: Path,
         sandbox_cache: Path,
     ) -> subprocess.CompletedProcess[str]:
-        sandbox_root = sandbox_workspace.parent
-        self._ensure_thread_container(
-            request=request,
-            container_name=container_name,
-            sandbox_root=sandbox_root,
-            sandbox_workspace=sandbox_workspace,
-            sandbox_tmp=sandbox_tmp,
-            sandbox_cache=sandbox_cache,
-        )
+        thread_container = {
+            "request": request,
+            "container_name": container_name,
+            "sandbox_root": sandbox_workspace.parent,
+            "sandbox_workspace": sandbox_workspace,
+            "sandbox_tmp": sandbox_tmp,
+            "sandbox_cache": sandbox_cache,
+        }
+        self._ensure_thread_container(**thread_container)
         run_container_root = f"/sandbox/runs/{run_id}"
         command = [
             self.docker_binary,
@@ -530,7 +507,6 @@ class DockerSandboxBackend:
                 f"{run_container_root}/{_RUNNER_FILENAME}",
             ]
         )
-        del run_root, runner_path, request_path
         completed = self._docker_runner(command, timeout=request.timeout_seconds + 10)
         if completed.returncode == 125 and _looks_like_container_missing_or_stopped(
             completed.stderr or completed.stdout
@@ -539,14 +515,7 @@ class DockerSandboxBackend:
                 [self.docker_binary, "rm", "-f", container_name],
                 timeout=10,
             )
-            self._ensure_thread_container(
-                request=request,
-                container_name=container_name,
-                sandbox_root=sandbox_workspace.parent,
-                sandbox_workspace=sandbox_workspace,
-                sandbox_tmp=sandbox_tmp,
-                sandbox_cache=sandbox_cache,
-            )
+            self._ensure_thread_container(**thread_container)
             completed = self._docker_runner(command, timeout=request.timeout_seconds + 10)
         return completed
 

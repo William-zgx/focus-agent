@@ -38,6 +38,11 @@ _PACKAGE_SCRIPT_COMMANDS = {
     "test",
     "validate:transport",
 }
+# Options whose separate value token must not be mistaken for the subcommand.
+_PACKAGE_VALUE_OPTIONS = {
+    "npm": {"-w", "--workspace", "--prefix"},
+    "pnpm": {"-C", "--dir", "-F", "--filter"},
+}
 _MAKE_TARGETS = {
     "architecture-report",
     "check",
@@ -105,10 +110,19 @@ def _has_forbidden_command_token(command: Sequence[str]) -> bool:
 def _package_command_allowed(command: Sequence[str]) -> bool:
     if _has_forbidden_command_token(command):
         return False
-    if "run" in command:
-        index = command.index("run")
-        return len(command) > index + 1 and command[index + 1] in _PACKAGE_SCRIPT_COMMANDS
-    return any(token in _PACKAGE_SCRIPT_COMMANDS for token in command[1:])
+    # The subcommand is the first positional token; anything else (``i``, ``x``,
+    # ``ci`` and other aliases) must not pass just because a later token is "test".
+    value_options = _PACKAGE_VALUE_OPTIONS[_command_base(command)]
+    positionals: list[str] = []
+    tokens = iter(command[1:])
+    for token in tokens:
+        if token in value_options:
+            next(tokens, None)
+        elif not token.startswith("-"):
+            positionals.append(token)
+    if positionals[:1] == ["run"]:
+        return len(positionals) > 1 and positionals[1] in _PACKAGE_SCRIPT_COMMANDS
+    return bool(positionals) and positionals[0] in _PACKAGE_SCRIPT_COMMANDS
 
 
 def _make_command_allowed(command: Sequence[str]) -> bool:
