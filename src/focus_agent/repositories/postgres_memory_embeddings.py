@@ -177,16 +177,6 @@ class PostgresMemoryEmbeddingMixin:
     def upsert_memory_embedding(self, payload: object | None = None, **kwargs: object) -> str:
         return self.upsert_embedding(payload, **kwargs)
 
-    def upsert_memory_record_embedding(
-        self,
-        payload: object | None = None,
-        **kwargs: object,
-    ) -> str:
-        return self.upsert_memory_embedding(payload, **kwargs)
-
-    def put_memory_embedding(self, payload: object | None = None, **kwargs: object) -> str:
-        return self.upsert_memory_embedding(payload, **kwargs)
-
     def search_embeddings(
         self,
         *,
@@ -287,27 +277,6 @@ class PostgresMemoryEmbeddingMixin:
             limit=limit,
         )
 
-    def search_memory_embeddings(
-        self,
-        *,
-        namespace: tuple[str, ...],
-        embedding: Sequence[float],
-        limit: int,
-        provider_id: str | None = None,
-        model_id: str | None = None,
-        model: str | None = None,
-        status: str = "active",
-    ) -> list[MemoryEmbeddingSearchHit]:
-        return self.search_embeddings(
-            namespace=namespace,
-            embedding=embedding,
-            limit=limit,
-            provider_id=provider_id,
-            model_id=model_id,
-            model=model,
-            status=status,
-        )
-
     def get_embedding_status(self, memory_id: str) -> str | None:
         with self._cursor(dict_row=True) as cur:
             cur.execute(
@@ -324,15 +293,6 @@ class PostgresMemoryEmbeddingMixin:
         return None if row is None else str(row["status"])
 
     def get_memory_embedding(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
-        return self.get_embedding_metadata(memory_id)
-
-    def get_memory_record_embedding(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
-        return self.get_embedding_metadata(memory_id)
-
-    def get_embedding(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
-        return self.get_embedding_metadata(memory_id)
-
-    def find_memory_embedding(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
         return self.get_embedding_metadata(memory_id)
 
     def get_embedding_metadata(self, memory_id: str) -> MemoryEmbeddingMetadata | None:
@@ -403,19 +363,6 @@ class PostgresMemoryEmbeddingMixin:
             rowcount = cur.rowcount
         return rowcount > 0
 
-    def set_memory_embedding_status(
-        self,
-        *,
-        memory_id: str,
-        status: str,
-        metadata: Mapping[str, object] | None = None,
-    ) -> bool:
-        return self.update_embedding_status(
-            memory_id=memory_id,
-            status=status,
-            metadata=metadata,
-        )
-
     def list_embedding_metadata(
         self,
         query: MemoryEmbeddingListQuery | None = None,
@@ -464,29 +411,6 @@ class PostgresMemoryEmbeddingMixin:
             rows = cur.fetchall()
         return [embedding_metadata_from_row(row) for row in rows]
 
-    def list_memory_embedding_metadata(
-        self,
-        query: MemoryEmbeddingListQuery | None = None,
-        *,
-        namespace: tuple[str, ...] | None = None,
-        provider_id: str | None = None,
-        model_id: str | None = None,
-        model: str | None = None,
-        status: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[MemoryEmbeddingMetadata]:
-        return self.list_embedding_metadata(
-            query,
-            namespace=namespace,
-            provider_id=provider_id,
-            model_id=model_id,
-            model=model,
-            status=status,
-            limit=limit,
-            offset=offset,
-        )
-
     def delete_embedding(self, memory_id: str) -> bool:
         with self._cursor(dict_row=True) as cur:
             cur.execute("DELETE FROM focus_memory_embeddings WHERE memory_id = %s", (memory_id,))
@@ -495,9 +419,6 @@ class PostgresMemoryEmbeddingMixin:
 
     def delete_memory_embedding(self, memory_id: str) -> bool:
         return self.delete_embedding(memory_id)
-
-    def delete_memory_embeddings(self, memory_id: str) -> int:
-        return 1 if self.delete_embedding(memory_id) else 0
 
 
 __all__ = ["PostgresMemoryEmbeddingMixin"]

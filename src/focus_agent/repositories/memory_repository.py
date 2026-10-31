@@ -158,17 +158,6 @@ class MemoryRepository(Protocol):
         status: str = "active",
     ) -> list[MemoryEmbeddingSearchHit]: ...
 
-    def search_memory_embeddings(
-        self,
-        *,
-        namespace: tuple[str, ...],
-        embedding: Sequence[float],
-        limit: int,
-        provider_id: str | None = None,
-        model_id: str | None = None,
-        status: str = "active",
-    ) -> list[MemoryEmbeddingSearchHit]: ...
-
     def get_embedding_status(self, memory_id: str) -> str | None: ...
 
     def update_embedding_status(
@@ -179,27 +168,7 @@ class MemoryRepository(Protocol):
         metadata: Mapping[str, object] | None = None,
     ) -> bool: ...
 
-    def set_memory_embedding_status(
-        self,
-        *,
-        memory_id: str,
-        status: str,
-        metadata: Mapping[str, object] | None = None,
-    ) -> bool: ...
-
     def list_embedding_metadata(
-        self,
-        query: MemoryEmbeddingListQuery | None = None,
-        *,
-        namespace: tuple[str, ...] | None = None,
-        provider_id: str | None = None,
-        model_id: str | None = None,
-        status: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[MemoryEmbeddingMetadata]: ...
-
-    def list_memory_embedding_metadata(
         self,
         query: MemoryEmbeddingListQuery | None = None,
         *,
