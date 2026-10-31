@@ -1462,6 +1462,43 @@ try {
 		branch_role: "explore_alternatives",
 	});
 	assert.ok(sdkBranch.child_thread_id);
+	const sdkParentMessages = (
+		await sdkClient.getThreadState(sdkConversation.root_thread_id)
+	).messages;
+	assert.ok(
+		sdkParentMessages.length >= 2,
+		"parent should hold a full turn before forking at a message",
+	);
+	const sdkForkAtMessageId = String(sdkParentMessages[0].id);
+	const sdkMessageBranch = await sdkClient.forkBranch({
+		parent_thread_id: sdkConversation.root_thread_id,
+		fork_at_message_id: sdkForkAtMessageId,
+	});
+	const sdkMessageBranchState = await sdkClient.getThreadState(
+		sdkMessageBranch.child_thread_id,
+	);
+	assert.deepEqual(
+		sdkMessageBranchState.messages.map((message) => message.id),
+		[sdkForkAtMessageId],
+		"forking at a message should drop later parent turns",
+	);
+	assert.equal(
+		sdkMessageBranchState.branch_meta?.fork_at_message_id,
+		sdkForkAtMessageId,
+	);
+	assert.equal(
+		(await sdkClient.getThreadState(sdkBranch.child_thread_id)).messages.length,
+		sdkParentMessages.length,
+		"a fork without a message id should keep the latest parent state",
+	);
+	await assert.rejects(
+		() =>
+			sdkClient.forkBranch({
+				parent_thread_id: sdkConversation.root_thread_id,
+				fork_at_message_id: "missing-message",
+			}),
+		(error) => error?.status === 400,
+	);
 	assert.equal(
 		(
 			await sdkClient.renameBranch(sdkBranch.child_thread_id, {

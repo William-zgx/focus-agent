@@ -7,6 +7,7 @@ import type {
 	ThreadContextPreviewRequest,
 	ThreadContextPreviewResponse,
 } from "@focus-agent/web-sdk";
+import { forkMessageCutCount } from "./branch-logic";
 import {
 	contextUsage,
 	errorResponse,
@@ -175,6 +176,18 @@ export function handleBranches(
 	}
 	if (resource === "fork" && method === "POST") {
 		const body = parseJsonBody(init) as FocusAgentForkBranchRequest;
+		const parentThread = ctx.state.threads[body.parent_thread_id];
+		if (
+			parentThread &&
+			body.fork_at_message_id != null &&
+			forkMessageCutCount(parentThread.messages, body.fork_at_message_id) ===
+				null
+		) {
+			return errorResponse(
+				400,
+				"Message is not a visible message of the parent thread.",
+			);
+		}
 		const record = ctx.forkBranchRecord(body);
 		return record
 			? jsonResponse(record)

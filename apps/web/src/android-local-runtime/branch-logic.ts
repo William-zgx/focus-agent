@@ -419,6 +419,22 @@ export function branchTreeNode(
 	};
 }
 
+/**
+ * Number of parent messages a fork at `messageId` inherits: everything up to and
+ * including that message plus the tool results answering it. Null when the id is
+ * not in the parent transcript.
+ */
+export function forkMessageCutCount(
+	messages: ThreadStateResponse["messages"],
+	messageId: string,
+): number | null {
+	const index = messages.findIndex((message) => message.id === messageId);
+	if (!messageId || index < 0) return null;
+	let cut = index + 1;
+	while (cut < messages.length && messages[cut]?.type === "tool") cut += 1;
+	return cut;
+}
+
 export function forkBranchRecord(
 	ctx: LocalFocusAgentRuntime,
 	request: FocusAgentForkBranchRequest,
@@ -427,11 +443,20 @@ export function forkBranchRecord(
 	if (!parentThread) {
 		return null;
 	}
+	const forkAtMessageId = request.fork_at_message_id ?? null;
+	const cutCount =
+		forkAtMessageId === null
+			? parentThread.messages.length
+			: forkMessageCutCount(parentThread.messages, forkAtMessageId);
+	if (cutCount === null) {
+		return null;
+	}
 	const threadId = ctx.nextId("thread", "local-thread");
 	const branchId = ctx.nextId("branch", "local-branch");
 	const parentDepth = parentThread.branch_meta?.branch_depth ?? 0;
 	const thread = newThreadState(threadId, parentThread.root_thread_id);
-	thread.messages = clone(parentThread.messages);
+	// A fork at a message must not see later parent turns.
+	thread.messages = clone(parentThread.messages.slice(0, cutCount));
 	thread.context_usage = contextUsage(thread.messages);
 	thread.branch_meta = {
 		branch_id: branchId,
@@ -447,6 +472,7 @@ export function forkBranchRecord(
 		is_archived: false,
 		archived_at: null,
 		fork_checkpoint_id: request.fork_checkpoint_id ?? null,
+		fork_at_message_id: forkAtMessageId,
 		fork_strategy: request.name_source ?? "manual",
 	};
 	ctx.state.threads[threadId] = thread;
