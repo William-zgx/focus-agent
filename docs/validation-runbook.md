@@ -37,7 +37,7 @@ Install local dependencies and config when needed:
 
 ```bash
 uv venv
-uv pip install -e '.[openai,dev]'
+make install-openai
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```

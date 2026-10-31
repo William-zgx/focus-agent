@@ -275,7 +275,7 @@ jobs:
       - name: Run real Chrome interaction smoke gates
         run: |
           set +e
-          timeout 12m uv run python scripts/ui_smoke_test.py \
+          timeout 12m .venv/bin/python scripts/ui_smoke_test.py \
             --app-url http://127.0.0.1:8000/app/ \
             --health-url http://127.0.0.1:8000/healthz \
             --chrome-path "$CHROME_PATH" \
@@ -284,7 +284,7 @@ jobs:
             2> reports/browser-smoke/ui-smoke.stderr.log
           ui_status=$?
 
-          timeout 8m uv run python scripts/observability_ui_smoke.py \
+          timeout 8m .venv/bin/python scripts/observability_ui_smoke.py \
             --app-base-url http://127.0.0.1:8000/app \
             --health-url http://127.0.0.1:8000/healthz \
             --database-uri "$DATABASE_URI" \

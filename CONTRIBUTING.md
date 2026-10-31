@@ -32,13 +32,13 @@ If you are planning a larger change, opening an issue or starting a short discus
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -e '.[openai,dev]'
+make install-openai
 ```
 
 If you are developing against Anthropic instead of OpenAI:
 
 ```bash
-uv pip install -e '.[anthropic,dev]'
+make install-anthropic
 ```
 
 ### Local configuration

@@ -17,7 +17,7 @@ minimal chat template. Local startup also differs between **maintained `make` en
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -e '.[openai,dev]'
+make install-openai
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```

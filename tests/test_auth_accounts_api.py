@@ -142,9 +142,14 @@ def test_change_password_keeps_current_session_and_revokes_other_sessions(
     assert mismatch.status_code == 400
     assert mismatch.json()["data"]["code"] == "password_mismatch"
 
+    # The later login replaced the jar's refresh cookie with the other session.
+    # Put the current session back on the client; per-request cookies are
+    # deprecated and newer Starlette/httpx no longer let them override the jar.
+    client.cookies.set(
+        "focus_agent_refresh", current_refresh_token, domain="testserver.local", path="/"
+    )
     changed = client.post(
         "/v1/auth/change-password",
-        cookies={"focus_agent_refresh": current_refresh_token},
         json={"current_password": "secret123", "new_password": "secret456"},
     )
     assert changed.status_code == 200

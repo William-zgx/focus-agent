@@ -28,7 +28,7 @@ flowchart LR
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -e '.[openai,dev]'
+make install-openai
 make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```

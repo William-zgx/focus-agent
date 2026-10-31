@@ -44,7 +44,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.1.0
 
       - name: Install Python dependencies
-        run: uv pip install --system -e '.[openai,dev]'
+        run: make install-openai
 
       - name: Run deterministic eval framework tests
         run: |

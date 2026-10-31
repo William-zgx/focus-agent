@@ -90,10 +90,10 @@ venv: .venv/bin/python
 install: install-openai
 
 install-openai: .venv/bin/python
-	$(UV) pip install -e '.[openai,dev]'
+	$(UV) sync --frozen --inexact --extra openai --extra dev
 
 install-anthropic: .venv/bin/python
-	$(UV) pip install -e '.[anthropic,dev]'
+	$(UV) sync --frozen --inexact --extra anthropic --extra dev
 
 setup-local:
 	@test -f .env || cp .env.example .env
