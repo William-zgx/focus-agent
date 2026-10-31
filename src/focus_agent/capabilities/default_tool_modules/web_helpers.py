@@ -282,7 +282,7 @@ class _ReadableHTMLExtractor(HTMLParser):
                 self._ld_json_parts = []
             self._skip_depth += 1
             return
-        if lowered == "title":
+        if lowered == "title" and not self._skip_depth:
             self._in_title = True
         if lowered in {"time", "relative-time", "local-time"}:
             moment = str(attr_map.get("datetime") or "").strip()
