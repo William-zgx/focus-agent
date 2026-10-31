@@ -191,6 +191,35 @@ export function branchActionTitle(
 	return isChineseUi ? "打开已有分支" : "Open existing branch";
 }
 
+export function branchRoleLabel(
+	role: FocusAgentBranchActionProposal["branch_role"],
+	isChineseUi: boolean,
+) {
+	switch (role) {
+		case "deep_dive":
+			return isChineseUi ? "深入研究" : "Deep dive";
+		case "execute":
+			return isChineseUi ? "执行" : "Execute";
+		case "explore_alternatives":
+			return isChineseUi ? "探索备选" : "Explore alternatives";
+		case "verify":
+			return isChineseUi ? "验证" : "Verify";
+		case "writeup":
+			return isChineseUi ? "撰写总结" : "Write-up";
+		default:
+			return isChineseUi ? "主线" : "Main";
+	}
+}
+
+export function branchActionReasonText(action: FocusAgentBranchActionProposal) {
+	const reason = String(action.reason ?? "").trim();
+	// Older actions stored the technical scorer rationale as the reason.
+	if (!reason || reason.includes("route=") || reason === action.rationale) {
+		return "";
+	}
+	return reason;
+}
+
 export function branchActionStatusText(
 	action: FocusAgentBranchActionProposal,
 	isChineseUi: boolean,

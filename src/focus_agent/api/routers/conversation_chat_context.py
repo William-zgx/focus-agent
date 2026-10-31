@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from focus_agent.core.token_usage import normalize_token_usage
 from focus_agent.core.types import ConversationRecord
@@ -16,6 +16,7 @@ from focus_agent.services.chat import (
 )
 
 from ..contracts import (
+    BranchActionExecuteRequest,
     BranchActionExecuteResponse,
     ConversationListResponse,
     ConversationSummaryResponse,
@@ -245,15 +246,19 @@ def execute_thread_branch_action(
     thread_id: str,
     action_id: str,
     request: Request,
+    payload: BranchActionExecuteRequest | None = Body(default=None),
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> BranchActionExecuteResponse:
+    overrides = payload or BranchActionExecuteRequest()
     with map_service_errors():
         result = chat.execute_branch_action(
             thread_id=thread_id,
             action_id=action_id,
             user_id=principal.user_id,
             request_id=getattr(request.state, "request_id", None),
+            branch_name=overrides.branch_name,
+            handoff_message=overrides.handoff_message,
         )
     return BranchActionExecuteResponse.model_validate(result)
 

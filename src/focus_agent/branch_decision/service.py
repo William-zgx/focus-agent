@@ -33,10 +33,12 @@ from .service_helpers import (
     _branch_decision_mode,
     _branch_handoff_idempotency_key,
     _decision_action_for_branch_action_kind,
+    _is_chinese_text,
     _message_preview,
     _normalized_message_hash,
     _now_iso,
     _recommendation_diagnostics,
+    _recommendation_reason,
     _recommendation_target_for_decision,
     _recommendation_user_visible,
     _semantic_topic_relation_diagnostic,
@@ -660,6 +662,9 @@ class BranchDecisionService(
             metadata["effective_mode"] = BranchDecisionMode.SUGGEST.value
         metadata["route"] = best.route
         metadata["delivery"] = _recommendation_delivery(best.route)
+        metadata["reason_summary"] = _recommendation_reason(
+            best.route, chinese=_is_chinese_text(message)
+        )
         event = BranchDecisionEvent(
             user_id=user_id,
             root_thread_id=root_thread_id,

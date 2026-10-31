@@ -53,6 +53,8 @@ export interface FocusAgentBranchActionProposal {
 	 * "continue this in a branch?" suggestion.
 	 */
 	delivery?: BranchActionDelivery | null;
+	/** Display name of the parent thread; null/absent means the main thread. */
+	target_parent_branch_name?: string | null;
 }
 
 export type BranchActionDelivery = "proposal" | "after_answer";

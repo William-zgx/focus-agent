@@ -229,6 +229,8 @@ class BranchActionProposal(BaseModel):
     # "after_answer": the turn was answered normally and the card is a
     # non-blocking "continue this in a branch?" suggestion attached to it.
     delivery: Literal["proposal", "after_answer"] | None = None
+    # Display name of target_parent_thread_id; None means the root (main) thread.
+    target_parent_branch_name: str | None = None
 
 
 BranchTreeNode.model_rebuild()

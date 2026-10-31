@@ -2,6 +2,7 @@ import {
 	safeVisibleText,
 	type FocusAgentAskUserQuestionAnswer,
 	type FocusAgentAskUserQuestionInterrupt,
+	type FocusAgentBranchActionExecuteRequest,
 	type FocusAgentBranchActionProposal,
 	type FocusAgentBranchDecisionSummary,
 	type FocusAgentMergeQueueEntry,
@@ -64,7 +65,10 @@ interface MessageListProps {
 	isChineseUi?: boolean;
 	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage?: (message: { id: string; content: string }) => void;
-	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
+	onExecuteBranchAction?: (
+		action: FocusAgentBranchActionProposal,
+		overrides?: FocusAgentBranchActionExecuteRequest,
+	) => void;
 	onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval?: (
 		interrupt: FocusAgentToolApprovalInterrupt,

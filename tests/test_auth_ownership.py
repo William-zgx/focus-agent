@@ -84,10 +84,18 @@ class _OwnershipChatService:
         return _thread_payload(thread_id)
 
     def execute_branch_action(
-        self, *, thread_id: str, action_id: str, user_id: str, request_id: str | None = None
+        self,
+        *,
+        thread_id: str,
+        action_id: str,
+        user_id: str,
+        request_id: str | None = None,
+        branch_name: str | None = None,
+        handoff_message: str | None = None,
     ):
         del action_id, request_id
         self._assert_owner(user_id)
+        self.execute_overrides = {"branch_name": branch_name, "handoff_message": handoff_message}
         return {
             "thread_state": _thread_payload(thread_id),
             "branch_action": _branch_action_payload(),
@@ -598,6 +606,34 @@ def test_thread_routes_accept_encoded_slashes_for_existing_user_ids(
     assert branch_action.json()["thread_state"]["thread_id"] == "root/legacy-main"
     assert tree.status_code == 200
     assert tree.json()["root"]["root_thread_id"] == "root/legacy-main"
+
+
+def test_branch_action_execute_forwards_card_overrides(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client, settings = _build_client(monkeypatch, tmp_path)
+    owner_headers = _auth_header(settings, user_id="owner-1")
+
+    bare = client.post(
+        "/v1/threads/root-1/branch-actions/branch-action-1/execute", headers=owner_headers
+    )
+    assert bare.status_code == 200
+    assert client.app.state.chat_service.execute_overrides == {
+        "branch_name": None,
+        "handoff_message": None,
+    }
+
+    edited = client.post(
+        "/v1/threads/root-1/branch-actions/branch-action-1/execute",
+        headers=owner_headers,
+        json={"branch_name": "GIL 调研", "handoff_message": "Python 3.13 的 GIL 现状"},
+    )
+
+    assert edited.status_code == 200
+    assert client.app.state.chat_service.execute_overrides == {
+        "branch_name": "GIL 调研",
+        "handoff_message": "Python 3.13 的 GIL 现状",
+    }
 
 
 def test_demo_token_endpoint_is_disabled_for_production_style_settings(

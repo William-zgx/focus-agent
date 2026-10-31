@@ -2,6 +2,7 @@ import type {
 	ContextUsageResponse,
 	FocusAgentAskUserQuestionAnswer,
 	FocusAgentAskUserQuestionInterrupt,
+	FocusAgentBranchActionExecuteRequest,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchDecisionSummary,
 	FocusAgentMergeQueueEntry,
@@ -54,7 +55,10 @@ interface ThreadPageContentProps {
 	) => void;
 	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage: (message: { id: string; content: string }) => void;
-	onExecuteBranchAction: (action: FocusAgentBranchActionProposal) => void;
+	onExecuteBranchAction: (
+		action: FocusAgentBranchActionProposal,
+		overrides?: FocusAgentBranchActionExecuteRequest,
+	) => void;
 	onPreviewContextUsage: (draftMessage: string) => void;
 	onComposerSelectionChange?: (overrides: {
 		model?: string;

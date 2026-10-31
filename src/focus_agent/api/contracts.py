@@ -150,6 +150,7 @@ from .contract_models.auth_admin import (
 from .contract_models.branch import (
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
+    BranchActionExecuteRequest,
     BranchActionExecuteResponse,
     BranchTreeResponse,
     ForkBranchRequest,
@@ -313,6 +314,7 @@ __all__ = [
     "ThreadContextCompactResponse",
     "BranchActionNavigation",
     "BranchActionProposal",
+    "BranchActionExecuteRequest",
     "BranchActionExecuteResponse",
     "BranchDecisionConfigResponse",
     "BranchDecisionDismissRequest",

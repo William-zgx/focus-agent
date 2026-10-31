@@ -3087,6 +3087,53 @@ test("answer-first branch card: stay only dismisses and server decides the hando
   );
 });
 
+test("branch card shows readable role/parent/reason and sends edited name and goal", () => {
+  const cardSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-branch-action-card.tsx"),
+    "utf8",
+  );
+  const hookSource = compactSource(
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
+      "utf8",
+    ),
+  );
+  const sdkSource = compactSource(
+    readFileSync(path.join(repoRoot, "frontend-sdk/src/client/thread-branch.ts"), "utf8"),
+  );
+  const compactCard = compactSource(cardSource);
+
+  // No raw enum or raw thread id in the card.
+  assert.equal(cardSource.includes("{action.branch_role}"), false);
+  assert.equal(cardSource.includes("{action.target_parent_thread_id}"), false);
+  assert.equal(compactCard.includes("branchRoleLabel(action.branch_role, isChineseUi)"), true);
+  assert.equal(compactCard.includes("normalizeText(action.target_parent_branch_name)"), true);
+  assert.equal(compactCard.includes("branchActionReasonText(action)"), true);
+  // Name and goal are editable and sent with the execute request.
+  assert.equal(compactCard.includes("setNameDraft(event.target.value)"), true);
+  assert.equal(compactCard.includes("setGoalDraft(event.target.value)"), true);
+  assert.equal(
+    compactCard.includes(
+      "onExecute?.(action, { branch_name: nameDraft.trim() || null, handoff_message: goalDraft.trim() || null, });",
+    ),
+    true,
+  );
+  assert.equal(
+    hookSource.includes("client.executeBranchAction( sourceThreadId, action.action_id, overrides, )"),
+    true,
+  );
+  assert.equal(sdkSource.includes("body: JSON.stringify(request)"), true);
+  const helperSource = compactSource(
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-list-helpers.ts"),
+      "utf8",
+    ),
+  );
+  assert.equal(helperSource.includes('case "deep_dive": return isChineseUi ? "深入研究" : "Deep dive";'), true);
+  // Technical scorer rationales never leak into the card reason.
+  assert.equal(helperSource.includes('reason.includes("route=") || reason === action.rationale'), true);
+});
+
 test("thread busy retry helper waits through transient previous-turn conflicts", async () => {
   const { retryThreadBusyConflict, FocusAgentRequestError } = loadThreadBusyRetryModule();
   let attempts = 0;

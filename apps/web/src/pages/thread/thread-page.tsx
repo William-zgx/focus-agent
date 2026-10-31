@@ -318,7 +318,9 @@ export function ThreadPage() {
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
 			onBranchFromMessage={handleBranchFromMessage}
 			onEditMessage={setEditDraft}
-			onExecuteBranchAction={(action) => void executeBranchAction(action)}
+			onExecuteBranchAction={(action, overrides) =>
+				void executeBranchAction(action, overrides)
+			}
 			onPreviewContextUsage={handlePreviewContextUsage}
 			onSendMessage={handleSendMessage}
 			onStopStreaming={stopStreaming}

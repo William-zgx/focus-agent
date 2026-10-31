@@ -152,6 +152,7 @@ def _carry_branch_action_handoff_if_needed(
     branch_record: Any | None,
     source_values: dict[str, Any],
     user_message: str | None,
+    goal_edited: bool = False,
 ) -> str | None:
     """Carry the handoff into the new branch; return the text the client should run."""
     if branch_record is None:
@@ -159,7 +160,7 @@ def _carry_branch_action_handoff_if_needed(
     child_thread_id = str(getattr(branch_record, "child_thread_id", "") or "")
     if not child_thread_id:
         return None
-    if _branch_already_holds_answered_turn(action):
+    if not goal_edited and _branch_already_holds_answered_turn(action):
         return None
     handoff_text = (
         branch_handoff_message_from_text(getattr(action, "handoff_message", None))
@@ -249,9 +250,16 @@ def build_branch_action_proposal_result(
         suggested_branch_name_source=(
             "explicit" if explicit_branch_name else "inferred" if suggested_branch_name else None
         ),
-        reason="User requested a branch switch from chat.",
+        reason="你要求为此新开分支。"
+        if service._is_chinese_text(message)
+        else "You asked for a separate branch.",
         handoff_message=_branch_handoff_text_from_message(message)
         or _latest_branch_handoff_text(recent_messages),
+    ).model_copy(
+        update={
+            "delivery": "proposal",
+            "target_parent_branch_name": _thread_branch_name(service, target_parent),
+        }
     )
     actions.append(action)
     is_chinese = service._is_chinese_text(message)
@@ -281,6 +289,40 @@ def build_branch_action_proposal_result(
     }
 
 
+def _thread_branch_name(service: Any, thread_id: str | None) -> str | None:
+    """Display name of a thread's branch; None for the root (main) thread."""
+    repo = getattr(service.runtime, "repo", None)
+    get_by_child = getattr(repo, "get_by_child_thread_id", None)
+    if not thread_id or not callable(get_by_child):
+        return None
+    try:
+        record = get_by_child(thread_id)
+    except Exception:  # noqa: BLE001 - root threads have no branch record.
+        return None
+    return str(getattr(record, "branch_name", "") or "").strip() or None
+
+
+def _apply_execute_overrides(
+    action: Any,
+    *,
+    branch_name: str | None,
+    handoff_message: str | None,
+) -> tuple[Any, bool]:
+    """Apply card edits; returns the action and whether the goal was edited."""
+    update: dict[str, Any] = {}
+    name = " ".join(str(branch_name or "").split())[:80]
+    if name:
+        # An edited (or confirmed) card name becomes the real branch name.
+        update["suggested_branch_name"] = name
+        update["suggested_branch_name_source"] = "explicit"
+    goal = " ".join(str(handoff_message or "").split())
+    current_goal = " ".join(str(action.handoff_message or "").split())
+    goal_edited = bool(goal) and goal != current_goal
+    if goal_edited:
+        update["handoff_message"] = goal
+    return (action.model_copy(update=update) if update else action), goal_edited
+
+
 def execute_branch_action_locked(
     *,
     service: Any,
@@ -289,6 +331,8 @@ def execute_branch_action_locked(
     user_id: str,
     request_id: str | None = None,
     user_message: str | None = None,
+    branch_name: str | None = None,
+    handoff_message: str | None = None,
 ) -> dict[str, Any]:
     context, branch_meta, values = service._preflight_thread_access(
         thread_id=thread_id,
@@ -304,6 +348,9 @@ def execute_branch_action_locked(
         raise ValueError(f"Branch action {action_id} is not pending.")
     if action.recommendation_user_visible is False:
         raise ValueError(f"Branch action {action_id} is audit-only and cannot be executed.")
+    action, goal_edited = _apply_execute_overrides(
+        action, branch_name=branch_name, handoff_message=handoff_message
+    )
 
     from .service import execute_branch_action_navigation
 
@@ -319,6 +366,7 @@ def execute_branch_action_locked(
             branch_record=branch_record,
             source_values=values,
             user_message=user_message,
+            goal_edited=goal_edited,
         )
     except Exception as exc:
         failed = mark_branch_action_failed(action, str(exc))
@@ -601,6 +649,8 @@ class ChatBranchActionFacadeMixin:
         user_id: str,
         request_id: str | None = None,
         user_message: str | None = None,
+        branch_name: str | None = None,
+        handoff_message: str | None = None,
     ) -> dict[str, Any]:
         return execute_branch_action_locked(
             service=self,
@@ -609,6 +659,8 @@ class ChatBranchActionFacadeMixin:
             user_id=user_id,
             request_id=request_id,
             user_message=user_message,
+            branch_name=branch_name,
+            handoff_message=handoff_message,
         )
 
     def execute_branch_action(
@@ -619,6 +671,8 @@ class ChatBranchActionFacadeMixin:
         user_id: str,
         request_id: str | None = None,
         user_message: str | None = None,
+        branch_name: str | None = None,
+        handoff_message: str | None = None,
     ) -> dict[str, Any]:
         with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
             result = self._execute_branch_action_locked(
@@ -627,6 +681,8 @@ class ChatBranchActionFacadeMixin:
                 user_id=user_id,
                 request_id=request_id,
                 user_message=user_message,
+                branch_name=branch_name,
+                handoff_message=handoff_message,
             )
             turn_lease.raise_if_lost()
             return result

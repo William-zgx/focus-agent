@@ -108,6 +108,7 @@ from .auth_admin import (
 from .branch import (
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
+    BranchActionExecuteRequest,
     BranchActionExecuteResponse,
     BranchTreeResponse,
     ForkBranchRequest,
@@ -255,6 +256,7 @@ __all__ = [
     "ThreadResolutionResponse",
     "ThreadStateResponse",
     "ThreadContextCompactResponse",
+    "BranchActionExecuteRequest",
     "BranchActionExecuteResponse",
     "BranchDecisionConfigResponse",
     "BranchDecisionDismissRequest",

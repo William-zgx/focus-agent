@@ -117,6 +117,7 @@ _BRANCH_HANDOFF_PATTERNS = (
     r"^(?:请|帮我|麻烦你)?(?:开一个|另开)(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
     r"^(?:请|帮我|麻烦你)?(?:切换|切到)(?:到|一个)?(?:同级|平级|子|下级|新的|新)?分支[，,。；;：:\s]*(?P<task>.+)$",
     r"^(?:create|open|switch(?:\s+to)?)(?:\s+a|\s+an)?(?:\s+new|\s+sibling|\s+child)?\s+branch(?:\s+for|\s+to|\s+and|,|:)?\s*(?P<task>.+)$",
+    r"^(?:(?:a|an)\s+)?(?:new|separate|sibling|child)\s+branch(?:\s+for|\s+to|\s+about|\s+on|,|:)\s*(?P<task>.+)$",
 )
 _TOPIC_DRIFT_HANDOFF_PATTERNS = (
     r"^(?:换个主题|换个方向|另一个问题|另外一个问题|不相关的问题)[，,。；;：:\s]*(?P<task>.+)$",
@@ -340,6 +341,11 @@ def infer_suggested_branch_name(message: str, recent_messages: list[Any]) -> str
     direct = _extract_branch_name(message)
     if direct:
         return direct
+    goal = branch_handoff_message_from_text(message)
+    if goal:
+        from_goal = branch_name_from_goal(goal)
+        if from_goal:
+            return from_goal
     for item in reversed(recent_messages):
         if not isinstance(item, HumanMessage):
             continue
@@ -557,9 +563,59 @@ def _extract_topic_name(text: str) -> str | None:
 def _clean_name(value: str) -> str | None:
     cleaned = str(value or "").strip(" ：:「」『』“”\"'`，。！？ \n\t")
     cleaned = re.sub(r"(同级|子|新的|新|一个|到)$", "", cleaned).strip()
-    if not cleaned or cleaned in {"分支", "同级分支", "子分支"}:
+    # Regex captures can start inside filler words ("研究一下用 X" -> "一下用").
+    cleaned = re.sub(r"^(?:一下|下|用|一个|个|的)+", "", cleaned).strip()
+    if len(cleaned) < 2 or cleaned in {"分支", "同级分支", "子分支"}:
         return None
     return cleaned[:80]
+
+
+_GOAL_LEADING_FILLER_RE = re.compile(
+    r"^(?:请|帮我|帮忙|麻烦你?|能不能|可不可以|可以|我想|我们|我遇到(?:了)?(?:一个)?|顺便问(?:一下|下)?"
+    r"|对比(?:一下)?|比较(?:一下)?|研究(?:一下)?|分析(?:一下)?|看看|看一下|深入|单独|关于|用"
+    r"|please\s+|can\s+you\s+|could\s+you\s+|let'?s\s+|what'?s\s+|what\s+is\s+|what\s+are\s+"
+    r"|how\s+(?:do|does|to|can)\s+(?:i|we|you)?\s*|why\s+(?:is|does|do)\s+|is\s+there\s+|the\s+)",
+    flags=re.IGNORECASE,
+)
+_GOAL_QUESTION_TAIL_RE = re.compile(
+    r"(?:为什么|怎么样|怎么|如何|是否|是什么|有什么|有哪些|会是什么|吗|呢|呀|吧|么)"
+)
+_GOAL_PARENTHETICAL_RE = re.compile(r"（[^）]*）|\([^)]*\)")
+_GOAL_NAME_MAX_CHARS = 24
+_GOAL_NAME_MAX_WORDS = 6
+
+
+def branch_name_from_goal(goal: str | None) -> str | None:
+    """Derive a short topic name from a handoff goal instead of regex fragments."""
+    text = " ".join(str(goal or "").split())
+    if not text:
+        return None
+    text = _GOAL_PARENTHETICAL_RE.sub("", text)
+    for _ in range(4):
+        stripped = _GOAL_LEADING_FILLER_RE.sub("", text).strip(" ：:，,。.；;")
+        if stripped == text:
+            break
+        text = stripped
+    clause = re.split(r"[，,。；;：:？?！!\n]", text, maxsplit=1)[0].strip()
+    if len(clause) >= 2:
+        text = clause
+    tail = _GOAL_QUESTION_TAIL_RE.search(text)
+    if tail and tail.start() >= 2:
+        text = text[: tail.start()]
+    text = text.strip(" 的，,。.？?")
+    if not text:
+        return None
+    if text.isascii():
+        words = text.split()
+        text = " ".join(words[:_GOAL_NAME_MAX_WORDS])
+        return _clean_name(text[:1].upper() + text[1:])
+    if len(text) > _GOAL_NAME_MAX_CHARS:
+        cut = text[:_GOAL_NAME_MAX_CHARS]
+        # Do not end inside an ASCII word ("Kafk").
+        if text[_GOAL_NAME_MAX_CHARS].isascii() and text[_GOAL_NAME_MAX_CHARS].isalnum():
+            cut = re.sub(r"[A-Za-z0-9_.]+$", "", cut)
+        text = cut.strip()
+    return _clean_name(text)
 
 
 __all__ = [
@@ -575,6 +631,7 @@ __all__ = [
     "target_parent_thread_id",
     "branch_handoff_message_from_text",
     "infer_suggested_branch_name",
+    "branch_name_from_goal",
     "explicit_branch_name_from_text",
     "build_branch_action_proposal",
     "replace_branch_action",

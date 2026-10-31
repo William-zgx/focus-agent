@@ -288,6 +288,40 @@ def _branch_role_for_recommendation(
     return BranchRole.EXPLORE_ALTERNATIVES
 
 
+_RECOMMENDATION_REASONS: dict[str, tuple[str, str]] = {
+    "explicit_branch": ("你要求为此新开分支。", "You asked for a separate branch."),
+    "qualified_exploration": (
+        "这是一个适合单独展开的探索。",
+        "This exploration fits its own branch.",
+    ),
+    "topic_drift": ("话题切换到了新的主题。", "The conversation switched to a new topic."),
+    "shape_topic_drift": ("话题切换到了新的主题。", "The conversation switched to a new topic."),
+    "side_question": ("这是一个顺带的旁支问题。", "This is a side question."),
+    "comparison": ("方案对比适合放到单独分支。", "Comparing options fits a separate branch."),
+    "detour": ("这次临时排查可以放到分支里。", "This debugging detour can live in a branch."),
+    "semantic_topic_relation": (
+        "与当前话题的相关度较低。",
+        "It has low relatedness to the current topic.",
+    ),
+    "merge_back": (
+        "这个分支的结论可以带回上级。",
+        "This branch's conclusion is ready to bring back.",
+    ),
+}
+
+
+def _recommendation_reason(route: str, *, chinese: bool) -> str:
+    """Short, user-facing reason for a recommendation card (rationale stays technical)."""
+    zh, en = _RECOMMENDATION_REASONS.get(
+        route, ("建议在分支中继续。", "Suggested to continue in a branch.")
+    )
+    return zh if chinese else en
+
+
+def _is_chinese_text(text: str | None) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
+
+
 def _recommendation_user_visible(*, enabled: bool, mode: BranchDecisionMode) -> bool:
     return bool(enabled and mode == BranchDecisionMode.SUGGEST)
 

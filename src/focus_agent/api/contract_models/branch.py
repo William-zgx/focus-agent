@@ -33,6 +33,19 @@ class BranchActionExecuteResponse(BaseModel):
     )
 
 
+class BranchActionExecuteRequest(BaseModel):
+    branch_name: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Card-edited branch name; used as the explicit name of the new branch.",
+    )
+    handoff_message: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Card-edited goal carried into (and run in) the new branch.",
+    )
+
+
 class ForkBranchRequest(BaseModel):
     parent_thread_id: str
     branch_name: str | None = None

@@ -191,6 +191,13 @@ export interface ThreadStateResponse {
 
 export interface ThreadContextCompactResponse extends ThreadStateResponse {}
 
+export interface FocusAgentBranchActionExecuteRequest {
+	/** Card-edited branch name; becomes the explicit name of the new branch. */
+	branch_name?: string | null;
+	/** Card-edited goal carried into (and run in) the new branch. */
+	handoff_message?: string | null;
+}
+
 export interface FocusAgentBranchActionExecuteResponse {
 	thread_state: ThreadStateResponse;
 	branch_action: FocusAgentBranchActionProposal;

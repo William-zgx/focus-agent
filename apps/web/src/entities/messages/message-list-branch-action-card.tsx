@@ -1,4 +1,5 @@
 import type {
+	FocusAgentBranchActionExecuteRequest,
 	FocusAgentBranchActionProposal,
 	FocusAgentBranchDecisionEvent,
 } from "@focus-agent/web-sdk";
@@ -12,8 +13,10 @@ import {
 } from "@/shared/branch-decision-diagnostics";
 
 import {
+	branchActionReasonText,
 	branchActionStatusText,
 	branchActionTitle,
+	branchRoleLabel,
 } from "./message-list-helpers";
 import { normalizeText } from "./message-transcript";
 
@@ -72,14 +75,26 @@ export function BranchActionCard({
 	errorMessage?: string;
 	isBusy?: boolean;
 	sourceDecision?: FocusAgentBranchDecisionEvent | null;
-	onExecute?: (action: FocusAgentBranchActionProposal) => void;
+	onExecute?: (
+		action: FocusAgentBranchActionProposal,
+		overrides?: FocusAgentBranchActionExecuteRequest,
+	) => void;
 	onDismiss?: (action: FocusAgentBranchActionProposal) => void;
 }) {
 	const pending = action.status === "pending";
 	const [isExpanded, setIsExpanded] = useState(pending);
-	const branchName =
-		normalizeText(action.suggested_branch_name) ||
-		(isChineseUi ? "新分支" : "New branch");
+	const suggestedName = normalizeText(action.suggested_branch_name);
+	const suggestedGoal = normalizeText(action.handoff_message);
+	const [nameDraft, setNameDraft] = useState(suggestedName);
+	const [goalDraft, setGoalDraft] = useState(suggestedGoal);
+	const branchName = suggestedName || (isChineseUi ? "新分支" : "New branch");
+	const parentName =
+		normalizeText(action.target_parent_branch_name) ||
+		(isChineseUi ? "主线" : "Main");
+	const reasonText = branchActionReasonText(action);
+	const isFork =
+		action.kind === "fork_child_branch" ||
+		action.kind === "fork_sibling_branch";
 	const failureMessage =
 		normalizeText(errorMessage) || normalizeText(action.error);
 	const isAiSuggested =
@@ -101,6 +116,7 @@ export function BranchActionCard({
 		Boolean(sourceDecisionDiagnostic);
 	const auditOnly = action.recommendation_user_visible === false;
 	const disabled = isReadOnly || auditOnly || Boolean(isBusy);
+	const canEdit = pending && isFork && !isReadOnly && !auditOnly;
 	const toggleLabel = isExpanded
 		? isChineseUi
 			? "收起详情"
@@ -131,7 +147,16 @@ export function BranchActionCard({
 	const stayLabel = isChineseUi ? "留在这里" : "Stay here";
 	const executeBranchAction = () => {
 		setIsExpanded(false);
-		onExecute?.(action);
+		if (!canEdit) {
+			onExecute?.(action);
+			return;
+		}
+		// The (possibly edited) name becomes the real branch name; the goal is the
+		// handoff carried into the new branch.
+		onExecute?.(action, {
+			branch_name: nameDraft.trim() || null,
+			handoff_message: goalDraft.trim() || null,
+		});
 	};
 	const stayHere = () => {
 		setIsExpanded(false);
@@ -141,6 +166,11 @@ export function BranchActionCard({
 	useEffect(() => {
 		setIsExpanded(pending);
 	}, [pending]);
+
+	useEffect(() => {
+		setNameDraft(suggestedName);
+		setGoalDraft(suggestedGoal);
+	}, [suggestedName, suggestedGoal]);
 
 	return (
 		<div className="fa-message-row is-assistant assistant">
@@ -172,19 +202,51 @@ export function BranchActionCard({
 								</span>
 							) : null}
 							<span className="fa-branch-action-card-badge">
-								{action.branch_role}
+								{branchRoleLabel(action.branch_role, isChineseUi)}
 							</span>
 						</div>
 						<span className="fa-branch-action-card-toggle">{toggleLabel}</span>
 					</summary>
 					<div className="fa-branch-action-card-body">
-						<div>
-							<span>{isChineseUi ? "目标" : "Target"}</span>
-							<strong>{branchName}</strong>
-						</div>
+						{reasonText ? (
+							<div className="fa-branch-action-card-reason">
+								<span>{isChineseUi ? "原因" : "Why"}</span>
+								<strong>{reasonText}</strong>
+							</div>
+						) : null}
+						{canEdit ? (
+							<label className="fa-branch-action-card-field">
+								<span>{isChineseUi ? "分支名称" : "Branch name"}</span>
+								<input
+									className="fa-branch-action-card-input"
+									disabled={disabled}
+									maxLength={80}
+									onChange={(event) => setNameDraft(event.target.value)}
+									placeholder={isChineseUi ? "新分支" : "New branch"}
+									value={nameDraft}
+								/>
+							</label>
+						) : (
+							<div>
+								<span>{isChineseUi ? "目标" : "Target"}</span>
+								<strong>{branchName}</strong>
+							</div>
+						)}
+						{canEdit ? (
+							<label className="fa-branch-action-card-field">
+								<span>{isChineseUi ? "分支目标" : "Goal"}</span>
+								<textarea
+									className="fa-branch-action-card-input"
+									disabled={disabled}
+									onChange={(event) => setGoalDraft(event.target.value)}
+									rows={2}
+									value={goalDraft}
+								/>
+							</label>
+						) : null}
 						<div>
 							<span>{isChineseUi ? "父分支" : "Parent"}</span>
-							<code>{action.target_parent_thread_id}</code>
+							<strong>{parentName}</strong>
 						</div>
 						{failureMessage ? (
 							<div className="is-danger">

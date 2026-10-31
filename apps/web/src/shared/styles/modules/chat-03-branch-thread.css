@@ -99,6 +99,23 @@
 	color: var(--fa-danger);
 }
 
+.fa-branch-action-card-body .fa-branch-action-card-field {
+	display: grid;
+	gap: 4px;
+}
+
+.fa-branch-action-card-input {
+	width: 100%;
+	border: 1px solid var(--fa-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--fa-bg) 80%, transparent);
+	color: var(--fa-text);
+	font: inherit;
+	font-size: 13px;
+	padding: 6px 10px;
+	resize: vertical;
+}
+
 .fa-branch-decision-summary {
 	position: absolute;
 	right: 20px;

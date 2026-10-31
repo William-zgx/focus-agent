@@ -3,6 +3,7 @@ import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEn
 import type {
   FocusAgentApplyMergeDecisionRequest,
   FocusAgentApplyMergeDecisionResponse,
+  FocusAgentBranchActionExecuteRequest,
   FocusAgentBranchActionExecuteResponse,
   FocusAgentBranchRecord,
   FocusAgentConversationListResponse,
@@ -126,13 +127,20 @@ async function executeBranchAction(
   this: FocusAgentEndpointContext,
   threadId: string,
   actionId: string,
+  request?: FocusAgentBranchActionExecuteRequest,
 ): Promise<FocusAgentBranchActionExecuteResponse> {
   return this.requestJson<FocusAgentBranchActionExecuteResponse>(
     `/v1/threads/${encodeURIComponent(threadId)}/branch-actions/${encodeURIComponent(actionId)}/execute`,
-    {
-      method: "POST",
-      headers: {},
-    },
+    request
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        }
+      : {
+          method: "POST",
+          headers: {},
+        },
     true,
   );
 }

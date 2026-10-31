@@ -1,4 +1,5 @@
 import type {
+	FocusAgentBranchActionExecuteRequest,
 	FocusAgentBranchActionExecuteResponse,
 	FocusAgentBranchActionNavigation,
 	FocusAgentBranchActionProposal,
@@ -132,7 +133,10 @@ export function useThreadBranchActions(
 	);
 
 	const executeBranchAction = useCallback(
-		async (action: FocusAgentBranchActionProposal) => {
+		async (
+			action: FocusAgentBranchActionProposal,
+			overrides?: FocusAgentBranchActionExecuteRequest,
+		) => {
 			const requestEpoch = beginBranchActionRequest(action.action_id);
 			if (requestEpoch === null) {
 				return;
@@ -140,7 +144,12 @@ export function useThreadBranchActions(
 			const sourceThreadId = threadId;
 			try {
 				const result = await retryThreadBusyConflict(
-					() => client.executeBranchAction(sourceThreadId, action.action_id),
+					() =>
+						client.executeBranchAction(
+							sourceThreadId,
+							action.action_id,
+							overrides,
+						),
 					() => isCurrentBranchActionRequest(requestEpoch, sourceThreadId),
 				);
 				if (!isCurrentBranchActionRequest(requestEpoch, sourceThreadId)) {

@@ -22,6 +22,7 @@ from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.state import normalize_agent_state
 from focus_agent.services.branches.actions import (
     branch_action_audit_event,
+    branch_name_from_goal,
     build_branch_action_proposal,
     latest_pending_branch_action,
     normalize_branch_actions,
@@ -258,10 +259,16 @@ class BranchDecisionServiceRuntimeMixin:
         )
         if event.target_parent_thread_id:
             target_thread_id = event.target_parent_thread_id
+        handoff_message = (
+            str(event.metadata.get("handoff_message") or "").strip()
+            or str(event.metadata.get("handoff_message_preview") or "").strip()
+            or None
+        )
         suggested_branch_name = (
             str(event.suggested_branch_name or "").strip()
             or str(event.metadata.get("suggested_branch_name") or "").strip()
-            or "AI suggested branch"
+            or branch_name_from_goal(handoff_message)
+            or None
         )
         action = build_branch_action_proposal(
             kind=kind,
@@ -270,10 +277,8 @@ class BranchDecisionServiceRuntimeMixin:
             target_parent_thread_id=target_thread_id,
             suggested_branch_name=suggested_branch_name,
             branch_role=_branch_role_for_recommendation(event.recommendation_target),
-            reason=event.rationale,
-            handoff_message=str(event.metadata.get("handoff_message") or "").strip()
-            or str(event.metadata.get("handoff_message_preview") or "").strip()
-            or None,
+            reason=str(event.metadata.get("reason_summary") or "").strip() or event.rationale,
+            handoff_message=handoff_message,
         ).model_copy(
             update={
                 "source": "branch_decision",
@@ -285,6 +290,7 @@ class BranchDecisionServiceRuntimeMixin:
                 "confidence": event.score,
                 "rationale": event.rationale,
                 "delivery": event.metadata.get("delivery") or "after_answer",
+                "target_parent_branch_name": self._thread_branch_name(target_thread_id),
             }
         )
         audit = branch_action_audit_event(
@@ -469,6 +475,21 @@ class BranchDecisionServiceRuntimeMixin:
                     fork_strategy=record.fork_strategy,
                 )
         return self._branch_meta_from_values(values)
+
+    def _thread_branch_name(self, thread_id: str | None) -> str | None:
+        """Display name of a thread's branch; None for the root (main) thread."""
+        if not thread_id:
+            return None
+        repo = getattr(self.branch_service, "repo", None)
+        get_by_child = getattr(repo, "get_by_child_thread_id", None)
+        if not callable(get_by_child):
+            return None
+        try:
+            record = get_by_child(thread_id)
+        except Exception:  # noqa: BLE001 - root threads have no branch record.
+            return None
+        name = str(getattr(record, "branch_name", "") or "").strip()
+        return name or None
 
     def _safe_get_values(self, thread_id: str) -> dict[str, Any]:
         if not has_repo_method(self.graph, "get_state"):

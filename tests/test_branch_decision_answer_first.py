@@ -25,12 +25,15 @@ _SETTINGS = Settings(
 
 def _root_chat(tmp_path: Path, graph: object, **ports: object) -> ChatService:
     repo = _repo_with_child_branch(tmp_path)
+    decision_service = _branch_recommendation_service(_SETTINGS, graph)
+    # Production wires the branch service (and its repo) into the decision service.
+    decision_service.branch_service = SimpleNamespace(repo=repo)
     return ChatService(
         SimpleNamespace(
             settings=_SETTINGS,
             graph=graph,
             repo=repo,
-            branch_decision_service=_branch_recommendation_service(_SETTINGS, graph),
+            branch_decision_service=decision_service,
             **ports,
         )
     )
@@ -183,3 +186,83 @@ def test_executing_after_answer_sibling_card_carries_the_question(tmp_path: Path
     assert result["handoff_message"] == "Cadence 和 Temporal 授权有区别吗？"
     carried = graph.values_by_thread["child-new"]["messages"]
     assert [m.content for m in carried] == ["Cadence 和 Temporal 授权有区别吗？"]
+
+
+def test_card_carries_readable_reason_parent_name_and_clean_name(tmp_path: Path) -> None:
+    graph = BranchRecommendationGraph(
+        {
+            "messages": [
+                HumanMessage(content="当前分支在研究南网能源。"),
+                AIMessage(content="已经整理了财报要点。"),
+            ]
+        }
+    )
+    chat = _root_chat(tmp_path, graph)
+
+    payload = chat.send_message(
+        thread_id="child-1",
+        user_id="owner-1",
+        message="对比一下方案A（重试队列）和方案B（死信队列）的优缺点",
+    )
+
+    action = payload["branch_actions"][-1]
+    assert action["kind"] == "fork_child_branch"
+    assert action["target_parent_thread_id"] == "child-1"
+    assert action["target_parent_branch_name"] == "Nanwang Energy Deep Dive"
+    assert action["reason"] == "方案对比适合放到单独分支。"
+    assert "route=comparison" in action["rationale"]
+    assert action["suggested_branch_name"] == "方案A和方案B的优缺点"
+
+
+def test_root_parent_has_no_branch_name_and_topic_name_avoids_fragments(tmp_path: Path) -> None:
+    graph = _history_graph()
+    chat = _root_chat(tmp_path, graph)
+
+    payload = chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="New branch for the Temporal migration study",
+    )
+
+    action = payload["branch_actions"][-1]
+    assert action["target_parent_branch_name"] is None
+    assert action["suggested_branch_name"] == "Temporal migration study"
+    assert action["reason"] == "You asked for a separate branch."
+
+
+def test_execute_uses_edited_name_as_explicit_branch_name_and_runs_edited_goal(
+    tmp_path: Path,
+) -> None:
+    graph = MultiThreadBranchActionGraph(
+        {
+            "root-1": {
+                "messages": [
+                    HumanMessage(content="帮我把订单服务的重试逻辑改成指数退避"),
+                    AIMessage(content="好的，这里是修改方案……"),
+                ]
+            },
+        }
+    )
+    branch_service = BranchActionBranchService()
+    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat.send_message(
+        thread_id="root-1",
+        user_id="owner-1",
+        message="另一个问题：我们的前端打包为什么这么慢？",
+    )
+    action = graph.values_by_thread["root-1"]["branch_actions"][-1]
+
+    result = chat.execute_branch_action(
+        thread_id="root-1",
+        action_id=action["action_id"],
+        user_id="owner-1",
+        branch_name="  前端构建提速 ",
+        handoff_message="排查 webpack 构建慢的原因并给出提速方案",
+    )
+
+    fork_call = branch_service.fork_calls[-1]
+    assert fork_call["branch_name"] == "前端构建提速"
+    assert result["branch_action"]["suggested_branch_name_source"] == "explicit"
+    assert result["handoff_message"] == "排查 webpack 构建慢的原因并给出提速方案"
+    carried = graph.values_by_thread["child-new"]["messages"]
+    assert [m.content for m in carried] == ["排查 webpack 构建慢的原因并给出提速方案"]
