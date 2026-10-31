@@ -75,6 +75,9 @@ class MergeProposal(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     artifacts: list[str] = Field(default_factory=list)
     recommended_import_mode: MergeMode = MergeMode.SUMMARY_ONLY
+    # Optional per-finding evidence keyed by key_findings text; findings without
+    # an entry fall back to the flat ``evidence_refs`` list on merge apply.
+    finding_evidence_refs: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class MergeProposalOverrides(BaseModel):

@@ -33,3 +33,55 @@ versions:
 
       Recent transcript:
       {transcript}
+  - version: "v2"
+    description: Branch-local transcript with early turns kept, evidence, artifacts, and nested imports.
+    variables:
+      - branch_name
+      - branch_role
+      - output_language
+      - inherited_context
+      - branch_summary
+      - received_imports
+      - local_interaction_summary
+      - findings
+      - evidence
+      - artifacts
+      - transcript
+    body: |
+      Branch name: {branch_name}
+      Branch role: {branch_role}
+      Output language: {output_language}
+
+      Instructions:
+      - Generate the conclusion mainly from this branch's own interaction history.
+      - Summarize only what this branch newly discovered, verified, decided, or clarified, including findings from its earliest turns.
+      - Do not restate parent-thread context unless this branch materially changed or challenged it.
+      - If inherited context is mentioned at all, keep it to a very short orienting phrase.
+      - Conclusions imported into this branch after the fork came from its own child branches; carry them forward when they still hold.
+      - Only use evidence_refs listed under "Evidence available in this branch" (citation label, URL, or evidence id). Never invent refs.
+      - A key_findings item may be an object {{"finding": str, "evidence_refs": [str]}} to attach evidence to that finding only.
+      - If this branch has not reached any conclusion, return an empty summary and empty key_findings.
+
+      Inherited upstream context (brief):
+      {inherited_context}
+
+      Branch summary:
+      {branch_summary}
+
+      Conclusions imported into this branch after the fork:
+      {received_imports}
+
+      Recorded findings:
+      {findings}
+
+      Evidence available in this branch:
+      {evidence}
+
+      Artifacts produced in this branch:
+      {artifacts}
+
+      This branch's recent interaction history:
+      {local_interaction_summary}
+
+      Branch transcript (opening and latest turns verbatim, middle condensed):
+      {transcript}

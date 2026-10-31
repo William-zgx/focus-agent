@@ -7,6 +7,7 @@ from copy import deepcopy
 from ...core.branch_brief import build_fork_brief, pending_fork_handoff_goal
 from ...core.branch_messages import branch_seed_messages
 from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
+from ...core.merge_review_inputs import fork_inherited_counts_for
 from ...core.types import ConversationRecord, PromptMode
 
 logger = logging.getLogger("focus_agent.branches")
@@ -152,6 +153,7 @@ class BranchLifecycleCoordinator:
             goal=pending_fork_handoff_goal(parent_values, parent_thread_id=parent_thread_id),
         )
         branch_meta_payload["fork_brief"] = fork_brief
+        branch_meta_payload["fork_inherited_counts"] = fork_inherited_counts_for(seed_values)
         if name_source is not None:
             branch_meta_payload["branch_name_source"] = name_source
 
@@ -184,6 +186,7 @@ class BranchLifecycleCoordinator:
                     "active_goal": fork_brief["goal"],
                     "rolling_summary": "",
                     "context_compaction": {},
+                    "evidence_ledger": [],
                     "merge_proposal": None,
                     "merge_decision": None,
                     "branch_local_findings": [],

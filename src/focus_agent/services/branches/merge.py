@@ -129,6 +129,10 @@ class BranchMergeCoordinator:
             raise ValueError(f"Merge import blocked by answer verification gate: {blocked_reason}")
         if decision.approved and decision.mode.value == "none":
             raise ValueError("Approved merge decisions must import at least a summary.")
+        if decision.approved and not proposal.summary.strip():
+            raise ValueError(
+                "This branch has no conclusion to import yet; write a summary before approving."
+            )
         if proposal_overrides is not None:
             svc.repo.save_merge_proposal(branch_record.branch_id, proposal)
 

@@ -514,6 +514,7 @@ main thread
 - Branch Action 的 `handoff_message` 会在新 child / sibling thread 中作为唯一交接 user message 注入；如果 seed 中已经有相同 human message，auto-run 不会重复追加。
 - UI transcript、模型消息组装和 context preview 都使用 branch-visible message 过滤，避免同级分支上下文或旧确认卡泄漏进新分支。
 - fork 时写入 `branch_meta.fork_brief`（`goal`、`parent_summary`、`parent_recent_turns`、`forked_at`、`parent_message_count`）：父线程的压缩/rolling summary 与最近 2-3 轮可见对话。分支 prompt 在 `## Branch brief` 块中以“背景”身份渲染它（受 prompt budget 分块裁剪），不改变 UI transcript。`goal` 取 pending Branch Action 的 handoff，否则在分支第一条 user message 到达时固定下来，并同步写入 `active_goal`；sibling 分支拿到的是共同父线程的 brief。
+- fork 时 `branch_meta.fork_inherited_counts` 记录继承来的 `imported_findings`、`merge_queue`、`branch_local_findings`、`citations`、`artifacts` 长度，并清空 `evidence_ledger`。merge proposal（`core/merge_review.py` + `merge_review_inputs.py`）据此只读分支本地内容：分支自身消息（保留开头与最近轮次、压缩中段、单条限长）、分支 summary、citations / evidence ledger / artifacts，以及 fork 之后由子分支导入的结论；模型返回的 `evidence_refs` 只保留能对上已知 citation / evidence 的项，`key_findings` 可带逐条 refs（写入 `finding_evidence_refs`）。空分支的 fallback proposal summary 为空，merge apply 拒绝导入空 summary。
 - `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
