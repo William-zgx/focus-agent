@@ -72,7 +72,7 @@ merge conclusions only after review.
 | Web 前端 TS/TSX | ~250+（`apps/web/src`） |
 | Frontend SDK TS | ~50（`frontend-sdk/src`，另含 generated types） |
 | OpenAPI paths / schemas | ~159 paths / ~272 schemas（`docs/api/openapi.json`） |
-| 兼容债务 baseline | **90** 项（`docs/compat-debt-baseline.json`） |
+| 兼容债务 baseline | **89** 项（`docs/compat-debt-baseline.json`） |
 | 架构债务 baseline | 非生成文件 **800 行上限**，无 grandfather 大文件 |
 | App Postgres schema | **v19**（`SCHEMA_VERSION` in `postgres_schema.py`） |
 | CI workflows | `ci`、`browser-smoke`、`eval`、`nightly-regression`、`release-gate`、`agent-team-evidence` 等 |
@@ -182,7 +182,7 @@ Android 与 Web 不是同一集成模型：
 | 如何严肃地跑 Agent 应用（协议、权限、持久化、回放、发布门禁） | Agent 任务成功率、成本/延迟画像、多 Agent 结果质量门槛 |
 | 本地与 CI 可验证性 | 真实生产控制面绑定（deployment identity 不可伪造） |
 | 安全默认与 fail-closed 路径 | 企业 IdP/JWKS、跨服务 logout、长时多实例演练 |
-| 文档与 debt 计量 | 90 项 1.x 兼容债的 telemetry 驱动退场 |
+| 文档与 debt 计量 | 89 项 1.x 兼容债的 telemetry 驱动退场 |
 | 文本聊天、文本 Web search/fetch、路径型文本 artifact | 原生浏览器/DOM/截图、图片附件/多模态输入、通用 artifact 上传下载 |
 
 平台完备度 **高于** 结果质量证据；此外，task budget 合同目前没有接入真实 runner 的
