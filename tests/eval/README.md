@@ -189,6 +189,17 @@ Model matrix cases live in `datasets/model_matrix.jsonl` and compare labeled
 model roles against the same task inputs. Nightly runs this suite and uploads
 reports without blocking release.
 
+Branch quality lives in `test_branch_quality_suite.py`: deterministic fake-model
+scenarios that drive the real `BranchService`, prompt assembly, and memory
+retrieval against a reducer-aware in-memory graph. Scenarios are defined in code
+(not JSONL) because they script multi-thread fork/merge sequences rather than a
+single user turn. `python -m tests.eval.test_branch_quality_suite` prints the
+summary metrics (`fork_recall`, `proposal_fidelity`, `evidence_survival`,
+`evidence_precision`, `imports_after_merges_and_compaction`,
+`nested_two_hop_survival`, `memory_isolation`, `empty_branch_guard`). Baseline
+`f989831`: 0.0 / 0.4 / 1.0 / 0.0 / 0.381 / 0.0 / 0.0 / 0.0; the pytest gate
+requires 1.0 for every metric.
+
 Trajectory failure skeletons live in `datasets/trajectory_failures.jsonl` and
 capture production replay failures ready for hardening. Nightly runs this suite
 as a non-blocking signal until cases are promoted into golden coverage.
