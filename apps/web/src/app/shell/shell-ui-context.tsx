@@ -38,10 +38,14 @@ interface ShellUiContextValue {
 		status: ShellStatus | null,
 		options?: { autoClearMs?: number },
 	) => void;
-	/** Opens the "New branch" dialog; `goalDraft` pre-fills the goal field. */
+	/**
+	 * Opens the "New branch" dialog; `goalDraft` pre-fills the goal field and
+	 * `forkAtMessageId` forks from that message instead of the latest state.
+	 */
 	createBranch: (options?: {
 		parentThreadId?: string;
 		goalDraft?: string;
+		forkAtMessageId?: string;
 	}) => Promise<void>;
 	isCreatingBranch: boolean;
 	mergeProposalGeneration: Record<string, MergeProposalGenerationState>;

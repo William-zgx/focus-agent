@@ -206,15 +206,22 @@ export function ThreadPage() {
 		if (goal) void sendMessageRef.current(goal);
 	}, [pendingBranchGoalThreadId, threadId]);
 
+	const persistedMessages = data?.messages;
 	const handleBranchFromMessage = useCallback(
-		(message: { content: string }) => {
+		(message: { id: string; content: string }) => {
 			if (!threadId || isMergedReadOnlyThread) return;
-			void createBranch({
-				parentThreadId: threadId,
-				goalDraft: message.content,
-			});
+			// Fork at the message itself once the server has it; a message still
+			// streaming is the latest state anyway, so pre-fill the goal instead.
+			const isPersisted = (persistedMessages ?? []).some(
+				(item) => item.id === message.id,
+			);
+			void createBranch(
+				isPersisted
+					? { parentThreadId: threadId, forkAtMessageId: message.id }
+					: { parentThreadId: threadId, goalDraft: message.content },
+			);
 		},
-		[createBranch, isMergedReadOnlyThread, threadId],
+		[createBranch, isMergedReadOnlyThread, persistedMessages, threadId],
 	);
 
 	const handlePreviewContextUsage = useCallback(

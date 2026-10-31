@@ -193,6 +193,7 @@ export function AppShell({ children }: PropsWithChildren) {
 	async function createBranch(options?: {
 		parentThreadId?: string;
 		goalDraft?: string;
+		forkAtMessageId?: string;
 	}) {
 		const parentThreadId = options?.parentThreadId ?? threadId ?? null;
 		if (!conversationId || !parentThreadId || branchCreateBusy) return;
@@ -206,7 +207,7 @@ export function AppShell({ children }: PropsWithChildren) {
 			parentThreadId,
 			parentLabel,
 			goalDraft: options?.goalDraft,
-			fromMessage: options?.goalDraft !== undefined,
+			forkAtMessageId: options?.forkAtMessageId,
 		});
 	}
 
@@ -223,6 +224,7 @@ export function AppShell({ children }: PropsWithChildren) {
 		try {
 			const record = await forkBranch({
 				parentThreadId: request.parentThreadId,
+				forkAtMessageId: request.forkAtMessageId,
 				branchName: submission.branchName,
 				branchRole: submission.branchRole,
 				nameSource: submission.goal,

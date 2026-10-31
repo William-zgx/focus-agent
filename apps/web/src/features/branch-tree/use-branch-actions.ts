@@ -54,6 +54,8 @@ export function useBranchActions(scope: BranchScope) {
 
 	async function forkBranch(input: {
 		parentThreadId: string;
+		/** Fork from this parent message instead of the parent's latest state. */
+		forkAtMessageId?: string;
 		/** An explicit name: the backend keeps it instead of AI-naming the branch. */
 		branchName?: string;
 		branchRole?: BranchRole;
@@ -63,6 +65,7 @@ export function useBranchActions(scope: BranchScope) {
 	}): Promise<FocusAgentBranchRecord> {
 		const record = await client.forkBranch({
 			parent_thread_id: input.parentThreadId,
+			fork_at_message_id: input.forkAtMessageId || undefined,
 			branch_name: input.branchName || undefined,
 			name_source: input.branchName ? undefined : input.nameSource || undefined,
 			branch_role: input.branchRole,

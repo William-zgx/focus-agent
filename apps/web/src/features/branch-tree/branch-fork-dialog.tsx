@@ -7,8 +7,8 @@ export type BranchForkRequest = {
 	parentThreadId: string;
 	parentLabel?: string;
 	goalDraft?: string;
-	/** Set when the dialog was opened from a message's "Branch from here". */
-	fromMessage?: boolean;
+	/** Set by a message's "Branch from here": the branch sees nothing after it. */
+	forkAtMessageId?: string;
 };
 
 export type BranchForkSubmission = {
@@ -126,13 +126,17 @@ export function BranchForkDialog({
 		});
 	}
 
-	const parentText = request.parentLabel
+	const parentText = request.forkAtMessageId
 		? isChineseUi
-			? `从「${request.parentLabel}」的最新进度分叉，继承它的上下文。`
-			: `Forks from the latest state of "${request.parentLabel}" and inherits its context.`
-		: isChineseUi
-			? "从当前线程的最新进度分叉，继承它的上下文。"
-			: "Forks from the latest state of this thread and inherits its context.";
+			? "从这条消息处分叉，只继承它及之前的上下文，之后的对话不会带入新分支。"
+			: "Forks from this message and inherits only the context up to it; later turns stay out of the branch."
+		: request.parentLabel
+			? isChineseUi
+				? `从「${request.parentLabel}」的最新进度分叉，继承它的上下文。`
+				: `Forks from the latest state of "${request.parentLabel}" and inherits its context.`
+			: isChineseUi
+				? "从当前线程的最新进度分叉，继承它的上下文。"
+				: "Forks from the latest state of this thread and inherits its context.";
 
 	return (
 		<>
@@ -158,14 +162,7 @@ export function BranchForkDialog({
 					<div className="fa-focus-modal-head">
 						<div className="fa-focus-modal-copy">
 							<h3 id={titleId}>{isChineseUi ? "新建分支" : "New branch"}</h3>
-							<p id={descriptionId}>
-								{parentText}
-								{request.fromMessage
-									? isChineseUi
-										? " 暂不支持从历史消息处分叉，已用这条消息预填目标。"
-										: " Forking at an earlier message isn't supported yet, so the goal is pre-filled from it."
-									: ""}
-							</p>
+							<p id={descriptionId}>{parentText}</p>
 						</div>
 						<button
 							aria-label={isChineseUi ? "关闭" : "Close"}
