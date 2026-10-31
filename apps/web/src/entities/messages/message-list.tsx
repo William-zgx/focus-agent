@@ -65,9 +65,6 @@ interface MessageListProps {
 	onBranchFromMessage?: (message: { id: string; content: string }) => void;
 	onEditMessage?: (message: { id: string; content: string }) => void;
 	onExecuteBranchAction?: (action: FocusAgentBranchActionProposal) => void;
-	onContinueCurrentBranchAction?: (
-		action: FocusAgentBranchActionProposal,
-	) => void;
 	onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval?: (
 		interrupt: FocusAgentToolApprovalInterrupt,
@@ -107,7 +104,6 @@ export function MessageList({
 	onBranchFromMessage,
 	onEditMessage,
 	onExecuteBranchAction,
-	onContinueCurrentBranchAction,
 	onDismissBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
@@ -155,7 +151,6 @@ export function MessageList({
 									: null
 							}
 							onExecute={onExecuteBranchAction}
-							onContinueCurrent={onContinueCurrentBranchAction}
 							onDismiss={onDismissBranchAction}
 						/>
 					);
@@ -340,7 +335,11 @@ function branchActionInsertionIndex(
 		const item = transcriptItems[index];
 		if (!isHumanMessage(item)) continue;
 		const itemContent = normalizeText(item.content).replace(/\s+/g, " ");
-		if (itemContent === handoffMessage) {
+		if (
+			itemContent === handoffMessage ||
+			(action.delivery === "after_answer" &&
+				itemContent.endsWith(handoffMessage))
+		) {
 			anchorIndex = index;
 		}
 	}

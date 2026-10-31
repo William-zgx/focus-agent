@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage
 
+from ...core.branching import BranchActionKind
 from ...core.repo_call import has_repo_method
 from ...observability.tracing import build_trace_correlation
 from ..branches.actions import (
@@ -33,8 +35,22 @@ from ..branches.actions import (
 logger = logging.getLogger("focus_agent.branches")
 
 
+_AFTER_ANSWER_CONFIRM_RE = re.compile(
+    r"切过去|直接切|确认切|移到分支|移到新分支|挪到分支|去分支继续|在分支里继续"
+    r"|\bmove\s+(?:it\s+|this\s+)?(?:in)?to\s+(?:a\s+|the\s+)?(?:new\s+)?branch\b"
+    r"|\bcontinue\s+(?:it\s+|this\s+)?in\s+(?:a\s+|the\s+)?branch\b",
+    flags=re.IGNORECASE,
+)
+
+
 def branch_action_intent(*, values: dict[str, Any], message: str) -> str | None:
     pending = latest_pending_branch_action(values.get("branch_actions"))
+    if pending is not None and pending.delivery == "after_answer":
+        # The turn was already answered, so "好的"/"yes" are acknowledgements of the
+        # answer, not confirmations. Only explicit "move to branch" wording executes.
+        if _AFTER_ANSWER_CONFIRM_RE.search(str(message or "")):
+            return "execute"
+        return "propose" if is_branch_action_request(message) else None
     if pending is not None and is_branch_action_confirmation(message):
         return "execute"
     if pending is not None and is_branch_action_dismissal(message):
@@ -136,12 +152,15 @@ def _carry_branch_action_handoff_if_needed(
     branch_record: Any | None,
     source_values: dict[str, Any],
     user_message: str | None,
-) -> None:
+) -> str | None:
+    """Carry the handoff into the new branch; return the text the client should run."""
     if branch_record is None:
-        return
+        return None
     child_thread_id = str(getattr(branch_record, "child_thread_id", "") or "")
     if not child_thread_id:
-        return
+        return None
+    if _branch_already_holds_answered_turn(action):
+        return None
     handoff_text = (
         branch_handoff_message_from_text(getattr(action, "handoff_message", None))
         or _branch_handoff_text_from_message(user_message)
@@ -151,6 +170,18 @@ def _carry_branch_action_handoff_if_needed(
         service=service,
         child_thread_id=child_thread_id,
         handoff_text=handoff_text,
+    )
+    return str(handoff_text or "").strip() or None
+
+
+def _branch_already_holds_answered_turn(action: Any) -> bool:
+    # An answer-first child fork copies the source thread, which already contains the
+    # user's message and the answer. Re-running the handoff would answer it twice.
+    return (
+        getattr(action, "delivery", None) == "after_answer"
+        and getattr(action, "kind", None) == BranchActionKind.FORK_CHILD_BRANCH
+        and getattr(action, "target_parent_thread_id", None)
+        == getattr(action, "source_thread_id", None)
     )
 
 
@@ -282,7 +313,7 @@ def execute_branch_action_locked(
             user_id=user_id,
             branch_service=service.runtime.branch_service,
         )
-        _carry_branch_action_handoff_if_needed(
+        handoff_to_run = _carry_branch_action_handoff_if_needed(
             service=service,
             action=action,
             branch_record=branch_record,
@@ -357,6 +388,7 @@ def execute_branch_action_locked(
         if branch_record is not None
         else None,
         "navigation": navigation.model_dump(mode="json") if navigation is not None else None,
+        "handoff_message": handoff_to_run,
     }
 
 
@@ -513,6 +545,36 @@ class ChatBranchActionFacadeMixin:
             {"configurable": {"thread_id": thread_id}},
             update,
             as_node="bootstrap_turn",
+        )
+
+    def _dismiss_superseded_branch_suggestion(
+        self,
+        *,
+        thread_id: str,
+        user_id: str,
+        values: dict[str, Any],
+        request_id: str | None,
+    ) -> None:
+        """A new message after an answer-first card means the user stayed here."""
+        pending = latest_pending_branch_action(values.get("branch_actions"))
+        if pending is None or pending.delivery != "after_answer":
+            return
+        if not has_repo_method(self.runtime.graph, "update_state"):
+            return
+        dismissed = mark_branch_action_dismissed(pending)
+        self._update_branch_action_state(
+            thread_id=thread_id,
+            actions=replace_branch_action(
+                normalize_branch_actions(values.get("branch_actions")), dismissed
+            ),
+            audit_event=branch_action_audit_event(
+                user_id=user_id,
+                thread_id=thread_id,
+                action=dismissed,
+                decision="dismissed",
+                reason="superseded_by_next_turn",
+                request_id=request_id,
+            ),
         )
 
     def _build_branch_action_proposal(

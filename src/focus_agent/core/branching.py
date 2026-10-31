@@ -225,6 +225,10 @@ class BranchActionProposal(BaseModel):
     confidence: float | None = None
     rationale: str | None = None
     handoff_message: str | None = None
+    # "proposal": the card replaces the answer (explicit user branch commands).
+    # "after_answer": the turn was answered normally and the card is a
+    # non-blocking "continue this in a branch?" suggestion attached to it.
+    delivery: Literal["proposal", "after_answer"] | None = None
 
 
 BranchTreeNode.model_rebuild()

@@ -231,9 +231,13 @@ export function useThreadStream(options: UseThreadStreamOptions) {
 					isBranchActionNavigation(event.data.navigation)
 				) {
 					const navigation = event.data.navigation;
-					const handoffMessage = branchActionHandoffMessage(
-						event.data.branch_action as FocusAgentBranchActionProposal | null,
-					);
+					const handoffMessage =
+						event.data.handoff_message !== undefined
+							? String(event.data.handoff_message ?? "").trim()
+							: branchActionHandoffMessage(
+									event.data
+										.branch_action as FocusAgentBranchActionProposal | null,
+								);
 					invalidateBranchActionNavigationSurfaces(
 						queryClient,
 						requestThreadId,

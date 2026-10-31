@@ -436,10 +436,16 @@ class ChatService(
         config = recommendation_config()
         if config is None or not bool(getattr(config, "enabled", False)):
             return None
-        context, _branch_meta, _values = self._preflight_thread_access(
+        context, _branch_meta, values = self._preflight_thread_access(
             thread_id=thread_id,
             user_id=user_id,
             require_writable=True,
+        )
+        self._dismiss_superseded_branch_suggestion(
+            thread_id=thread_id,
+            user_id=user_id,
+            values=values,
+            request_id=request_id,
         )
         handler = getattr(
             branch_decision_service,
@@ -477,15 +483,21 @@ class ChatService(
             if action is None or action.action_id != promoted_action_id:
                 return None
             needs_branch_action_rewrite = True
+        if not has_repo_method(self.runtime.graph, "update_state"):
+            return None
+        # Only explicit branch commands replace the answer with a proposal. Every other
+        # recommendation answers first: the pending card stays in branch_actions and
+        # reaches the client with the turn's thread_state (run.completed).
+        answer_first = action.delivery != "proposal"
         assistant_text = proposal_message(
             action,
             is_chinese=self._is_chinese_text(message),
         )
-        if not has_repo_method(self.runtime.graph, "update_state"):
-            return None
-        update_values: dict[str, Any] = {
-            "messages": [HumanMessage(content=message), AIMessage(content=assistant_text)]
-        }
+        update_values: dict[str, Any] = (
+            {}
+            if answer_first
+            else {"messages": [HumanMessage(content=message), AIMessage(content=assistant_text)]}
+        )
         existing_actions = normalize_branch_actions(values.get("branch_actions"))
         if not any(existing.action_id == action.action_id for existing in existing_actions):
             needs_branch_action_rewrite = True
@@ -509,11 +521,14 @@ class ChatService(
                 update_values["branch_action_audit"] = [*current_audit, audit]
         if recommendation_expired():
             return None
-        self.runtime.graph.update_state(
-            {"configurable": {"thread_id": thread_id}},
-            update_values,
-            as_node="bootstrap_turn",
-        )
+        if update_values:
+            self.runtime.graph.update_state(
+                {"configurable": {"thread_id": thread_id}},
+                update_values,
+                as_node="bootstrap_turn",
+            )
+        if answer_first:
+            return None
         latest_context, latest_branch_meta, _ = self._context_for_thread(
             thread_id=thread_id,
             user_id=user_id,

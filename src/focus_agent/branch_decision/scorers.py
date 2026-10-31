@@ -16,6 +16,7 @@ class BranchDecisionScore:
     score: float
     threshold: float
     rationale: str
+    route: str = ""
 
 
 def score_branch_decisions(
@@ -176,6 +177,7 @@ def score_branch_recommendation(
         score=_clamp(score),
         threshold=min_confidence,
         rationale=_recommendation_rationale(action=action, shape=shape, routed_by=routed_by),
+        route=routed_by,
     )
 
 

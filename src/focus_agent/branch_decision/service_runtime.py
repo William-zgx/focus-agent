@@ -284,6 +284,7 @@ class BranchDecisionServiceRuntimeMixin:
                 ),
                 "confidence": event.score,
                 "rationale": event.rationale,
+                "delivery": event.metadata.get("delivery") or "after_answer",
             }
         )
         audit = branch_action_audit_event(

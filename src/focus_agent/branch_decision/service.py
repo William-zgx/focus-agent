@@ -49,6 +49,11 @@ from .signals import collect_branch_decision_signals, collect_branch_recommendat
 logger = logging.getLogger("focus_agent.branch_decision")
 
 
+def _recommendation_delivery(route: str) -> str:
+    """Explicit branch commands keep the blocking proposal; everything else answers first."""
+    return "proposal" if route == "explicit_branch" else "after_answer"
+
+
 class BranchDecisionService(
     BranchDecisionServiceDecisionOperationsMixin,
     BranchDecisionServiceRuntimeMixin,
@@ -653,6 +658,8 @@ class BranchDecisionService(
         if status == BranchDecisionStatus.SUGGESTED and config.mode == BranchDecisionMode.EXECUTE:
             metadata["downgraded_from_execute"] = True
             metadata["effective_mode"] = BranchDecisionMode.SUGGEST.value
+        metadata["route"] = best.route
+        metadata["delivery"] = _recommendation_delivery(best.route)
         event = BranchDecisionEvent(
             user_id=user_id,
             root_thread_id=root_thread_id,

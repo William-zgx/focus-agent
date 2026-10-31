@@ -196,4 +196,6 @@ export interface FocusAgentBranchActionExecuteResponse {
 	branch_action: FocusAgentBranchActionProposal;
 	branch_record?: FocusAgentBranchRecord | null;
 	navigation?: FocusAgentBranchActionNavigation | null;
+	/** Message to auto-run in the navigated thread; null when nothing should run. */
+	handoff_message?: string | null;
 }

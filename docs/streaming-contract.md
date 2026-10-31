@@ -59,13 +59,29 @@ transport liveness only. `server_shutdown` is emitted during graceful shutdown s
 clients can stop reading the current stream and resume or reconnect according to
 their own policy.
 
-When pre-turn branch recommendation short-circuits a stream, the server may
-publish `message.completed` with `source="branch_recommendation"` and then
-`run.completed` with `thread_state`, `branch_action`, and an extra
-`branch_decision` payload field. That path intentionally has no `message.delta`
-chunks and does not invoke the normal graph turn. Clients should render the
-returned pending Branch Action from the same reducer/state path used for
-ordinary thread payloads.
+Pre-turn branch recommendations are **answer-first** by default. When the
+recommendation is not an explicit branch command (topic drift, qualified
+exploration, side question, comparison, detour, merge-back), the server stores a
+pending Branch Action with `delivery="after_answer"` and then runs the normal
+graph turn: the stream carries the usual `message.delta` / `message.completed`
+events for the answer, and the card arrives with the turn's
+`run.completed.thread_state.branch_actions`. Clients must therefore accept a new
+pending Branch Action arriving together with, or after, the answer and anchor it
+after the answered turn. A later user message implicitly dismisses that card
+(`reason="superseded_by_next_turn"`).
+
+Only explicit branch commands that reach the recommendation path (for example
+"new branch for X") still short-circuit the stream: the server may publish
+`message.completed` with `source="branch_recommendation"` and then
+`run.completed` with `thread_state`, `branch_action` (`delivery="proposal"`),
+and an extra `branch_decision` payload field. That path intentionally has no
+`message.delta` chunks and does not invoke the normal graph turn.
+
+When a stream executes a Branch Action (`run.completed` with `navigation`), the
+optional `handoff_message` field is the message the client should auto-run in
+the navigated thread. `null` means nothing should run because the new branch
+already contains the answered turn (answer-first child forks); clients fall back
+to `branch_action.handoff_message` only when the field is absent.
 
 ### 1.1 Outcome, End, And Cleanup
 

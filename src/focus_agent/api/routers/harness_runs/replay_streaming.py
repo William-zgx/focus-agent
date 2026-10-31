@@ -649,6 +649,7 @@ async def _produce_branch_action_run_stream(
             branch_action=result.get("branch_action"),
             branch_record=result.get("branch_record"),
             navigation=result.get("navigation"),
+            handoff_message=result.get("handoff_message"),
             **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:

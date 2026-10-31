@@ -47,7 +47,15 @@ export interface FocusAgentBranchActionProposal {
 	recommendation_user_visible?: boolean | null;
 	diagnostic?: FocusAgentBranchDecisionDiagnostic | string | null;
 	handoff_message?: string | null;
+	/**
+	 * `proposal`: the card replaced the answer (explicit branch command).
+	 * `after_answer`: the turn was answered and the card is a non-blocking
+	 * "continue this in a branch?" suggestion.
+	 */
+	delivery?: BranchActionDelivery | null;
 }
+
+export type BranchActionDelivery = "proposal" | "after_answer";
 
 export type BranchRole =
 	| "main"

@@ -43,9 +43,6 @@ interface ThreadPageContentProps {
 	messages: Array<Record<string, unknown>>;
 	onClearEditDraft: () => void;
 	onCompactContext: () => Promise<void> | void;
-	onContinueCurrentBranchAction: (
-		action: FocusAgentBranchActionProposal,
-	) => void;
 	onDismissBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval: (
 		interrupt: FocusAgentToolApprovalInterrupt,
@@ -112,7 +109,6 @@ export function ThreadPageContent({
 	messages,
 	onClearEditDraft,
 	onCompactContext,
-	onContinueCurrentBranchAction,
 	onDismissBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
@@ -163,7 +159,6 @@ export function ThreadPageContent({
 		isChineseUi,
 		onBranchFromMessage,
 		onEditMessage,
-		onContinueCurrentBranchAction,
 		onExecuteBranchAction,
 		onDismissBranchAction,
 		onDecideToolApproval,

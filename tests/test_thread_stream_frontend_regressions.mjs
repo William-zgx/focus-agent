@@ -3037,6 +3037,56 @@ test("branch action confirmation starts an automatic carried handoff run", () =>
   );
 });
 
+test("answer-first branch card: stay only dismisses and server decides the handoff run", () => {
+  const branchActionSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
+    "utf8",
+  );
+  const branchActionCardSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list-branch-action-card.tsx"),
+    "utf8",
+  );
+  const threadPageSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/thread-page.tsx"),
+    "utf8",
+  );
+  const streamSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/features/thread-stream/use-thread-stream.ts"),
+    "utf8",
+  );
+  const messageListSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/entities/messages/message-list.tsx"),
+    "utf8",
+  );
+  const compactCard = compactSource(branchActionCardSource);
+
+  // "Stay here" must never re-send or rewrite the user's message.
+  assert.equal(branchActionSource.includes("onContinueCurrentBranch"), false);
+  assert.equal(branchActionSource.includes("continueCurrentBranchAction"), false);
+  assert.equal(threadPageSource.includes("onContinueCurrentBranch"), false);
+  assert.equal(
+    compactCard.includes("const stayHere = () => { setIsExpanded(false); onDismiss?.(action); };"),
+    true,
+  );
+  assert.equal(compactCard.includes('"Continue this in a branch?"'), true);
+  // The execute response / run.completed handoff_message wins over the stored action text.
+  assert.equal(
+    compactSource(branchActionSource).includes("if (result.handoff_message !== undefined) {"),
+    true,
+  );
+  assert.equal(
+    compactSource(streamSource).includes("event.data.handoff_message !== undefined"),
+    true,
+  );
+  // Cards arriving with run.completed anchor after the answered turn.
+  assert.equal(
+    compactSource(messageListSource).includes(
+      'action.delivery === "after_answer" && itemContent.endsWith(handoffMessage)',
+    ),
+    true,
+  );
+});
+
 test("thread busy retry helper waits through transient previous-turn conflicts", async () => {
   const { retryThreadBusyConflict, FocusAgentRequestError } = loadThreadBusyRetryModule();
   let attempts = 0;

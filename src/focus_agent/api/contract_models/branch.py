@@ -24,6 +24,13 @@ class BranchActionExecuteResponse(BaseModel):
     branch_action: BranchActionProposal
     branch_record: BranchRecord | None = None
     navigation: BranchActionNavigation | None = None
+    handoff_message: str | None = Field(
+        default=None,
+        description=(
+            "Message the client should auto-run in the navigated thread. Null when the "
+            "new branch already contains the answered turn (answer-first child forks)."
+        ),
+    )
 
 
 class ForkBranchRequest(BaseModel):

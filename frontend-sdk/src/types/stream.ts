@@ -126,6 +126,7 @@ export interface RunCompletedPayload extends FocusAgentBaseEventPayload {
   branch_action?: FocusAgentBranchActionProposal | null;
   branch_record?: FocusAgentBranchRecord | null;
   navigation?: FocusAgentBranchActionNavigation | null;
+  handoff_message?: string | null;
 }
 
 export interface RunFailedPayload extends FocusAgentBaseEventPayload {

@@ -225,6 +225,15 @@ class MultiThreadBranchActionGraph:
             if key != "messages":
                 state[key] = value
 
+    def invoke(self, payload, *, config, context, version):
+        del context, version
+        state = self.values_by_thread.setdefault(self._thread_id(config), {})
+        state["messages"] = list(state.get("messages", [])) + [
+            *list(payload.get("messages", [])),
+            AIMessage(content="normal answer"),
+        ]
+        return {}
+
 
 class BranchActionBranchService:
     def __init__(self):
@@ -424,7 +433,7 @@ def test_send_message_defaults_generic_new_branch_to_child_branch(tmp_path: Path
     assert payload["branch_actions"][0]["handoff_message"] == "探索一下今天包车东线的时间段分配"
 
 
-def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
+def test_send_message_pre_turn_recommendation_answers_first_then_attaches_child_card(
     tmp_path: Path,
 ):
     repo = SQLiteBranchRepository(str(tmp_path / "branches.sqlite3"))
@@ -450,8 +459,15 @@ def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
         message="单独深入细化一下下午东线每个时间段的安排。",
     )
 
-    assert graph.invoke_calls == 0
+    assert graph.invoke_calls == 1
+    assert payload["assistant_message"] == "normal answer"
+    assert [message.content for message in graph.values["messages"]][-2:] == [
+        "单独深入细化一下下午东线每个时间段的安排。",
+        "normal answer",
+    ]
     assert payload["branch_actions"][0]["kind"] == "fork_child_branch"
+    assert payload["branch_actions"][0]["status"] == "pending"
+    assert payload["branch_actions"][0]["delivery"] == "after_answer"
     assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
     assert payload["branch_actions"][0]["source"] == "branch_decision"
     assert payload["branch_actions"][0]["handoff_message"] == "深入细化一下下午东线每个时间段的安排"
@@ -466,7 +482,9 @@ def test_send_message_pre_turn_recommendation_creates_child_card_without_invoke(
         payload["branch_decision_summary"]["latest_decision"]["recommendation_target"]
         == "fork_child_branch"
     )
-    assert "确认项" in payload["assistant_message"]
+    assert payload["branch_decision_summary"]["latest_decision"]["metadata"]["delivery"] == (
+        "after_answer"
+    )
 
 
 def test_send_message_pre_turn_recommendation_survives_stale_checkpoint_read(
@@ -492,16 +510,17 @@ def test_send_message_pre_turn_recommendation_survives_stale_checkpoint_read(
     payload = chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
-        message="单独深入细化一下下午东线每个时间段的安排。",
+        message="New branch for the east-route afternoon schedule details.",
     )
 
     assert graph.invoke_calls == 0
     assert payload["branch_actions"][0]["source"] == "branch_decision"
     assert payload["branch_actions"][0]["status"] == "pending"
+    assert payload["branch_actions"][0]["delivery"] == "proposal"
     assert (
         graph.values["branch_actions"][0]["action_id"] == payload["branch_actions"][0]["action_id"]
     )
-    assert "确认项" in payload["assistant_message"]
+    assert "branch switch confirmation" in payload["assistant_message"]
     assert "branch_actions" in graph.updates[-1][0]
     assert "messages" in graph.updates[-1][0]
 
@@ -576,7 +595,9 @@ def test_send_message_pre_turn_recommendation_creates_sibling_card_from_child(
         message="换个方向并行探索东线备用方案。",
     )
 
-    assert graph.invoke_calls == 0
+    assert graph.invoke_calls == 1
+    assert payload["assistant_message"] == "normal answer"
+    assert payload["branch_actions"][0]["delivery"] == "after_answer"
     assert payload["branch_actions"][0]["kind"] == "fork_sibling_branch"
     assert payload["branch_actions"][0]["target_parent_thread_id"] == "root-1"
     assert (

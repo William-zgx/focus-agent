@@ -131,17 +131,9 @@ export function ThreadPage() {
 	const {
 		branchActionErrors,
 		branchActionInFlightId,
-		continueCurrentBranchAction,
 		dismissBranchAction,
 		executeBranchAction,
 	} = useThreadBranchActions(threadId, {
-		onContinueCurrentBranch: ({ threadId: targetThreadId, message }) => {
-			return runCarriedMessageInThread(
-				targetThreadId,
-				message,
-				composerSelectionOverridesRef.current,
-			);
-		},
 		onRunHandoff: ({ threadId: targetThreadId, message }) => {
 			return runCarriedMessageInThread(
 				targetThreadId,
@@ -322,9 +314,6 @@ export function ThreadPage() {
 			}
 			onSubmitAskUserQuestion={(interrupt, answers) =>
 				void handleSubmitAskUserQuestion(interrupt, answers)
-			}
-			onContinueCurrentBranchAction={(action) =>
-				void continueCurrentBranchAction(action)
 			}
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
 			onBranchFromMessage={handleBranchFromMessage}

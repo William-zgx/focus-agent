@@ -61,7 +61,6 @@ export function BranchActionCard({
 	isChineseUi,
 	isReadOnly,
 	onExecute,
-	onContinueCurrent,
 	onDismiss,
 	sourceDecision,
 	errorMessage,
@@ -74,7 +73,6 @@ export function BranchActionCard({
 	isBusy?: boolean;
 	sourceDecision?: FocusAgentBranchDecisionEvent | null;
 	onExecute?: (action: FocusAgentBranchActionProposal) => void;
-	onContinueCurrent?: (action: FocusAgentBranchActionProposal) => void;
 	onDismiss?: (action: FocusAgentBranchActionProposal) => void;
 }) {
 	const pending = action.status === "pending";
@@ -110,21 +108,34 @@ export function BranchActionCard({
 		: isChineseUi
 			? "展开详情"
 			: "Show details";
+	// Answer-first cards follow an already answered turn: they offer to move the
+	// conversation into a branch, and "stay" only dismisses the card.
+	const isAfterAnswer = action.delivery === "after_answer";
+	const title =
+		isAfterAnswer && pending
+			? isChineseUi
+				? "移到分支继续？"
+				: "Continue this in a branch?"
+			: branchActionTitle(action, isChineseUi);
 	const executeLabel = isBusy
 		? isChineseUi
 			? "处理中..."
 			: "Working..."
-		: isChineseUi
-			? "确认切换"
-			: "Confirm route";
-	const continueLabel = isChineseUi ? "继续当前分支" : "Stay in current branch";
+		: isAfterAnswer
+			? isChineseUi
+				? "移到分支"
+				: "Move to branch"
+			: isChineseUi
+				? "确认切换"
+				: "Confirm route";
+	const stayLabel = isChineseUi ? "留在这里" : "Stay here";
 	const executeBranchAction = () => {
 		setIsExpanded(false);
 		onExecute?.(action);
 	};
-	const continueCurrentBranch = () => {
+	const stayHere = () => {
 		setIsExpanded(false);
-		(onContinueCurrent ?? onDismiss)?.(action);
+		onDismiss?.(action);
 	};
 
 	useEffect(() => {
@@ -148,9 +159,7 @@ export function BranchActionCard({
 				>
 					<summary className="fa-branch-action-card-header">
 						<div>
-							<div className="fa-branch-action-card-title">
-								{branchActionTitle(action, isChineseUi)}
-							</div>
+							<div className="fa-branch-action-card-title">{title}</div>
 							<div className="fa-branch-action-card-meta">
 								{branchActionStatusText(action, isChineseUi)}
 							</div>
@@ -229,10 +238,10 @@ export function BranchActionCard({
 							<button
 								className="fa-chat-toolbar-button"
 								disabled={disabled}
-								onClick={continueCurrentBranch}
+								onClick={stayHere}
 								type="button"
 							>
-								{continueLabel}
+								{stayLabel}
 							</button>
 						</div>
 					) : null}
