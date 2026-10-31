@@ -1492,6 +1492,23 @@ def test_tool_intent_plan_recovers_pending_web_search_from_phrase_confirmation()
     assert plan.temporal_anchor_required is True
 
 
+def test_tool_intent_plan_ignores_refusals_and_new_requests_as_pending_confirmation():
+    pending = {
+        "policy": "live_web_research",
+        "preferred_first_tool": "web_search",
+        "preferred_first_args": {"query": "帮我查一下今天北京天气"},
+    }
+
+    for text in ("不可以，别再查了", "可以解释一下 parse_config 函数吗", "不用继续了"):
+        plan = build_tool_intent_plan(text, pending_tool_action=pending)
+        assert plan.source != "pending_tool_action", text
+        assert plan.preferred_first_args != pending["preferred_first_args"], text
+
+    for text in ("可以，查一下吧", "继续查", "Go ahead"):
+        plan = build_tool_intent_plan(text, pending_tool_action=pending)
+        assert plan.source == "pending_tool_action", text
+
+
 def test_tool_intent_plan_marks_temporal_anchor_requirement_for_live_web():
     plan = build_tool_intent_plan("帮我查一下 today AI news")
 
