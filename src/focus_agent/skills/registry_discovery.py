@@ -24,6 +24,15 @@ from .registry_sources import (
 _SKILL_FILE_NAME = "SKILL.md"
 
 
+def _skill_files(root: Path) -> list[Path]:
+    """SKILL.md files under ``root``, skipping any inside hidden directories."""
+    return [
+        path
+        for path in sorted(root.rglob(_SKILL_FILE_NAME))
+        if not any(part.startswith(".") for part in path.relative_to(root).parts)
+    ]
+
+
 class SkillRegistryDiscoveryMixin:
     def _discover(self) -> tuple[SkillDefinition, ...]:
         discovered: list[SkillDefinition] = []
@@ -32,9 +41,7 @@ class SkillRegistryDiscoveryMixin:
         for root in self._skill_dirs:
             if not root.exists():
                 continue
-            for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-                if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                    continue
+            for skill_path in _skill_files(root):
                 skill = self._load_skill(skill_path)
                 if skill is None:
                     continue
@@ -137,9 +144,7 @@ class SkillRegistryDiscoveryMixin:
             root = Path(source.location).expanduser().resolve()
             if not root.exists():
                 continue
-            for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-                if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                    continue
+            for skill_path in _skill_files(root):
                 skill = self._load_skill(skill_path, source=source)
                 if skill is None or self.resolve(skill.skill_id) is not None:
                     continue
@@ -169,9 +174,7 @@ class SkillRegistryDiscoveryMixin:
         *,
         source: SkillSourceDefinition,
     ) -> SkillDefinition | None:
-        for skill_path in sorted(root.rglob(_SKILL_FILE_NAME)):
-            if any(part.startswith(".") for part in skill_path.relative_to(root).parts):
-                continue
+        for skill_path in _skill_files(root):
             skill = self._load_skill(skill_path, source=source)
             if skill is not None and skill.skill_id == skill_id:
                 return skill
