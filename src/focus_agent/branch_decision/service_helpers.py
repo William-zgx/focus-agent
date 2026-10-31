@@ -258,9 +258,16 @@ def _branch_decision_mode(value: object) -> BranchDecisionMode:
     return BranchDecisionMode.SHADOW
 
 
+MERGE_BACK_DECISION_ACTIONS = frozenset(
+    {BranchDecisionAction.MERGE_CANDIDATE, BranchDecisionAction.CONCLUDE}
+)
+
+
 def _branch_action_kind_for_decision(action: BranchDecisionAction) -> BranchActionKind:
     if action == BranchDecisionAction.FORK_SIBLING_BRANCH:
         return BranchActionKind.FORK_SIBLING_BRANCH
+    if action in MERGE_BACK_DECISION_ACTIONS:
+        return BranchActionKind.RETURN_PARENT_BRANCH
     return BranchActionKind.FORK_CHILD_BRANCH
 
 
@@ -304,8 +311,12 @@ _RECOMMENDATION_REASONS: dict[str, tuple[str, str]] = {
         "It has low relatedness to the current topic.",
     ),
     "merge_back": (
-        "这个分支的结论可以带回上级。",
-        "This branch's conclusion is ready to bring back.",
+        "你想把这个分支的结论带回上一层。",
+        "You want to bring this branch's conclusion back.",
+    ),
+    "branch_conclude": (
+        "这个分支看起来可以收尾了，审阅后再合并回上一层。",
+        "This branch looks ready to wrap up; review it before merging back.",
     ),
 }
 

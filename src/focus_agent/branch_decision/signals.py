@@ -7,7 +7,12 @@ from focus_agent.core.branching import BranchMeta, BranchStatus
 from focus_agent.core.governance import BranchDecisionAction, BranchDecisionSignal
 from focus_agent.services.branches.actions import latest_pending_branch_action
 
-from .intent import detect_branch_intent, topic_drift_match, weak_detour_match
+from .intent import (
+    detect_branch_intent,
+    merge_back_match,
+    topic_drift_match,
+    weak_detour_match,
+)
 from .service_helpers import _message_text, _semantic_recommended_action
 
 _SPLIT_HINTS = (
@@ -24,26 +29,16 @@ _SPLIT_HINTS = (
     "子分支",
     "新开",
 )
-_CONCLUDE_HINTS = (
-    "conclude",
-    "summary",
-    "summarize",
-    "wrap up",
-    "final",
-    "结论",
-    "总结",
-    "收束",
-    "整理",
+# Conclusion wording must be explicit: "整理" (tidy up) or a bare "summary"/"final"
+# is ordinary editing, not evidence that a branch is done.
+_CONCLUDE_ZH_RE = re.compile(
+    r"总结一下|做(?:个|一个)?总结|总结(?:这个|本)分支|给出(?:最终)?结论|得出(?:最终)?结论"
+    r"|下(?:个)?结论|最终结论|收尾|收束"
 )
-_MERGE_HINTS = (
-    "merge",
-    "promote",
-    "bring back",
-    "return to main",
-    "合并",
-    "带回",
-    "回主线",
-    "导入",
+_CONCLUDE_EN_RE = re.compile(
+    r"\b(?:conclude|conclusion|wrap(?:ping)?\s+(?:it\s+|this\s+)?up|"
+    r"summari[sz]e\s+(?:this|the|our)\s+(?:branch|findings|research|work))\b",
+    flags=re.IGNORECASE,
 )
 
 
@@ -55,7 +50,10 @@ def collect_branch_decision_signals(
     messages = list(values.get("messages", []) or [])
     recent_text = "\n".join(_message_text(message) for message in messages[-6:])
     latest_human_text = _latest_human_text(messages)
-    explicit_hint = _explicit_hint(latest_human_text or recent_text)
+    explicit_hint = _explicit_hint(
+        latest_human_text or recent_text,
+        on_branch=branch_meta is not None,
+    )
     turn_depth = sum(1 for message in messages if _message_type(message) in {"human", "user"})
     pending_action = latest_pending_branch_action(values.get("branch_actions")) is not None
     branch_status = branch_meta.branch_status if branch_meta is not None else BranchStatus.ACTIVE
@@ -124,6 +122,9 @@ def collect_branch_recommendation_signals(
     messages = list(values.get("messages", []) or [])
     intent = detect_branch_intent(message, on_branch=branch_meta is not None)
     weak = weak_detour_match(message) if intent.source == "none" else None
+    merge_back = (
+        merge_back_match(message) if branch_meta is not None and intent.source == "none" else None
+    )
     explicit_target = intent.target
     explicit_source = intent.source
     topic_drift = _recommendation_topic_drift(message, branch_meta=branch_meta)
@@ -164,6 +165,7 @@ def collect_branch_recommendation_signals(
                 "weak_route": weak[0] if weak else None,
                 "weak_matched": weak[1] if weak else None,
                 "weak_target": _weak_target(weak[0], branch_meta=branch_meta) if weak else None,
+                "merge_back": merge_back,
             },
             score=1.0 if intent.source == "branch_hint" else 0.0,
             weight=0.0,
@@ -220,16 +222,19 @@ def collect_branch_recommendation_signals(
     ]
 
 
-def _explicit_hint(text: str) -> str:
+def _explicit_hint(text: str, *, on_branch: bool = False) -> str:
     normalized = _compact(text)
     if not normalized:
         return "none"
+    # Merge-back and conclusion only mean something on a child branch, and they win
+    # over split markers ("把这个分支合并回主线" / "总结一下这个分支" mention 分支 but
+    # are not splits).
+    if on_branch and merge_back_match(text):
+        return "merge_candidate"
+    if on_branch and (_CONCLUDE_ZH_RE.search(normalized) or _CONCLUDE_EN_RE.search(text)):
+        return "conclude"
     if any(_compact(marker) in normalized for marker in _SPLIT_HINTS):
         return "split"
-    if any(_compact(marker) in normalized for marker in _MERGE_HINTS):
-        return "merge_candidate"
-    if any(_compact(marker) in normalized for marker in _CONCLUDE_HINTS):
-        return "conclude"
     return "none"
 
 

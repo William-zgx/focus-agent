@@ -29,6 +29,7 @@ from .indexing import index_branch_decision_best_effort, zvec_branch_context_sha
 from .scorers import score_branch_decisions, score_branch_recommendation, select_best_score
 from .service_decision_operations import BranchDecisionServiceDecisionOperationsMixin
 from .service_helpers import (
+    MERGE_BACK_DECISION_ACTIONS,
     _branch_action_kind_for_decision,
     _branch_decision_mode,
     _branch_handoff_idempotency_key,
@@ -46,7 +47,11 @@ from .service_helpers import (
     _should_run_semantic_topic_relation,
 )
 from .service_runtime import BranchDecisionServiceRuntimeMixin
-from .signals import collect_branch_decision_signals, collect_branch_recommendation_signals
+from .signals import (
+    _latest_human_text,
+    collect_branch_decision_signals,
+    collect_branch_recommendation_signals,
+)
 
 logger = logging.getLogger("focus_agent.branch_decision")
 
@@ -485,6 +490,18 @@ class BranchDecisionService(
         if status == BranchDecisionStatus.SUGGESTED and config.mode == BranchDecisionMode.EXECUTE:
             metadata["downgraded_from_execute"] = True
             metadata["effective_mode"] = BranchDecisionMode.SUGGEST.value
+        if best.action in MERGE_BACK_DECISION_ACTIONS:
+            route = (
+                "merge_back"
+                if best.action == BranchDecisionAction.MERGE_CANDIDATE
+                else ("branch_conclude")
+            )
+            metadata["route"] = route
+            metadata["delivery"] = "after_answer"
+            metadata["reason_summary"] = _recommendation_reason(
+                route,
+                chinese=_is_chinese_text(_latest_human_text(list(values.get("messages") or []))),
+            )
         event = BranchDecisionEvent(
             user_id=user_id,
             root_thread_id=root_thread_id,
@@ -513,11 +530,18 @@ class BranchDecisionService(
                 user_id=user_id,
                 request_id=request_id,
             )
-        elif event.status == BranchDecisionStatus.SUGGESTED and event.action in {
-            BranchDecisionAction.CONCLUDE,
-            BranchDecisionAction.MERGE_CANDIDATE,
-        }:
-            event = self._prepare_merge_proposal_for_event(event, user_id=user_id)
+        elif (
+            event.status == BranchDecisionStatus.SUGGESTED
+            and event.action in MERGE_BACK_DECISION_ACTIONS
+        ):
+            # Surface a visible "Review & merge / Return to parent" card. The merge
+            # proposal is only prepared when the user opens the review screen.
+            event = self._promote_merge_back_decision(
+                event,
+                branch_meta=branch_meta,
+                user_id=user_id,
+                request_id=request_id,
+            )
         return event
 
     def _evaluate_pre_turn_recommendation(
@@ -693,6 +717,16 @@ class BranchDecisionService(
         }:
             event = self._promote_branch_action_decision(
                 event,
+                user_id=user_id,
+                request_id=request_id,
+                deadline=deadline,
+            )
+        elif event.status == BranchDecisionStatus.SUGGESTED and event.action in (
+            MERGE_BACK_DECISION_ACTIONS
+        ):
+            event = self._promote_merge_back_decision(
+                event,
+                branch_meta=branch_meta,
                 user_id=user_id,
                 request_id=request_id,
                 deadline=deadline,

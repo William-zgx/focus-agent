@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from focus_agent.core.branching import (
+    BranchActionKind,
     BranchActionStatus,
     BranchMeta,
     BranchStatus,
@@ -213,6 +214,7 @@ class BranchDecisionServiceRuntimeMixin:
         user_id: str,
         request_id: str | None = None,
         deadline: float | None = None,
+        branch_meta: BranchMeta | None = None,
     ) -> BranchDecisionEvent:
         values = self._safe_get_values(event.source_thread_id)
         actions = normalize_branch_actions(values.get("branch_actions"))
@@ -250,7 +252,7 @@ class BranchDecisionServiceRuntimeMixin:
                 reason="replaced_by_new_branch_recommendation",
                 request_id=request_id or event.request_id,
             )
-        branch_meta = self._branch_meta_from_values(values)
+        branch_meta = branch_meta or self._branch_meta_from_values(values)
         requested_kind = _branch_action_kind_for_decision(event.action)
         kind, target_thread_id = target_parent_thread_id(
             source_thread_id=event.source_thread_id,
@@ -264,9 +266,13 @@ class BranchDecisionServiceRuntimeMixin:
             or str(event.metadata.get("handoff_message_preview") or "").strip()
             or None
         )
+        is_merge_back = kind == BranchActionKind.RETURN_PARENT_BRANCH
+        if is_merge_back:
+            handoff_message = None
         suggested_branch_name = (
             str(event.suggested_branch_name or "").strip()
             or str(event.metadata.get("suggested_branch_name") or "").strip()
+            or (branch_meta.branch_name if is_merge_back and branch_meta is not None else "")
             or branch_name_from_goal(handoff_message)
             or None
         )
@@ -276,7 +282,9 @@ class BranchDecisionServiceRuntimeMixin:
             source_thread_id=event.source_thread_id,
             target_parent_thread_id=target_thread_id,
             suggested_branch_name=suggested_branch_name,
-            branch_role=_branch_role_for_recommendation(event.recommendation_target),
+            branch_role=branch_meta.branch_role
+            if is_merge_back and branch_meta is not None
+            else _branch_role_for_recommendation(event.recommendation_target),
             reason=str(event.metadata.get("reason_summary") or "").strip() or event.rationale,
             handoff_message=handoff_message,
         ).model_copy(
@@ -291,6 +299,7 @@ class BranchDecisionServiceRuntimeMixin:
                 "rationale": event.rationale,
                 "delivery": event.metadata.get("delivery") or "after_answer",
                 "target_parent_branch_name": self._thread_branch_name(target_thread_id),
+                "merge_review_thread_id": event.source_thread_id if is_merge_back else None,
             }
         )
         audit = branch_action_audit_event(
@@ -352,51 +361,28 @@ class BranchDecisionServiceRuntimeMixin:
             },
         )
 
-    def _prepare_merge_proposal_for_event(
+    def _promote_merge_back_decision(
         self,
         event: BranchDecisionEvent,
         *,
+        branch_meta: BranchMeta | None,
         user_id: str,
+        request_id: str | None,
+        deadline: float | None = None,
     ) -> BranchDecisionEvent:
-        if self.branch_service is None or not has_repo_method(
-            self.branch_service,
-            "prepare_merge_proposal",
-        ):
+        if branch_meta is None or not branch_meta.parent_thread_id:
             return self._update_event(
                 event,
                 status=BranchDecisionStatus.BLOCKED,
-                error="Branch merge proposal service is not configured.",
-                metadata={**event.metadata, "reason": "merge_service_unconfigured"},
-            )
-        try:
-            proposal = self.branch_service.prepare_merge_proposal(
-                child_thread_id=event.source_thread_id,
-                user_id=user_id,
-            )
-        except KeyError:
-            return self._update_event(
-                event,
-                status=BranchDecisionStatus.BLOCKED,
-                error="Merge proposal preparation requires an existing child branch.",
+                error="Merging back requires an existing child branch.",
                 metadata={**event.metadata, "reason": "merge_requires_child_branch"},
             )
-        except ValueError as exc:
-            return self._update_event(
-                event,
-                status=BranchDecisionStatus.BLOCKED,
-                error=str(exc),
-                metadata={**event.metadata, "reason": "merge_requires_child_branch"},
-            )
-        except Exception as exc:  # noqa: BLE001 - proposal generation errors are audit evidence.
-            logger.warning("branch decision merge proposal preparation failed", exc_info=True)
-            return self._update_event(event, status=BranchDecisionStatus.ERROR, error=str(exc))
-        return self._update_event(
+        return self._promote_branch_action_decision(
             event,
-            metadata={
-                **event.metadata,
-                "merge_proposal_prepared": True,
-                "merge_proposal_summary_chars": len(proposal.summary or ""),
-            },
+            user_id=user_id,
+            request_id=request_id,
+            deadline=deadline,
+            branch_meta=branch_meta,
         )
 
     def _save_event(self, event: BranchDecisionEvent) -> BranchDecisionEvent:

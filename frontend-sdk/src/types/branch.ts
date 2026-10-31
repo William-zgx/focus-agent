@@ -55,6 +55,8 @@ export interface FocusAgentBranchActionProposal {
 	delivery?: BranchActionDelivery | null;
 	/** Display name of the parent thread; null/absent means the main thread. */
 	target_parent_branch_name?: string | null;
+	/** Child thread whose merge review a merge-back card opens. */
+	merge_review_thread_id?: string | null;
 }
 
 export type BranchActionDelivery = "proposal" | "after_answer";

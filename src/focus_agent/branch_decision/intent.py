@@ -203,6 +203,31 @@ _DETOUR_EN_RE = re.compile(
 )
 
 
+# Merge-back / return intent. Only meaningful on a child branch; the caller checks that.
+# "整理" / "summary" alone is never merge evidence.
+_MERGE_BACK_ZH_RE = re.compile(
+    r"(?:带回|合并回|并回|合回|拿回)(?:到)?(?:主线|主分支|父分支|上一层|上层|上级|去|来)"
+    r"|合并到(?:主线|父分支|上一层)"
+    r"|可以合并了|可以合并回|准备合并|可以带回"
+    r"|(?:回到|返回|回)(?:主线|父分支|上一层分支)"
+)
+_MERGE_BACK_EN_RE = re.compile(
+    r"\bmerge\s+(?:it\s+|this\s+|that\s+|these\s+|the\s+\w+\s+)?back\b"
+    r"|\bbring\s+(?:it|this|that|these(?:\s+\w+)?|the\s+\w+)\s+back\s+to\s+(?:the\s+)?"
+    r"(?:main|parent)\b"
+    r"|\b(?:ready|good)\s+to\s+merge\b"
+    r"|\b(?:go|head|switch|return)\s+back\s+to\s+(?:the\s+)?(?:main|parent)\b"
+    r"|\breturn\s+to\s+(?:the\s+)?(?:main|parent)\b"
+)
+_MERGE_BACK_NEGATION_ZH_RE = re.compile(
+    r"(?:不|别|没|无需)[^，,。；;！!？?]{0,4}?(?:合并|带回|回到|回主线|返回)"
+)
+_MERGE_BACK_NEGATION_EN_RE = re.compile(
+    r"\b(?:don't|dont|do\s+not|not|never|no\s+need\s+to)\b[^.?!\n]{0,30}?"
+    r"\b(?:merge|bring|return|go\s+back)\b"
+)
+
+
 @dataclass(frozen=True, slots=True)
 class BranchIntent:
     target: BranchDecisionAction
@@ -306,6 +331,22 @@ def weak_detour_match(message: str) -> tuple[str, str] | None:
     if comparison:
         return "comparison", comparison.group(0)
     return None
+
+
+def merge_back_match(message: str) -> str | None:
+    """Return the matched phrase when the user wants to bring a branch back to its parent."""
+    raw = _normalize_space(message)
+    compact = compact_text(message)
+    if not compact or _CODE_CONTEXT_RE.search(raw):
+        return None
+    if _MERGE_BACK_NEGATION_ZH_RE.search(compact) or _MERGE_BACK_NEGATION_EN_RE.search(raw):
+        return None
+    if any(hint in compact for hint in _CONTINUE_HINTS_ZH) or _contains_en_phrase(
+        raw, _CONTINUE_HINTS_EN
+    ):
+        return None
+    match = _MERGE_BACK_ZH_RE.search(compact) or _MERGE_BACK_EN_RE.search(raw)
+    return match.group(0) if match else None
 
 
 def compact_text(text: str) -> str:

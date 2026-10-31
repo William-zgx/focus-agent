@@ -466,6 +466,9 @@ def proposal_message(action: BranchActionProposal, *, is_chinese: bool) -> str:
 def execution_message(
     action: BranchActionProposal, *, branch_name: str | None, is_chinese: bool
 ) -> str:
+    if action.kind == BranchActionKind.RETURN_PARENT_BRANCH:
+        parent = action.target_parent_branch_name or ("主线" if is_chinese else "the main thread")
+        return f"已返回{parent}。" if is_chinese else f"Returned to {parent}."
     name = branch_name or action.suggested_branch_name or action.target_parent_thread_id
     if is_chinese:
         return f"已创建并切换到新分支：{name}。"

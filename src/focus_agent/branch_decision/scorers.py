@@ -60,7 +60,9 @@ def score_branch_decisions(
 
     merge_score = 0.05
     if hint == BranchDecisionAction.MERGE_CANDIDATE.value:
-        merge_score += 0.35
+        # The merge hint now requires explicit merge-back wording on a child branch,
+        # so it alone (with an answered turn) is enough to surface the review card.
+        merge_score += 0.55
     if merge_proposal_presence:
         merge_score += 0.35
     if on_branch and bool(shape.get("has_final_answer")):
@@ -135,7 +137,10 @@ def score_branch_recommendation(
     intent = intent_value if isinstance(intent_value, dict) else {}
     action = _recommendation_action(target)
     routed_by = explicit_source
-    if (
+    if intent.get("merge_back") and explicit_source == "none":
+        action = BranchDecisionAction.MERGE_CANDIDATE
+        routed_by = "merge_back"
+    elif (
         action == BranchDecisionAction.CONTINUE_CURRENT
         and explicit_source == "none"
         and has_history_context
@@ -189,6 +194,7 @@ _SCORE_CONTINUE = 0.72
 _SCORE_EXPLICIT = 0.95
 _SCORE_STRONG = 0.86
 _SCORE_WEAK = 0.76
+_SCORE_MERGE_BACK = 0.9
 WEAK_RECOMMENDATION_ROUTES = frozenset({"side_question", "comparison", "detour"})
 
 
@@ -205,6 +211,8 @@ def _recommendation_score(
         return semantic_confidence
     if strength == "explicit" and routed_by == "explicit_branch":
         return _SCORE_EXPLICIT
+    if routed_by == "merge_back":
+        return _SCORE_MERGE_BACK
     if routed_by in WEAK_RECOMMENDATION_ROUTES:
         return _SCORE_WEAK
     return _SCORE_STRONG

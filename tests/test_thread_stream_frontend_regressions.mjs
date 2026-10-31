@@ -3134,6 +3134,39 @@ test("branch card shows readable role/parent/reason and sends edited name and go
   assert.equal(helperSource.includes('reason.includes("route=") || reason === action.rationale'), true);
 });
 
+test("merge-back card opens merge review or returns to parent, never auto-approves", () => {
+  const compactCard = compactSource(
+    readFileSync(
+      path.join(repoRoot, "apps/web/src/entities/messages/message-list-branch-action-card.tsx"),
+      "utf8",
+    ),
+  );
+  const hookSource = readFileSync(
+    path.join(repoRoot, "apps/web/src/pages/thread/use-thread-branch-actions.ts"),
+    "utf8",
+  );
+  const reviewStart = hookSource.indexOf("const reviewMergeBranchAction");
+  assert.notEqual(reviewStart, -1);
+  const reviewBody = compactSource(
+    hookSource.slice(reviewStart, hookSource.indexOf("return {", reviewStart)),
+  );
+
+  assert.equal(
+    compactCard.includes(
+      'const isMergeBack = action.kind === "return_parent_branch" && Boolean(normalizeText(action.merge_review_thread_id));',
+    ),
+    true,
+  );
+  assert.equal(compactCard.includes("onReviewMerge?.(action);"), true);
+  assert.equal(compactCard.includes('{isChineseUi ? "审阅并合并" : "Review & merge"}'), true);
+  assert.equal(compactCard.includes('? "返回父分支" : "Return to parent"'), true);
+  // "Review & merge" only navigates to the existing review route for the child thread.
+  assert.equal(reviewBody.includes('to: "/c/$conversationId/t/$threadId/review"'), true);
+  assert.equal(reviewBody.includes("threadId: reviewThreadId"), true);
+  // No client call at all: no approve, no merge-proposal prep, no execute.
+  assert.equal(/client\.|executeBranchAction/.test(reviewBody), false);
+});
+
 test("thread busy retry helper waits through transient previous-turn conflicts", async () => {
   const { retryThreadBusyConflict, FocusAgentRequestError } = loadThreadBusyRetryModule();
   let attempts = 0;

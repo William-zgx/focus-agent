@@ -65,6 +65,7 @@ export function BranchActionCard({
 	isReadOnly,
 	onExecute,
 	onDismiss,
+	onReviewMerge,
 	sourceDecision,
 	errorMessage,
 	isBusy,
@@ -80,6 +81,7 @@ export function BranchActionCard({
 		overrides?: FocusAgentBranchActionExecuteRequest,
 	) => void;
 	onDismiss?: (action: FocusAgentBranchActionProposal) => void;
+	onReviewMerge?: (action: FocusAgentBranchActionProposal) => void;
 }) {
 	const pending = action.status === "pending";
 	const [isExpanded, setIsExpanded] = useState(pending);
@@ -95,6 +97,11 @@ export function BranchActionCard({
 	const isFork =
 		action.kind === "fork_child_branch" ||
 		action.kind === "fork_sibling_branch";
+	// Merge-back cards offer the existing merge review (never a silent merge) or a
+	// plain return to the parent.
+	const isMergeBack =
+		action.kind === "return_parent_branch" &&
+		Boolean(normalizeText(action.merge_review_thread_id));
 	const failureMessage =
 		normalizeText(errorMessage) || normalizeText(action.error);
 	const isAiSuggested =
@@ -128,22 +135,30 @@ export function BranchActionCard({
 	// conversation into a branch, and "stay" only dismisses the card.
 	const isAfterAnswer = action.delivery === "after_answer";
 	const title =
-		isAfterAnswer && pending
+		isMergeBack && pending
 			? isChineseUi
-				? "移到分支继续？"
-				: "Continue this in a branch?"
-			: branchActionTitle(action, isChineseUi);
+				? `带回${parentName}？`
+				: `Bring this back to ${parentName}?`
+			: isAfterAnswer && pending
+				? isChineseUi
+					? "移到分支继续？"
+					: "Continue this in a branch?"
+				: branchActionTitle(action, isChineseUi);
 	const executeLabel = isBusy
 		? isChineseUi
 			? "处理中..."
 			: "Working..."
-		: isAfterAnswer
+		: isMergeBack
 			? isChineseUi
-				? "移到分支"
-				: "Move to branch"
-			: isChineseUi
-				? "确认切换"
-				: "Confirm route";
+				? "返回父分支"
+				: "Return to parent"
+			: isAfterAnswer
+				? isChineseUi
+					? "移到分支"
+					: "Move to branch"
+				: isChineseUi
+					? "确认切换"
+					: "Confirm route";
 	const stayLabel = isChineseUi ? "留在这里" : "Stay here";
 	const executeBranchAction = () => {
 		setIsExpanded(false);
@@ -161,6 +176,9 @@ export function BranchActionCard({
 	const stayHere = () => {
 		setIsExpanded(false);
 		onDismiss?.(action);
+	};
+	const reviewMerge = () => {
+		onReviewMerge?.(action);
 	};
 
 	useEffect(() => {
@@ -228,7 +246,15 @@ export function BranchActionCard({
 							</label>
 						) : (
 							<div>
-								<span>{isChineseUi ? "目标" : "Target"}</span>
+								<span>
+									{isMergeBack
+										? isChineseUi
+											? "分支"
+											: "Branch"
+										: isChineseUi
+											? "目标"
+											: "Target"}
+								</span>
 								<strong>{branchName}</strong>
 							</div>
 						)}
@@ -289,8 +315,22 @@ export function BranchActionCard({
 					</div>
 					{pending ? (
 						<div className="fa-branch-action-card-actions">
+							{isMergeBack ? (
+								<button
+									className="fa-chat-toolbar-button is-primary"
+									disabled={disabled}
+									onClick={reviewMerge}
+									type="button"
+								>
+									{isChineseUi ? "审阅并合并" : "Review & merge"}
+								</button>
+							) : null}
 							<button
-								className="fa-chat-toolbar-button is-primary"
+								className={
+									isMergeBack
+										? "fa-chat-toolbar-button"
+										: "fa-chat-toolbar-button is-primary"
+								}
 								disabled={disabled}
 								onClick={executeBranchAction}
 								type="button"

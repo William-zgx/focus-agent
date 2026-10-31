@@ -272,10 +272,30 @@ export function useThreadBranchActions(
 		};
 	}, [threadId]);
 
+	const reviewMergeBranchAction = useCallback(
+		async (action: FocusAgentBranchActionProposal) => {
+			const reviewThreadId = String(action.merge_review_thread_id ?? "").trim();
+			if (!reviewThreadId) {
+				return;
+			}
+			// Opens the merge-review screen only; approval stays a separate,
+			// explicit step there (empty branches cannot be approved).
+			await navigate({
+				to: "/c/$conversationId/t/$threadId/review",
+				params: {
+					conversationId: action.root_thread_id,
+					threadId: reviewThreadId,
+				},
+			});
+		},
+		[navigate],
+	);
+
 	return {
 		branchActionErrors,
 		branchActionInFlightId,
 		dismissBranchAction,
 		executeBranchAction,
+		reviewMergeBranchAction,
 	};
 }

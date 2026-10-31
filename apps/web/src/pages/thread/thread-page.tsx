@@ -133,6 +133,7 @@ export function ThreadPage() {
 		branchActionInFlightId,
 		dismissBranchAction,
 		executeBranchAction,
+		reviewMergeBranchAction,
 	} = useThreadBranchActions(threadId, {
 		onRunHandoff: ({ threadId: targetThreadId, message }) => {
 			return runCarriedMessageInThread(
@@ -317,6 +318,9 @@ export function ThreadPage() {
 			}
 			onDismissBranchAction={(action) => void dismissBranchAction(action)}
 			onBranchFromMessage={handleBranchFromMessage}
+			onReviewMergeBranchAction={(action) =>
+				void reviewMergeBranchAction(action)
+			}
 			onEditMessage={setEditDraft}
 			onExecuteBranchAction={(action, overrides) =>
 				void executeBranchAction(action, overrides)

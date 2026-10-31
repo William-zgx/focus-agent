@@ -45,6 +45,7 @@ interface ThreadPageContentProps {
 	onClearEditDraft: () => void;
 	onCompactContext: () => Promise<void> | void;
 	onDismissBranchAction: (action: FocusAgentBranchActionProposal) => void;
+	onReviewMergeBranchAction: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval: (
 		interrupt: FocusAgentToolApprovalInterrupt,
 		approved: boolean,
@@ -114,6 +115,7 @@ export function ThreadPageContent({
 	onClearEditDraft,
 	onCompactContext,
 	onDismissBranchAction,
+	onReviewMergeBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
 	onBranchFromMessage,
@@ -165,6 +167,7 @@ export function ThreadPageContent({
 		onEditMessage,
 		onExecuteBranchAction,
 		onDismissBranchAction,
+		onReviewMergeBranchAction,
 		onDecideToolApproval,
 		onSubmitAskUserQuestion,
 		threadLinks,

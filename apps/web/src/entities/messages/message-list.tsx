@@ -70,6 +70,7 @@ interface MessageListProps {
 		overrides?: FocusAgentBranchActionExecuteRequest,
 	) => void;
 	onDismissBranchAction?: (action: FocusAgentBranchActionProposal) => void;
+	onReviewMergeBranchAction?: (action: FocusAgentBranchActionProposal) => void;
 	onDecideToolApproval?: (
 		interrupt: FocusAgentToolApprovalInterrupt,
 		approved: boolean,
@@ -109,6 +110,7 @@ export function MessageList({
 	onEditMessage,
 	onExecuteBranchAction,
 	onDismissBranchAction,
+	onReviewMergeBranchAction,
 	onDecideToolApproval,
 	onSubmitAskUserQuestion,
 	threadLinks = null,
@@ -156,6 +158,7 @@ export function MessageList({
 							}
 							onExecute={onExecuteBranchAction}
 							onDismiss={onDismissBranchAction}
+							onReviewMerge={onReviewMergeBranchAction}
 						/>
 					);
 				}

@@ -231,6 +231,8 @@ class BranchActionProposal(BaseModel):
     delivery: Literal["proposal", "after_answer"] | None = None
     # Display name of target_parent_thread_id; None means the root (main) thread.
     target_parent_branch_name: str | None = None
+    # Child thread whose merge review the card opens (merge-back / conclude cards).
+    merge_review_thread_id: str | None = None
 
 
 BranchTreeNode.model_rebuild()
