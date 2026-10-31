@@ -518,7 +518,8 @@ main thread
 - `branch_depth` 受 `BRANCH_MAX_DEPTH` 控制。
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
-- imported conclusion 可写入父线程状态，并可进入 memory pipeline。
+- imported conclusion 可写入父线程状态，并可进入 memory pipeline。merge apply 时每条 key finding 使用 proposal 的 `finding_evidence_refs`（无逐条 refs 时沿用整份 `evidence_refs`）；`merge_queue` 条目额外带 `open_questions`、`finding_evidence_refs`、`child_thread_id`、`imported_at`；导入 SystemMessage 的文本保持与 chat 侧 backfill 一致，结构化字段放在 `response_metadata.focus_agent.metadata.branch_import`（`branch_id`、`branch_name`、`child_thread_id`、`summary`、`key_findings`、`open_questions`、`evidence_refs`、`artifacts`、`imported_at`），经 `serialize_message` 暴露为 `message.metadata.branch_import`。嵌套 merge（目标是父分支）把结论写入接收分支自己的 branch memory，而不是主线 memory。
+- prompt assembly 从 `merge_queue` 渲染独立的 `## Approved branch conclusions` 块：最新优先、按分支名标注、包含 findings / open questions / artifacts，有自己的条目与字符预算；它来自线程 state，父线程被 compaction 后依然存在。已在该块中出现的分支不再占用通用 findings 名额。
 - pre-turn branch recommendation 可以生成 `fork_child_branch` 或 `fork_sibling_branch` 的 pending Branch Action，但不会直接执行 fork。
 
 ## 11. Memory 概览

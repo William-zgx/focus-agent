@@ -8,6 +8,7 @@ def render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
         return (
             "system_instructions",
             "constraints_block",
+            "approved_conclusions_block",
             "findings_block",
             "memory_block",
             "pinned_block",
@@ -19,6 +20,7 @@ def render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
     if prompt_mode == PromptMode.BRANCH_REVIEW:
         return (
             "system_instructions",
+            "approved_conclusions_block",
             "findings_block",
             "artifact_block",
             "constraints_block",
@@ -33,6 +35,7 @@ def render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
             "system_instructions",
             "constraints_block",
             "pinned_block",
+            "approved_conclusions_block",
             "findings_block",
             "artifact_block",
             "memory_block",
@@ -43,6 +46,7 @@ def render_block_order(prompt_mode: PromptMode) -> tuple[str, ...]:
     return (
         "system_instructions",
         "constraints_block",
+        "approved_conclusions_block",
         "findings_block",
         "artifact_block",
         "memory_block",

@@ -6,6 +6,7 @@ from typing import Any
 from langchain.messages import AnyMessage
 
 from ..branch_brief import resolve_fork_brief
+from ..branch_conclusions import render_approved_conclusions
 from ..context_compaction import select_recent_messages
 from ..state import normalize_agent_state
 from ..types import ContextBudget, PromptMode
@@ -60,6 +61,7 @@ class ContextSlice:
     constraints_block: str
     findings_block: str
     artifact_block: str
+    approved_conclusions_block: str = ""
 
     def render_prompt(self) -> str:
         section_map = {
@@ -70,6 +72,7 @@ class ContextSlice:
             "summary_block": self.summary_block,
             "pinned_block": self.pinned_block,
             "constraints_block": self.constraints_block,
+            "approved_conclusions_block": self.approved_conclusions_block,
             "findings_block": self.findings_block,
             "artifact_block": self.artifact_block,
         }
@@ -122,8 +125,23 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         constraint_lines.insert(1 if constraint_lines else 0, f"Current step: {current_step_goal}")
     constraint_lines = _dedupe_text_lines(constraint_lines, limit=10)
 
-    imported_lines = _coerce_imported_lines(normalized.get("imported_findings", []))
-    legacy_imported_lines = _coerce_legacy_imported_lines(normalized.get("merge_queue", []))
+    merge_queue = list(normalized.get("merge_queue", []) or [])
+    approved_conclusions_block, rendered_entries = render_approved_conclusions(merge_queue)
+    rendered_keys = {_merge_entry_key(entry) for entry in rendered_entries}
+    rendered_branch_ids = {
+        str(entry.get("branch_id")) for entry in rendered_entries if entry.get("branch_id")
+    }
+    # Conclusions rendered in their own block do not compete for findings slots.
+    imported_lines = _coerce_imported_lines(
+        item
+        for item in normalized.get("imported_findings", [])
+        if _finding_source_branch_id(item) not in rendered_branch_ids
+    )
+    legacy_imported_lines = _coerce_legacy_imported_lines(
+        item
+        for item in merge_queue
+        if not (isinstance(item, dict) and _merge_entry_key(item) in rendered_keys)
+    )
 
     local_finding_lines: list[str] = []
     if is_branch and prompt_mode in {
@@ -211,4 +229,21 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
         constraints_block=_render_lines("Constraints and goals", constraint_lines[-10:]),
         findings_block=findings_block,
         artifact_block=_render_lines("Artifacts in scope", artifact_lines),
+        approved_conclusions_block=approved_conclusions_block,
     )
+
+
+def _merge_entry_key(entry: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(entry.get("branch_id") or ""),
+        str(entry.get("branch_name") or ""),
+        str(entry.get("summary") or ""),
+    )
+
+
+def _finding_source_branch_id(item: Any) -> str | None:
+    if isinstance(item, dict):
+        source = item.get("source_branch_id")
+    else:
+        source = getattr(item, "source_branch_id", None)
+    return str(source) if source else None

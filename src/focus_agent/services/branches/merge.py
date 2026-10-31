@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from copy import deepcopy
+from datetime import UTC, datetime
 
 from langchain.messages import SystemMessage
 
@@ -166,27 +167,49 @@ class BranchMergeCoordinator:
             allowed = set(decision.selected_artifacts)
             artifacts = [a for a in proposal.artifacts if a in allowed]
 
+        include_evidence = decision.mode.value != "summary_only"
         imported = ImportedConclusion(
             branch_id=branch_record.branch_id,
             branch_name=branch_record.branch_name,
             mode=decision.mode,
             summary=proposal.summary,
             key_findings=proposal.key_findings,
-            evidence_refs=proposal.evidence_refs if decision.mode.value != "summary_only" else [],
+            evidence_refs=proposal.evidence_refs if include_evidence else [],
             artifacts=artifacts,
             rationale=decision.rationale,
         )
+        finding_refs = {
+            item: _finding_evidence_refs(proposal, item) if include_evidence else []
+            for item in proposal.key_findings
+        }
 
         imported_findings = [
             FindingItem(
                 finding=item,
-                evidence_refs=proposal.evidence_refs
-                if decision.mode.value != "summary_only"
-                else [],
+                evidence_refs=finding_refs[item],
                 source_branch_id=branch_record.branch_id,
             )
             for item in proposal.key_findings
         ]
+        imported_at = datetime.now(UTC).isoformat()
+        branch_import = {
+            "branch_id": imported.branch_id,
+            "branch_name": imported.branch_name,
+            "child_thread_id": branch_record.child_thread_id,
+            "summary": imported.summary,
+            "key_findings": list(imported.key_findings),
+            "open_questions": list(proposal.open_questions),
+            "evidence_refs": list(imported.evidence_refs),
+            "artifacts": list(imported.artifacts),
+            "imported_at": imported_at,
+        }
+        merge_queue_entry = {
+            **imported.model_dump(mode="json"),
+            "child_thread_id": branch_record.child_thread_id,
+            "open_questions": list(proposal.open_questions),
+            "finding_evidence_refs": {item: refs for item, refs in finding_refs.items() if refs},
+            "imported_at": imported_at,
+        }
 
         target_thread_id = (
             branch_record.root_thread_id
@@ -196,7 +219,12 @@ class BranchMergeCoordinator:
         target_config = {"configurable": {"thread_id": target_thread_id}}
         target_snapshot = svc.graph.get_state(target_config)
         target_values = deepcopy(getattr(target_snapshot, "values", {}) or {})
-        import_notice = SystemMessage(content=svc._imported_conclusion_message(imported))
+        # Content must stay identical to the chat-side backfill notice built from
+        # the merge_queue entry; structured fields travel in response_metadata.
+        import_notice = SystemMessage(
+            content=svc._imported_conclusion_message(imported),
+            response_metadata={"focus_agent": {"metadata": {"branch_import": branch_import}}},
+        )
         svc.graph.update_state(
             target_config,
             {
@@ -205,7 +233,7 @@ class BranchMergeCoordinator:
                     target_values.get("rolling_summary"),
                     imported,
                 ),
-                "merge_queue": [imported.model_dump(mode="json")],
+                "merge_queue": [merge_queue_entry],
                 "imported_findings": [
                     finding.model_dump(mode="json") for finding in imported_findings
                 ],
@@ -243,6 +271,13 @@ class BranchMergeCoordinator:
                     },
                     as_node="bootstrap_turn",
                 )
+        elif svc.store is not None:
+            svc._write_nested_import_to_branch_memory(
+                target_thread_id=target_thread_id,
+                branch_record=branch_record,
+                imported=imported,
+                findings=imported_findings,
+            )
         svc.repo.update_status(branch_record.branch_id, BranchStatus.MERGED)
         merged_record = svc.repo.get(branch_record.branch_id)
         svc.graph.update_state(
@@ -256,6 +291,14 @@ class BranchMergeCoordinator:
             as_node="bootstrap_turn",
         )
         return imported
+
+
+def _finding_evidence_refs(proposal: MergeProposal, finding: str) -> list[str]:
+    """Per-finding refs when the proposal provides them; else the flat list."""
+    if not proposal.finding_evidence_refs:
+        return list(proposal.evidence_refs)
+    allowed = set(proposal.evidence_refs)
+    return [ref for ref in proposal.finding_evidence_refs.get(finding, []) if ref in allowed]
 
 
 def _merge_import_blocked_reason(values: dict) -> str:
@@ -311,6 +354,33 @@ class BranchMemoryPromotionMixin:
             )
             keys.append(key)
         return keys
+
+    def _write_nested_import_to_branch_memory(
+        self,
+        *,
+        target_thread_id: str,
+        branch_record: BranchRecord,
+        imported: ImportedConclusion,
+        findings: list[FindingItem],
+    ) -> list[str]:
+        """Record a nested import in the receiving branch's own memory scope.
+
+        The receiving branch is itself unreviewed, so the import stays branch-scoped
+        (promotable) instead of being written to conversation-main memory.
+        """
+        try:
+            target_record = self.repo.get_by_child_thread_id(target_thread_id)
+        except KeyError:
+            return []
+        conclusion = FindingItem(
+            finding=imported.summary,
+            evidence_refs=list(imported.evidence_refs),
+            source_branch_id=branch_record.branch_id,
+        )
+        return self._persist_branch_findings_to_branch_memory(
+            branch_record=target_record,
+            findings=[conclusion, *findings],
+        )
 
     @staticmethod
     def _imported_conclusion_message(imported: ImportedConclusion) -> str:

@@ -94,6 +94,8 @@ def _context_block_header(block: str) -> str:
         return "pinned"
     if lowered.startswith("## findings"):
         return "findings"
+    if lowered.startswith("## approved branch conclusions"):
+        return "approved_conclusions"
     if lowered.startswith("## imported findings already approved into this thread"):
         return "imported_findings"
     if lowered.startswith("## local branch findings pending upstream review"):
@@ -132,6 +134,7 @@ def _context_block_priority(block: str, *, index: int, prompt_mode: PromptMode) 
 def _block_priority_map(prompt_mode: PromptMode) -> dict[str, int]:
     base = {
         "constraints": 0,
+        "approved_conclusions": 0,
         "imported_findings": 1,
         "findings": 1,
         "pinned": 2,
