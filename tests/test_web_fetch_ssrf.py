@@ -276,3 +276,40 @@ def test_web_fetch_rejects_redirect_when_any_dns_answer_is_private(monkeypatch):
         _tool(get=fake_get).invoke({"url": "https://start.example/start"})
 
     assert seen_urls == ["https://93.184.216.34/start"]
+
+
+@pytest.mark.parametrize(
+    ("content_type", "meta", "codec", "text"),
+    [
+        pytest.param(
+            "text/html", '<meta charset="gb2312">', "gbk", "今日要闻正文", id="meta-gb2312"
+        ),
+        pytest.param(
+            "text/html",
+            '<meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS">',
+            "shift_jis",
+            "日本語の記事本文",
+            id="meta-http-equiv",
+        ),
+        pytest.param("text/html; charset=GBK", "", "gbk", "今日要闻正文", id="header-charset"),
+    ],
+)
+def test_web_fetch_decodes_page_with_declared_charset(
+    monkeypatch, content_type, meta, codec, text
+):
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: _dns_answer("93.184.216.34"))
+    body = f"<html><head>{meta}<title>{text}</title></head><body><p>{text}</p></body></html>"
+
+    def fake_get(url, *, headers, timeout, extensions):
+        del headers, timeout, extensions
+        return httpx.Response(
+            200,
+            content=body.encode(codec),
+            headers={"content-type": content_type},
+            request=httpx.Request("GET", url),
+        )
+
+    payload = json.loads(_tool(get=fake_get).invoke({"url": "https://news.example/a"}))
+
+    assert payload["title"] == text
+    assert payload["content"] == text

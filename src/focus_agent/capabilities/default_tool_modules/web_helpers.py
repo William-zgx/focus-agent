@@ -472,6 +472,25 @@ def _render_text_parts(parts: list[str]) -> str:
     )
 
 
+_META_CHARSET_RE = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)""", re.I)
+# Browsers decode these labels with a superset codec; the strict codec garbles real pages.
+_CHARSET_SUPERSETS = {"gb2312": "gbk", "iso-8859-1": "cp1252", "us-ascii": "cp1252"}
+
+
+def _decode_page_bytes(raw: bytes, header_charset: str | None) -> str:
+    """Decode with the Content-Type charset, else the page's <meta> charset, else UTF-8."""
+    meta = _META_CHARSET_RE.search(raw[:4096])
+    for candidate in (header_charset, meta.group(1).decode("ascii") if meta else None):
+        if not candidate:
+            continue
+        name = _CHARSET_SUPERSETS.get(candidate.strip().lower(), candidate.strip())
+        try:
+            return raw.decode(name, errors="replace")
+        except LookupError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 _BINARY_CONTENT_TYPES = (
     "application/octet-stream",
     "application/pdf",
