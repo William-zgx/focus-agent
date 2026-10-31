@@ -1,0 +1,42 @@
+name: Dependency Drift
+
+# CI installs the versions pinned in uv.lock. This job runs the backend tests
+# against the newest versions the pyproject ranges allow, so upstream breakage
+# shows up here before anyone has to refresh the lockfile.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 20 * * 1"
+
+jobs:
+  latest-dependencies:
+    name: Tests on latest dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Upgrade lockfile in the workspace
+        run: uv lock --upgrade
+
+      - name: Install Python dependencies
+        run: make install-openai
+
+      - name: Show upgraded packages
+        run: git diff --stat uv.lock
+
+      - name: Run Ruff
+        run: make lint
+
+      - name: Run pytest
+        run: make ci-test
