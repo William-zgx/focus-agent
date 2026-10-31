@@ -2372,6 +2372,34 @@ def test_run_workspace_command_path_validation_ignores_scoped_package_filters(tm
     assert resolved_paths == []
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["npm", "i", "evil-pkg", "test"],
+        ["npm", "x", "--yes", "evil-pkg", "test"],
+        ["npm", "ci", "build"],
+        ["pnpm", "i", "evil-pkg", "check"],
+        ["pnpm", "--filter", "@focus-agent/web-app", "i", "evil-pkg", "check"],
+    ],
+)
+def test_package_commands_reject_install_aliases_before_allowed_script(command):
+    assert not workspace_command_allowed(command, {"npm", "pnpm"})
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["npm", "test"],
+        ["npm", "run", "lint"],
+        ["npm", "-w", "apps/web", "run", "build"],
+        ["pnpm", "-r", "build"],
+        ["pnpm", "-C", "apps/web", "check"],
+    ],
+)
+def test_package_commands_allow_script_subcommands(command):
+    assert workspace_command_allowed(command, {"npm", "pnpm"})
+
+
 def test_git_tools_return_status_diff_and_log(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
