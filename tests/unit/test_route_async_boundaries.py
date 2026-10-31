@@ -116,3 +116,90 @@ def test_thread_snapshot_route_does_not_block_event_loop() -> None:
             pass
 
     asyncio.run(scenario())
+
+
+def test_harness_run_routes_preflight_thread_access_off_event_loop() -> None:
+    from fastapi import HTTPException
+
+    from focus_agent.api.routers.harness_runs import detail, promote, replay_execution
+    from focus_agent.api.routers.harness_runs import replay_streaming as streaming
+    from focus_agent.api.routers.harness_runs.replay_models import (
+        HarnessResumeRequest,
+        HarnessRunCancelRequest,
+        HarnessRunRequest,
+    )
+
+    class Chat:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def _select_skills_for_message(self, *, message: str, explicit_skill_hints):
+            return SimpleNamespace(skill_ids=(), stripped_message=message, prompt_mode=None)
+
+        def _preflight_thread_access(self, **_kwargs):
+            _wait_for_release(self.started, self.release, "done")
+            raise PermissionError("denied")
+
+    run_record = SimpleNamespace(to_dict=lambda: {"thread_id": "thread-1", "user_id": "user-1"})
+    runtime = SimpleNamespace(
+        run_manager=SimpleNamespace(get=lambda run_id: run_record),
+        settings=SimpleNamespace(),
+    )
+    principal = SimpleNamespace(user_id="user-1")
+    request = SimpleNamespace(state=SimpleNamespace(request_id=None), headers={})
+    routes = {
+        "create": lambda chat: replay_execution.create_harness_run(
+            thread_id="thread-1",
+            payload=HarnessRunRequest(message="hi"),
+            request=request,
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        ),
+        "stream": lambda chat: streaming.stream_harness_run(
+            thread_id="thread-1",
+            payload=HarnessRunRequest(message="hi"),
+            request=request,
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        ),
+        "resume": lambda chat: streaming.stream_harness_resume(
+            thread_id="thread-1",
+            payload=HarnessResumeRequest(resume="ok"),
+            request=request,
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        ),
+        "cancel_thread": lambda chat: promote.cancel_thread_harness_runs(
+            thread_id="thread-1",
+            payload=HarnessRunCancelRequest(),
+            runtime=runtime,
+            chat=chat,
+            principal=principal,
+        ),
+        "get_run": lambda chat: detail.get_harness_run(
+            run_id="run-1", runtime=runtime, chat=chat, principal=principal
+        ),
+    }
+
+    async def scenario(name: str) -> None:
+        chat = Chat()
+        blocking = asyncio.create_task(routes[name](chat))
+
+        await _wait_until_started(chat.started)
+        assert await asyncio.sleep(0.01, result="tick") == "tick"
+        assert not blocking.done(), name
+
+        chat.release.set()
+        try:
+            await blocking
+        except HTTPException as exc:
+            assert exc.status_code == 403, name
+        else:
+            raise AssertionError(f"{name} did not reject the denied thread")
+
+    for name in routes:
+        asyncio.run(scenario(name))

@@ -38,6 +38,7 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
 from focus_agent.transport.stream_events import sanitize_stream_metadata
 
+from ...route_helpers import run_sync_route_call
 from ...route_utils.harness_run_helpers import (
     _canonical_custom_event,
     _canonical_payload_extras,
@@ -530,7 +531,9 @@ async def _load_authorized_run_payload(
     run_payload = await _load_run_payload(runtime, run_id)
     if run_payload is None:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-    _authorize_run_access(chat=chat, principal=principal, run_payload=run_payload)
+    await run_sync_route_call(
+        _authorize_run_access, chat=chat, principal=principal, run_payload=run_payload
+    )
     return run_payload
 
 

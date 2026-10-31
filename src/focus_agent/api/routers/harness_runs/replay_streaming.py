@@ -34,6 +34,7 @@ from focus_agent.transport.tool_events import (
 )
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
+from ...route_helpers import run_sync_route_call
 from ...route_utils.branch_handoff_decisions import (
     mark_branch_handoff_decision_outcome,
     record_branch_handoff_decision_for_run,
@@ -84,7 +85,8 @@ async def stream_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    graph_payload, context, branch_meta, initial_values = _prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = await run_sync_route_call(
+        _prepare_run_payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
@@ -163,7 +165,8 @@ async def stream_harness_resume(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> StreamingResponse:
-    command, context, branch_meta, initial_values = _prepare_resume_payload(
+    command, context, branch_meta, initial_values = await run_sync_route_call(
+        _prepare_resume_payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,

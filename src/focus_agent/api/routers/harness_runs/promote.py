@@ -7,6 +7,7 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
+from ...route_helpers import run_sync_route_call
 from .replay_helpers import _harness_run_response, _load_authorized_run_payload
 from .replay_models import HarnessRunCancelRequest, HarnessRunResponse
 from .replay_payloads import _preflight_thread_access
@@ -47,7 +48,8 @@ async def cancel_thread_harness_runs(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> dict[str, object]:
-    _preflight_thread_access(
+    await run_sync_route_call(
+        _preflight_thread_access,
         chat,
         thread_id=thread_id,
         user_id=principal.user_id,

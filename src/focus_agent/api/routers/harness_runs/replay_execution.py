@@ -13,6 +13,7 @@ from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService
 
 from ...deps import get_app_runtime, get_chat_service, get_current_principal
+from ...route_helpers import run_sync_route_call
 from ...route_utils.branch_handoff_decisions import (
     mark_branch_handoff_decision_outcome,
     record_branch_handoff_decision_for_run,
@@ -48,7 +49,8 @@ async def create_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    graph_payload, context, branch_meta, initial_values = _prepare_run_payload(
+    graph_payload, context, branch_meta, initial_values = await run_sync_route_call(
+        _prepare_run_payload,
         thread_id=thread_id,
         user_id=principal.user_id,
         payload=payload,
