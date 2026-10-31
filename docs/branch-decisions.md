@@ -54,8 +54,8 @@ Two evaluators share the same persisted event model:
 
 | Evaluator | Timing | Actions | Typical outcome |
 |-----------|--------|---------|-----------------|
-| `evaluate_pre_turn_recommendation` | before a user message enters the graph | `continue_current`, `fork_child_branch`, `fork_sibling_branch` | normal turn, or pending Branch Action |
-| `evaluate_thread_turn` | after a completed turn | `split`, `conclude`, `merge_candidate` | governance evidence, optional promotion |
+| `evaluate_pre_turn_recommendation` | before a user message enters the graph | `continue_current`, `fork_child_branch`, `fork_sibling_branch`, `merge_candidate` (child branch only) | normal turn, then an answer-first card; explicit commands get a proposal |
+| `evaluate_thread_turn` | after a completed turn | `split`, `conclude`, `merge_candidate` | governance evidence; `split` and child-branch `conclude`/`merge_candidate` become visible cards |
 
 Pre-turn recommendations are deterministic classifier/scorer decisions from
 `src/focus_agent/branch_decision/signals.py` and
@@ -71,15 +71,40 @@ The pre-turn signal set distinguishes explicit branch wording from topic drift:
   "another question", or "unrelated topic".
 - Topic drift can route a root thread to `fork_child_branch`; when the current
   thread is already a child branch, it routes to `fork_sibling_branch`.
+- `recommendation_intent` (weight 0, diagnostic) grades lexical intent from
+  `src/focus_agent/branch_decision/intent.py`:
+  - `explicit` – the user literally asks for a branch ("帮我开一个分支…",
+    "open a new branch"). Score 0.95, route `explicit_branch`.
+  - `strong` – an exploration verb within a few characters of a branch /
+    "separately" word, "并行探索", or a topic switch at the start of the message
+    or before a colon ("另一个问题：…"). Score 0.86.
+  - `weak` – a side question ("顺便问一下", "by the way … ?"), an A-vs-B
+    comparison, or a "先暂停…排查" detour. Score 0.76, just above the default
+    0.72 threshold, so it only ever produces a non-blocking card.
+  - Bare ambiguous words ("新建", "深入", "展开", "split", "fork", "explore",
+    "alternative", "parallel") never count on their own. English matches on word
+    boundaries (`fork()` and `parallelize` do not match), code context
+    (`函数`, `文件`, `` ` ``, `()`, `git`, …) suppresses exploration words, and
+    zh/en negation ("不要开分支", "don't fork", "no branch") routes to continue.
+    "新问题" / "another question" only count at the start or before a colon.
+- `merge_back` (inside `recommendation_intent`) is set only on a child branch
+  for "带回主线 / 合并回去 / 可以合并了 / 回到主线 / merge back / bring this back
+  to main / ready to merge", excluding negation ("先别合并", "don't merge"),
+  code context, and "在这个分支里…" continue hints. It routes to
+  `merge_candidate` with score 0.9.
 - `zvec_branch_context` is a shadow-only retrieval signal from the
   `focus_branch_context` collection. It can explain similar prior branch
   decisions, but its weight is zero for user-visible actions until eval proves
   it improves topic-shift precision.
 
 Post-turn decisions inspect the completed thread state and branch metadata.
-They are useful for trajectory review, governance dashboards, and future
-automation, but they should not change the visible turn unless explicitly
-promoted.
+`conclude` and `merge_candidate` need explicit wording on a child branch
+("总结一下这个分支", "给出结论", "收尾", "conclude", "wrap up", or a merge-back
+phrase); "整理", a bare "summary" or "final" are not evidence, and the root
+thread never produces them. A suggested `conclude`/`merge_candidate` creates a
+visible merge-back card. It never calls `prepare_merge_proposal` and never
+changes branch status: the proposal is prepared only when the user opens the
+review screen.
 
 ## 3. Runtime Flow
 
@@ -105,14 +130,14 @@ sequenceDiagram
         API->>Chat: pre-turn recommendation with thread lease
         Chat->>Decision: evaluate_pre_turn_recommendation
         Decision->>Repo: upsert BranchDecisionEvent by idempotency key
-        alt promoted fork recommendation
+        alt promoted explicit command (delivery=proposal)
             Decision-->>Chat: promoted event + action id
             Chat-->>API: assistant proposal message + thread_state
             API-->>UI: message.completed + run.completed
-        else continue current
+        else promoted AI suggestion (delivery=after_answer) or continue
             API->>Graph: invoke / stream normal turn
             Graph-->>API: state and stream events
-            API-->>UI: canonical SSE / response
+            API-->>UI: canonical SSE; run.completed carries the pending card
         end
     end
 ```
@@ -121,8 +146,19 @@ Important implementation boundaries:
 
 - `ChatService._handle_branch_recommendation_turn_with_lease()` holds the
   per-thread turn lease while it writes the proposal message and pending action.
-- V2 non-streaming and streaming routes short-circuit before graph invocation
-  when a promoted pre-turn recommendation creates a Branch Action.
+- Answer first: only recommendations from an explicit branch command
+  (`route=explicit_branch`, `delivery="proposal"`) short-circuit before graph
+  invocation. Every other promoted recommendation (`delivery="after_answer"`)
+  lets the normal turn run and attaches the pending card ("移到分支继续？ /
+  Continue this in a branch?"). The next user message dismisses an unanswered
+  after-answer card (`superseded_by_next_turn`); "好的"/"yes" are not
+  confirmations, only "移到分支 / move it to a branch" style wording is.
+- Executing an after-answer child fork does not re-run the question: the fork
+  already holds the answered turn, so the execute response returns
+  `handoff_message: null`. Sibling forks and edited goals carry the goal and the
+  browser auto-runs it. `POST …/branch-actions/{id}/execute` accepts an optional
+  body `{branch_name, handoff_message}`; an edited name becomes the explicit
+  branch name and is never replaced by AI naming.
 - Executing a Branch Action forks from the target parent, then carries only the
   normalized `handoff_message` into the destination thread. The fork seed drops
   copied Branch Action control turns and transient runtime fields before the
@@ -313,9 +349,20 @@ probabilities, actual response model, attempt status/latency, and fallback usage
 
 ## 6. Web UX
 
-The chat transcript renders pending Branch Actions as confirmation cards. A card
-shows whether it came from an AI branch decision, the action target, confidence,
-and controls to confirm or dismiss. Confirming a fork action refreshes:
+The chat transcript renders pending Branch Actions as cards. A card shows
+whether it came from an AI branch decision, a localized role label, the parent
+branch name (`target_parent_branch_name`, "主线 / Main" for the root), a short
+user-facing `reason` (the technical scorer `rationale` is never shown as the
+reason), and confidence. Fork cards have editable name and goal fields that are
+sent with the execute request. After-answer cards offer "Move to branch" and
+"Stay here" (dismiss only).
+
+Merge-back cards (`kind=return_parent_branch` with `merge_review_thread_id`)
+offer "Review & merge", which only navigates to
+`/c/$conversationId/t/$threadId/review` (approval stays an explicit step on that
+screen), "Return to parent", which executes the navigation, and "Stay here".
+
+Confirming a fork action refreshes:
 
 - conversations,
 - branch tree,
@@ -350,6 +397,7 @@ When branch decisions, recommendations, or Branch Action UX change, run:
 
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
+uv run pytest tests/test_branch_decision_intent.py tests/test_branch_decision_answer_first.py tests/test_branch_decision_merge_back.py tests/test_branch_decision_eval_dataset.py
 uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
 uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
 node --test tests/test_thread_stream_frontend_regressions.mjs
@@ -361,7 +409,8 @@ make web-check
 For browser coverage, use a real prompt that asks for a sibling or child branch
 and confirm:
 
-- a recommendation card appears without invoking the normal graph turn,
+- an explicit branch command shows a proposal without invoking the normal
+  graph turn, while an AI suggestion answers first and then shows the card,
 - confirming creates or opens the expected branch,
 - dismissing clears the pending action,
 - `GET /v1/threads/{child_thread_id}/resolution` returns the root and branch id,
