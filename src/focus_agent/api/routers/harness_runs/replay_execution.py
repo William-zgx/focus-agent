@@ -116,7 +116,6 @@ async def _execute_branch_action_run(
     context: Any,
     branch_meta: Any,
     initial_values: dict[str, Any],
-    skip_branch_recommendation: bool = False,
 ) -> HarnessRunResponse:
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.RUNNING)
     initial_message_count, initial_llm_calls, started_at = _turn_recording_baseline(initial_values)
@@ -219,6 +218,34 @@ async def _execute_harness_run(
         if skip_branch_recommendation
         else None
     )
+
+    async def record_failure(exc: Exception, failed_payload: Any) -> None:
+        mark_branch_handoff_decision_outcome(
+            runtime=runtime,
+            decision=handoff_decision,
+            run_status=RunStatus.ERROR.value,
+            run_id=run_record.run_id,
+            message=message,
+            error=str(exc),
+        )
+        await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
+        _record_harness_turn_and_schedule(
+            chat=chat,
+            thread_id=thread_id,
+            user_id=user_id,
+            root_thread_id=context.root_thread_id,
+            kind="chat.turn",
+            status="failed",
+            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
+            initial_message_count=initial_message_count,
+            initial_llm_calls=initial_llm_calls,
+            started_at=started_at,
+            branch_meta=branch_meta,
+            trace_correlation=trace_correlation,
+            payload=failed_payload,
+            error=str(exc),
+        )
+
     try:
         if not skip_branch_recommendation:
             branch_recommendation_result = await _handle_branch_recommendation_for_run_async(
@@ -263,31 +290,7 @@ async def _execute_harness_run(
                     thread_state=branch_recommendation_result["thread_state"],
                 )
     except Exception as exc:  # noqa: BLE001
-        mark_branch_handoff_decision_outcome(
-            runtime=runtime,
-            decision=handoff_decision,
-            run_status=RunStatus.ERROR.value,
-            run_id=run_record.run_id,
-            message=message,
-            error=str(exc),
-        )
-        await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
-        _record_harness_turn_and_schedule(
-            chat=chat,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=context.root_thread_id,
-            kind="chat.turn",
-            status="failed",
-            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
-            initial_message_count=initial_message_count,
-            initial_llm_calls=initial_llm_calls,
-            started_at=started_at,
-            branch_meta=branch_meta,
-            trace_correlation=trace_correlation,
-            payload={"messages": [HumanMessage(content=message)]},
-            error=str(exc),
-        )
+        await record_failure(exc, {"messages": [HumanMessage(content=message)]})
         raise
     config = build_invoke_config(
         settings=getattr(runtime, "settings", {}),
@@ -307,31 +310,7 @@ async def _execute_harness_run(
             version="v2",
         )
     except Exception as exc:  # noqa: BLE001
-        mark_branch_handoff_decision_outcome(
-            runtime=runtime,
-            decision=handoff_decision,
-            run_status=RunStatus.ERROR.value,
-            run_id=run_record.run_id,
-            message=message,
-            error=str(exc),
-        )
-        await runtime.run_manager.set_status(run_record.run_id, RunStatus.ERROR, error=str(exc))
-        _record_harness_turn_and_schedule(
-            chat=chat,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=context.root_thread_id,
-            kind="chat.turn",
-            status="failed",
-            final_values=_safe_chat_values(chat=chat, thread_id=thread_id),
-            initial_message_count=initial_message_count,
-            initial_llm_calls=initial_llm_calls,
-            started_at=started_at,
-            branch_meta=branch_meta,
-            trace_correlation=trace_correlation,
-            payload=payload,
-            error=str(exc),
-        )
+        await record_failure(exc, payload)
         raise
     await runtime.run_manager.set_status(run_record.run_id, RunStatus.SUCCESS)
     mark_branch_handoff_decision_outcome(
