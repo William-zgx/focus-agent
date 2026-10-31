@@ -52,7 +52,11 @@ class SkillRegistryDiscoveryMixin:
         *,
         source: SkillSourceDefinition | None = None,
     ) -> SkillDefinition | None:
-        raw_text = skill_path.read_text(encoding="utf-8")
+        try:
+            raw_text = skill_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # One unreadable SKILL.md must not take down discovery of every other skill.
+            return None
         frontmatter, body = _split_frontmatter(raw_text)
         skill_id = str(frontmatter.get("name") or skill_path.parent.name).strip()
         description = str(frontmatter.get("description") or "").strip()
