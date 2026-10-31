@@ -14,9 +14,10 @@
 		min-height: 38px;
 	}
 
-	.fa-branch-graph-node-shell {
-		width: 44px;
-		height: 44px;
+	.fa-branch-graph-node-hit,
+	.fa-branch-graph-node-more {
+		min-width: 44px;
+		min-height: 44px;
 	}
 
 	.fa-branch-action-card-header {

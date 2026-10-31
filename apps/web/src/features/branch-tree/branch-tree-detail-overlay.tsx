@@ -7,10 +7,14 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import {
+	branchActivityLabel,
 	branchStatusLabel,
 	branchTokenUsageLabel,
+	isBranchStale,
 	roleColor,
 	roleLabel,
+	staleBranchLabel,
+	staleBranchTooltip,
 } from "@/features/branch-tree/branch-tree-helpers";
 import { isBranchHandoffDecision } from "@/shared/branch-decision-diagnostics";
 import { tooltipProps } from "@/shared/ui/tooltip";
@@ -31,9 +35,11 @@ type BranchTreeNodeDetailOverlayProps = {
 	detailStyle: CSSProperties;
 	getParentBranchLabel: (node: BranchTreeNode) => string;
 	isChineseUi: boolean;
+	isPinned: boolean;
 	isWorking: boolean;
 	onArchiveToggle: (node: BranchTreeNode) => void;
 	onCancelRename: () => void;
+	onClose: () => void;
 	onKeepOpen: () => void;
 	onPrepareProposal: (node: BranchTreeNode) => void;
 	onRenameDraftChange: (value: string) => void;
@@ -64,6 +70,10 @@ function statusLabel(isChineseUi: boolean) {
 
 function depthLabel(isChineseUi: boolean) {
 	return isChineseUi ? "层级" : "Depth";
+}
+
+function activityLabel(isChineseUi: boolean) {
+	return isChineseUi ? "最近活动" : "Last activity";
 }
 
 function tokenLabel(isChineseUi: boolean) {
@@ -119,9 +129,11 @@ export function BranchNodeDetailOverlay({
 	detailStyle,
 	getParentBranchLabel,
 	isChineseUi,
+	isPinned,
 	isWorking,
 	onArchiveToggle,
 	onCancelRename,
+	onClose,
 	onKeepOpen,
 	onPrepareProposal,
 	onRenameDraftChange,
@@ -166,20 +178,30 @@ export function BranchNodeDetailOverlay({
 			branchStatusLabel(detailNode.branch_status, isChineseUi),
 		],
 		[depthLabel(isChineseUi), String(detailDepth)],
+		[activityLabel(isChineseUi), branchActivityLabel(detailNode, isChineseUi)],
 		[tokenLabel(isChineseUi), branchTokenUsageLabel(detailNode)],
-	].map(([label, value]) => (
-		<div key={`${label}-${value}`} className="fa-branch-node-meta-row">
-			<span className="fa-branch-node-meta-label">{label}</span>
-			<span className="fa-branch-node-meta-value">{value}</span>
-		</div>
-	));
+	]
+		.filter(([, value]) => Boolean(value))
+		.map(([label, value]) => (
+			<div key={`${label}-${value}`} className="fa-branch-node-meta-row">
+				<span className="fa-branch-node-meta-label">{label}</span>
+				<span className="fa-branch-node-meta-value">{value}</span>
+			</div>
+		));
+
+	const isStale = isBranchStale(detailNode);
 
 	return createPortal(
 		<div
 			role="dialog"
+			aria-label={
+				isChineseUi
+					? `分支详情：${detailNode.branch_name}`
+					: `Branch details: ${detailNode.branch_name}`
+			}
 			tabIndex={-1}
 			ref={detailOverlayRef}
-			className="fa-branch-detail-overlay is-visible"
+			className={`fa-branch-detail-overlay is-visible ${isPinned ? "is-pinned" : ""}`.trim()}
 			onMouseEnter={onKeepOpen}
 			onMouseLeave={(event) => {
 				if (
@@ -277,6 +299,11 @@ export function BranchNodeDetailOverlay({
 					>
 						{branchStatusLabel(detailNode.branch_status, isChineseUi)}
 					</span>
+					{isStale ? (
+						<span className="fa-branch-node-badge is-warn">
+							{staleBranchLabel(isChineseUi)}
+						</span>
+					) : null}
 					<span className="fa-branch-node-badge">
 						{isChineseUi ? "深度" : "Depth"} {detailDepth}
 					</span>
@@ -286,6 +313,12 @@ export function BranchNodeDetailOverlay({
 				</div>
 
 				<div className="fa-branch-node-meta">{metaRows}</div>
+
+				{isStale ? (
+					<p className="fa-branch-node-ai-decision-line">
+						{staleBranchTooltip(isChineseUi)}
+					</p>
+				) : null}
 
 				{detailBranchDecision ? (
 					<div className="fa-branch-node-ai-decision is-compact">
@@ -365,6 +398,15 @@ export function BranchNodeDetailOverlay({
 								: isChineseUi
 									? "归档"
 									: "Archive"}
+						</button>
+					) : null}
+					{isPinned ? (
+						<button
+							className="fa-branch-inline-action"
+							onClick={onClose}
+							type="button"
+						>
+							{isChineseUi ? "关闭" : "Close"}
 						</button>
 					) : null}
 					{detailConclusionError ? (

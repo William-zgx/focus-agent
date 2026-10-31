@@ -9,7 +9,9 @@ from focus_agent.core.branching import MergeDecision, MergeMode, MergeTarget
 from focus_agent.core.request_context import RequestContext
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
+from focus_agent.services.branches.tree import thread_last_activity_at
 
+from ..contract_models.branch import BranchTreeNodeView
 from ..contracts import (
     ApplyMergeDecisionRequest,
     ApplyMergeDecisionResponse,
@@ -196,21 +198,41 @@ def get_branch_tree_view(
     root_thread_usage = _token_usage_for_root_thread(
         runtime=runtime, root_thread_id=resolved_root_thread_id
     )
+    activity_by_thread = thread_last_activity_at(
+        getattr(runtime.branch_service, "graph", None) or getattr(runtime, "graph", None),
+        _tree_thread_ids(root, archived_branches),
+    )
     return BranchTreeResponse(
-        root=_annotate_branch_tree_token_usage(
-            root,
-            by_thread_id=token_usage_by_thread,
-            root_thread_usage=root_thread_usage,
-        ),
-        archived_branches=[
+        root=BranchTreeNodeView.from_node(
             _annotate_branch_tree_token_usage(
-                item,
+                root,
                 by_thread_id=token_usage_by_thread,
                 root_thread_usage=root_thread_usage,
+            ),
+            activity_by_thread=activity_by_thread,
+        ),
+        archived_branches=[
+            BranchTreeNodeView.from_node(
+                _annotate_branch_tree_token_usage(
+                    item,
+                    by_thread_id=token_usage_by_thread,
+                    root_thread_usage=root_thread_usage,
+                ),
+                activity_by_thread=activity_by_thread,
             )
             for item in archived_branches
         ],
     )
+
+
+def _tree_thread_ids(root, archived_branches) -> list[str]:
+    thread_ids: list[str] = []
+    pending = [root, *archived_branches]
+    while pending:
+        node = pending.pop()
+        thread_ids.append(node.thread_id)
+        pending.extend(node.children)
+    return thread_ids
 
 
 def _resolve_root_thread_id(*, runtime: AppRuntime, thread_id: str, user_id: str) -> str:

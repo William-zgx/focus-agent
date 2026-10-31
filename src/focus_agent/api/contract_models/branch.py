@@ -59,9 +59,35 @@ class ApplyMergeDecisionResponse(BaseModel):
     target_thread_id: str | None = None
 
 
+class BranchTreeNodeView(BranchTreeNode):
+    """Branch tree node as served by the tree API, with activity metadata."""
+
+    last_activity_at: str | None = Field(
+        default=None,
+        description=(
+            "ISO timestamp of the thread's latest checkpoint (last turn or state "
+            "update). Branch records carry no activity timestamp, so this is the "
+            "best available signal; null when no checkpoint is readable."
+        ),
+    )
+    children: list[BranchTreeNodeView] = Field(default_factory=list)
+
+    @classmethod
+    def from_node(
+        cls, node: BranchTreeNode, *, activity_by_thread: dict[str, str]
+    ) -> BranchTreeNodeView:
+        payload = node.model_dump(exclude={"children"})
+        payload["last_activity_at"] = activity_by_thread.get(node.thread_id)
+        payload["children"] = [
+            cls.from_node(child, activity_by_thread=activity_by_thread)
+            for child in node.children
+        ]
+        return cls(**payload)
+
+
 class BranchTreeResponse(BaseModel):
-    root: BranchTreeNode
-    archived_branches: list[BranchTreeNode] = Field(default_factory=list)
+    root: BranchTreeNodeView
+    archived_branches: list[BranchTreeNodeView] = Field(default_factory=list)
 
 
 __all__ = [
@@ -71,5 +97,6 @@ __all__ = [
     "PrepareMergeProposalRequest",
     "ApplyMergeDecisionRequest",
     "ApplyMergeDecisionResponse",
+    "BranchTreeNodeView",
     "BranchTreeResponse",
 ]

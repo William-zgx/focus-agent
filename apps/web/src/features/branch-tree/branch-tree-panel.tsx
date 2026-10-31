@@ -81,10 +81,7 @@ export function BranchTreePanel() {
 		null;
 	const selectedThreadId =
 		selectedContextThreadId || selectedNode?.thread_id || "";
-	const graph = useMemo(
-		() => buildGraph(data?.root, selectedThreadId),
-		[data?.root, selectedThreadId],
-	);
+	const graph = useMemo(() => buildGraph(data?.root), [data?.root]);
 	const nodeIndex = useMemo(() => {
 		const index = new Map<string, BranchGraphNode>();
 		for (const item of graph.nodes) {
@@ -110,8 +107,11 @@ export function BranchTreePanel() {
 		detailOverlayRef,
 		detailStyle,
 		detailThreadId,
+		hideBranchDetail,
+		isDetailPinned,
 		scheduleHideBranchDetail,
 		showBranchDetail,
+		toggleBranchDetailPinned,
 		updateBranchDetailPosition,
 	} = useBranchDetailOverlayState({ root: data?.root });
 	const previewThreadId = detailThreadId || selectedThreadId;
@@ -213,8 +213,8 @@ export function BranchTreePanel() {
 				<div className="fa-tree-panel-body">
 					<div className="fa-tree-summary">
 						{isChineseUi
-							? "悬浮查看详情，点击切换上下文。"
-							: "Hover for details; click to switch context."}
+							? "点击分支切换上下文，点 ⋯ 查看详情与操作。"
+							: "Select a branch to switch context; use ⋯ for details and actions."}
 					</div>
 					<div className="fa-tree-legend">
 						<span className="fa-tree-legend-item is-role-main">
@@ -254,11 +254,13 @@ export function BranchTreePanel() {
 							graph={graph}
 							graphShellRef={graphShellRef}
 							isChineseUi={isChineseUi}
+							isDetailPinned={isDetailPinned}
 							isLoading={isLoading}
 							nodeIndex={nodeIndex}
 							onOpenThread={(threadId) => void openThread(threadId)}
 							onRequestDetail={showBranchDetail}
 							onRequestHideDetail={scheduleHideBranchDetail}
+							onToggleDetailPinned={toggleBranchDetailPinned}
 							previewNode={previewNode}
 							previewThreadId={previewThreadId}
 							root={data?.root}
@@ -311,9 +313,11 @@ export function BranchTreePanel() {
 				detailStyle={detailStyle}
 				getParentBranchLabel={getParentBranchLabel}
 				isChineseUi={isChineseUi}
+				isPinned={isDetailPinned}
 				isWorking={isWorking}
 				onArchiveToggle={(node) => void handleArchiveToggle(node)}
 				onCancelRename={cancelRenameBranch}
+				onClose={hideBranchDetail}
 				onKeepOpen={clearBranchDetailHideTimer}
 				onPrepareProposal={(node) => void handlePrepareProposal(node)}
 				onRenameDraftChange={setRenameBranchDraft}

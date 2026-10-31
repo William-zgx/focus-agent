@@ -13622,7 +13622,7 @@
       ],
       "type": "string"
     },
-    "BranchTreeNode": {
+    "BranchTreeNodeView": {
       "properties": {
         "archived_at": {
           "anyOf": [
@@ -13660,7 +13660,7 @@
         },
         "children": {
           "items": {
-            "$ref": "#/components/schemas/BranchTreeNode"
+            "$ref": "#/components/schemas/BranchTreeNodeView"
           },
           "type": "array"
         },
@@ -13677,6 +13677,16 @@
         "is_archived": {
           "default": false,
           "type": "boolean"
+        },
+        "last_activity_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "parent_thread_id": {
           "anyOf": [
@@ -13711,12 +13721,12 @@
       "properties": {
         "archived_branches": {
           "items": {
-            "$ref": "#/components/schemas/BranchTreeNode"
+            "$ref": "#/components/schemas/BranchTreeNodeView"
           },
           "type": "array"
         },
         "root": {
-          "$ref": "#/components/schemas/BranchTreeNode"
+          "$ref": "#/components/schemas/BranchTreeNodeView"
         }
       },
       "required": [

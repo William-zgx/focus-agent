@@ -99,6 +99,8 @@ export interface BranchTreeNode {
 	branch_depth: number;
 	fork_strategy?: string | null;
 	token_usage?: FocusAgentTokenUsageSummary;
+	/** Latest checkpoint timestamp of the thread (last turn or state update). */
+	last_activity_at?: string | null;
 	children: BranchTreeNode[];
 }
 

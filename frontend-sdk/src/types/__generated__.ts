@@ -5977,8 +5977,11 @@ export interface components {
          * @enum {string}
          */
         BranchStatus: "active" | "paused" | "preparing_merge_review" | "awaiting_merge_review" | "merged" | "discarded" | "closed";
-        /** BranchTreeNode */
-        BranchTreeNode: {
+        /**
+         * BranchTreeNodeView
+         * @description Branch tree node as served by the tree API, with activity metadata.
+         */
+        BranchTreeNodeView: {
             /** Archived At */
             archived_at?: string | null;
             /**
@@ -5998,7 +6001,7 @@ export interface components {
             /** @default active */
             branch_status: components["schemas"]["BranchStatus"];
             /** Children */
-            children?: components["schemas"]["BranchTreeNode"][];
+            children?: components["schemas"]["BranchTreeNodeView"][];
             /** Fork Strategy */
             fork_strategy?: string | null;
             /**
@@ -6006,6 +6009,11 @@ export interface components {
              * @default false
              */
             is_archived: boolean;
+            /**
+             * Last Activity At
+             * @description ISO timestamp of the thread's latest checkpoint (last turn or state update). Branch records carry no activity timestamp, so this is the best available signal; null when no checkpoint is readable.
+             */
+            last_activity_at?: string | null;
             /** Parent Thread Id */
             parent_thread_id?: string | null;
             /** Root Thread Id */
@@ -6020,8 +6028,8 @@ export interface components {
         /** BranchTreeResponse */
         BranchTreeResponse: {
             /** Archived Branches */
-            archived_branches?: components["schemas"]["BranchTreeNode"][];
-            root: components["schemas"]["BranchTreeNode"];
+            archived_branches?: components["schemas"]["BranchTreeNodeView"][];
+            root: components["schemas"]["BranchTreeNodeView"];
         };
         /** CaptureNoteRequest */
         CaptureNoteRequest: {

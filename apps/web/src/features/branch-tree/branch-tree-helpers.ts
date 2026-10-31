@@ -19,15 +19,18 @@ export type BranchGraph = {
 	height: number;
 };
 
-const NODE_X_START = 42;
-const NODE_X_GAP = 108;
-const NODE_Y_START = 48;
-const NODE_Y_GAP = 76;
+// One row per node (pre-order), indented by depth, so every node has room for
+// a visible label to the right of its dot and edges stay in the indent gutter.
+const NODE_X_START = 22;
+const NODE_X_GAP = 30;
+const NODE_Y_START = 58;
+const NODE_Y_GAP = 54;
+const NODE_LABEL_WIDTH = 210;
 const GRAPH_NODE_SIZE = 24;
 const GRAPH_NODE_RADIUS = GRAPH_NODE_SIZE / 2;
 const GRAPH_EDGE_NODE_CLEARANCE = GRAPH_NODE_RADIUS + 1;
-const GRAPH_FOCUS_TARGET_Y = 184;
-const GRAPH_TOP_PADDING = 34;
+const GRAPH_EDGE_ELBOW_RADIUS = 10;
+const BRANCH_STALE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
 
 export const BRANCH_DETAIL_WIDTH = 228;
 export const BRANCH_DETAIL_HEIGHT_ESTIMATE = 260;
@@ -183,41 +186,22 @@ export function branchTokenUsageLabel(node?: BranchTreeNode | null) {
 	return `${formatTokenCount(branchTotalTokens(node))} tokens`;
 }
 
-export function buildGraph(
-	root?: BranchTreeNode | null,
-	focusThreadId?: string,
-): BranchGraph {
+export function buildGraph(root?: BranchTreeNode | null): BranchGraph {
 	if (!root) {
 		return { nodes: [], edges: [], width: 220, height: 220 };
 	}
 
 	const nodes: BranchGraphNode[] = [];
 	const edges: BranchGraphEdge[] = [];
-	let cursorY = NODE_Y_START;
 	let maxDepth = 0;
 
-	function walk(
-		node: BranchTreeNode,
-		depth: number,
-		parent?: BranchTreeNode,
-	): number {
+	function walk(node: BranchTreeNode, depth: number, parent?: BranchTreeNode) {
 		maxDepth = Math.max(maxDepth, depth);
-		const childCenters: number[] = [];
-		for (const child of node.children) {
-			childCenters.push(walk(child, depth + 1, node));
-		}
-
-		const y =
-			childCenters.length > 0
-				? (childCenters[0] + childCenters[childCenters.length - 1]) / 2
-				: (() => {
-						const next = cursorY;
-						cursorY += NODE_Y_GAP;
-						return next;
-					})();
-		const x = NODE_X_START + depth * NODE_X_GAP;
-
-		nodes.push({ node, x, y });
+		nodes.push({
+			node,
+			x: NODE_X_START + depth * NODE_X_GAP,
+			y: NODE_Y_START + nodes.length * NODE_Y_GAP,
+		});
 		if (parent) {
 			edges.push({
 				from: parent.thread_id,
@@ -225,41 +209,89 @@ export function buildGraph(
 				color: roleColor(node.branch_role),
 			});
 		}
-		return y;
+		for (const child of node.children) {
+			walk(child, depth + 1, node);
+		}
 	}
 
 	walk(root, 0);
 
-	const minY = Math.min(...nodes.map((item) => item.y), NODE_Y_START);
-	const focusNode = focusThreadId
-		? nodes.find((item) => item.node.thread_id === focusThreadId)
-		: undefined;
-	const requestedShift = focusNode ? GRAPH_FOCUS_TARGET_Y - focusNode.y : 0;
-	const minShift = GRAPH_TOP_PADDING - minY;
-	const verticalShift = Math.max(minShift, requestedShift);
-	const shiftedNodes =
-		verticalShift === 0
-			? nodes
-			: nodes.map((item) => ({
-					...item,
-					y: item.y + verticalShift,
-				}));
-	const shiftedMaxY = Math.max(
-		...shiftedNodes.map((item) => item.y),
-		NODE_Y_START,
+	const width = Math.max(
+		260,
+		NODE_X_START + maxDepth * NODE_X_GAP + GRAPH_NODE_RADIUS + NODE_LABEL_WIDTH,
 	);
-	const width = Math.max(240, NODE_X_START * 2 + maxDepth * NODE_X_GAP + 56);
-	const height = Math.max(220, shiftedMaxY + NODE_Y_START);
+	const height = Math.max(
+		220,
+		NODE_Y_START + (nodes.length - 1) * NODE_Y_GAP + NODE_Y_START,
+	);
 
-	return { nodes: shiftedNodes, edges, width, height };
+	return { nodes, edges, width, height };
 }
 
 export function edgePath(from: BranchGraphNode, to: BranchGraphNode) {
+	// Drop straight down from the parent's dot, then turn right into the child.
 	const startX = from.x;
 	const startY = from.y + GRAPH_EDGE_NODE_CLEARANCE;
-	const endX = to.x;
-	const endY = to.y - GRAPH_EDGE_NODE_CLEARANCE;
-	const offsetY = Math.max(24, Math.min(48, (endY - startY) * 0.35));
-	const offsetX = Math.max(28, Math.abs(endX - startX) * 0.4);
-	return `M ${startX} ${startY} C ${startX + offsetX} ${startY + offsetY}, ${endX - offsetX} ${endY - offsetY}, ${endX} ${endY}`;
+	const endX = to.x - GRAPH_EDGE_NODE_CLEARANCE;
+	const endY = to.y;
+	const radius = Math.max(
+		0,
+		Math.min(GRAPH_EDGE_ELBOW_RADIUS, endY - startY, endX - startX),
+	);
+	return `M ${startX} ${startY} L ${startX} ${endY - radius} Q ${startX} ${endY} ${startX + radius} ${endY} L ${endX} ${endY}`;
+}
+
+export function branchActivityTime(node?: BranchTreeNode | null) {
+	const timestamp = Date.parse(String(node?.last_activity_at ?? ""));
+	return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function isBranchStale(node: BranchTreeNode, now = Date.now()) {
+	if (!node.branch_id || node.is_archived) return false;
+	if (["merged", "discarded", "closed"].includes(node.branch_status)) {
+		return false;
+	}
+	const activity = branchActivityTime(node);
+	return activity !== null && now - activity > BRANCH_STALE_AFTER_MS;
+}
+
+export function staleBranchLabel(isChineseUi = false) {
+	return isChineseUi ? "闲置" : "Stale";
+}
+
+export function staleBranchTooltip(isChineseUi = false) {
+	return isChineseUi
+		? "超过 3 天没有新进展，建议评审并合并结论，或归档这个分支。"
+		: "No activity for over 3 days. Review & merge its conclusion, or archive it.";
+}
+
+export function branchActivityLabel(
+	node: BranchTreeNode,
+	isChineseUi = false,
+	now = Date.now(),
+) {
+	const activity = branchActivityTime(node);
+	if (activity === null) return "";
+	const minutes = Math.round((activity - now) / 60_000);
+	const formatter = new Intl.RelativeTimeFormat(isChineseUi ? "zh" : "en", {
+		numeric: "auto",
+		style: "short",
+	});
+	if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
+	const hours = Math.round(minutes / 60);
+	if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
+	return formatter.format(Math.round(hours / 24), "day");
+}
+
+export function statusBadgeTone(status: BranchTreeNode["branch_status"]) {
+	switch (statusAccentTone(status)) {
+		case "is-success":
+			return "success" as const;
+		case "is-warn":
+			return "warning" as const;
+		case "is-danger":
+			return "danger" as const;
+		default:
+			return status === "active" ? ("info" as const) : ("status" as const);
+	}
 }

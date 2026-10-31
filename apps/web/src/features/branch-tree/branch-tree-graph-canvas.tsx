@@ -18,6 +18,7 @@ type BranchTreeGraphCanvasProps = {
 	graph: BranchGraph;
 	graphShellRef: RefObject<HTMLDivElement | null>;
 	isChineseUi: boolean;
+	isDetailPinned: boolean;
 	isLoading: boolean;
 	nodeIndex: Map<string, BranchGraphNode>;
 	onOpenThread: (threadId: string) => void;
@@ -26,6 +27,10 @@ type BranchTreeGraphCanvasProps = {
 		anchorElement: HTMLElement | null,
 	) => void;
 	onRequestHideDetail: () => void;
+	onToggleDetailPinned: (
+		node: BranchTreeNode,
+		anchorElement: HTMLElement | null,
+	) => void;
 	previewNode: BranchTreeNode | null;
 	previewThreadId: string;
 	root: BranchTreeNode | null | undefined;
@@ -42,11 +47,13 @@ export function BranchTreeGraphCanvas({
 	graph,
 	graphShellRef,
 	isChineseUi,
+	isDetailPinned,
 	isLoading,
 	nodeIndex,
 	onOpenThread,
 	onRequestDetail,
 	onRequestHideDetail,
+	onToggleDetailPinned,
 	previewNode,
 	previewThreadId,
 	root,
@@ -144,11 +151,15 @@ export function BranchTreeGraphCanvas({
 										graphNode={item}
 										isChineseUi={isChineseUi}
 										isContext={isContext}
+										isDetailPinned={
+											isDetailPinned && detailThreadId === node.thread_id
+										}
 										isFocused={node.thread_id === selectedThreadId}
 										isRouteThread={node.thread_id === routeThreadId}
 										onOpenThread={onOpenThread}
 										onRequestDetail={onRequestDetail}
 										onRequestHideDetail={onRequestHideDetail}
+										onToggleDetailPinned={onToggleDetailPinned}
 									/>
 								);
 							})}

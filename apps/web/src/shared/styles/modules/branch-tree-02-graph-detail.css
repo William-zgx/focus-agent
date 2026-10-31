@@ -19,11 +19,10 @@
 
 .fa-branch-graph-node-shell {
 	position: absolute;
-	display: grid;
-	width: 24px;
-	height: 24px;
-	place-items: center;
-	transform: translate(-50%, -50%);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	transform: translate(-12px, -50%);
 	z-index: 1;
 	transition:
 		opacity 0.18s ease,
@@ -36,7 +35,7 @@
 }
 
 .fa-branch-graph-main.has-active-selection .fa-branch-graph-node-shell {
-	opacity: 0.52;
+	opacity: 0.78;
 	filter: saturate(0.72);
 }
 
@@ -207,12 +206,12 @@
 		color-mix(in srgb, var(--fa-branch-role-color) 16%, transparent);
 }
 
-.fa-branch-graph-node:hover,
+.fa-branch-graph-node-hit:hover > .fa-branch-graph-node,
 .fa-branch-graph-node.is-focused {
 	transform: scale(1.04);
 }
 
-.fa-branch-graph-node:hover::before,
+.fa-branch-graph-node-hit:hover > .fa-branch-graph-node::before,
 .fa-branch-graph-node.is-focused::before,
 .fa-branch-graph-node.is-active::before {
 	transform: scale(1);

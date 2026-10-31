@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from copy import deepcopy
+from typing import Any
 
 from ...core.branching import BranchRecord, BranchRole, BranchStatus, BranchTreeNode
 
@@ -98,4 +100,45 @@ class BranchTreeCoordinator:
         return updated_record
 
 
-__all__ = ["BranchTreeCoordinator"]
+def _checkpoint_timestamp(graph: Any, thread_id: str) -> str | None:
+    config = {"configurable": {"thread_id": thread_id}}
+    checkpointer = getattr(graph, "checkpointer", None)
+    get_tuple = getattr(checkpointer, "get_tuple", None)
+    if callable(get_tuple):
+        try:
+            checkpoint_tuple = get_tuple(config)
+        except Exception:  # noqa: BLE001 - activity is best-effort display metadata
+            checkpoint_tuple = None
+        checkpoint = getattr(checkpoint_tuple, "checkpoint", None)
+        if isinstance(checkpoint, dict) and checkpoint.get("ts"):
+            return str(checkpoint["ts"])
+    get_state = getattr(graph, "get_state", None)
+    if not callable(get_state):
+        return None
+    try:
+        snapshot = get_state(config)
+    except Exception:  # noqa: BLE001 - activity is best-effort display metadata
+        return None
+    created_at = getattr(snapshot, "created_at", None)
+    return str(created_at) if created_at else None
+
+
+def thread_last_activity_at(graph: Any, thread_ids: Iterable[str]) -> dict[str, str]:
+    """Return the latest checkpoint timestamp per thread.
+
+    Branch records carry no activity timestamps, so the newest LangGraph
+    checkpoint ``ts`` of each thread (written on every turn and state update)
+    is the best available "last activity" signal. Threads without a readable
+    checkpoint are omitted.
+    """
+    if graph is None:
+        return {}
+    activity: dict[str, str] = {}
+    for thread_id in dict.fromkeys(str(item) for item in thread_ids if item):
+        timestamp = _checkpoint_timestamp(graph, thread_id)
+        if timestamp:
+            activity[thread_id] = timestamp
+    return activity
+
+
+__all__ = ["BranchTreeCoordinator", "thread_last_activity_at"]

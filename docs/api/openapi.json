@@ -8251,7 +8251,8 @@
         "title": "BranchStatus",
         "type": "string"
       },
-      "BranchTreeNode": {
+      "BranchTreeNodeView": {
+        "description": "Branch tree node as served by the tree API, with activity metadata.",
         "properties": {
           "archived_at": {
             "anyOf": [
@@ -8295,7 +8296,7 @@
           },
           "children": {
             "items": {
-              "$ref": "#/components/schemas/BranchTreeNode"
+              "$ref": "#/components/schemas/BranchTreeNodeView"
             },
             "title": "Children",
             "type": "array"
@@ -8315,6 +8316,18 @@
             "default": false,
             "title": "Is Archived",
             "type": "boolean"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp of the thread's latest checkpoint (last turn or state update). Branch records carry no activity timestamp, so this is the best available signal; null when no checkpoint is readable.",
+            "title": "Last Activity At"
           },
           "parent_thread_id": {
             "anyOf": [
@@ -8347,20 +8360,20 @@
           "thread_id",
           "root_thread_id"
         ],
-        "title": "BranchTreeNode",
+        "title": "BranchTreeNodeView",
         "type": "object"
       },
       "BranchTreeResponse": {
         "properties": {
           "archived_branches": {
             "items": {
-              "$ref": "#/components/schemas/BranchTreeNode"
+              "$ref": "#/components/schemas/BranchTreeNodeView"
             },
             "title": "Archived Branches",
             "type": "array"
           },
           "root": {
-            "$ref": "#/components/schemas/BranchTreeNode"
+            "$ref": "#/components/schemas/BranchTreeNodeView"
           }
         },
         "required": [

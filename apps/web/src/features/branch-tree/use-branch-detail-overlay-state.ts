@@ -17,6 +17,11 @@ export function useBranchDetailOverlayState({
 	root,
 }: UseBranchDetailOverlayStateOptions) {
 	const [detailThreadId, setDetailThreadId] = useState<string>("");
+	// A pinned overlay (opened via the node's details button) survives hover and
+	// blur so touch and keyboard users can reach its actions.
+	const [isDetailPinned, setIsDetailPinned] = useState(false);
+	const isDetailPinnedRef = useRef(false);
+	isDetailPinnedRef.current = isDetailPinned;
 	const [detailStyle, setDetailStyle] = useState<CSSProperties>({});
 	const detailAnchorRef = useRef<HTMLElement | null>(null);
 	const detailOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -111,11 +116,13 @@ export function useBranchDetailOverlayState({
 	const hideBranchDetail = useCallback(() => {
 		clearBranchDetailHideTimer();
 		detailAnchorRef.current = null;
+		setIsDetailPinned(false);
 		setDetailThreadId("");
 		setDetailStyle({});
 	}, [clearBranchDetailHideTimer]);
 
 	const scheduleHideBranchDetail = useCallback(() => {
+		if (isDetailPinnedRef.current) return;
 		clearBranchDetailHideTimer();
 		detailHideTimerRef.current = window.setTimeout(() => {
 			detailHideTimerRef.current = null;
@@ -125,7 +132,7 @@ export function useBranchDetailOverlayState({
 
 	const showBranchDetail = useCallback(
 		(node: BranchTreeNode, anchorElement: HTMLElement | null) => {
-			if (!anchorElement) return;
+			if (!anchorElement || isDetailPinnedRef.current) return;
 			clearBranchDetailHideTimer();
 			const nextStyle = getBranchDetailStyle(anchorElement);
 			const isSameAnchor = detailAnchorRef.current === anchorElement;
@@ -144,6 +151,61 @@ export function useBranchDetailOverlayState({
 			updateBranchDetailPosition,
 		],
 	);
+
+	const toggleBranchDetailPinned = useCallback(
+		(node: BranchTreeNode, anchorElement: HTMLElement | null) => {
+			if (!anchorElement) return;
+			if (isDetailPinnedRef.current && detailThreadId === node.thread_id) {
+				hideBranchDetail();
+				anchorElement.focus();
+				return;
+			}
+			clearBranchDetailHideTimer();
+			detailAnchorRef.current = anchorElement;
+			setDetailStyle(getBranchDetailStyle(anchorElement));
+			setDetailThreadId(node.thread_id);
+			setIsDetailPinned(true);
+			window.requestAnimationFrame(() => {
+				detailOverlayRef.current?.focus();
+			});
+		},
+		[
+			clearBranchDetailHideTimer,
+			detailThreadId,
+			getBranchDetailStyle,
+			hideBranchDetail,
+		],
+	);
+
+	useEffect(() => {
+		if (!isDetailPinned) return;
+
+		function handlePointerDown(event: PointerEvent) {
+			const target = event.target;
+			if (!(target instanceof Node)) return;
+			if (
+				detailOverlayRef.current?.contains(target) ||
+				detailAnchorRef.current?.contains(target)
+			) {
+				return;
+			}
+			hideBranchDetail();
+		}
+
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key !== "Escape") return;
+			const anchor = detailAnchorRef.current;
+			hideBranchDetail();
+			anchor?.focus();
+		}
+
+		document.addEventListener("pointerdown", handlePointerDown);
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", handlePointerDown);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [hideBranchDetail, isDetailPinned]);
 
 	useEffect(() => {
 		if (!detailThreadId) return;
@@ -180,8 +242,10 @@ export function useBranchDetailOverlayState({
 		detailStyle,
 		detailThreadId,
 		hideBranchDetail,
+		isDetailPinned,
 		scheduleHideBranchDetail,
 		showBranchDetail,
+		toggleBranchDetailPinned,
 		updateBranchDetailPosition,
 	};
 }
