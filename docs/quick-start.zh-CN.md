@@ -150,7 +150,7 @@ Postgres-backed 运行默认启用 Memory Embedding：
 - `AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`
 - `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`
 
-本地 auto 模式优先使用 Ollama `embeddinggemma`。应用不会自动执行 `ollama pull`，需要你显式安装：
+本地 auto 模式优先使用 Ollama `embeddinggemma`。`AGENT_MEMORY_EMBEDDING_AUTO_PULL` 默认关闭，API 二进制本身不会自动拉取模型；`make api` / `make dev` 在未设置时会打开它。也可以显式安装：
 
 ```bash
 ollama pull embeddinggemma
@@ -193,9 +193,9 @@ collection 名称、安全校验、backfill target 和多副本约束见 [Zvec R
 
 API 二进制在没有 `DATABASE_URI` 时也会默认持久化本地 app-state：
 branch、conversation、thread access、用户和 productivity repository 共用
-`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`）。Agent Team 仍是
-in-memory 本地 fallback；该模式也没有 Postgres trajectory recorder 和 artifact
-metadata repository。
+`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`）。Agent Team 的 session、task 和
+v2 run record 也存在同一个 SQLite 文件里，API 重启后仍在；该模式没有 Postgres trajectory
+recorder 和 artifact metadata repository。
 
 LangGraph checkpoint/store 默认使用 SQLite，文件分别为
 `.focus_agent/langgraph-checkpoints.sqlite3` 和
@@ -347,9 +347,9 @@ make frontend-android-runtime-smoke
 内置 `/app` 会把未登录用户引导到 `/app/auth/login`，并通过 `return_to` 保留原本要访问的受保护页面。本地开发最快的浏览器路径是：
 
 1. Vite 模式打开 `http://127.0.0.1:5173/app/`，或打开后端托管 bundle 的 `http://127.0.0.1:8000/app/`。
-2. 点击 `Demo 登录` 创建默认本地 demo 用户，并回到原目标页面。
+2. 点击 `试用 Demo 工作区` 创建默认本地 demo 用户，并回到原目标页面。
 3. 用左侧栏账号区域的 `退出登录` 回到未登录态。
-4. 切换账号时先退出，再用用户名密码、`Demo 登录` 或 Bearer Token 面板重新登录。
+4. 切换账号时先退出，再用用户名密码、`试用 Demo 工作区` 或 Bearer Token 面板重新登录。
 
 如果要测试 token 登录，可先创建本地 demo access token：
 
@@ -359,7 +359,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
-把返回的 `access_token` 粘贴到登录页 `使用 Bearer Token` 面板，并点击 `继续`。`清空` 会移除本地保存的 token。注册用户名密码会创建持久化本地账号，只在明确需要验证账号密码流程时使用。
+把返回的 `access_token` 粘贴到登录页 `开发者调试`（Access token） 面板，并点击 `继续`。`清空` 会移除本地保存的 token。注册用户名密码会创建持久化本地账号，只在明确需要验证账号密码流程时使用。
 
 注册和测试账号注意点：
 

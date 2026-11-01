@@ -87,7 +87,7 @@ flowchart LR
 - [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 - [frontend-visual-system.md](frontend-visual-system.md)：Web App token、primitive、CSS module ownership、style governance、bundle budget、截图/a11y 验证口径。
 - [architecture-debt-baseline.json](architecture-debt-baseline.json)：architecture gate 的 800 行阈值；当前没有 grandfathered large-file debt。
-- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与 2.0 exit criteria；当前总量为 **169**，1.x public facade 仍保留。
+- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与 2.0 exit criteria；当前总量为 **89**，1.x public facade 仍保留。
 
 ## Core Topics / 核心专题
 
@@ -155,4 +155,4 @@ flowchart LR
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 当前状态放 canonical 专题；待实施方案放有日期和状态的 `plans/` 子目录并从本索引链接；执行记录和历史草稿明确标注 historical，不作为当前能力证据。
 - `implemented`、默认启用、端到端已接通和已通过验收分别说明。声明验证通过必须有对应版本、环境、命令与结果，不能仅依据模块存在或旧报告。
-- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **169**）；README 与专题文档不得漂移。
+- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **89**）；README 与专题文档不得漂移。

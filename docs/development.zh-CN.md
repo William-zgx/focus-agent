@@ -140,7 +140,7 @@ architecture gate 对非生成源码使用规范化的 800 行上限。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-169 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+89 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，
@@ -427,9 +427,9 @@ make frontend-android-runtime-smoke
 如果改动触及 Web 登录页、账号侧栏、管理员路由保护或 token 存储，还要用真实浏览器跑一遍主流程：
 
 - 未登录访问 `/app/admin/users` 等受保护页面，确认跳转到 `/app/auth/login?return_to=...`。
-- 点击 `Demo 登录`，确认登录后回到原受保护页面。
+- 点击 `试用 Demo 工作区`，确认登录后回到原受保护页面。
 - 从左侧栏账号区域 `退出登录`，确认重新看到登录页。
-- 调用本地 `/v1/auth/demo-token` 生成 token，通过 `使用 Bearer Token` 面板登录，确认侧栏账号已切换。
+- 调用本地 `/v1/auth/demo-token` 生成 token，通过 `开发者调试`（Access token）面板登录，确认侧栏账号已切换。
 - 注册或 admin reset password 后，确认用户名密码登录仍能回到同一个 `return_to` 目标页面。
 - 在 `/app/admin/users` 创建用户、打开详情抽屉，并填写 reason 后变更状态或角色。
 - 在 `/app/admin/audit-events` 按 resource 或 decision 过滤，并打开事件详情抽屉。

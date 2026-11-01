@@ -147,7 +147,7 @@ Android 与 Web 不是同一集成模型：
 
 - 决策与推荐：`branch_decision/` + [branch-decisions.md](branch-decisions.md)
 - 生命周期与 merge：`services/branches/`
-- 兼容 re-export：顶层 `services/branch_*.py`、`services/chat_*.py` 等 **shim**（计入 compat baseline）
+- 兼容 re-export：顶层 `src/focus_agent/branch_service.py`、`src/focus_agent/chat_service.py` 等 **shim**（计入 compat baseline）
 
 ### 5.3 Agent Team
 

@@ -115,7 +115,7 @@ large files, so every scanned file above 800 lines is a regression; a file that
 was split below the limit must not be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 169 items.
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 89 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an
@@ -441,9 +441,9 @@ make frontend-android-runtime-smoke
 When the Web login surface, account shell, admin route protection, or token storage changes, also run a real-browser auth flow against the local app:
 
 - Visit a protected page such as `/app/admin/users` while signed out and confirm the redirect to `/app/auth/login?return_to=...`.
-- Use `Demo 登录` and confirm the app returns to the protected target.
+- Use `试用 Demo 工作区` and confirm the app returns to the protected target.
 - Sign out from the sidebar account control and confirm the login page is visible again.
-- Generate a local `/v1/auth/demo-token`, use the `使用 Bearer Token` panel, and confirm the sidebar account changes.
+- Generate a local `/v1/auth/demo-token`, use the `开发者调试` (Access token) panel, and confirm the sidebar account changes.
 - After registration or admin password reset, confirm username/password login still reaches the same `return_to` target.
 - In `/app/admin/users`, create a user, open the detail drawer, and perform a reasoned status or role update.
 - In `/app/admin/audit-events`, filter by resource or decision and open an event detail drawer.
