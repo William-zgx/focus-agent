@@ -119,7 +119,7 @@ flowchart LR
 | PostgreSQL 运维 | migration/ops report、backup/restore evidence、transactional import、schema v19 | 在目标规模数据上演练 RPO/RTO、跨版本 restore、长期 retention 和故障切换 |
 | Observability | `/readyz`、`/metrics`、OTel smoke、alert report、真实 Chrome observability smoke | 接真实 collector、trace backend、pager/alert 平台，并增加长时间窗口与多实例验证 |
 | Auth lifecycle | active-user check、session revocation、HS256 active key set、Cookie CSRF | 接企业 IdP/JWKS、refresh/rotation runbook、跨服务 logout/revocation 和安全审计 |
-| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛；用证据证明 branch 工作流的任务 ROI |
+| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛；branch 工作流已有配对实验（[branch_ab](plans/2026-10-31-branch-ab/status.md)）：基线分支组显著差于线性组，修复导入呈现与合并门后复测中，仍需证明分支组优于而不只是持平线性组 |
 | Runtime 一致性 | contract tests、stream quarantine、architecture gate | 收敛 Chat / Harness / Agent Team / Android local-runtime 的共享 stream 与 tool 语义，降低并行路径漂移 |
 | Web/stream 可靠性 | real Chrome workflow、reconnect dedupe、incomplete-stream error、bridge cleanup | 增加断网/恢复、代理超时、多实例 replay、长会话和轻量负载阈值 |
 | Android 发布 | debug CI、native HTTP/deep-link hardening、instrumentation coverage | 增加 release signing pipeline、真实设备/Android 版本矩阵、弱网/后台恢复和商店发布检查 |

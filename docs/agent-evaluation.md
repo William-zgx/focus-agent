@@ -20,6 +20,7 @@ project-level policy for when and how to run it.
 | Trajectory failures | `trajectory_failures` | Non-blocking nightly | Production failure skeletons that should be hardened or promoted. |
 | Model matrix | `model_matrix` | Non-blocking nightly | Compare labeled model roles on the same task inputs. |
 | Stress | future suite | Manual or nightly | Retries, concurrency, long context, and flaky behavior. |
+| Branch vs. linear A/B | `branch_ab` (frozen, 32 tasks) | Manual, real model | Paired experiment for the branch-workflow thesis: the same user messages run in one linear thread and through fork / merge; two blind LLM judges score the final answer. Runs outside `tests.eval` via `scripts/branch_ab/`; see the [dataset README](../tests/eval/datasets/branch_ab/README.md) and [results](plans/2026-10-31-branch-ab/status.md). |
 
 ## Case Taxonomy
 

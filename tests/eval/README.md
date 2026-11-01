@@ -7,6 +7,10 @@ Tests *behavior* of the Focus Agent, not its Python units. Drops the agent
 into scripted tasks, scores each trajectory against rule / LLM / trajectory
 judges, then aggregates suite-level metrics for CI gating.
 
+The branch-vs-linear paired experiment (`datasets/branch_ab/`) does not run
+through this harness: it drives the real runtime with a real model, two arms per
+task, via `scripts/branch_ab/` (see `datasets/branch_ab/README.md`).
+
 ## Quickstart
 
 ```bash

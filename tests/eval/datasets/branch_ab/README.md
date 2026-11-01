@@ -44,6 +44,34 @@ words trigger branch actions and would break the linear arm.
    compilation, every required token present in user text, detour details
    present in detour turns, no answer tokens leaked into the return turn.
 
+## Running conditions (both arms identical)
+
+Set in `scripts/branch_ab/run_experiment.py::_isolated_env`:
+
+- One fresh process and temporary state directory per (task, arm, repeat).
+- All tools disabled (`scripts/branch_ab/tools.disabled.toml`) and skills off
+  (`FOCUS_AGENT_SKILLS_ENABLED=false`): every fact is in the conversation, and
+  tools only added noise (empty-workspace searches, unrelated pages).
+- Branch recommendation, branch decision, delegation, web search and memory
+  embeddings off; `MODEL_REQUEST_TIMEOUT_SECONDS=600` for slow relay endpoints.
+- Before each turn, before fork and before the merge proposal, the runner waits
+  for background work (compaction, titles) to drain, as a pausing user would.
+
+## Scoring rules
+
+- A run whose approved merge the product refuses is recorded as
+  `product_failure` and scored as an undelivered answer (judge overall 1); it
+  stays in the pairs. Infrastructure errors (`error`: 429, timeouts) are retried
+  by rerunning the same command; finished runs are skipped.
+- Pass (pass^1 / pass^k) uses the judge only: overall >= 4 and no adopted
+  rejected material. Regex contamination is diagnostic: it also fires when an
+  answer correctly says "X was ruled out".
+- Judges: report each judge separately (they differ in strictness), and accept a
+  conclusion only when both judges agree on the direction of the paired
+  difference. The model under test must not be the only judge.
+
+Commands and current results: `docs/plans/2026-10-31-branch-ab/status.md`.
+
 Known limitation: the correct/wrong answers in `evidence/` were written by the
 same model family that will be tested, so they show the regexes are internally
 consistent, not that they cover every phrasing a model may use. The blind LLM

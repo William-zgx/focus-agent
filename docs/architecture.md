@@ -521,6 +521,8 @@ main thread
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
 - imported conclusion 可写入父线程状态，并可进入 memory pipeline。merge apply 时每条 key finding 使用 proposal 的 `finding_evidence_refs`（无逐条 refs 时沿用整份 `evidence_refs`）；`merge_queue` 条目额外带 `open_questions`、`finding_evidence_refs`、`child_thread_id`、`imported_at`；导入 SystemMessage 的文本保持与 chat 侧 backfill 一致，结构化字段放在 `response_metadata.focus_agent.metadata.branch_import`（`branch_id`、`branch_name`、`child_thread_id`、`summary`、`key_findings`、`open_questions`、`evidence_refs`、`artifacts`、`imported_at`），经 `serialize_message` 暴露为 `message.metadata.branch_import`。嵌套 merge（目标是父分支）把结论写入接收分支自己的 branch memory，而不是主线 memory。
+- 主线作答时，`agent_loop_prompt._build_prompt_messages` 把导入 SystemMessage（按 `response_metadata.focus_agent.metadata.branch_import` 或 `Imported conclusion from branch '` 前缀识别）在发给模型的消息里改写为一条用户消息（“我在旁支问题「<分支名>」里已经定下的决定（这些是最终结论）：”/ “Decisions I settled while looking into the side question '<name>' (these are final):” + 结论正文）和一条简短确认（“收到。”/“Noted.”）；存储的消息、API、SDK 与 UI 不变。依据：同一结论以 system 通知呈现时模型多半忽略，见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。
+- merge apply 的答案验证门（`services/branches/merge.py::_merge_import_blocked_reason`）只在子线程最后一轮 `answer_verification.status == "contradicted"` 时拒绝已批准的导入；`unsupported` / `blocked`（未能验证，例如所需 web 工具不可用）不拦截用户已批准的结论。
 - prompt assembly 从 `merge_queue` 渲染独立的 `## Approved branch conclusions` 块：最新优先、按分支名标注、包含 findings / open questions / artifacts，有自己的条目与字符预算；它来自线程 state，父线程被 compaction 后依然存在。已在该块中出现的分支不再占用通用 findings 名额。
 - pre-turn branch recommendation 可以生成 `fork_child_branch` 或 `fork_sibling_branch` 的 pending Branch Action，但不会直接执行 fork。
 

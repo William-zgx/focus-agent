@@ -58,6 +58,7 @@ flowchart LR
 | 本地跑起来 | [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md) |
 | 改代码与验证矩阵 | [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md) |
 | 模块边界与请求链路 | [architecture.md](architecture.md) |
+| 分支工作流是否优于线性对话（实验与证据） | [plans/2026-10-31-branch-ab/status.md](plans/2026-10-31-branch-ab/status.md) |
 | 当前实现、启用条件与能力缺口 | [architecture/agent-capability-map.md](architecture/agent-capability-map.md) |
 | 当前基线、剩余风险与实施顺序 | [roadmap.md](roadmap.md) |
 | Agent 能力补全的调研 / 设计 / 规划 | [research.md](plans/2026-09-28-agent-capabilities/research.md) / [design.md](plans/2026-09-28-agent-capabilities/design.md) / [plan.md](plans/2026-09-28-agent-capabilities/plan.md) |

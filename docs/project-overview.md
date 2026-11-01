@@ -49,6 +49,17 @@ merge conclusions only after review.
 | 合并必须受控 | merge proposal / adoption review / memory promotion 是一等能力 |
 | 运行过程可回放 | trajectory、stream contract、eval 与 release evidence 共同支撑“可验证” |
 
+**证据状态（2026-11-01）。** “分支工作流在长任务上优于线性对话”用配对实验检验：冻结的 32 个任务
+（研究 / 调试 / 写作 / 审查，中英各半），同一组用户消息分别跑线性与分支两组，各 3 次，
+两位不同模型的盲评评委（Claude Sonnet 5.5、DeepSeek V4.1 Flash）。
+
+- 基线（被测模型 DeepSeek V4.1 Flash）：分支组**显著差于**线性组，评委总分差 −0.69 / −0.87（两评委 95% CI 均不含 0），
+  岔路里定下的细节召回 0.58 对 0.96；原因是导入结论以 system 通知呈现时模型多半忽略，以及合并门拒绝用户已批准的结论。
+- 修复后（导入结论改为用户确认的决定、合并门只拒绝被证据否定的结论）复测进行中；中期数据显示两组持平，尚无“分支更优”的证据。
+- 分支组的输入 token 比线性组少约 19%。
+
+方法、数据和逐项数字见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。
+
 相关专题：
 
 - [branch-decisions.md](branch-decisions.md)
