@@ -1,7 +1,7 @@
 # Observability Runbook
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01; source facts corrected, historical validation scope unchanged.
+Historical validation baseline: `718be87`
 
 This runbook is for diagnosing live Focus Agent issues with the built-in runtime endpoints, `/metrics`, trajectory storage, Web observability pages, and the `focus-agent-trajectory` CLI.
 
@@ -70,10 +70,10 @@ release.
 Typical interpretation:
 
 - `/healthz` is `200` but `/readyz` is `503`: the process is alive but one or more runtime checks are degraded.
-- `/readyz` is `200` and `trajectory_recorder.ready=false`: runtime is serving, but trajectory persistence is not available.
+- `/readyz` includes `trajectory_recorder.ready=false`: runtime is alive, but trajectory persistence is unavailable and `/readyz` reports `503`.
 - `/readyz` is `200` only because a local/fallback check is ready: runtime wiring is responding, but the corresponding external dependency still needs its explicit smoke probe.
 - `/readyz` includes `retrieval_zvec.ready=false`: online retrieval should fall back to Postgres/legacy scorers, but canonical memory, artifact, and workspace data is not lost.
-- `/readyz` includes `background_jobs.ready=false`: local or production job queues have pending, retrying, or dead-lettered work. Treat release and smoke evidence as degraded until the queue drains or the pending jobs are explained.
+- `/readyz` includes `background_jobs.ready=false`: a backend/worker snapshot failed, dead-lettered jobs exist, or the oldest pending job exceeded `BACKGROUND_JOB_OLD_PENDING_SECONDS`. In durable mode a missing, dead or stale worker also blocks readiness. Pending/retrying work alone does not make the component unready; investigate the reported condition.
 
 Alert guidance should use the existing `/metrics` scrape. Start with these signals before adding custom exporters:
 
@@ -83,9 +83,9 @@ Alert guidance should use the existing `/metrics` scrape. Start with these signa
 - `focus_agent_trajectory_metrics_available == 0`: the runtime is up but trajectory aggregates cannot be read.
 - `focus_agent_trajectory_non_succeeded_count / focus_agent_trajectory_turn_count`: alert on a sustained failure-rate increase, not a single failed turn.
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
-- `focus_agent.tool_pool.queue`: warn when the isolated tool pool queue grows for multiple scrape windows; pair it with `focus_agent.tool_pool.active`.
-- `agent_team_scheduler_lock_wait_ms`: warn when p95 rises above the single-digit millisecond target during multi-session agent-team starts.
-- `focus_background_jobs{kind="memory_embedding",status="retrying|dead_lettered"}` or the admin background job summary: investigate embedding provider health or redaction spikes before enabling 100% async embedding.
+- `focus_agent.tool_pool.queue` (OpenTelemetry observable gauge, not part of the Prometheus `/metrics` scrape): warn from the OTel metrics export when the isolated tool pool queue grows for multiple scrape windows; pair it with `focus_agent.tool_pool.active`.
+- `agent_team_scheduler_lock_wait_ms` (OpenTelemetry histogram, not part of the Prometheus `/metrics` scrape): warn from the OTel metrics export when p95 rises above the single-digit millisecond target during multi-session agent-team starts.
+- `focus_agent_background_job_status_count{status="retrying"}` or `{status="dead_lettered"}`, or the admin background job summary: investigate embedding provider health or redaction spikes before enabling 100% async embedding.
 - `/readyz.active_connections`: track DB pool in-use connections during rollout and compare against `FOCUS_AGENT_DB_POOL_MAX`.
 
 Keep alert labels aligned with `app_version`, `environment`, `deployment`, `component`, and trajectory `status` so release regressions can be separated from general traffic noise.

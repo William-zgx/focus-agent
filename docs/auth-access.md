@@ -1,6 +1,6 @@
 # Auth / Access / Account 操作与边界
 
-源码核对日期：2026-09-28；基线：`718be87`。
+源码核对日期：2026-11-01；基线：`718be87`。；本轮校正源码事实，历史验收范围保持原报告口径。
 
 本文是 Focus Agent 当前认证、访问控制和普通账号自助页面的 canonical 文档。管理员用户治理见 [admin-console.md](admin-console.md)，部署侧生产安全配置见 [docker-deployment.md](docker-deployment.md)。
 
@@ -8,13 +8,13 @@
 
 认证相关页面由 `apps/web/src/app/router.tsx` 挂在 `/app` basepath 下：
 
-- `/app/auth/login`：用户名密码登录、`Demo 登录`、Bearer Token 登录；已登录时展示账号入口。
+- `/app/auth/login`：用户名密码登录、`试用 Demo 工作区`、Bearer Token 登录；已登录时展示账号入口。
 - `/app/auth/register`：自助注册用户名密码账号。
 - `/app/account/profile`：查看当前 principal、用户资料、租户、状态和角色。
 - `/app/account/security`：修改当前用户密码，或从当前会话退出。
 - `/app/account/sessions`：查看当前用户 refresh sessions，并撤销非当前会话。
 
-所有非 `/app/auth/*` 页面都通过 `AuthGate` 保护。未登录访问受保护页面时会跳转到 `/app/auth/login?return_to=...`，登录成功后回到原目标。账号切换没有单独 switcher，当前路径是退出后再用用户名密码、Demo 登录或 Bearer Token 重新登录。
+所有非 `/app/auth/*` 页面都通过 `AuthGate` 保护。未登录访问受保护页面时会跳转到 `/app/auth/login?return_to=...`，登录成功后回到原目标。账号切换没有单独 switcher，当前路径是退出后再用用户名密码、“试用 Demo 工作区”或 Bearer Token 重新登录。
 
 ## 2. API 与 SDK
 
@@ -50,15 +50,15 @@ Frontend SDK 对应 `frontend-sdk/src/client/auth.ts` 和 `frontend-sdk/src/type
 
 治理 trajectory 的读取也沿用该 principal 边界。列表和报告默认在 repository query 层强制 `owner_user_id=Principal.user_id`，客户端传入 `global_view` 或其他用户的 `thread_id` 不会扩大范围。全局读取只授予 active 持久化 admin，或明确持有 `governance:read:global` / `governance:trajectories:read:global` 的 active principal；这些专用权限不会改变普通 conversation/thread 的 owner 校验。
 
-当前仍有授权顺序问题需要修复：部分线程读取路径在资源 owner 校验前调用
-[`_safe_get_values`](../src/focus_agent/services/chat/threads.py)，该方法可能回填 imported records 并写入 graph state。
-最终返回拒绝不等于拒绝前没有副作用；不能将上述 principal/owner 检查解释为全链路写入隔离已经成立。
-修复与“跨 owner 请求拒绝前零写入”的验收见 [实施规划 B01](plans/2026-09-28-agent-capabilities/plan.md)。
+线程上下文读取先通过 [`_safe_get_values(backfill=False)`](../src/focus_agent/services/chat/threads.py)
+获取状态，完成 `_ensure_access` 后才回填 imported records。原先 owner 校验前回填导致的写入问题已修复；
+新增读取入口仍须保持此顺序。修复范围与“跨 owner 请求拒绝前零写入”的验收见
+[实施规划 B01 的状态说明](plans/2026-09-28-agent-capabilities/plan.md)。
 
 ## 4. Token、Session 与禁用语义
 
 - 用户名密码登录和自助注册会返回 access token、refresh token，并写入 auth cookies。
-- `Demo 登录` 调用 `/v1/auth/demo-token` 后按 Bearer Token 登录处理；它不会创建 refresh session。
+- `试用 Demo 工作区` 调用 `/v1/auth/demo-token` 后按 Bearer Token 登录处理；它不会创建 refresh session。
 - `logout()` 会撤销 refresh session、清除 auth cookies，并移除 Web App 本地保存的 token。
 - Access token 和 demo token 是无状态签名 token，但 protected principal 请求仍会实时检查持久化用户是否 active；因此禁用账号会立即阻断尚未过期 token 的后续受保护请求。删除用户记录的兼容/bootstrap 行为与禁用账号不是同一语义，不能把用户禁用替换成只删除前端 token。
 - `refresh()` 优先使用请求体中的 refresh token，否则读取 refresh cookie。
@@ -114,4 +114,4 @@ make web-check
 make web-build
 ```
 
-真实浏览器检查应覆盖：未登录保护路由跳转、Demo 登录、用户名密码登录、自助注册后登录、Bearer Token 登录、侧栏退出、`/app/account/security` 修改密码、`/app/account/sessions` 撤销非当前会话，以及退出后重新登录完成账号切换。
+真实浏览器检查应覆盖：未登录保护路由跳转、“试用 Demo 工作区”、用户名密码登录、自助注册后登录、Bearer Token 登录、侧栏退出、`/app/account/security` 修改密码、`/app/account/sessions` 撤销非当前会话，以及退出后重新登录完成账号切换。

@@ -59,6 +59,8 @@ Most agent demos assume one chat box and one final answer. Focus Agent is built 
 
 Instead of forcing every detour into one noisy thread, Focus Agent treats the main thread as shared progress and branches as temporary workspaces for exploration, verification, and comparison. Branch recommendations never silently fork; they create user-confirmed Branch Action cards.
 
+The branch-workflow quality claim is under evaluation. In the frozen 32-task experiment, the original branch arm scored below linear chat. After fixing conclusion presentation and merge blocking, all 192 retest runs and both judges' scores are complete. The branch-minus-linear score differences are −0.125/5 (Sonnet, 95% CI −0.333 to +0.073) and −0.135/5 (DeepSeek, −0.438 to +0.156), with 19.8% fewer input tokens. Neither judge detected a significant overall score difference; superiority and equivalence remain unproven. See the [experiment record](docs/plans/2026-10-31-branch-ab/status.md) for scope and evidence.
+
 ## Core Capabilities
 
 - Branch-aware conversations with controlled merge-back

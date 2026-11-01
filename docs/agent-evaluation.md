@@ -1,7 +1,7 @@
 # Agent Evaluation
 
-Updated: 2026-10-03
-Source baseline: `81f7a6f` plus context-quality changes
+Updated: 2026-11-01
+Harness policy baseline: `81f7a6f` plus context-quality changes; paired branch-workflow evidence added for the current experiment.
 
 Focus Agent evaluates agent behavior end to end: the graph receives a scripted
 task, the runner records the final answer and tool trajectory, judges score the

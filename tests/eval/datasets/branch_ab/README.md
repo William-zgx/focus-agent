@@ -26,7 +26,8 @@ Only the answer to the return turn is scored:
 32 tasks: research, debugging, writing and review, 8 each (4 Simplified Chinese,
 4 English). 246 `must_include` items, 93 of them detour details; 82
 `must_not_include` items; 5.0 detour turns per task on average. All decisive
-facts are fictional and stated by the user; the assistant has no tools. User
+facts are fictional and stated by the user; the tasks require no external tools.
+The runtime's residual tool exposure is described below. User
 messages never use 分支, 支线, branch, fork, 分叉, merge or 合并, because those
 words trigger branch actions and would break the linear arm.
 
@@ -49,9 +50,11 @@ words trigger branch actions and would break the linear arm.
 Set in `scripts/branch_ab/run_experiment.py::_isolated_env`:
 
 - One fresh process and temporary state directory per (task, arm, repeat).
-- All tools disabled (`scripts/branch_ab/tools.disabled.toml`) and skills off
-  (`FOCUS_AGENT_SKILLS_ENABLED=false`): every fact is in the conversation, and
-  tools only added noise (empty-workspace searches, unrelated pages).
+- Catalog-controlled tools disabled (`scripts/branch_ab/tools.disabled.toml`)
+  and skills off (`FOCUS_AGENT_SKILLS_ENABLED=false`): every fact is in the
+  conversation. The runtime still registers `run_skill_entrypoint` independently
+  of these switches; planners can see it. This residual exposure affects both
+  arms and is recorded as a limitation, not a fully tool-free runtime.
 - Branch recommendation, branch decision, delegation, web search and memory
   embeddings off; `MODEL_REQUEST_TIMEOUT_SECONDS=600` for slow relay endpoints.
 - Before each turn, before fork and before the merge proposal, the runner waits
@@ -70,12 +73,28 @@ Set in `scripts/branch_ab/run_experiment.py::_isolated_env`:
   conclusion only when both judges agree on the direction of the paired
   difference. The model under test must not be the only judge.
 
-Commands and current results: `docs/plans/2026-10-31-branch-ab/status.md`.
+Commands and current results: [experiment record](../../../../docs/plans/2026-10-31-branch-ab/status.md).
+Use a new output directory when changing model, runtime configuration or code;
+resume checks the run status, not configuration identity. Keep judges' score
+files separate when analyzing them. Report pass^3 only after all three repeats
+per task have valid scores.
 
-Known limitation: the correct/wrong answers in `evidence/` were written by the
-same model family that will be tested, so they show the regexes are internally
-consistent, not that they cover every phrasing a model may use. The blind LLM
-judge is the second, independent signal.
+Known limitations:
+
+- The correct/wrong answers in `evidence/` were written by the tested model's
+  family. They show internal consistency, not coverage of every valid phrasing.
+- The primary judge is also DeepSeek V4.1 Flash; Sonnet 5.5 supplies a separate
+  model family for cross-checking. Blind grading does not remove self-preference.
+- The judge prompt does not enforce exactly one response criterion per rubric
+  item. Some responses split or add criteria, so `rubric_rate` has variable
+  denominators and is descriptive. Overall-score comparisons are also checked
+  after excluding pairs with a mismatched criterion count; this does not prove
+  that the remaining criterion wording maps perfectly to the rubric.
+- These synthetic, text-only sessions do not establish performance on real
+  tool tasks, nested branches or arbitrary conversation lengths.
+- A confidence interval crossing zero does not establish equivalence or
+  non-inferiority. Neither a non-inferiority margin nor a separate holdout set
+  was specified; repeated development on this set may overfit it.
 
 Re-run the evidence checks:
 

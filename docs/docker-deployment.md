@@ -1,7 +1,7 @@
 # Docker 部署方案
 
-更新时间：2026-09-28
-源码基线：`718be87`
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
+历史验证基线：`718be87`
 
 这份文档定义当前仓库推荐的 Docker 部署方式。目标是把 **本机开发启动链**、**本地容器联调**、以及 **生产部署** 明确分层，避免把开发便利逻辑和正式部署逻辑混在一起。
 
@@ -283,7 +283,7 @@ sandbox 时，应由部署平台提供隔离的 Docker 执行面并预置受信�
 
 Zvec collections 不属于 PostgreSQL schema；它们位于 `AGENT_ZVEC_DATA_DIR`，是可删除、可 backfill 的本地检索索引。多副本部署应保证单 writer per data dir，或让每个副本用本地 data dir 从 Postgres/文件系统重建。
 
-应用 schema 当前由 Alembic `001_baseline` 入口桥接到仓库内的逐版本 app migrations，当前版本为 v17。v17 增加 `focus_branch_decision_events` 和 branch recommendation 幂等索引。容器 entrypoint 在 `DATABASE_URI` 存在时运行 `alembic upgrade head`；手动验证可运行：
+应用 schema 当前为 v19。Alembic `001_baseline` 复用仓库内的基线迁移语句，后续 revision 为 `add_memory_embedding_status` 和当前 head `20260713_agent_team_v2_schema`。v17 引入 branch decision/recommendation 表，v18 补 memory embedding 状态，v19 补 Agent Team v2 表。容器 entrypoint 在 `DATABASE_URI` 存在时运行 `alembic upgrade head`；手动验证可运行：
 
 ```bash
 DATABASE_URI=postgresql://user:pass@host:5432/focus_agent uv run alembic -c alembic.ini upgrade head

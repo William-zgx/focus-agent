@@ -1,7 +1,7 @@
 # Agent Eval Framework
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01; source facts corrected, historical validation scope unchanged.
+Historical validation baseline: `718be87`
 
 Tests *behavior* of the Focus Agent, not its Python units. Drops the agent
 into scripted tasks, scores each trajectory against rule / LLM / trajectory
@@ -14,7 +14,7 @@ task, via `scripts/branch_ab/` (see `datasets/branch_ab/README.md`).
 ## Quickstart
 
 ```bash
-# Run the smoke suite (7 cases, no external API keys required if using a fake model).
+# Run the smoke suite (11 cases, no external API keys required if using a fake model).
 uv run python -m tests.eval --suite smoke
 
 # Run the Agent architecture / role-routing gate.

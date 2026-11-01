@@ -1,7 +1,7 @@
 {
   "exit_criteria": {
-    "compatibility_shim": "Remove public facades only in 2.0 after import telemetry and migration notes.",
-    "deprecated_route": "Remove the three hidden Agent Team routes in 2.0 after Sunset telemetry.",
+    "compatibility_shim": "Migrate and verify repository callers before removing a facade. With external adopters, require import telemetry, migration notes and an announced compatibility window.",
+    "deprecated_route": "Migrate repository callers and verify canonical routes before deleting hidden aliases. With external adopters, require Sunset telemetry and a migration window.",
     "legacy_override_or_monkeypatch": "Replace module hooks with explicit injected ports.",
     "legacy_state_or_mirror": "Stop writes, backfill persisted state, then remove readers in a schema migration.",
     "legacy_template": "Keep the wire value while old sessions exist; stop new writes before schema removal."
@@ -113,5 +113,5 @@
     "legacy_state_or_mirror": "state-migrations",
     "legacy_template": "agent-team-planning"
   },
-  "policy": "Compatibility inventory may only decrease in 1.x. Public Python facades and old-state readers are removed only with a 2.0 migration plan."
+  "policy": "Compatibility item identities and counts must not grow without review. This project currently has no external adopters: migrate repository callers, remove unused compatibility paths, and refresh the exact item-ID baseline. If external adopters appear, add telemetry and an announced migration window."
 }

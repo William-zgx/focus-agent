@@ -1,6 +1,6 @@
 # Tool and Skill System Design
 
-更新时间：2026-10-03
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
 
 This document defines the current boundary between low-level tools and higher-level skills in Focus Agent, the runtime shape of the skill system, and the remaining product-tool backlog.
 
@@ -211,7 +211,6 @@ Current bundled skills:
 - `security-review`
 - `spike`
 - `systematic-debugging`
-- `tavily-search`
 - `tdd`
 - `ultrawork`
 - `writing-plans`
@@ -323,6 +322,7 @@ Focus Agent already has these default tools:
 - `skills_search`
 - `skills_refresh_index`
 - `skill_install`
+- `run_skill_entrypoint`
 - `notes_create`
 - `notes_search`
 - `notes_update`
@@ -540,7 +540,6 @@ Retrieval tools gather information from external or local sources.
 
 - `web_search`
 - `web_fetch`
-- `knowledge_search`
 - `memory_search`
 - `notes_search`
 - `tasks_list`
@@ -563,7 +562,7 @@ Persistence tools save or update user-visible state.
 - `tasks_create`
 - `tasks_update`
 - `productivity_capture`
-- `artifact_write`
+- `write_text_artifact`
 - `artifact_update`
 - `apply_patch`
 - `run_workspace_command`
@@ -573,17 +572,12 @@ Persistence tools save or update user-visible state.
 Conversation tools operate on Focus Agent's own thread and branch model.
 
 - `conversation_summary`
-- `conversation_export`
-- `branch_tree_inspect`
-- `merge_proposal_inspect`
 
 ### Utility Tools
 
 Utility tools provide deterministic helper capabilities.
 
 - `current_utc_time`
-- `structured_compute`
-- `template_apply`
 
 ## Implemented Product Primitives
 

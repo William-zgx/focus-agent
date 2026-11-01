@@ -4,7 +4,7 @@ This document is the implementation baseline for the frontend optimization plan.
 It keeps existing routes, copy, API calls, and interaction behavior stable while
 moving shared UI toward token-first primitives.
 
-Updated: 2026-10-03 (validation baseline: `718be87`)
+Updated: 2026-11-01 (validation baseline: `718be87`); source facts corrected, historical validation scope unchanged.
 
 ```mermaid
 flowchart TD
@@ -81,7 +81,7 @@ surface:
 | Chat and transcript | `chat.css`, `chat-01-shell-controls.css`, `chat-01-thread-messages.css`, `chat-02-message-surface.css`, `chat-02-tool-activity.css`, `chat-03-branch-thread.css`, `chat-surface.css`, `message.css`, `message-workbench*.css` |
 | Composer and workbench | `composer.css`, `composer-01-thread-toolbar.css`, `composer-02-input.css`, `composer-02-route-state.css`, `composer-03-context-meter.css`, `composer-04-status.css`, `composer-05-modal.css`, `workbench*.css` |
 | Branch tree and branch detail | `branch-tree.css`, `branch-tree-01-list.css`, `branch-tree-02-graph-detail.css`, `branch-tree-detail.css` |
-| Auth and account | `auth.css`, `auth-01-bootstrap.css`, `auth-02-account.css`, `auth-02-layout-panel.css`, `auth-03-login-shell.css`, `auth-04-api-key-panel.css`, `auth-05-login-illustration.css`, `auth-06-form.css` |
+| Auth and account | `auth.css`, `auth-01-bootstrap.css`, `auth-02-account.css`, `auth-02-layout-panel.css`, `auth-03-login-shell.css`, `auth-05-login-illustration.css`, `auth-06-form.css` |
 | Admin | `admin.css`, `admin-01-workspace-panels.css`, `admin-01-console-drawer.css`, `admin-02-tables.css` |
 | Agent Team | `agent-team*.css`, `agent-team-simple-*.css`, `agent-team-workbench-*.css` |
 | Observability | `observability.css`, `trajectory.css` |

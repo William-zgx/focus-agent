@@ -1,7 +1,7 @@
 # Quick Start
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01
+Historical validation baseline: `718be87`; startup and configuration facts corrected on 2026-11-01.
 
 This guide expands on the shortest startup path from the root README.
 

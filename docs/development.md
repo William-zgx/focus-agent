@@ -1,7 +1,7 @@
 # Development Guide
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01
+Historical validation baseline: `718be87`; startup and configuration facts corrected on 2026-11-01.
 
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
 

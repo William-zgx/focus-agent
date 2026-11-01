@@ -1,7 +1,7 @@
 # Release Checklist
 
-Reviewed: 2026-09-28
-Source baseline: `718be87`
+Reviewed: 2026-11-01; source facts corrected, historical validation scope unchanged.
+Historical validation baseline: `718be87`
 
 This checklist is intended for maintainers preparing Focus Agent for a public release or a tagged internal milestone. It is the human release-readiness checklist: what to confirm, what blocks release, and what evidence must exist. CI provider binding details live in [docs/ci/github-actions-release-gate.md](ci/github-actions-release-gate.md) from this docs directory.
 
@@ -59,7 +59,7 @@ flowchart LR
 - Review local config instructions under `.focus_agent/`
 - Decide which settings are development-only versus production-ready
 - Confirm non-development startup fails when auth is disabled, `AUTH_JWT_SECRET` is missing/default/shorter than 32 characters, demo tokens are enabled, or rate limiting is disabled
-- Review persistence-related settings such as `DATABASE_URI`, Alembic migration execution, managed local Postgres runtime files, trajectory settings, `ARTIFACT_DIR`, and `ARTIFACT_STORE_TYPE`
+- Review persistence-related settings such as `DATABASE_URI`, Alembic migration execution, managed local Postgres runtime files, trajectory settings, and `ARTIFACT_DIR`
 - Review retrieval, memory embedding, and pgvector fallback settings: `AGENT_RETRIEVAL_BACKEND`, `AGENT_RETRIEVAL_FALLBACK_BACKEND`, `AGENT_ZVEC_ENABLED`, `AGENT_ZVEC_DATA_DIR`, `AGENT_MEMORY_EMBEDDING_ENABLED`, `AGENT_MEMORY_EMBEDDING_BACKEND`, `AGENT_MEMORY_EMBEDDING_MODEL`, `AGENT_MEMORY_EMBEDDING_DIMENSIONS`, `AGENT_MEMORY_EMBEDDING_BASE_URL`, `AGENT_MEMORY_EMBEDDING_API_KEY_ENV`, `AGENT_MEMORY_EMBEDDING_API_KEY`, `AGENT_MEMORY_EMBEDDING_BATCH_SIZE`, `AGENT_MEMORY_EMBEDDING_TIMEOUT_SECONDS`, `AGENT_MEMORY_VECTOR_SEARCH_MODE`, `AGENT_MEMORY_VECTOR_INDEX_ENABLED`, and `AGENT_MEMORY_PGVECTOR_EXTENSION_MODE`
 - Review memory governance settings: `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED`, `AGENT_MEMORY_APPROVAL_FOR_SHARED_WRITES`, `AGENT_MEMORY_CURATOR_ENABLED`, and `AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE`
 - Review runtime coordination settings: `BACKGROUND_JOB_EXECUTION`, `BACKGROUND_JOB_BACKEND`, `BACKGROUND_JOB_CLAIM_TTL_SECONDS`, `RUNTIME_THREAD_LOCK_TTL_SECONDS`, and `RUNTIME_THREAD_LOCK_HEARTBEAT_SECONDS`
@@ -131,7 +131,7 @@ focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 - `scripts/ui_smoke_test.py` covers the main chat, branch, and review routes; keep `make ui-smoke` as the shorthand local target. The smoke waits for assistant text to stabilize after streaming UI has stopped, so an idle disabled send button is not a readiness signal.
 - Local Vite smoke URLs should use `http://127.0.0.1:5173/app/` with the trailing slash. Manual browser passes are useful, but personal Chrome profiles can carry stale localStorage, extensions, and auth state; prefer the smoke script's temporary Chrome profile for release evidence and use manual passes as an additional visual check.
 - On SSH-only release hosts, set `CHROME_PATH` to a headless Chromium wrapper before running browser smoke. The canonical wrapper and readiness follow-up are documented in `docs/validation-runbook.md`.
-- Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `Demo 登录`, username/password login after registration or admin password reset, settings center Overview/Connections/Capabilities navigation, Skill search and enablement toggles, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
+- Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `试用 Demo 工作区`, username/password login after registration or admin password reset, settings center Overview/Connections/Capabilities navigation, Skill search and enablement toggles, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
 - `make ui-smoke-agent-team-adoption` is the command name for the Agent Team adoption source-level smoke. It covers task selection, diff/test evidence, conflict/apply state, capture to Notes/Tasks, context evidence, and skill feedback wiring; pair it with real-browser coverage when changing the visual adoption flow.
@@ -199,11 +199,11 @@ make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318
 make agent-governance-report
 ```
 
-Schema v17 migration evidence:
+Schema v19 migration evidence:
 
-- Confirm `uv run alembic -c alembic.ini heads` reports `001_baseline (head)`.
+- Confirm `uv run alembic -c alembic.ini heads` reports `20260713_agent_team_v2_schema (head)`.
 - Confirm container or release workflow runs `alembic upgrade head` against the production `DATABASE_URI`, or captures equivalent migration evidence.
-- Confirm Postgres ops reports all expected `focus_schema_migrations` versions through v17 before production promotion, including `focus_branch_decision_events`.
+- Confirm Postgres ops reports all expected `focus_schema_migrations` versions through v19 before production promotion, including `focus_branch_decision_events`.
 - Confirm `focus_rate_limit_buckets` exists when API rate limiting is enabled on Postgres-backed deployments.
 - Confirm `reports/nightly/latest.json` contains `summary.feedback_pipeline` and `artifacts.feedback_regression`.
 - If production feedback exports are available, pass them through `FEEDBACK_REGRESSION_ARGS`, for example `--feedback-events-json`, `--merge-review-json`, `--skill-selection-json`, `--context-evidence-json`, and `--productivity-capture-json`.

@@ -1,6 +1,6 @@
 # Agent Team Workbench 操作与实现手册
 
-更新时间：2026-09-28（基线 commit：`718be87`）
+更新时间：2026-11-01（历史验证基线：`718be87`）；本轮校正源码事实，历史验收范围保持原报告口径。
 
 本文记录 Focus Agent 当前的 Agent Team Workbench：用户可在专门入口创建
 Mission，由 Orchestrator 生成动态 Mission DAG；在配置了可执行 executor 时，任务才会
@@ -17,7 +17,7 @@ Agent Team 是平台 **Collaboration** 层能力，不是默认聊天主路径�
 
 当前入口包括 `/app/agent-team` Mission Runner、`/v1/agent-team/*` API、frontend
 SDK 的 Agent Team client 方法、Postgres primary repository（app schema **v19** 含
-v2 运行时表）、本地 in-memory fallback、模型优先 planning service、DAG run service
+v2 运行时表）、本地 SQLite fallback、模型优先 planning service、DAG run service
 和 legacy dispatch 兼容入口。Multi-Agent v2 协调能力另受默认关闭的 `MULTI_AGENT_*`
 feature flags 控制；工作台可见或存在 Agent Team API 不表示 v2 已启用、真实执行已
 发生或已全量上线。灰度和回滚口径见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)。
@@ -275,22 +275,14 @@ class AgentTeamMergeBundle:
     ]
 ```
 
-### 4.5 OwnershipAuditDashboard
+### 4.5 Ownership Audit Report
 
-Ownership Audit Dashboard 复用 `OwnershipAuditEvent`，额外通过 report/export helper 汇总审计视图：
-
-```python
-class OwnershipAuditDashboard:
-    total_events: int
-    allow_count: int
-    deny_count: int
-    deny_rate: float
-    deny_reasons: dict[str, int]
-    deny_by_resource_type: dict[str, int]
-    deny_by_action: dict[str, int]
-    deny_by_principal: dict[str, int]
-    deny_trend: list[dict[str, str | int | None]]
-```
+Ownership Audit Dashboard 复用 `OwnershipAuditEvent`，由
+`build_ownership_audit_report(events)` 生成 `OwnershipAuditReport`（`dict[str, Any]`），
+再由 `export_ownership_audit_dashboard` 导出。报告包含 `event_type`、`total_events`、
+`allow_count`、`deny_count`、`deny_rate`、`by_decision`、`deny_reasons`、
+`deny_by_resource_type`、`deny_by_action`、`deny_by_principal` 和 `deny_trend`，
+不是名为 `OwnershipAuditDashboard` 的类。
 
 `deny_trend` 按审计事件出现顺序保留 request id 和累计 deny 数，用于 Dashboard 展示最近一段时间的拒绝走势。它只读审计轨迹，不改变 owner 判断。
 
@@ -399,7 +391,7 @@ POST  /v1/agent-team/sessions/{session_id}/merge            # use /merge-decisio
 Agent Team Workbench 的 session/task/output/merge-review 使用 runtime 的主持久化选择：
 
 - 设置 `DATABASE_URI` 时使用 `PostgresAgentTeamRepository`，随 Postgres schema 初始化表结构；当前 schema v19 还包含 Agent Team v2 的 task attempts、checkpoints、evidence、events 等 additive execution-record 表，用于采纳审查、治理解释、nightly feedback regression 和多副本部署治理。
-- 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `InMemoryAgentTeamRepository`，作为本地 fallback；harness run journal 仍使用 SQLite 文件保存 run/event 快照。
+- 未设置 `DATABASE_URI` 且直接裸跑 API 时使用 `SQLiteAgentTeamRepository`（共享 `BRANCH_DB_PATH`），作为本地持久化 fallback；harness run journal 仍使用 SQLite 文件保存 run/event 快照。
 - 通过 `make api`、`make dev`、`make serve`、`make serve-dev`、`make serve-prod` 启动时，如果没有显式 `DATABASE_URI`，启动脚本会托管 repo-local PostgreSQL 并注入 `DATABASE_URI`，因此 Agent Team 也走 Postgres primary persistence。
 
 Postgres 表名固定为：
@@ -418,7 +410,7 @@ Agent Team 主表保留 `data_json JSONB NOT NULL` 作为 Pydantic model 的完�
 
 这不等同于 v2 execution/recovery 已完整 durable：`PostgresAgentTeamRepository` 会将
 v2 task run、checkpoint、tool execution、evidence 和 event 持久化；未配置
-`DATABASE_URI` 的本地 repository 仍使用 per-repository in-memory fallback。
+`DATABASE_URI` 的本地 repository 使用 `SQLiteAgentTeamRepository`（同一 `BRANCH_DB_PATH`）持久化。
 approval resume service 的默认 store 和 task state 仍是 in-memory adapter，公开 runtime
 也不消费 resume job。真实执行前还必须满足
 `AGENT_TEAM_DURABLE_REQUIRED=true`、Postgres background jobs/worker、Postgres
@@ -468,7 +460,7 @@ agent-team-workbench-task-output-utils.ts   task output / artifact / fake execut
 - `OutputsPanel`
 - `FinalResultCard`
 - `BlockedTaskGuide`
-- `InspectorDrawer`
+- `AgentTeamInspectorDialog`
 - `useAgentTeamWorkbenchViewModel`
 
 页面布局：
@@ -481,7 +473,7 @@ Blocked 引导：当任务缺少依赖或证据时，展示阻塞原因、可重
 Inspector：planning metadata、DAG、branch/thread、output ids、artifact ids、raw evidence、execution metadata。
 ```
 
-默认用户态不展示 branch id、artifact id、raw fake run text、execution metadata 或状态机原文；这些信息只在高级详情中用于调试和审查。Chat 页面侧栏也不再展示 Agent Team / 管理后台入口，这两个入口保留在登录/账号入口页和各自工作区内部导航中。
+默认用户态不展示 branch id、artifact id、raw fake run text、execution metadata 或状态机原文；这些信息只在高级详情中用于调试和审查。Chat 页面侧栏的全局导航保留管理入口，并在 `appEnv.features.agentTeam` 开启时展示 Agent Team；进入管理页面仍受权限保护。Android 默认关闭 Agent Team 功能入口。
 
 创建页协作模式当前映射为：
 
