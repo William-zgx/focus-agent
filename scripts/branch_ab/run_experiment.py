@@ -34,16 +34,26 @@ from uuid import uuid4
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARMS = ("linear", "branch")
 _MERGE_MODES = {"summary_only", "summary_plus_evidence"}
+_PRODUCT_FAILURES = ("Merge import blocked",)
 
 
 def _isolated_env(state_dir: Path, model: str) -> dict[str, str]:
     """Settings that keep each run local, quiet and comparable across arms."""
     return {
         "FOCUS_AGENT_LOCAL_ENV_FILE": str(REPO_ROOT / ".focus_agent" / "local.env"),
-        "FOCUS_AGENT_MODEL_CATALOG_DOC": str(REPO_ROOT / ".focus_agent" / "models.toml"),
-        "FOCUS_AGENT_TOOL_CATALOG_DOC": str(REPO_ROOT / ".focus_agent" / "tools.toml"),
+        "FOCUS_AGENT_MODEL_CATALOG_DOC": os.environ.get(
+            "BRANCH_AB_MODEL_CATALOG", str(REPO_ROOT / ".focus_agent" / "models.toml")
+        ),
+        # Tasks state every fact in the conversation; tools only add noise
+        # (empty-workspace searches, unrelated web pages tripping answer gates).
+        "FOCUS_AGENT_TOOL_CATALOG_DOC": str(Path(__file__).with_name("tools.disabled.toml")),
+        # Skills route plans through run_skill_entrypoint; with no tools that leaves the
+        # execution contract blocked, and the merge gate then refuses the branch import.
+        "FOCUS_AGENT_SKILLS_ENABLED": "false",
         "MODEL": model,
         "HELPER_MODEL": model,
+        # Relay endpoints stream ~20 tok/s; long detour answers need more than the 120 s default.
+        "MODEL_REQUEST_TIMEOUT_SECONDS": "600",
         "DATABASE_URI": "",
         "FOCUS_AGENT_CHECKPOINT_BACKEND": "sqlite",
         "BRANCH_DB_PATH": str(state_dir / "branches.sqlite3"),
@@ -153,6 +163,10 @@ def _serialize_messages(payload: Any) -> Any:
     return _serialize_message(payload)
 
 
+def _jsonable(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=str))
+
+
 def _usage(result: Any) -> dict[str, int] | None:
     usage = getattr(result, "usage_metadata", None)
     if isinstance(usage, dict):
@@ -205,7 +219,10 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
     """Run one (task, arm, repeat) in this (fresh) process."""
     out_path = Path(out_dir) / f"{task['id']}__{arm}__r{repeat}.json"
     if out_path.exists():
-        return json.loads(out_path.read_text(encoding="utf-8"))
+        previous = json.loads(out_path.read_text(encoding="utf-8"))
+        # Keep finished runs and product failures; rerun infrastructure errors (429, timeouts).
+        if previous.get("status") in {"ok", "product_failure"}:
+            return previous
     state_dir = Path(tempfile.mkdtemp(prefix=f"branch-ab-{task['id']}-{arm}-"))
     (state_dir / "workspace").mkdir()
     os.environ.update(_isolated_env(state_dir, model))
@@ -303,6 +320,15 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
             if mode.value not in _MERGE_MODES:
                 mode = MergeMode.SUMMARY_PLUS_EVIDENCE
             _CURRENT_PHASE[0] = "merge_apply"
+            child_values = runtime.graph.get_state(
+                {"configurable": {"thread_id": branch.child_thread_id}}
+            ).values
+            record["child_gate_state"] = _jsonable(
+                {
+                    key: child_values.get(key)
+                    for key in ("answer_verification", "execution_contract", "plan_meta")
+                }
+            )
             imported = runtime.branch_service.apply_merge_decision(
                 child_thread_id=branch.child_thread_id,
                 decision=MergeDecision(approved=True, mode=mode),
@@ -318,8 +344,10 @@ def run_one(task: dict[str, Any], arm: str, repeat: int, model: str, out_dir: st
         record["final_answer"] = _final_text(final)
         record["status"] = "ok"
     except Exception as exc:  # noqa: BLE001
-        record["status"] = "error"
         record["error"] = f"{type(exc).__name__}: {exc}"
+        # The product refused the user's approved merge: that is an outcome of the arm,
+        # scored as a failed deliverable, not a broken run to retry.
+        record["status"] = "product_failure" if str(exc).startswith(_PRODUCT_FAILURES) else "error"
         record["traceback"] = traceback.format_exc()
     finally:
         if runtime is not None:

@@ -28,6 +28,8 @@ Below is everything the USER said during the session, in order, followed by the 
 
 Grade it against the rubric. Treat as authoritative what the user established: the main goal and constraints, and the side investigation's final decision (later user statements override earlier ones; anything the user rejected or superseded must not be presented as part of the recommendation). A correct answer may hedge on facts the user never provided, but must not refuse to give the requested deliverable or treat the user's own settled decisions as unconfirmed.
 
+"uses_rejected_material" means the deliverable adopts rejected or superseded material as if it still held (e.g. recommends the dropped option, states the relaxed number as the requirement, names the disproven cause as the root cause). Mentioning rejected material only to say it was rejected or ruled out is NOT a violation.
+
 ## User messages
 {user_messages}
 
@@ -122,6 +124,26 @@ def judge_score(model: Any, task: dict[str, Any], answer: str) -> dict[str, Any]
     return {"error": repr(last_error)}
 
 
+# A product failure (e.g. the merge gate refused the approved import) means the user got
+# no deliverable; it is scored as the worst outcome so it cannot drop out of the pairs.
+_PRODUCT_FAILURE_JUDGE = {
+    "criteria": [],
+    "deliverable_given": False,
+    "uses_rejected_material": False,
+    "overall": 1,
+    "rubric_rate": 0.0,
+    "product_failure": True,
+}
+
+
+def _judge_for(run: dict[str, Any], model: Any, task: dict[str, Any], answer: str) -> dict:
+    if run["status"] == "ok":
+        return judge_score(model, task, answer)
+    if run["status"] == "product_failure":
+        return {**_PRODUCT_FAILURE_JUDGE, "reason": run.get("error", "")}
+    return {"error": "run failed"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tasks", required=True)
@@ -164,9 +186,7 @@ def main() -> int:
             "answer_chars": len(answer),
             "regex": regex_score(task, answer),
             "judge_model": args.judge,
-            "judge": judge_score(model, task, answer)
-            if run["status"] == "ok"
-            else {"error": "run failed"},
+            "judge": _judge_for(run, model, task, answer),
         }
         return row
 

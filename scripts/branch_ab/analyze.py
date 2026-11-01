@@ -99,13 +99,17 @@ def analyze(rows: list[dict[str, Any]], group: str | None = None) -> dict[str, A
             ),
             "n_tasks": len(per_task),
         }
-    # pass^k: a task passes only if every repeat passes (judge overall >= 4 and no contamination).
+    # pass^k: a task passes only if every repeat passes (judge overall >= 4 and the judge
+    # finds no adopted rejected material). Regex contamination stays a diagnostic only: it
+    # also fires when an answer correctly says "X was ruled out".
     for arm in ("linear", "branch"):
         per_task_pass: dict[str, list[bool]] = defaultdict(list)
         for row in rows:
             if row["arm"] != arm or "error" in row["judge"]:
                 continue
-            ok = (row["judge"].get("overall") or 0) >= 4 and not row["regex"]["contaminated"]
+            ok = (row["judge"].get("overall") or 0) >= 4 and not row["judge"].get(
+                "uses_rejected_material"
+            )
             per_task_pass[row["task_id"]].append(ok)
         if per_task_pass:
             result[f"pass_k_{arm}"] = round(
