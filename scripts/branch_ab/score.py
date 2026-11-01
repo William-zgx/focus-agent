@@ -75,7 +75,8 @@ def _judge_model(model_id: str):
         "FOCUS_AGENT_LOCAL_ENV_FILE", str(REPO_ROOT / ".focus_agent" / "local.env")
     )
     os.environ.setdefault(
-        "FOCUS_AGENT_MODEL_CATALOG_DOC", str(REPO_ROOT / ".focus_agent" / "models.toml")
+        "FOCUS_AGENT_MODEL_CATALOG_DOC",
+        os.environ.get("BRANCH_AB_MODEL_CATALOG", str(REPO_ROOT / ".focus_agent" / "models.toml")),
     )
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from focus_agent.config import Settings
