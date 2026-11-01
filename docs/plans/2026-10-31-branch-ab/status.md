@@ -62,6 +62,18 @@ fork 出的子分支里做，合并提案经批准后导入主线，再在主线
     其中 execution 63、live_web_research 11、workspace_lookup 12；
     最后一条岔路消息被判 live_web_research 的有 `res-en-02`、`res-en-04`，基线中预计这两题分支组被拒。
   - 证据：运行记录的 `child_gate_state` 字段（子线程的 answer_verification / execution_contract / plan_meta）。
+- **分支组最终回答丢掉岔路里定下的细节（基线中期，127 次正常运行）。**
+  岔路细节召回率（正则，按最终回答）：分支组 0.66，线性组 0.98；
+  审查类 0.06 对 0.87，调试类 0.48 对 1.00，研究、写作两类两组相近。主线约束 0.87 对 0.89。
+  丢失发生在作答阶段，不在合并阶段：合并材料和最终作答输入里约 98–99% 的细节都在。
+  例：`rev-zh-01__branch__r0.json` 第 10 次调用，输入里三处写明 QuorumSync 与 2 秒预警，
+  回答仍按岔路前的主线续写（“未收到方案文档……”），没有提到这两项。
+  导入结论在最终输入里出现三次：系统提示的“Approved branch conclusions”，`<memory-context>`
+  （confidence 0.00），以及回到主线前的“Imported conclusion from branch”系统消息；
+  岔路的原始对话一条都不在。
+  测量脚本与报告：`reports/branch_ab/ds-work/inspect/`（DeepSeek 执行者编写，主要数字已由 lead 独立重算）。
+- **合并提案 JSON 无效时静默降级。** `rev-en-03__branch__r0.json`：提案输出含未转义引号，解析失败；
+  系统改用分支最后一条回复的约 220 字截断片段作为 summary 并导入，未报任何错误。
 - 计划器的“可用工具”总带 `run_skill_entrypoint`：`capabilities/tool_registry.py` 无条件注册，
   不受工具 catalog 控制。两组都受影响，导致计划 → 反思 → 重新规划的额外调用。
 
