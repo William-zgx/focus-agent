@@ -140,13 +140,19 @@ def main():
         missed = [mi["id"] for mi in t["must_include"] if not any_matches(mi["any_of"], correct)]
         if missed:
             failures.append(f"{tid}: CORRECT answer fails must_include {missed}")
-        contaminated = [mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], correct)]
+        contaminated = [
+            mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], correct)
+        ]
         if contaminated:
             failures.append(f"{tid}: CORRECT answer contaminated by {contaminated}")
 
         # 4. wrong answer: must match a must_not_include OR fail a must_include
-        wrong_hit_mn = [mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], wrong)]
-        wrong_miss_mi = [mi["id"] for mi in t["must_include"] if not any_matches(mi["any_of"], wrong)]
+        wrong_hit_mn = [
+            mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], wrong)
+        ]
+        wrong_miss_mi = [
+            mi["id"] for mi in t["must_include"] if not any_matches(mi["any_of"], wrong)
+        ]
         if not wrong_hit_mn and not wrong_miss_mi:
             failures.append(
                 f"{tid}: WRONG answer is not caught (no must_not_include hit, no must_include miss)"
@@ -166,14 +172,22 @@ def main():
         wrong = WRONG[tid]
         mi_ok = all(any_matches(mi["any_of"], correct) for mi in t["must_include"])
         mn_ok = not any(any_matches(mn["any_of"], correct) for mn in t["must_not_include"])
-        wrong_hit_mn = [mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], wrong)]
-        wrong_miss_mi = [mi["id"] for mi in t["must_include"] if not any_matches(mi["any_of"], wrong)]
+        wrong_hit_mn = [
+            mn["id"] for mn in t["must_not_include"] if any_matches(mn["any_of"], wrong)
+        ]
+        wrong_miss_mi = [
+            mi["id"] for mi in t["must_include"] if not any_matches(mi["any_of"], wrong)
+        ]
         caught = ",".join(wrong_hit_mn) or ("miss:" + ",".join(wrong_miss_mi))
-        print(f"{tid:10} {len(t['must_include']):>2} {len(t['must_not_include']):>2}  "
-              f"{'OK' if (mi_ok and mn_ok) else 'BAD':<5}  {caught}")
+        print(
+            f"{tid:10} {len(t['must_include']):>2} {len(t['must_not_include']):>2}  "
+            f"{'OK' if (mi_ok and mn_ok) else 'BAD':<5}  {caught}"
+        )
 
-    print(f"\nAll {len(tasks)} tasks pass: correct answers satisfy all must_include and no "
-          "must_not_include; wrong answers are caught; regexes compile; no forbidden words.")
+    print(
+        f"\nAll {len(tasks)} tasks pass: correct answers satisfy all must_include and no "
+        "must_not_include; wrong answers are caught; regexes compile; no forbidden words."
+    )
 
 
 if __name__ == "__main__":

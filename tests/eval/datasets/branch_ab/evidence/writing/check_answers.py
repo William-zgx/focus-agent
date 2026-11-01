@@ -11,14 +11,15 @@ realistic WRONG answer that uses the rejected detour material, then assert:
   * every regex compiles;
   * no forbidden word appears in any user message.
 """
+
 import json
 import re
 
-FORBIDDEN = ['分支', '支线', 'branch', 'fork', '分叉', 'merge', '合并']
+FORBIDDEN = ["分支", "支线", "branch", "fork", "分叉", "merge", "合并"]
 
 
-def load_tasks(path='tasks.jsonl'):
-    return [json.loads(l) for l in open(path, encoding='utf-8') if l.strip()]
+def load_tasks(path="tasks.jsonl"):
+    return [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
 
 
 # ---- hand-written answers ------------------------------------------------
@@ -157,30 +158,30 @@ ANSWERS = {
 
 def item_passes(item, text):
     """any_of semantics: pass if ANY regex matches."""
-    return any(re.search(r, text, re.IGNORECASE) for r in item['any_of'])
+    return any(re.search(r, text, re.IGNORECASE) for r in item["any_of"])
 
 
 def main():
     tasks = load_tasks()
-    by_id = {t['id']: t for t in tasks}
+    by_id = {t["id"]: t for t in tasks}
 
-    assert set(ANSWERS) == set(by_id), (set(ANSWERS) ^ set(by_id))
+    assert set(ANSWERS) == set(by_id), set(ANSWERS) ^ set(by_id)
 
     failures = []
     rows = []
 
     for tid in by_id:
         t = by_id[tid]
-        correct = ANSWERS[tid]['correct']
-        wrong = ANSWERS[tid]['wrong']
+        correct = ANSWERS[tid]["correct"]
+        wrong = ANSWERS[tid]["wrong"]
 
         # correct answer: all must_include pass, no must_not_include hit
-        missed_mi = [i['id'] for i in t['must_include'] if not item_passes(i, correct)]
-        hit_mn = [i['id'] for i in t['must_not_include'] if item_passes(i, correct)]
+        missed_mi = [i["id"] for i in t["must_include"] if not item_passes(i, correct)]
+        hit_mn = [i["id"] for i in t["must_not_include"] if item_passes(i, correct)]
 
         # wrong answer: at least one must_not_include hit, or fails a must_include
-        hit_mn_wrong = [i['id'] for i in t['must_not_include'] if item_passes(i, wrong)]
-        failed_mi_wrong = [i['id'] for i in t['must_include'] if not item_passes(i, wrong)]
+        hit_mn_wrong = [i["id"] for i in t["must_not_include"] if item_passes(i, wrong)]
+        failed_mi_wrong = [i["id"] for i in t["must_include"] if not item_passes(i, wrong)]
 
         ok = (not missed_mi) and (not hit_mn) and (hit_mn_wrong or failed_mi_wrong)
         if not ok:
@@ -191,33 +192,33 @@ def main():
     # forbidden-word check across every user message
     fw_hits = []
     for t in tasks:
-        for m in t['main_turns'] + t['detour_turns'] + [t['return_turn']]:
+        for m in t["main_turns"] + t["detour_turns"] + [t["return_turn"]]:
             ml = m.lower()
             for w in FORBIDDEN:
                 if w in ml:
-                    fw_hits.append((t['id'], w))
+                    fw_hits.append((t["id"], w))
     if fw_hits:
-        failures.append('FORBIDDEN_WORDS')
+        failures.append("FORBIDDEN_WORDS")
 
     # regex compile check
     compile_errs = []
     for t in tasks:
-        for grp in ('must_include', 'must_not_include'):
+        for grp in ("must_include", "must_not_include"):
             for item in t[grp]:
-                for r in item['any_of']:
+                for r in item["any_of"]:
                     try:
                         re.compile(r, re.IGNORECASE)
                     except re.error as e:
-                        compile_errs.append((t['id'], item['id'], r, str(e)))
+                        compile_errs.append((t["id"], item["id"], r, str(e)))
     if compile_errs:
-        failures.append('REGEX_COMPILE')
+        failures.append("REGEX_COMPILE")
 
     # ---- summary -----------------------------------------------------
     print("=" * 72)
     print("check_answers.py — adversarial verification summary")
     print("=" * 72)
     for tid, missed_mi, hit_mn, hit_mn_wrong, failed_mi_wrong, ok in rows:
-        status = 'PASS' if ok else 'FAIL'
+        status = "PASS" if ok else "FAIL"
         print(f"[{status}] {tid}")
         if missed_mi:
             print(f"      correct misses must_include: {missed_mi}")
@@ -226,8 +227,10 @@ def main():
         if not (hit_mn_wrong or failed_mi_wrong):
             print("      wrong answer neither hits must_not_include nor fails a must_include")
         else:
-            print(f"      wrong hits must_not_include: {hit_mn_wrong or '-'}"
-                  f" | wrong fails must_include: {failed_mi_wrong or '-'}")
+            print(
+                f"      wrong hits must_not_include: {hit_mn_wrong or '-'}"
+                f" | wrong fails must_include: {failed_mi_wrong or '-'}"
+            )
 
     print("-" * 72)
     print(f"forbidden-word hits: {fw_hits or 'none'}")
@@ -237,26 +240,74 @@ def main():
     print("-" * 72)
     print("regression checks for applied fixes:")
     checks = [
-        ("zh-02 four_hour must NOT flag '14时00分'", '14时00分 至 17时00分', by_id['wri-zh-02'],
-         'must_not_include', 'four_hour', False),
-        ("zh-02 window must match '14时00分 至 17时00分'", '14时00分 至 17时00分', by_id['wri-zh-02'],
-         'must_include', 'window', True),
-        ("zh-03 salary must match '22K–32K'", '22K–32K·14 薪', by_id['wri-zh-03'],
-         'must_include', 'salary', True),
-        ("en-02 four_hour must NOT flag '24-hour support'", 'we offer 24-hour support', by_id['wri-en-02'],
-         'must_not_include', 'four_hour', False),
-        ("en-03 salary must match '$125,000 to $165,000'", '$125,000 to $165,000', by_id['wri-en-03'],
-         'must_include', 'salary', True),
-        ("en-03 bonus must NOT flag '10% discount'", 'we offer a 10% discount', by_id['wri-en-03'],
-         'must_include', 'bonus', False),
-        ("en-03 competitive must NOT flag 'competitive benefits'", 'we offer competitive benefits', by_id['wri-en-03'],
-         'must_not_include', 'competitive', False),
-        ("en-03 competitive must flag 'Salary: competitive'", 'Salary: competitive', by_id['wri-en-03'],
-         'must_not_include', 'competitive', True),
+        (
+            "zh-02 four_hour must NOT flag '14时00分'",
+            "14时00分 至 17时00分",
+            by_id["wri-zh-02"],
+            "must_not_include",
+            "four_hour",
+            False,
+        ),
+        (
+            "zh-02 window must match '14时00分 至 17时00分'",
+            "14时00分 至 17时00分",
+            by_id["wri-zh-02"],
+            "must_include",
+            "window",
+            True,
+        ),
+        (
+            "zh-03 salary must match '22K–32K'",
+            "22K–32K·14 薪",
+            by_id["wri-zh-03"],
+            "must_include",
+            "salary",
+            True,
+        ),
+        (
+            "en-02 four_hour must NOT flag '24-hour support'",
+            "we offer 24-hour support",
+            by_id["wri-en-02"],
+            "must_not_include",
+            "four_hour",
+            False,
+        ),
+        (
+            "en-03 salary must match '$125,000 to $165,000'",
+            "$125,000 to $165,000",
+            by_id["wri-en-03"],
+            "must_include",
+            "salary",
+            True,
+        ),
+        (
+            "en-03 bonus must NOT flag '10% discount'",
+            "we offer a 10% discount",
+            by_id["wri-en-03"],
+            "must_include",
+            "bonus",
+            False,
+        ),
+        (
+            "en-03 competitive must NOT flag 'competitive benefits'",
+            "we offer competitive benefits",
+            by_id["wri-en-03"],
+            "must_not_include",
+            "competitive",
+            False,
+        ),
+        (
+            "en-03 competitive must flag 'Salary: competitive'",
+            "Salary: competitive",
+            by_id["wri-en-03"],
+            "must_not_include",
+            "competitive",
+            True,
+        ),
     ]
     reg_fail = []
     for label, text, t, grp, iid, expect_match in checks:
-        item = next(i for i in t[grp] if i['id'] == iid)
+        item = next(i for i in t[grp] if i["id"] == iid)
         got = item_passes(item, text)
         ok = got == expect_match
         if not ok:
@@ -270,5 +321,5 @@ def main():
     print("RESULT: ALL CHECKS PASS")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

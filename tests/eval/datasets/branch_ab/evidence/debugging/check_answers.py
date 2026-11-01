@@ -9,6 +9,7 @@ answer that uses the rejected material. We assert:
   * every regex compiles;
   * no forbidden word appears in any user message.
 """
+
 import json
 import re
 import sys
@@ -21,7 +22,7 @@ CORRECT = {
         "根因：quantum-sync 模块的 deduct_stock_v2 在重试时未携带幂等键，同一笔 "
         "tx_no 被重复扣减（错误码 NX-4471 即幂等键冲突），导致促销时段对账后出现负库存；"
         "与夜间对账任务重复执行、锁超时无关。修复：仅改 quantum-sync，为重试补充幂等键 "
-        "idem_key = tx_no + \"_\" + sku，锁超时保持 500ms。约束遵守：不改数据库 schema、"
+        'idem_key = tx_no + "_" + sku，锁超时保持 500ms。约束遵守：不改数据库 schema、'
         "不新增外部依赖，扣减接口 P99 控制在 400ms 以内，对账错误率压到 0.5% 以下。"
     ),
     "dbg-zh-02": (
@@ -149,7 +150,9 @@ def main():
             low = m.lower()
             for f in FORBIDDEN:
                 if f in low:
-                    errors.append("%s: forbidden word %r in user message: %s" % (t["id"], f, m[:40]))
+                    errors.append(
+                        "%s: forbidden word %r in user message: %s" % (t["id"], f, m[:40])
+                    )
 
     # 3. correct answers pass, wrong answers fail
     rows = []
@@ -158,14 +161,10 @@ def main():
         c = CORRECT[tid]
         w = WRONG[tid]
 
-        c_missing = [i["id"] for i in t["must_include"]
-                     if not match_any(c, i["any_of"])]
-        c_contam = [i["id"] for i in t["must_not_include"]
-                    if match_any(c, i["any_of"])]
-        w_contam = [i["id"] for i in t["must_not_include"]
-                    if match_any(w, i["any_of"])]
-        w_missing = [i["id"] for i in t["must_include"]
-                     if not match_any(w, i["any_of"])]
+        c_missing = [i["id"] for i in t["must_include"] if not match_any(c, i["any_of"])]
+        c_contam = [i["id"] for i in t["must_not_include"] if match_any(c, i["any_of"])]
+        w_contam = [i["id"] for i in t["must_not_include"] if match_any(w, i["any_of"])]
+        w_missing = [i["id"] for i in t["must_include"] if not match_any(w, i["any_of"])]
 
         ok_c = (not c_missing) and (not c_contam)
         ok_w = bool(w_contam) or bool(w_missing)
@@ -178,16 +177,27 @@ def main():
             if c_contam:
                 errors.append("%s: CORRECT answer falsely CONTAMINATED by %s" % (tid, c_contam))
         if not ok_w:
-            errors.append("%s: WRONG answer is not caught (no must_not_include hit and "
-                          "all must_include present)" % tid)
+            errors.append(
+                "%s: WRONG answer is not caught (no must_not_include hit and "
+                "all must_include present)" % tid
+            )
 
     # summary table
     print("id           correct  wrong-caught   (correct misses / contam | wrong contam / misses)")
     print("-" * 90)
     for tid, ok_c, ok_w, cm, cc, wc, wm in rows:
-        print("%-12s %-8s %-13s misses=%s contam=%s | contam=%s misses=%s"
-              % (tid, "PASS" if ok_c else "FAIL", "YES" if ok_w else "NO",
-                 cm or "-", cc or "-", wc or "-", wm or "-"))
+        print(
+            "%-12s %-8s %-13s misses=%s contam=%s | contam=%s misses=%s"
+            % (
+                tid,
+                "PASS" if ok_c else "FAIL",
+                "YES" if ok_w else "NO",
+                cm or "-",
+                cc or "-",
+                wc or "-",
+                wm or "-",
+            )
+        )
 
     print()
     if errors:
@@ -196,9 +206,11 @@ def main():
             print("  -", e)
         sys.exit(1)
 
-    print("All checks passed: %d tasks, every correct answer matches all must_include "
-          "and no must_not_include; every wrong answer is caught; all regexes compile; "
-          "no forbidden words in user messages." % len(tasks))
+    print(
+        "All checks passed: %d tasks, every correct answer matches all must_include "
+        "and no must_not_include; every wrong answer is caught; all regexes compile; "
+        "no forbidden words in user messages." % len(tasks)
+    )
 
 
 if __name__ == "__main__":
