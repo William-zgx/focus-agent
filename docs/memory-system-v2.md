@@ -1,6 +1,6 @@
 # Focus Agent Memory System v2
 
-更新时间：2026-09-28
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
 
 本文是 Memory 系统的 canonical 设计文档。它描述当前仓库中的真实实现，而不是未来设想；旧版 v1 背景已合并到本文的 legacy fallback / migration 章节，不再作为独立文档维护。本文件重点整理 PostgreSQL canonical memory、数据模型、运行时链路、Zvec-first retrieval、pgvector compatibility、审计治理、legacy fallback 和后续风险。跨 memory / artifact / skill / trajectory / workspace 的检索索引细节见 [Zvec Retrieval Index](retrieval-zvec.md)。
 
@@ -25,7 +25,7 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 不增加专用 memory summarizer model。
 - 不把短期上下文、规则、项目指令或工作记忆 embedding 化；这些内容继续通过 context assembly、pinned/context state、skills 和 `AGENTS.md` 等显式上下文进入模型。
 - 不把 Markdown snapshot 当运行时事实源。
-- 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/candidates/forget。
+- 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/usage/candidates/forget。
 - 不改变 Agent Team / Mission Runner 公共 API、UI、任务模型。
 
 ## 2. 架构总览
@@ -83,8 +83,8 @@ flowchart TD
 | `src/focus_agent/memory/extractor.py` | 稳定 turn 后的启发式候选抽取。 |
 | `src/focus_agent/memory/assembler.py` | `<memory-context>` 渲染和 prompt injection guard。 |
 | `src/focus_agent/memory/curator.py` | branch finding promotion 前的冲突检查和候选治理。 |
-| `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前保持 FTS/rerank/dedupe。 |
-| `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/candidates/forget surface。 |
+| `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前为 Zvec-first + repository FTS/rerank/dedupe fallback。 |
+| `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/usage/candidates/forget surface。 |
 | `src/focus_agent/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
 | `src/focus_agent/memory_embedding_cli.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
 
@@ -522,8 +522,9 @@ Graph 节点顺序：
 ```text
 bootstrap_turn
 -> retrieve_memory
+-> context_pipeline
 -> assemble_context
--> plan_and_reflect / agent_loop / tool loop
+-> plan / agent_loop / tool loop / reflect
 -> summarize_turn
 -> extract_memories
 -> write_memories
@@ -815,6 +816,7 @@ HTTP surface：
 - `GET /v1/memory/{memory_id}/audit`
 - `POST /v1/memory/{memory_id}/forget`
 - `GET /v1/memory/candidates`
+- `GET /v1/memory/{memory_id}/usage`
 
 SDK helpers：
 

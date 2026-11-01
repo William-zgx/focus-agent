@@ -358,13 +358,19 @@ def _finding_evidence_refs(proposal: MergeProposal, finding: str) -> list[str]:
 
 
 def _merge_import_blocked_reason(values: dict) -> str:
+    """Refuse only conclusions the evidence contradicts.
+
+    ``unsupported`` and ``blocked`` mean the branch turn proved nothing either
+    way (e.g. a required web tool was unavailable); they do not invalidate a
+    conclusion the user has already approved, so they must not block the import.
+    """
     verification = values.get("answer_verification") or (values.get("plan_meta") or {}).get(
         "answer_verification"
     )
     if not isinstance(verification, dict):
         return ""
     status = str(verification.get("status") or "").strip()
-    if status in {"unsupported", "contradicted", "blocked"}:
+    if status == "contradicted":
         return status
     return ""
 

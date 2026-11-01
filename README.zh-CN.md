@@ -59,6 +59,8 @@ Task budget 字段已经存在于规划/ledger 合同中，但真实 task runner
 
 与其把所有探索过程都塞进一条越来越嘈杂的主线程里，Focus Agent 把主线程当作共享进展，把分支当作临时工作区，用来做探索、验证和对比。分支推荐 **不会静默 fork**，只会生成待用户确认的 Branch Action 卡片。
 
+分支工作流的质量收益正在通过实验检验。冻结的 32 题基线中，分支组低于线性对话；修复结论呈现与合并拦截后，192 次复测与双评委评分均已完成。分支−线性总分差为 Sonnet −0.125/5（95% CI −0.333 ~ +0.073）、DeepSeek −0.135/5（−0.438 ~ +0.156），输入 token 少约 19.8%。两位评委均未检出总体显著差异，尚未证明质量更优或等效。方法与适用范围见[实验记录](docs/plans/2026-10-31-branch-ab/status.md)。
+
 ## 核心能力
 
 - 支持分支式会话与受控 merge 回主线
@@ -146,7 +148,7 @@ PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/readyz` 与 `http://127.0.0.1:8000/metrics`
 
-更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。内置登录页支持用户名密码、Demo 登录和 Bearer Token 登录；账号切换就是先退出再选择另一种登录方式。
+更完整的本地启动方式、repo-local PostgreSQL 自动托管、Vite 开发模式和本地鉴权说明见 [docs/quick-start.zh-CN.md](docs/quick-start.zh-CN.md)。内置登录页支持用户名密码、“试用 Demo 工作区”和 Bearer Token 登录；账号切换就是先退出再选择另一种登录方式。
 
 ## Android App
 

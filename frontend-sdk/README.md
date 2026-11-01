@@ -167,7 +167,7 @@ flowchart LR
 - `register()`, `login()`, `logout()`, `refresh()`, and `changePassword()` - manage authenticated user sessions
 - `createDemoToken()` and `getPrincipal()` - request a local development token and inspect the authenticated principal
 - `listMySessions()` and `revokeSession()` - inspect or revoke the current user's sessions
-- `getAdminConfig()`, `updateAdminModelConfig()`, `updateAdminToolConfig()`, `updateAdminPolicyConfig()`, `updateAdminSkillConfig()`, and `refreshAdminSkillConfig()` - administer model connections, tools, policies, and Skill enablement
+- `getAdminConfig()`, `updateAdminModelConfig()`, `updateAdminToolConfig()`, `updateAdminPolicyConfig()`, `updateAdminSkillConfig()` - administer model connections, tools, policies, and Skill enablement
 - `listUsers()`, `createUser()`, `getUser()`, `updateUser()`, `updateUserStatus()`, `updateUserRoles()`, `listUserSessions()`, `revokeUserSession()`, `resetUserPassword()`, and `listAuditEvents()` - administer users, sessions, passwords, and audit events
 - `listModels()` - fetch the current model catalog
 - `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, `listAgentRoleDecisions()`, `selectAgentSkills()`, `listAgentSkillSelections()`, `sendAgentSkillSelectionFeedback()`, `getAgentSkillCatalog()`, `updateAgentSkillPreference()`, and `getAgentFeedbackTrend()` - inspect role routing policy, preview orchestrator decisions, review persisted role_route_plan records, manage skill selection evidence, and read governance feedback trend summaries
@@ -255,6 +255,9 @@ run.status
 run.completed
 run.failed
 run.interrupt
+run.rollback.started
+run.rollback.succeeded
+run.rollback.failed
 run.closed
 server_shutdown
 heartbeat

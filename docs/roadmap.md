@@ -1,6 +1,6 @@
 # Focus Agent 当前路线图
 
-源码核对日期：2026-09-28；基线：`718be87`。本轮只更新文档，未完成下列功能修复或生产验收。
+更新日期：2026-11-01；能力清单承接 `718be87`，本轮校准源码与实验证据。已实施的分支导入修复与尚未实施的能力规划分别说明。
 
 这份文档只回答两个问题：
 
@@ -37,7 +37,7 @@ flowchart LR
 - 默认聊天入口为 V2 harness runs（`/v2/threads/.../runs[/stream]`），SSE
   contract 与 SDK reducer 受 contract / smoke 保护。
 - merged branch 写入限制、用户确认的 branch recommendation、thread
-  resolution、owner-scoped 数据访问和 audit 均有实现与相关检查；授权前状态回填和前端 audit-only 操作边界仍有待修问题，不能据此宣称全链路副作用隔离已完成。
+  resolution、owner-scoped 数据访问和 audit 均有实现与相关检查；线程状态读取先授权再回填，前端 audit-only 操作边界的 B01/B06 修复已实施。新增入口仍需单独验证授权和副作用顺序。
 - Plan-Act-Reflect、tool runtime、Memory v2、Context Engineering、Zvec
   retrieval、trajectory replay/promotion、governance feedback 和 eval 均有实现；部分受配置、后端依赖或手工流程限制，并非全部默认启用或自动闭环。Zvec 是可重建索引，命中必须回查 canonical source。
 - memory forget/tombstone 与 embedding worker 已使用条件更新保护，不允许
@@ -111,7 +111,7 @@ flowchart LR
 | 风险域 | 当前已有基线 | 仍需完成 |
 |---|---|---|
 | 持久任务 | journal/checkpoint、v19 job/lease/receipt、后台执行组件 | 接通 run 启动恢复、持久 follow-up、审批续跑、请求去重与不确定副作用核对；详见规划 C01 |
-| 可信验收 | live-web/Skill execution contract、evidence、eval judge | 修复初始状态回退造成的环境断言假阳性；补普通实施任务验收与真实用量/成本语义；C02/C04 |
+| 可信验收 | live-web/Skill execution contract、evidence、eval judge | 环境断言默认 final-state、acceptance 门禁已有基础修复；仍需普通实施任务的行为验收与真实 provider 用量/成本证据，详见 C02/C04 |
 | 外部操作与交付 | workspace/Git/web 文本工具、Skill、artifact 基础 | 一个受控浏览器或业务连接器场景、原生附件输入和授权成果交付；C03 |
 | 多 Agent 闭环 | DAG、任务表、隔离执行、feature flags | 接通 revision 返工、实际预算与证据整合，再用单 Agent 对照证明收益；C05 |
 | 记忆与反馈 | namespace/evidence/tombstone、trajectory/replay/promotion | 可撤销记忆修订，任务级反馈到候选和回归的关联；C06/C07 |
@@ -119,7 +119,7 @@ flowchart LR
 | PostgreSQL 运维 | migration/ops report、backup/restore evidence、transactional import、schema v19 | 在目标规模数据上演练 RPO/RTO、跨版本 restore、长期 retention 和故障切换 |
 | Observability | `/readyz`、`/metrics`、OTel smoke、alert report、真实 Chrome observability smoke | 接真实 collector、trace backend、pager/alert 平台，并增加长时间窗口与多实例验证 |
 | Auth lifecycle | active-user check、session revocation、HS256 active key set、Cookie CSRF | 接企业 IdP/JWKS、refresh/rotation runbook、跨服务 logout/revocation 和安全审计 |
-| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛；用证据证明 branch 工作流的任务 ROI |
+| Agent 质量 | eval、nightly、trajectory replay、memory/retrieval/governance trends | 扩真实失败 golden cases、长期 trend storage、成本/延迟画像和多 Agent 结果质量门槛；branch 工作流已有配对实验（[branch_ab](plans/2026-10-31-branch-ab/status.md)）：基线显著落后；修复后 192 次及双评委评分全部完成，Sonnet 总分差 −0.125 [−0.333, +0.073]，DeepSeek −0.135 [−0.438, +0.156]；输入 token 少约 19.8%，尚未证明质量更优或等效 |
 | Runtime 一致性 | contract tests、stream quarantine、architecture gate | 收敛 Chat / Harness / Agent Team / Android local-runtime 的共享 stream 与 tool 语义，降低并行路径漂移 |
 | Web/stream 可靠性 | real Chrome workflow、reconnect dedupe、incomplete-stream error、bridge cleanup | 增加断网/恢复、代理超时、多实例 replay、长会话和轻量负载阈值 |
 | Android 发布 | debug CI、native HTTP/deep-link hardening、instrumentation coverage | 增加 release signing pipeline、真实设备/Android 版本矩阵、弱网/后台恢复和商店发布检查 |
@@ -128,12 +128,13 @@ flowchart LR
 
 ## 3. 下一阶段优先级
 
-1. **校准现状文档并建立实施依据。** 本轮仅做此项；计划中的功能不写成已完成。
-2. **修复可靠性交付的前置问题。** 按规划 B01–B08 处理授权前写入、退出信号、readiness、eval 可信度、只读 UI/handoff、SDK 构建顺序和部署恢复证据。
-3. **可靠完成一个任务。** 阶段 A 接通持久恢复、审批续跑、真实预算和代码任务验收；优先复用已有表与运行时。
-4. **扩展一个真实操作场景。** 阶段 B 在浏览器验收与业务连接器中选择首个用例，同时补必要的输入/成果交付能力，不并行建设所有集成。
-5. **形成可测量的长期改进。** 阶段 C 补针对性返工、记忆纠错和反馈回归；用相同任务与预算比较单/多 Agent，而不是默认增加角色。
-6. **按部署需求推进生产集成。** 企业 IdP、collector/pager、release 控制面、RPO/RTO、Android 发布和兼容退场继续保留，但不取代 Agent 核心可靠性工作。需要真实账号、环境或数据规模时另行确认范围与证据。
+当前目标是深化分支工作流，优先检验主线能力；以下顺序由失败证据驱动。
+
+1. **以完整实验确定下一步。** 冻结的 32 题已完成基线、修复后复测及双评委评分；质量差距缩小、输入 token 减少，但总体更优和等效均未证明。保持原始基线与任务集冻结，以剩余失败确定下一项最小改动。
+2. **按剩余失败选择最小改动。** 优先检查合并提案保真、静默截断、已定决定的呈现与上下文裁剪；每项以可复现失败和执行不变量验收。
+3. **用同一任务集回归，再验证外推范围。** 区分真实质量提升、随机波动和 token 变化。尚无真实使用数据；后续工具任务或新任务集必须单独冻结，不能回改现有题目迁就结果。
+4. **以行为保持为前提简化主路径。** 只简化已经测清楚的 Chat / branch / merge 路径；全面代码 review 与无关架构扩张暂缓。
+5. **按实际需求再启用能力规划。** B01–B07 已有主线基础修复，B08 的部署恢复仍待目标环境验证；阶段 A/B/C、生产集成和兼容迁移保留为候选；由具体失败、部署需求和验证条件决定是否开展。
 
 ## 4. 验证与文档入口
 
@@ -158,6 +159,5 @@ flowchart LR
   管理工具；本轮明确请求的调研/设计/规划集中维护于带日期和状态的 `plans/` 子目录。
 - 架构、兼容库存或优先级变化时，同步更新对应 baseline、canonical 文档和本文。
 - schema 版本以代码 `SCHEMA_VERSION` 为准，变更时同步 architecture / overview。
-- 1.x public import surface 仍受支持；只有满足
-  [compat baseline](compat-debt-baseline.json) 中的 2.0 exit criteria 后才进入
-  移除计划。
+- 兼容入口按 [compat baseline](compat-debt-baseline.json) 的逐类 exit criteria 管理。
+  当前无外部采用方，先迁移仓库调用方再删除；出现外部采用方后补 telemetry、迁移说明和兼容窗口。

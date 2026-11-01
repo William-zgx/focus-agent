@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-09-28
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径。
 
@@ -118,7 +118,7 @@ flowchart LR
 | `src/focus_agent/harness/` | FocusAgentHarness、RunManager、stream bridge、middleware stack、subagents、run journal |
 | `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review |
 | `src/focus_agent/services/` | ChatService、BranchService、AgentTeamService 等 API-facing 业务服务；实现优先在 `services/chat/`、`services/branches/`、`services/agent_team/` 等 package |
-| `src/focus_agent/services/*` 顶层 shim | 大量 `import *` / re-export 兼容 facade（计入 compat baseline）；**找实现时优先进子 package** |
+| `src/focus_agent/branch_service.py`、`chat_service.py` 等顶层 shim | 兼容 re-export facade（计入 compat baseline）；**找实现时优先进入 `services/` 下的实现 package** |
 | `src/focus_agent/branch_decision/` | branch decision / pre-turn recommendation 的 signal collection、scoring 和 service |
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema（`SCHEMA_VERSION`）、trajectory、artifact metadata |
 | `src/focus_agent/runtime/` | 运行时共享工具；当前包含进程级共享线程池和关闭钩子 |
@@ -130,7 +130,7 @@ flowchart LR
 | `src/focus_agent/multi_agent/` | multi-agent coordination 相关运行时组件（与 Agent Team v2 flags 协同） |
 | `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
 | `src/focus_agent/storage/` | namespace helpers、import helpers、`ArtifactStore` protocol 和 local filesystem implementation |
-| `src/focus_agent/security/` | SSRF / URL 安全等防护 helpers |
+| `src/focus_agent/security/` | 认证 token、密码、角色权限、owner 校验和 rate limit helpers；`web_fetch` 的 SSRF/URL 校验在 `capabilities/default_tool_modules/web_helpers.py` |
 | `src/focus_agent/eval/` | eval runner / judges 框架 |
 | `src/focus_agent/web/` | React build serving 和 Vite dev redirect |
 | `apps/web/src/` | React app shell、pages、features、entities、shared UI、`android-local-runtime/` |
@@ -149,7 +149,7 @@ flowchart LR
 | Persistence adapters | Postgres / SQLite repositories、schema、migration、本地 fallback | schema 和 repository contract 是稳定边界；兼容路径先用引用扫描证明安全，再删除 |
 | Mobile local runtime | `apps/web/src/android-local-runtime/`、Capacitor 原生桥 | 与 server-backed Web 并行；协议与能力变更必须单独验证，避免 silently drift |
 | Release and eval tooling | `scripts/`、release/eval/smoke tests、contract snapshots | CLI 参数、exit code、报告字段稳定；重复 I/O 和 report 读取可抽 helper，但不改变输出 shape |
-| Compatibility surface | 顶层 `agent_*.py` / `services/*` re-export facade | 1.x 仍受支持；新增代码应 import 新路径；删除须满足 compat exit criteria |
+| Compatibility surface | 顶层 `branch_service.py`、`chat_service.py`、`graph.py`、`state.py`、`schemas.py` 及剩余 re-export facade | 新增代码使用实现路径；先迁移仓库调用方，再按 compat exit criteria 删除；外部采用方出现后增加迁移窗口 |
 
 `make architecture-report` 生成 `reports/architecture/latest.json`，用于本地观察大型文件和 import 边界信号；`make architecture-gate` 使用同一份 canonical 800 行策略和 `docs/architecture-debt-baseline.json` 在 CI 中阻断回归。当前 baseline 没有 grandfathered large file；发现问题后应按模块边界拆小 helper 或调整依赖方向，而不是放宽阈值。
 
@@ -184,7 +184,7 @@ flowchart LR
 - `agent_team_service`：Agent Team session / task / output 业务服务。
 - `user_service`：local user/session/role 业务服务。
 - `productivity_service`、`productivity_repository`：owner-scoped notes/tasks/capture 业务服务和 repository。
-- `coordination_backend`、`background_worker`：thread lease、可选 durable background job 和后台 side-effect 调度；worker 只有在 durable backend 配置下才承担跨进程 claim/retry。
+- `coordination_backend`、`background_work`、`durable_background_worker`：thread lease、可选 durable background job 和后台 side-effect 调度；worker 只有在 durable backend 配置下才承担跨进程 claim/retry。
 - `checkpointer`：LangGraph checkpoint persistence。
 - `store`：LangGraph store，用于 checkpoint/graph 兼容路径和无数据库 local fallback。
 - `memory_repository`：PostgreSQL canonical memory repository，读写 `focus_memories`、audit/tombstone/candidate 和可重建的 `focus_memory_embeddings`。
@@ -277,7 +277,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Agent | `/v1/agent/*`、`GET /v1/agent/feedback/trend` | governance preview、policy、records、evaluate APIs 和反馈趋势聚合 |
 | Agent Team | `/v1/agent-team/*` | Mission session、DAG planning/run、task lifecycle、outputs、merge bundle 和 merge decision |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
-| Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`GET/PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
+| Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
 | Admin | `/v1/admin/config`、`/v1/admin/config/{models,tools,policies,skills}`、`/v1/admin/config/skills/refresh`、`/v1/admin/users/*`、`/v1/admin/audit-events` | 设置中心、模型/工具/策略/Skill 配置、用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
 | Observability | `/v1/observability/*` | overview、trajectory、stats、replay、promote |
 
@@ -333,7 +333,7 @@ flowchart LR
   - notes：`q`、`tag`、`include_archived`、`limit`、`offset`
   - tasks：`status`、`include_archived`、`limit`、`offset`
 - SDK/前端目前仍会在列表请求里附带 `source_kind`（用于来源筛选 UI），但当前 API 路由未声明该查询参数，因此会被忽略；若要恢复服务端过滤，需要先扩展路由+repository+测试契约。
-- `GET /v1/notes/{note_id}`、`GET /v1/tasks/{task_id}` 均为 owner-scoped；不存在或无权限时返回 404。
+- `GET /v1/notes/{note_id}` 与 `PATCH /v1/tasks/{task_id}` 均为 owner-scoped；不存在或无权限时返回 404。
 
 ### 6.2 Admin Console 和设置中心边界
 
@@ -402,7 +402,7 @@ POST /v2/threads/{thread_id}/runs/stream
   -> trajectory record
 ```
 
-`ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。服务本身依赖 `ChatServicePorts` 窄端口，当前端口只暴露 settings、graph、repo、branch service、skill registry、trajectory recorder 和 checkpointer；调用方仍可从 `AppRuntime` 适配出 ports，但 chat 编排逻辑不再直接绑定完整 runtime。
+`ChatService` 使用 per-thread active turn lock，避免同一 thread 同时写入多个 turn。服务本身依赖 `ChatServicePorts` 窄端口，当前端口暴露 settings、graph、repo、branch service、branch decision service、skill registry、trajectory recorder、retrieval index、memory embedding provider、checkpointer、background work、coordination backend 和 tool registry；调用方仍可从 `AppRuntime` 适配出 ports，但 chat 编排逻辑不再直接绑定完整 runtime。
 
 流式响应的 FastAPI `StreamingResponse` 组装由 `src/focus_agent/api/streaming/sse.py` 统一提供。路由层只负责创建事件迭代器，公共 helper 负责 `text/event-stream` media type、`Cache-Control: no-cache`、`Connection: keep-alive` 和 `X-Accel-Buffering: no` 这组 SSE headers。
 
@@ -421,11 +421,12 @@ POST /v2/threads/{thread_id}/runs/stream
 
 ## 8. LangGraph 主路径
 
-核心图入口仍是 `src/focus_agent/engine/graph_builder.py`。该文件现在主要负责节点/边注册；节点实现、tool policy、message repair、plan/reflect、memory 与 tool executor 逻辑拆在同目录 `graph_*` 模块中。主路径保留 legacy single-run，同时可插入 governance 记录：
+核心图入口是 `src/focus_agent/engine/graph/builder.py`（`src/focus_agent/engine/graph_builder.py` 只是兼容 re-export shim）。该文件负责节点/边注册；节点实现、tool policy、message repair、plan/reflect、memory 与 tool executor 逻辑拆在 `engine/graph/` 下的模块及 `engine/graph_*.py` helper 中。主路径保留 legacy single-run，同时可插入 governance 记录：
 
 ```text
 bootstrap_turn
-  -> retrieve_memories
+  -> retrieve_memory
+  -> context_pipeline
   -> assemble_context
   -> role_route_dry_run
   -> delegation_governance
@@ -441,8 +442,9 @@ bootstrap_turn
 
 ```mermaid
 flowchart LR
-    Bootstrap["bootstrap_turn"] --> Retrieve["retrieve_memories"]
-    Retrieve --> Assemble["assemble_context"]
+    Bootstrap["bootstrap_turn"] --> Retrieve["retrieve_memory"]
+    Retrieve --> ContextPipeline["context_pipeline"]
+    ContextPipeline --> Assemble["assemble_context"]
     Assemble --> Govern["role / tool / model governance"]
     Govern --> Plan["plan"]
     Plan --> Loop["agent_loop"]
@@ -521,6 +523,8 @@ main thread
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
 - imported conclusion 可写入父线程状态，并可进入 memory pipeline。merge apply 时每条 key finding 使用 proposal 的 `finding_evidence_refs`（无逐条 refs 时沿用整份 `evidence_refs`）；`merge_queue` 条目额外带 `open_questions`、`finding_evidence_refs`、`child_thread_id`、`imported_at`；导入 SystemMessage 的文本保持与 chat 侧 backfill 一致，结构化字段放在 `response_metadata.focus_agent.metadata.branch_import`（`branch_id`、`branch_name`、`child_thread_id`、`summary`、`key_findings`、`open_questions`、`evidence_refs`、`artifacts`、`imported_at`），经 `serialize_message` 暴露为 `message.metadata.branch_import`。嵌套 merge（目标是父分支）把结论写入接收分支自己的 branch memory，而不是主线 memory。
+- 主线作答时，`agent_loop_prompt._build_prompt_messages` 把导入 SystemMessage（按 `response_metadata.focus_agent.metadata.branch_import` 或 `Imported conclusion from branch '` 前缀识别）在发给模型的消息里改写为一条用户消息（“我在旁支问题「<分支名>」里已经定下的决定（这些是最终结论）：”/ “Decisions I settled while looking into the side question '<name>' (these are final):” + 结论正文）和一条简短确认（“收到。”/“Noted.”）；存储的消息、API、SDK 与 UI 不变。依据：同一结论以 system 通知呈现时模型多半忽略，见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。
+- merge apply 的答案验证门（`services/branches/merge.py::_merge_import_blocked_reason`）只在子线程最后一轮 `answer_verification.status == "contradicted"` 时拒绝已批准的导入；`unsupported` / `blocked`（未能验证，例如所需 web 工具不可用）不拦截用户已批准的结论。
 - prompt assembly 从 `merge_queue` 渲染独立的 `## Approved branch conclusions` 块：最新优先、按分支名标注、包含 findings / open questions / artifacts，有自己的条目与字符预算；它来自线程 state，父线程被 compaction 后依然存在。已在该块中出现的分支不再占用通用 findings 名额。
 - pre-turn branch recommendation 可以生成 `fork_child_branch` 或 `fork_sibling_branch` 的 pending Branch Action，但不会直接执行 fork。
 
@@ -612,7 +616,7 @@ productivity、feedback、context/memory evidence、skill selection event、coor
 - v18：`focus_memories.embedding_status` 列与索引（embedding worker 条件更新 / 防复活）
 - v19：Agent Team v2 结构化表（revisions、task edges/attempts、checkpoints、approvals、jobs、resource leases、side-effect receipts、evidence、events 等）
 
-仓库仍保留 `focus_schema_migrations` 和逐版本 Python migration 作为应用 schema 的真实迁移记录；Alembic `001_baseline` 通过 `ensure_app_postgres_schema_on_connection()` 桥接到这套迁移，Docker entrypoint 在存在 `DATABASE_URI` 时执行 `alembic upgrade head`。
+仓库仍保留 `focus_schema_migrations` 和逐版本 Python migration 作为应用 schema 的真实迁移记录；Alembic `001_baseline` 通过 `app_postgres_schema_baseline_statements()` 复用这套迁移语句，Docker entrypoint 在存在 `DATABASE_URI` 时执行 `alembic upgrade head`。
 
 Agent Team 的 v1 主表仍可使用 `data_json JSONB NOT NULL` 保存完整 Pydantic model，辅助列只用于按用户、root thread、session/task 和创建时间查询排序。v19 起补充了更细粒度的 v2 运行时表；是否走 v2 执行路径仍由 feature flags 控制（见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)）。schema migration 会逐版本执行，因此已有数据库会继续升级到当前 schema。
 

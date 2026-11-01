@@ -61,6 +61,8 @@ focus_agent = ["defaults/*.toml", "prompts/library/*.yaml", "skills/builtin/*/SK
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Agent-written dataset evidence is kept verbatim as an audit record.
+extend-exclude = ["tests/eval/datasets/branch_ab/evidence"]
 
 [tool.ruff.lint]
 # Keep the first Python quality gate intentionally narrow so it does not force a

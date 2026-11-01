@@ -1,6 +1,6 @@
 # Productivity System
 
-更新时间：2026-09-28（基线 commit：`718be87`）
+更新时间：2026-11-01（历史验证基线：`718be87`）；本轮校正源码事实，历史验收范围保持原报告口径。
 
 这份文档是 Focus Agent 生产力模块的专题说明：笔记/任务的数据模型、路由与服务边界、事件与持久化，以及 Web SDK / Web App 的接入口径。
 
@@ -44,7 +44,6 @@ flowchart LR
 | `POST` | `/v1/notes` | 创建笔记（`title` 为必填） |
 | `GET` | `/v1/notes/{note_id}` | 按 owner-scoped note_id 读取 |
 | `PATCH` | `/v1/notes/{note_id}` | 更新笔记字段 |
-| `GET` | `/v1/tasks/{task_id}` | 按 owner-scoped task_id 读取 |
 | `GET` | `/v1/tasks` | 按 owner-scoped 查询任务；支持 `status`、`include_archived`、`limit/offset` |
 | `POST` | `/v1/tasks` | 创建任务（`title` 为必填） |
 | `PATCH` | `/v1/tasks/{task_id}` | 更新任务字段 |

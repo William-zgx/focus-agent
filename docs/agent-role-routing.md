@@ -1,6 +1,6 @@
 # Agent Governance
 
-Updated: 2026-09-28
+Updated: 2026-11-01; source facts corrected, historical validation scope unchanged.
 
 This document is the canonical guide for Focus Agent's role routing and governance layer. It explains what the governance layer controls, which records it writes, when it can affect execution, and how to validate it. Branch decision details stay in [branch-decisions.md](branch-decisions.md); runtime topology stays in [architecture.md](architecture.md); memory details stay in [memory-system-v2.md](memory-system-v2.md); tool and skill taxonomy stays in [tool-skill-design.md](tool-skill-design.md).
 
@@ -197,7 +197,7 @@ Typical deny reasons:
 
 - `direct_answer_policy`
 - `workspace_lookup_no_network`
-- `live_web_policy`
+- `live_web_research_no_workspace_write`
 - `role_not_allowed:*`
 - `approval_required`
 - `critic_no_workspace_write`

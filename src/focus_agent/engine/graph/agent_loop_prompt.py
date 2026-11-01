@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from langchain.messages import AIMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 from ...core.types import Plan
 from ..graph_plan_nodes import _format_plan_block
+from .lexicon import contains_cjk
 
 _logger = logging.getLogger(__name__)
+
+_IMPORT_NOTICE_HEADER_PREFIX = "Imported conclusion from branch '"
+_IMPORT_DECISIONS_FRAMING_EN = (
+    "Decisions I settled while looking into the side question '{branch_name}' (these are final):"
+)
+_IMPORT_DECISIONS_FRAMING_ZH = "我在旁支问题「{branch_name}」里已经定下的决定（这些是最终结论）："
+_IMPORT_ACK_EN = "Noted."
+_IMPORT_ACK_ZH = "收到。"
 
 _LIVE_WEB_TOOL_LIMIT_NOTE = (
     "\nResearch has reached its tool limit. No more tools are available. "
@@ -97,6 +106,99 @@ def _compose_policy_note(policy_note: str, *sections: str) -> str:
     return policy_note
 
 
+def _message_text(message: Any) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(block.get("text") or block.get("content") or "")
+            if isinstance(block, Mapping)
+            else str(block)
+            for block in content
+        ).strip()
+    return str(content or "")
+
+
+def _branch_import_metadata(message: Any) -> Mapping[str, Any] | None:
+    """Return the ``focus_agent.metadata.branch_import`` mapping, when present."""
+    metadata = getattr(message, "response_metadata", None)
+    if not isinstance(metadata, Mapping):
+        return None
+    focus_agent = metadata.get("focus_agent")
+    if not isinstance(focus_agent, Mapping):
+        return None
+    inner = focus_agent.get("metadata")
+    if not isinstance(inner, Mapping):
+        return None
+    branch_import = inner.get("branch_import")
+    return branch_import if isinstance(branch_import, Mapping) else None
+
+
+def _import_notice_text(message: Any) -> str | None:
+    """Return the notice text when ``message`` is a branch import notice."""
+    if not isinstance(message, SystemMessage):
+        return None
+    text = _message_text(message)
+    # The chat-side backfill notice carries no metadata, so match its header too.
+    if _branch_import_metadata(message) is not None:
+        return text
+    if text.lstrip().startswith(_IMPORT_NOTICE_HEADER_PREFIX):
+        return text
+    return None
+
+
+def _import_notice_branch_name(message: Any, text: str) -> str:
+    branch_name = str((_branch_import_metadata(message) or {}).get("branch_name") or "").strip()
+    if branch_name:
+        return branch_name
+    first_line = text.lstrip().splitlines()[0].strip() if text.strip() else ""
+    if not first_line.startswith(_IMPORT_NOTICE_HEADER_PREFIX):
+        return "unknown branch"
+    tail = first_line[len(_IMPORT_NOTICE_HEADER_PREFIX) :].strip()
+    if tail.endswith(":"):
+        tail = tail[:-1].strip()
+    if tail.endswith("'"):
+        tail = tail[:-1].strip()
+    return tail or "unknown branch"
+
+
+def _import_notice_body(text: str) -> str:
+    """Drop the notice's own header line; the framing replaces it."""
+    lines = text.lstrip().splitlines()
+    if not lines:
+        return ""
+    if not lines[0].strip().startswith(_IMPORT_NOTICE_HEADER_PREFIX):
+        return "\n".join(lines).strip()
+    return "\n".join(lines[1:]).strip()
+
+
+def _import_notice_as_user_turn(message: Any, text: str) -> list[Any]:
+    """Present one imported branch conclusion as a user-confirmed decision turn."""
+    branch_name = _import_notice_branch_name(message, text)
+    body = _import_notice_body(text)
+    if contains_cjk(body):
+        framing = _IMPORT_DECISIONS_FRAMING_ZH.format(branch_name=branch_name)
+        acknowledgement = _IMPORT_ACK_ZH
+    else:
+        framing = _IMPORT_DECISIONS_FRAMING_EN.format(branch_name=branch_name)
+        acknowledgement = _IMPORT_ACK_EN
+    content = f"{framing}\n\n{body}" if body else framing
+    return [HumanMessage(content=content), AIMessage(content=acknowledgement)]
+
+
+def _import_notices_as_user_turns(messages: Sequence[Any]) -> list[Any]:
+    """Rewrite branch import notices for the model without touching stored state."""
+    rewritten: list[Any] = []
+    for message in messages:
+        text = _import_notice_text(message)
+        if text is None:
+            rewritten.append(message)
+            continue
+        rewritten.extend(_import_notice_as_user_turn(message, text))
+    return rewritten
+
+
 def _build_prompt_messages(
     assembled: str,
     messages: Sequence[Any],
@@ -110,7 +212,10 @@ def _build_prompt_messages(
         plan_block = _format_plan_block(plan, current_step_id)
         if plan_block and plan_block not in assembled:
             assembled = f"{assembled}\n\n{plan_block}".strip()
-    prompt_messages = [SystemMessage(content=assembled), *messages]
+    # Imported branch conclusions are restated as a user turn plus a short
+    # acknowledgement: the same text presented as a system notice is ignored by
+    # the model when it resumes on the main thread.
+    prompt_messages = [SystemMessage(content=assembled), *_import_notices_as_user_turns(messages)]
     # Inject drained steer messages as an additional system-style block so
     # they are visible to the LLM but don't replace any user message.
     if steer_block:
@@ -163,6 +268,7 @@ __all__ = [
     "_compose_policy_note",
     "_context_overflow_execution_contract",
     "_context_overflow_response",
+    "_import_notices_as_user_turns",
     "_root_thread_id",
     "_steer_block",
 ]

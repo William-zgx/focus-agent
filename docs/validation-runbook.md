@@ -1,7 +1,7 @@
 # Validation Runbook
 
-Updated: 2026-10-03
-Source baseline: `718be87`
+Updated: 2026-11-01; source facts corrected, historical validation scope unchanged.
+Historical validation baseline: `718be87`
 
 This runbook is the local evidence plan for broad Focus Agent changes across the
 self-hosted workbench platform. Use it when changes touch Agent runtime state,
@@ -102,7 +102,7 @@ recheck `/readyz` before treating the environment as ready.
 For Agent Team v2, `/readyz` only reports process/runtime readiness. Separately,
 `GET /v2/agent-team/readiness` calls `build_agent_team_readiness(settings,
 runtime=runtime)` and returns `ready=true` only when its `phase=ready` and all
-three service capabilities (task-run, evidence, revision) are available. When
+two service capabilities (task-run and evidence) are available. When
 real execution is requested, the assessment checks configured provider
 credential references, durable jobs/worker, Postgres/coordination, fencing,
 locks, and Docker fail-closed. The response does not execute a task or expose
@@ -293,7 +293,8 @@ rollout phase, `AGENT_TEAM_KILL_SWITCH_ENABLED=false`,
 durable worker, fencing, cross-session locks, resource locks, real
 provider/model credentials, and Docker fail-closed. The Postgres Agent Team
 repository persists v2 task-run/checkpoint/tool/evidence/event records; the
-repository without `DATABASE_URI` remains an in-memory fallback. Approval
+repository without `DATABASE_URI` uses `SQLiteAgentTeamRepository` on
+`BRANCH_DB_PATH`. Approval
 resume store/task state are still in-memory, and the public runtime does not
 consume resume jobs; retain an explicit rerun instead of claiming recovery
 across restart.

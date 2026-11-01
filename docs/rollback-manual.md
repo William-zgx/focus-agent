@@ -1,7 +1,7 @@
 # Rollback Manual
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01; source facts corrected, historical validation scope unchanged.
+Historical validation baseline: `718be87`
 
 This runbook covers the perf-p1/perf-p2 flags and their persistence safety
 boundaries. Roll back one subsystem at a time when possible, restart the API,
@@ -11,10 +11,11 @@ for at least one scrape window.
 Read `/readyz` component details rather than treating HTTP 200/`ready=true` as
 proof of every dependency: local/fallback checks can be ready without a live
 PostgreSQL/provider connection. Also use the deployment supervisor's tested
-restart/termination path for production rollback. The runtime currently
-registers its own signal callbacks through `install_signal_handlers`, which can
-override Uvicorn's process-signal handling; a rollback smoke must not claim a
-graceful `SIGTERM` drain unless that actual process path was tested.
+restart/termination path for production rollback. The API lifespan leaves
+process-signal handling to Uvicorn and runs runtime
+shutdown hooks during lifespan teardown. The standalone `install_signal_handlers`
+helper still exists but is not installed by API startup. Verify the deployed
+process's `SIGTERM` drain and restart path when validating a rollback.
 
 A deployment rollback creates a new evidence identity. Do not reuse reports
 from the deployment being replaced: bind the post-rollback commit, deployment

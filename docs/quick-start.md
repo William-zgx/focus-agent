@@ -1,7 +1,7 @@
 # Quick Start
 
-Updated: 2026-09-28
-Source baseline: `718be87`
+Updated: 2026-11-01
+Historical validation baseline: `718be87`; startup and configuration facts corrected on 2026-11-01.
 
 This guide expands on the shortest startup path from the root README.
 
@@ -147,7 +147,7 @@ Memory embedding is enabled by default for Postgres-backed runs:
 - `AGENT_MEMORY_EMBEDDING_DIMENSIONS=768`
 - `AGENT_MEMORY_VECTOR_SEARCH_MODE=hybrid`
 
-Local auto mode prefers Ollama `embeddinggemma`. The app does not run `ollama pull` for you:
+Local auto mode prefers Ollama `embeddinggemma`. `AGENT_MEMORY_EMBEDDING_AUTO_PULL` defaults to off, so the API binary does not pull the model by itself; `make api` / `make dev` turn it on unless you set it. To install it explicitly:
 
 ```bash
 ollama pull embeddinggemma
@@ -386,9 +386,9 @@ make frontend-android-runtime-smoke
 The built-in app routes unauthenticated users to `/app/auth/login` and preserves the protected target in `return_to`. In local development, the fastest browser path is:
 
 1. Open `http://127.0.0.1:5173/app/` in Vite mode or `http://127.0.0.1:8000/app/` for the backend-served bundle.
-2. Click `Demo 登录` to bootstrap the default local demo user and return to the requested app route.
+2. Click `试用 Demo 工作区` to bootstrap the default local demo user and return to the requested app route.
 3. Use the account control in the left sidebar to sign out.
-4. To switch accounts, sign out first, then log in again with username/password, `Demo 登录`, or the Bearer Token panel.
+4. To switch accounts, sign out first, then log in again with username/password, `试用 Demo 工作区`, or the Bearer Token panel.
 
 For token-oriented testing, create a local demo access token:
 
@@ -398,7 +398,7 @@ curl -X POST http://127.0.0.1:8000/v1/auth/demo-token \
   -d '{"user_id": "researcher-1"}'
 ```
 
-Paste the returned `access_token` into the login page's `使用 Bearer Token` panel and submit with `继续`. The `清空` action removes the locally stored token. Password registration creates a persistent local account, so reserve it for tests that explicitly need username/password behavior.
+Paste the returned `access_token` into the login page's `开发者调试` (Access token) panel and submit with `继续`. The `清空` action removes the locally stored token. Password registration creates a persistent local account, so reserve it for tests that explicitly need username/password behavior.
 
 Registration and test-account notes:
 

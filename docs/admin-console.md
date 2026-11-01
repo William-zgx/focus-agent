@@ -1,6 +1,6 @@
 # Admin Console 操作与实现手册
 
-更新时间：2026-09-28（基线 commit：`718be87`）
+更新时间：2026-11-01（历史验证基线：`718be87`）；本轮校正源码事实，历史验收范围保持原报告口径。
 
 Admin Console 是 Focus Agent 当前的管理员访问治理入口，用于管理运行时设置、能力开关、持久化用户、管理员角色、账号状态、会话、密码重置和审计事件。普通登录、注册、账号自助页面和 token/session 语义见 [auth-access.md](auth-access.md)。它和普通 `/app` 聊天工作区共享同一套认证与 SDK，但权限判断以数据库中的用户状态和角色为准。
 
@@ -38,7 +38,7 @@ POST  /v1/admin/users/{user_id}/password
 GET   /v1/admin/audit-events
 ```
 
-Frontend SDK 对应 `frontend-sdk/src/client/admin.ts` 和 `frontend-sdk/src/types/admin.ts`，公共 client 方法包括 `getAdminConfig()`、`updateAdminModelConfig()`、`updateAdminToolConfig()`、`updateAdminPolicyConfig()`、`updateAdminSkillConfig()`、`refreshAdminSkillConfig()`、`listUsers()`、`createUser()`、`getUser()`、`updateUser()`、`updateUserStatus()`、`updateUserRoles()`、`listUserSessions()`、`revokeUserSession()`、`resetUserPassword()` 和 `listAuditEvents()`。
+Frontend SDK 对应 `frontend-sdk/src/client/admin.ts` 和 `frontend-sdk/src/types/admin.ts`，公共 client 方法包括 `getAdminConfig()`、`updateAdminModelConfig()`、`updateAdminToolConfig()`、`updateAdminPolicyConfig()`、`updateAdminSkillConfig()`、`listUsers()`、`createUser()`、`getUser()`、`updateUser()`、`updateUserStatus()`、`updateUserRoles()`、`listUserSessions()`、`revokeUserSession()`、`resetUserPassword()` 和 `listAuditEvents()`。
 
 ## 2. 权限边界
 
@@ -46,7 +46,7 @@ Admin Console 不把 bearer token 里的 scope 当作管理员身份来源。管
 
 本地开发有两条 bootstrap 便利路径：
 
-- `AUTH_DEMO_TOKENS_ENABLED=true` 时可以用 Demo 登录创建本地 demo 用户。
+- `AUTH_DEMO_TOKENS_ENABLED=true` 时可以用 “试用 Demo 工作区”创建本地 demo 用户。
 - local/development 数据库中第一个非匿名用户可以 bootstrap 为 admin，也可以通过 `AUTH_BOOTSTRAP_ADMIN_USER_IDS` 显式指定本地管理员。
 
 生产或预发数据库不应依赖隐式 demo admin。生产部署需要关闭 demo token，并用明确的管理员配置或迁移流程授予 admin 角色。`AUTH_ENABLED=false` 下的 anonymous principal 仍不是 admin。
@@ -71,7 +71,7 @@ Admin 页面使用 auth cookie 发起 `POST`、`PUT`、`PATCH`、`DELETE` 时与
 - Security：会话列表、会话撤销和密码重置；撤销和重置同样需要 reason。
 - Audit：该用户相关的管理员操作记录。
 
-账号切换没有单独 switcher。Web App 的切换路径是先从左侧栏退出，再用用户名密码、Demo 登录或 Bearer Token 面板重新登录。
+账号切换没有单独 switcher。Web App 的切换路径是先从左侧栏退出，再用用户名密码、“试用 Demo 工作区”或 Bearer Token 面板重新登录。
 
 ## 4. 设置中心
 
@@ -134,7 +134,7 @@ tests/test_skill_registry.py
 tests/test_web_app_scaffold.py
 ```
 
-Admin Web shell 使用 `AdminAccessGate` 做页面级保护。普通聊天 shell 不展示管理员入口；管理员页面有自己的 route tabs 和 page bar，避免把治理操作混进聊天工作流。
+Admin Web shell 使用 `AdminAccessGate` 做页面级保护。普通聊天 shell 的全局导航展示管理入口，进入管理页面仍需通过 `AdminAccessGate`；管理员页面有自己的 route tabs 和 page bar，避免把治理操作混进聊天工作流。
 
 ## 7. 推荐验证
 
@@ -164,7 +164,7 @@ make frontend-android-runtime-smoke
 - 在连接区确认模型 Provider 可编辑，MCP Server 只作为预留入口展示。
 - 修改 Skill 或策略前填写变更原因，确认保存动作需要权限且错误提示清楚。
 - 未登录访问 `/app/admin/users`，确认跳转到 `/app/auth/login?return_to=...`。
-- 用 `Demo 登录` 返回受保护目标页。
+- 用 `试用 Demo 工作区` 返回受保护目标页。
 - 在 `/app/admin/users` 创建用户，打开详情抽屉。
 - 填写 reason 后更新角色或状态。
 - 在 Security 中 reset password 或 revoke session。

@@ -1,6 +1,6 @@
 # Agent Team v2 灰度与回滚手册
 
-更新时间：2026-09-28（基线 commit：`718be87`）
+更新时间：2026-11-01（历史验证基线：`718be87`）；本轮校正源码事实，历史验收范围保持原报告口径。
 
 本文定义 Agent Team v2 的可验证灰度口径。它只描述已在当前代码中
 受 feature flag 保护的协调能力；不是“v2 已全量上线”的声明。工作台 UI
@@ -78,7 +78,7 @@ Postgres/durable worker/coordination、fencing、locks 和 Docker fail-closed �
 共享或生产环境的真实执行需要 Postgres repository、Postgres durable job backend/worker
 和 Postgres coordination backend。`PostgresAgentTeamRepository` 会将 v2 task run、
 checkpoint、tool execution、evidence 和 event 写入 schema v19 的 additive 表；只有
-未配置 `DATABASE_URI` 的本地 repository 才使用 per-repository in-memory fallback。
+未配置 `DATABASE_URI` 的本地 repository 使用 `SQLiteAgentTeamRepository` 持久化。
 但 approval resume store/task state 仍是 in-memory adapter，公开 runtime 也不会消费
 resume job。重启或多进程切换后，不能把审批恢复或 exactly-once 语义说成已验证。
 

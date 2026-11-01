@@ -1,0 +1,112 @@
+# Experiment tool catalog: every tool off, so all facts come from the user's messages.
+
+[current_utc_time]
+enabled = false
+
+[write_text_artifact]
+enabled = false
+
+[artifact_list]
+enabled = false
+
+[artifact_read]
+enabled = false
+
+[artifact_update]
+enabled = false
+
+[artifact_search]
+enabled = false
+
+[list_files]
+enabled = false
+
+[workspace_tree]
+enabled = false
+
+[read_file]
+enabled = false
+
+[search_code]
+enabled = false
+
+[workspace_search]
+enabled = false
+
+[codebase_stats]
+enabled = false
+
+[apply_patch]
+enabled = false
+
+[run_workspace_command]
+enabled = false
+
+[git_status]
+enabled = false
+
+[git_diff]
+enabled = false
+
+[git_log]
+enabled = false
+
+[web_fetch]
+enabled = false
+
+[memory_save]
+enabled = false
+
+[memory_search]
+enabled = false
+
+[memory_forget]
+enabled = false
+
+[conversation_summary]
+enabled = false
+
+[ask_user_question]
+enabled = false
+
+[skills_list]
+enabled = false
+
+[skill_view]
+enabled = false
+
+[skill_sources]
+enabled = false
+
+[skills_search]
+enabled = false
+
+[skill_install]
+enabled = false
+
+[skills_refresh_index]
+enabled = false
+
+[notes_create]
+enabled = false
+
+[notes_search]
+enabled = false
+
+[notes_update]
+enabled = false
+
+[tasks_create]
+enabled = false
+
+[tasks_list]
+enabled = false
+
+[tasks_update]
+enabled = false
+
+[productivity_capture]
+enabled = false
+
+[web_search]
+enabled = false

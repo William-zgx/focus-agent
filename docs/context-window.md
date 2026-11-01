@@ -1,6 +1,6 @@
 # 当前上下文窗口
 
-更新时间：2026-10-03
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
 
 Focus Agent 同时维护两类容易混淆但语义不同的统计：
 
@@ -143,13 +143,12 @@ CONTEXT_AUTO_COMPACTION_POST_TURN_RATIO=0.85
 
 触发路径有两条：
 
-- 发送前预检：非流式和流式 turn 进入 graph 之前都会尝试压缩。
+- 发送前预检：非流式 `ChatService` turn 进入 graph 之前会尝试压缩；V2 harness 流式路径（`harness.stream_chunks`）目前不执行发送前压缩。
 - 回合后后台压缩：`chat.turn` 成功后异步调度，避免下一轮才发现上下文过大。
 
-流式发送前触发自动压缩时，会通过 SSE 发出：
-
-- `context.compaction.started`
-- `context.compaction.completed`
+当前没有 `context.compaction.started/completed` 专用 SSE 事件。压缩元数据保存在内部
+`context_compaction`，对外线程状态提供 `rolling_summary` 和 `context_usage`；后台压缩
+可能在当前 run 完成后才落盘，不能假设该次 `run.completed` 已包含压缩后的状态。
 
 同一线程在摘要覆盖边界和相关结构化状态都没有变化时，不重复写入。原先基于固定字符阈值、异步触发但不回写 graph 的 overflow 摘要路径已移除；有效压缩由上述持久化路径承担。
 

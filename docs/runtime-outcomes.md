@@ -1,6 +1,6 @@
 # Runtime Outcomes
 
-更新时间：2026-09-28
+更新时间：2026-11-01；本轮校正源码事实，历史验收范围保持原报告口径。
 
 Runtime Outcome is the graph-level source of truth for tool and task completion. It replaces answer paths that previously summarized raw tool metadata such as `run_id`, `command`, or `stdout_truncated` as the main assistant response.
 
@@ -89,7 +89,7 @@ path runs.
 - Trajectory steps include `runtime.tool_outcome` and a top-level `tool_outcome`; turn summary/detail include `tool_outcomes` and `task_outcome`.
 - Observability stats aggregate outcome counters such as tool failures, recovered tools, fallback uses, degraded answers, and blocked task outcomes.
 
-Synthetic `protocol_repair` outcomes are audit records. They keep provider prompts valid after dangling `tool_calls`, but they do not satisfy required-tool execution contracts.
+Synthetic tool messages marked `dangling_tool_call_repaired` are audit records. They keep provider prompts valid after dangling `tool_calls`, but they do not satisfy required-tool execution contracts.
 
 ## Validation
 

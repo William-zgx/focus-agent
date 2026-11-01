@@ -1,8 +1,9 @@
 # Focus Agent Docs Index / 文档索引
 
-源码核对日期：2026-09-28；基线：`718be87`。本轮为文档校准，不代表全量运行验收。
+更新日期：2026-11-01；综合说明承接 `718be87`，本轮按当前源码校准文档，并补入分支工作流实验。文档检查、产品实验和生产验收分别记录。
 
-最新修复和运行验收见 [2026-10-03 MR 质量报告](validation/2026-10-03-mr-quality.md)；[9 月 30 日报告](validation/2026-09-30-project-quality.md) 保留为历史证据。检查通过不代表未覆盖的基础设施路径已通过发布认证。
+本轮文档校准的范围、依据与验证见 [2026-11-01 文档审计记录](validation/2026-11-01-documentation-audit.md)。
+分支工作流的基线、修复和复测见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。[2026-10-03 MR 质量报告](validation/2026-10-03-mr-quality.md)和 [9 月 30 日报告](validation/2026-09-30-project-quality.md)保留为历史验收证据；它们不代表当前版本已重新通过生产认证。
 
 This is the canonical navigation entry for `docs/`. Root README files stay lightweight
 and point here for depth. **Product positioning, scale, fit/non-fit, and runtime spines**
@@ -58,6 +59,7 @@ flowchart LR
 | 本地跑起来 | [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md) |
 | 改代码与验证矩阵 | [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md) |
 | 模块边界与请求链路 | [architecture.md](architecture.md) |
+| 分支工作流是否优于线性对话（实验与证据） | [plans/2026-10-31-branch-ab/status.md](plans/2026-10-31-branch-ab/status.md) |
 | 当前实现、启用条件与能力缺口 | [architecture/agent-capability-map.md](architecture/agent-capability-map.md) |
 | 当前基线、剩余风险与实施顺序 | [roadmap.md](roadmap.md) |
 | Agent 能力补全的调研 / 设计 / 规划 | [research.md](plans/2026-09-28-agent-capabilities/research.md) / [design.md](plans/2026-09-28-agent-capabilities/design.md) / [plan.md](plans/2026-09-28-agent-capabilities/plan.md) |
@@ -86,7 +88,7 @@ flowchart LR
 - [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 - [frontend-visual-system.md](frontend-visual-system.md)：Web App token、primitive、CSS module ownership、style governance、bundle budget、截图/a11y 验证口径。
 - [architecture-debt-baseline.json](architecture-debt-baseline.json)：architecture gate 的 800 行阈值；当前没有 grandfathered large-file debt。
-- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与 2.0 exit criteria；当前总量为 **169**，1.x public facade 仍保留。
+- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与逐类 exit criteria；当前总量为 **89**，1.x public facade 仍保留。
 
 ## Core Topics / 核心专题
 
@@ -128,6 +130,9 @@ flowchart LR
 
 ### Active Plans / 当前规划
 
+- [分支工作流 A/B 实验](plans/2026-10-31-branch-ab/status.md)：当前主线工作的目标、冻结任务集、基线、失败归因、修复与复测；先取得证据，再决定下一项改动。
+- 以下 2026-09-28 能力规划保留为候选工作；当前不并行扩展整套平台能力。
+
 - [Agent 能力补全调研](plans/2026-09-28-agent-capabilities/research.md)：一手资料、源码差距与取舍。
 - [Agent 能力补全设计草案](plans/2026-09-28-agent-capabilities/design.md)：持久恢复、证据验收、预算、工具/交付、协作、记忆与反馈设计；**尚未实施**。
 - [Agent 能力补全实施规划](plans/2026-09-28-agent-capabilities/plan.md)：B01–B08 可靠性前置问题、分阶段任务、依赖和验收标准；文档交付不等于功能完成。
@@ -146,7 +151,7 @@ flowchart LR
 - 本地持久化说明必须区分两条路径：维护中的 `make` 启动命令会管理 repo-local PostgreSQL；直接 API 启动且无 `DATABASE_URI` 时使用持久 SQLite app-state/checkpoint/store。
 - App Postgres schema 以代码 `SCHEMA_VERSION` 为准（当前 **v19**）；文档中的 schema 说明必须与 `src/focus_agent/repositories/postgres_schema.py` 同步。
 - 1.x public import surfaces、保留路由和历史状态读取器仍受 item-ID baseline
-  管理；除非对应 2.0 exit criteria 已满足，文档不得宣称它们已全部删除。
+  管理；逐类迁移调用方后再删除。出现外部采用方时增加 telemetry 和兼容窗口，不能把 89 项库存宣称为已清零。
 - 后端路由、Pydantic response model 或 SDK 类型变化时，必须同步 `docs/api/openapi.json`、`frontend-sdk/src/types/__generated__.ts` 和必要的 `tests/contracts/*.json` snapshot；本地运行 `make sdk-openapi-types-check` 与 `make contract-check`。
 - 非生成源码超过 800 行会触发 architecture gate；兼容库存新增、删除或 identity 漂移必须通过 `make compat-gate` 显式更新和审查，不允许只放宽总量。
 - `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Branch Decisions、Auth / Access、Agent Team、Admin Console、Streaming Contract、Runtime Outcomes、Context Window、Memory、Zvec Retrieval、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
@@ -154,4 +159,4 @@ flowchart LR
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 当前状态放 canonical 专题；待实施方案放有日期和状态的 `plans/` 子目录并从本索引链接；执行记录和历史草稿明确标注 historical，不作为当前能力证据。
 - `implemented`、默认启用、端到端已接通和已通过验收分别说明。声明验证通过必须有对应版本、环境、命令与结果，不能仅依据模块存在或旧报告。
-- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **169**）；README 与专题文档不得漂移。
+- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **89**）；README 与专题文档不得漂移。
