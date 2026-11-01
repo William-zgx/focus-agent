@@ -19,6 +19,7 @@ import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +71,48 @@ def regex_score(task: dict[str, Any], answer: str) -> dict[str, Any]:
     }
 
 
+class _GatewayAnthropicJudge:
+    """Claude via the devbox gateway's Anthropic /v1/messages endpoint.
+
+    The product's model registry only builds OpenAI-compatible clients, and the
+    gateway serves Claude models only on /v1/messages with a CLI scope header.
+    """
+
+    def __init__(self, model: str):
+        import httpx
+
+        self._model = model
+        self._client = httpx.Client(
+            base_url=os.environ.get("RELAY_BASE_URL", "https://10.251.247.136:18446/v1"),
+            headers={
+                "x-api-key": os.environ["RELAY_API_KEY"],
+                "authorization": f"Bearer {os.environ['RELAY_API_KEY']}",
+                "anthropic-version": "2023-06-01",
+                "x-claude-model-scope": "cli",
+            },
+            verify=os.environ.get("SSL_CERT_FILE") or True,
+            timeout=180,
+            trust_env=False,
+        )
+
+    def invoke(self, prompt: str) -> Any:
+        response = self._client.post(
+            "/messages",
+            json={
+                "model": self._model,
+                "max_tokens": 4096,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+        )
+        response.raise_for_status()
+        text = "".join(block.get("text", "") for block in response.json().get("content") or [])
+        return SimpleNamespace(content=text)
+
+
 def _judge_model(model_id: str):
+    if model_id.startswith("anthropic-gw:"):
+        return _GatewayAnthropicJudge(model_id.split(":", 1)[1])
     os.environ.setdefault(
         "FOCUS_AGENT_LOCAL_ENV_FILE", str(REPO_ROOT / ".focus_agent" / "local.env")
     )

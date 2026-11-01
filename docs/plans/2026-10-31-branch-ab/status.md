@@ -39,10 +39,15 @@ fork 出的子分支里做，合并提案经批准后导入主线，再在主线
   - 合并门拒绝用户已批准的导入时，记为 `product_failure`，评为 overall=1、未交付，
     保留在配对里；429、超时等基础设施错误记为 `error`，重跑时自动重试。
 
-- 评委：主评委用开发机网关的 DeepSeek V4.1 Flash（用户 2026-11-01 指定）。它和被测模型相同，
-  可能偏好自己的写法；两组答案都出自同一模型，配对差值受影响较小。另用 Kimi K2.6 做交叉评委，
-  报告两者一致率；结论只在两者方向一致时成立。3 条冒烟样本两位评委 overall 一致
-  （5/5、4/4、产品失败 1/1）。
+- 评委（用户 2026-11-01 指定）：
+  - 主评委：开发机网关的 DeepSeek V4.1 Flash（`relay:opensource/deepseek_v4_1_flash`）。
+    它和被测模型相同，可能偏好自己的写法；两组答案出自同一模型，配对差值受影响较小。
+  - 交叉评委：Claude Sonnet 5.5，经网关 Anthropic `/v1/messages`
+    （`anthropic-gw:group/claude-sonnet-5-5-sg-first`，需 `x-claude-model-scope: cli`）。
+  - 结论只在两位评委的配对差值方向一致时成立；报告两者的一致率。
+  - 冒烟（3 条）：rubric_rate 两者一致；Sonnet 的 overall 更严（全部 rubric 满足仍给 3，
+    理由是措辞偏弱），DeepSeek 给 4/5。pass^k 依赖 overall>=4 的阈值，所以按评委分别报告，
+    不混用。
 
 ## 产品发现（基线前，已有直接证据）
 - **合并门会拒绝用户已批准的结论。** `res-en-04` 分支组：子分支最后一轮是
@@ -75,9 +80,9 @@ OUT=reports/branch_ab/baseline-relay-deepseek-v4.1-flash
 # 主评委：开发机网关的 DeepSeek（需先 source relay env）
 .venv/bin/python scripts/branch_ab/score.py --tasks tests/eval/datasets/branch_ab/tasks.jsonl \
   --runs $OUT --judge relay:opensource/deepseek_v4_1_flash
-# 交叉评委：Kimi K2.6，在不 source relay env 的新 shell 里跑（网关 CA 会覆盖公网证书）
+# 交叉评委：Claude Sonnet 5.5（同样需要 relay env）
 .venv/bin/python scripts/branch_ab/score.py --tasks tests/eval/datasets/branch_ab/tasks.jsonl \
-  --runs $OUT --judge moonshot:kimi-k2.6
-.venv/bin/python scripts/branch_ab/analyze.py $OUT/scores.*.jsonl --by category --by language
+  --runs $OUT --judge anthropic-gw:group/claude-sonnet-5-5-sg-first
+for f in $OUT/scores.*.jsonl; do .venv/bin/python scripts/branch_ab/analyze.py $f --by category --by language; done
 ```
 重跑同一命令会跳过已完成（ok / product_failure）的运行，只重试基础设施错误。
