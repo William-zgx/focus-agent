@@ -116,9 +116,10 @@ class ChatService(
         branch_meta: BranchMeta | None,
         interrupts: list[Any],
         trace_correlation: TraceCorrelation | None = None,
-        strict_state_read: bool = False,
+        values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        values = self._safe_get_values(thread_id, strict=strict_state_read)
+        if values is None:
+            values = self._safe_get_values(thread_id)
         payload = response_payload(
             thread_id=thread_id,
             user_id=user_id,
@@ -674,8 +675,17 @@ class ChatService(
     def get_thread_state(
         self, *, thread_id: str, user_id: str, request_id: str | None = None
     ) -> dict[str, Any]:
-        context, branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
-        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        # One strict checkpoint read feeds context resolution, interrupts and the
+        # payload; _context_for_thread runs the access check before backfill.
+        snapshot = self._safe_snapshot(thread_id, strict=True)
+        snapshot_values = self._snapshot_values(snapshot)
+        context, branch_meta, values = self._context_for_thread(
+            thread_id=thread_id, user_id=user_id, values=snapshot_values
+        )
+        if values is not snapshot_values:
+            # Backfill wrote imported records; re-read so appended messages carry
+            # the ids assigned by the checkpoint reducers.
+            values = self._safe_get_values(thread_id, strict=True)
         trace_correlation = build_trace_correlation(
             settings=self.runtime.settings,
             request_id=request_id,
@@ -685,9 +695,9 @@ class ChatService(
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
-            interrupts=self._safe_get_interrupts(thread_id, strict=True),
+            interrupts=self._snapshot_interrupts(snapshot),
             trace_correlation=trace_correlation,
-            strict_state_read=True,
+            values=values,
         )
 
     def _select_skills_for_message(

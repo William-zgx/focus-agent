@@ -148,16 +148,22 @@ class ChatThreadAccessMixin:
         strict: bool = False,
         backfill: bool = False,
     ) -> dict[str, Any]:
-        snapshot = self._safe_snapshot(thread_id, strict=strict)
-        values = normalize_agent_state(
-            dict(getattr(snapshot, "values", {}) or {}) if snapshot else normalize_agent_state()
-        )
+        values = self._snapshot_values(self._safe_snapshot(thread_id, strict=strict))
         if not backfill:
             return values
         return self._backfill_import_records(thread_id=thread_id, values=values)
 
     def _safe_get_interrupts(self, thread_id: str, *, strict: bool = False) -> list[Any]:
-        snapshot = self._safe_snapshot(thread_id, strict=strict)
+        return self._snapshot_interrupts(self._safe_snapshot(thread_id, strict=strict))
+
+    @staticmethod
+    def _snapshot_values(snapshot: Any) -> dict[str, Any]:
+        return normalize_agent_state(
+            dict(getattr(snapshot, "values", {}) or {}) if snapshot else normalize_agent_state()
+        )
+
+    @staticmethod
+    def _snapshot_interrupts(snapshot: Any) -> list[Any]:
         return list(getattr(snapshot, "interrupts", []) or []) if snapshot else []
 
     @staticmethod
@@ -323,8 +329,10 @@ class ChatThreadAccessMixin:
         user_id: str,
         explicit_skill_hints: tuple[str, ...] | None = None,
         backfill: bool = True,
+        values: dict[str, Any] | None = None,
     ) -> tuple[RequestContext, BranchMeta | None, dict[str, Any]]:
-        values = self._safe_get_values(thread_id, backfill=False)
+        if values is None:
+            values = self._safe_get_values(thread_id, backfill=False)
         resolution = self._thread_resolution(thread_id=thread_id, user_id=user_id)
         branch_meta = self._branch_meta(thread_id=thread_id, values=values)
         if (
