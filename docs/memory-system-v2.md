@@ -522,7 +522,6 @@ Graph 节点顺序：
 ```text
 bootstrap_turn
 -> retrieve_memory
--> context_pipeline
 -> assemble_context
 -> plan / agent_loop / tool loop / reflect
 -> summarize_turn

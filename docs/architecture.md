@@ -426,7 +426,6 @@ POST /v2/threads/{thread_id}/runs/stream
 ```text
 bootstrap_turn
   -> retrieve_memory
-  -> context_pipeline
   -> assemble_context
   -> role_route_dry_run
   -> delegation_governance
@@ -443,8 +442,7 @@ bootstrap_turn
 ```mermaid
 flowchart LR
     Bootstrap["bootstrap_turn"] --> Retrieve["retrieve_memory"]
-    Retrieve --> ContextPipeline["context_pipeline"]
-    ContextPipeline --> Assemble["assemble_context"]
+    Retrieve --> Assemble["assemble_context"]
     Assemble --> Govern["role / tool / model governance"]
     Govern --> Plan["plan"]
     Plan --> Loop["agent_loop"]
