@@ -51,8 +51,3 @@ class ToolResultEnvelope(BaseModel):
         from .messages import tool_message_to_envelope
 
         return tool_message_to_envelope(message, tool_name=tool_name)
-
-    def to_tool_message(self) -> ToolMessage:
-        from .messages import envelope_to_tool_message
-
-        return envelope_to_tool_message(self)

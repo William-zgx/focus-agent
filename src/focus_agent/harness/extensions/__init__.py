@@ -172,33 +172,6 @@ class ExtensionRegistry:
         return list(self._extensions.values())
 
     # ---- collection helpers -----------------------------------------
-    def collect_tools(self) -> list[Any]:
-        tools: list[Any] = []
-        for ext in self._extensions.values():
-            try:
-                tools.extend(ext.tools() or [])
-            except Exception:  # pragma: no cover - defensive
-                import logging
-
-                logging.getLogger(__name__).exception(
-                    "Extension %r failed to list tools", getattr(ext, "name", "?")
-                )
-        return tools
-
-    def collect_agent_definitions(self) -> list[Any]:
-        defs: list[Any] = []
-        for ext in self._extensions.values():
-            try:
-                defs.extend(ext.agent_definitions() or [])
-            except Exception:  # pragma: no cover - defensive
-                import logging
-
-                logging.getLogger(__name__).exception(
-                    "Extension %r failed to list agent definitions",
-                    getattr(ext, "name", "?"),
-                )
-        return defs
-
     # ---- hook dispatch ----------------------------------------------
     def fire_hook(
         self,

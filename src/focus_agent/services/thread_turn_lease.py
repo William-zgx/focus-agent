@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 
 from .chat.errors import ConcurrentTurnError
 from .coordination import ThreadTurnLease, ThreadTurnLockBackend, new_thread_turn_owner
@@ -129,19 +128,6 @@ class ThreadTurnLeaseManager:
         error = self.lost_error
         if error is not None:
             raise error
-
-    def wait_lost_or_closed(self, timeout: float | None = None) -> bool:
-        deadline = None if timeout is None else time.monotonic() + max(float(timeout), 0.0)
-        with self._condition:
-            while self._lost_error is None and not self._closed:
-                if deadline is None:
-                    self._condition.wait()
-                    continue
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self._condition.wait(remaining)
-            return self._lost_error is not None
 
     def _heartbeat_loop(self) -> None:
         while not self._stop_event.wait(self.heartbeat_interval_seconds):

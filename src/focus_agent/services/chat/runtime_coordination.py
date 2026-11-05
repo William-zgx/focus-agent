@@ -31,13 +31,6 @@ class ChatRuntimeCoordinationMixin:
         with self._active_turns_lock:
             self._active_turn_leases[thread_id] = lease
 
-    def _heartbeat_thread_turn(self, *, thread_id: str) -> bool:
-        with self._active_turns_lock:
-            lease = self._active_turn_leases.get(thread_id)
-        if lease is None:
-            return False
-        return lease.heartbeat_once()
-
     def _release_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
             lease = self._active_turn_leases.pop(thread_id, None)

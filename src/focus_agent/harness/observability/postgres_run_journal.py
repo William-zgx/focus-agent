@@ -5,10 +5,9 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, TypeVar
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from focus_agent.repositories._postgres_base import PostgresMixin
 from focus_agent.repositories.postgres_schema import ensure_app_postgres_schema_on_connection
 from focus_agent.runtime.thread_pool import shared_thread_pool
 
@@ -30,27 +29,24 @@ from .run_journal import (
 T = TypeVar("T")
 
 
-class PostgresRunJournal:
-    """PostgreSQL-backed harness run journal."""
+class PostgresRunJournal(PostgresMixin):
+    """PostgreSQL-backed harness run journal.
 
-    def __init__(self, database_uri: str) -> None:
-        self.database_uri = database_uri
-        self._lock = asyncio.Lock()
+    Sequence allocation is serialized per run by ``pg_advisory_xact_lock`` in
+    ``append_event``, so no process-wide lock is needed and connections come
+    from the shared pool when a provider is configured.
+    """
 
     def setup(self) -> None:
-        with psycopg.connect(self.database_uri) as conn:
+        with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
 
-    def _connect(self):
-        return psycopg.connect(self.database_uri, row_factory=dict_row)
-
     async def _run_db(self, operation: Callable[[Any], T]) -> T:
-        async with self._lock:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(shared_thread_pool(), self._run_db_sync, operation)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(shared_thread_pool(), self._run_db_sync, operation)
 
     def _run_db_sync(self, operation: Callable[[Any], T]) -> T:
-        with self._connect() as conn:
+        with self._connection(dict_row=True) as conn:
             return operation(conn)
 
     async def put(
@@ -135,7 +131,7 @@ class PostgresRunJournal:
         def operation(conn: Any) -> None:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT completion_json FROM focus_harness_runs WHERE run_id = %s",
+                    "SELECT completion_json FROM focus_harness_runs WHERE run_id = %s FOR UPDATE",
                     (run_id,),
                 )
                 row = cur.fetchone()

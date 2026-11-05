@@ -16,7 +16,7 @@ from ..storage.namespaces import (
     user_profile_namespace,
 )
 from .branch_visibility import branch_origin_visible
-from .models import MemoryRecord, MemoryVisibility, MemoryWriteRequest, RetrievedMemoryBundle
+from .models import MemoryRecord, MemoryWriteRequest, RetrievedMemoryBundle
 from .text import memory_text_terms
 
 
@@ -153,12 +153,6 @@ class MemoryPolicy:
         for skill_id in context.skill_hints:
             namespaces.append(skill_memory_namespace(skill_id))
         return namespaces
-
-    def can_promote_branch_record(self, *, record: MemoryRecord) -> bool:
-        return record.scope.value == "branch" and record.visibility in {
-            MemoryVisibility.PROMOTABLE,
-            MemoryVisibility.SHARED,
-        }
 
     def filter_bundle_for_prompt(
         self,

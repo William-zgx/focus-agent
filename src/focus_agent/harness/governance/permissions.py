@@ -113,21 +113,6 @@ class PermissionEvaluator:
             return _DEFAULT_ASK_RULE
         return matched
 
-    def evaluate_simple(
-        self,
-        tool_name: str,
-        command: str | None = None,
-        agent: str = "*",
-    ) -> PermissionAction:
-        """Convenience wrapper that returns just the action."""
-        request = PermissionRequest(
-            id="simple",
-            tool_name=tool_name,
-            command=command,
-            agent_name=agent,
-        )
-        return self.evaluate(request).action
-
 
 class DoomLoopDetector:
     """Detect repetitive tool-call patterns that indicate an agent is stuck.
@@ -243,49 +228,6 @@ class PermissionManager:
 # ----------------------------------------------------------------------
 # Config parsing
 # ----------------------------------------------------------------------
-def parse_rules_from_config(config: dict[str, Any]) -> list[PermissionRule]:
-    """Parse a list of :class:`PermissionRule` objects from a config dict.
-
-    Expected shape::
-
-        {
-            "permissions": [
-                {"tool": "bash:rm -rf *", "action": "deny"},
-                {"tool": "*", "action": "allow", "agent": "trusted-*"},
-                {"tool": "*", "action": "ask", "priority": -1},
-            ]
-        }
-    """
-    raw_rules = config.get("permissions", [])
-    if not isinstance(raw_rules, list):
-        raise ValueError("permissions config must be a list")
-
-    rules: list[PermissionRule] = []
-    for entry in raw_rules:
-        if not isinstance(entry, dict):
-            logger.warning("Skipping non-dict permission entry: %r", entry)
-            continue
-        action_raw = entry.get("action")
-        if action_raw is None:
-            logger.warning("Skipping permission entry without 'action': %r", entry)
-            continue
-        try:
-            action = PermissionAction(str(action_raw).lower())
-        except ValueError:
-            logger.warning("Unknown permission action %r; skipping", action_raw)
-            continue
-        rules.append(
-            PermissionRule(
-                action=action,
-                tool_pattern=str(entry.get("tool", "*")),
-                agent_pattern=str(entry.get("agent", "*")),
-                priority=int(entry.get("priority", 0)),
-                reason=entry.get("reason"),
-            )
-        )
-    return rules
-
-
 __all__ = [
     "DoomLoopDetector",
     "PermissionAction",
@@ -293,5 +235,4 @@ __all__ = [
     "PermissionManager",
     "PermissionRequest",
     "PermissionRule",
-    "parse_rules_from_config",
 ]

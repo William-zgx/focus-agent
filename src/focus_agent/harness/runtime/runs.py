@@ -80,13 +80,6 @@ class RunRequest(BaseModel):
     after_seconds: float | None = Field(default=None, ge=0.0)
     user_id: str | None = None
 
-    def normalized_stream_modes(self, default: Sequence[str] | None = None) -> list[str]:
-        if self.stream_mode is None:
-            return list(default or ("messages", "custom", "updates", "tasks"))
-        if isinstance(self.stream_mode, str):
-            return [self.stream_mode]
-        return list(self.stream_mode)
-
     def run_kwargs(self) -> dict[str, Any]:
         return {
             "input": self.input,
@@ -226,24 +219,6 @@ class RunManager(RunFollowupsMixin):
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
         return record
 
-    async def create_from_request(
-        self,
-        thread_id: str,
-        request: RunRequest,
-        *,
-        multitask_strategy: MultitaskStrategy | str | None = None,
-    ) -> RunRecord:
-        return await self.create_or_reject(
-            thread_id,
-            request.assistant_id,
-            on_disconnect=request.on_disconnect,
-            metadata=request.metadata,
-            kwargs=request.run_kwargs(),
-            multitask_strategy=multitask_strategy or request.multitask_strategy,
-            user_id=request.user_id,
-            rollback_target=None,
-        )
-
     async def create_or_reject(
         self,
         thread_id: str,
@@ -325,15 +300,6 @@ class RunManager(RunFollowupsMixin):
                 for run in self._runs.values()
                 if run.thread_id == thread_id and (user_id is None or run.user_id == user_id)
             ]
-
-    async def has_inflight(self, thread_id: str, *, user_id: str | None = None) -> bool:
-        async with self._lock:
-            return any(
-                run.thread_id == thread_id
-                and run.inflight
-                and (user_id is None or run.user_id == user_id)
-                for run in self._runs.values()
-            )
 
     async def set_status(
         self,

@@ -338,16 +338,6 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
 
 
 # Backwards-compatible alias used (if anywhere) for the previous post-hoc init.
-def _initialize_new_components(harness: FocusAgentHarness, *, config: HarnessConfig) -> None:
-    """No-op shim retained for backwards compatibility.
-
-    Components are now constructed in :func:`_build_new_components` *before*
-    the graph is built, so that the graph can wire in references to
-    ``run_manager``, ``system_agent_runner``, and ``agent_definition_registry``.
-    """
-    pass
-
-
 def _lifecycle_publisher_for_bridge(
     journal: RunJournal,
     stream_bridge: InMemoryStreamBridge | JournaledStreamBridge,
