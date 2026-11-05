@@ -7,13 +7,13 @@
     "legacy_template": "Keep the wire value while old sessions exist; stop new writes before schema removal."
   },
   "max_by_kind": {
-    "compatibility_shim": 62,
+    "compatibility_shim": 61,
     "deprecated_route": 4,
     "legacy_template": 7,
     "legacy_state_or_mirror": 3,
     "legacy_override_or_monkeypatch": 8
   },
-  "max_total": 84,
+  "max_total": 83,
   "schema_version": 2,
   "item_ids": [
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/core/context_assembly.py:.context.assembly",
@@ -83,7 +83,6 @@
     "text:compatibility_shim:src/focus_agent/multi_agent/errors.py:4",
     "text:compatibility_shim:src/focus_agent/runtime/__init__.py:1",
     "text:compatibility_shim:src/focus_agent/schemas.py:1",
-    "text:compatibility_shim:src/focus_agent/services/agent_team/__init__.py:1",
     "text:compatibility_shim:src/focus_agent/services/branches/__init__.py:1",
     "text:compatibility_shim:src/focus_agent/state.py:1",
     "text:deprecated_route:src/focus_agent/api/route_utils/agent_team_responses.py:1",
