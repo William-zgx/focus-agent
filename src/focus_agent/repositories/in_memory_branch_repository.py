@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import MutableSequence
-from datetime import UTC, datetime
 from threading import RLock
 
 from ..core.branching import (
@@ -12,6 +11,7 @@ from ..core.branching import (
     MergeProposal,
     ThreadResolution,
 )
+from ..core.time_utils import utc_now_iso
 from ..core.types import ConversationRecord
 from ..security.ownership import (
     OwnershipAuditEvent,
@@ -19,10 +19,6 @@ from ..security.ownership import (
     deny_ownership,
 )
 from .branch_repository import BranchRepository
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 class InMemoryBranchRepository(BranchRepository):
@@ -64,8 +60,8 @@ class InMemoryBranchRepository(BranchRepository):
                     title_pending_ai=True,
                     is_archived=False,
                     archived_at=None,
-                    created_at=_now_iso(),
-                    updated_at=_now_iso(),
+                    created_at=utc_now_iso(),
+                    updated_at=utc_now_iso(),
                     token_usage={},
                 )
 
@@ -146,7 +142,7 @@ class InMemoryBranchRepository(BranchRepository):
             self._branches[branch_id] = record.model_copy(
                 update={
                     "is_archived": bool(is_archived),
-                    "archived_at": _now_iso() if is_archived else None,
+                    "archived_at": utc_now_iso() if is_archived else None,
                 }
             )
 
@@ -297,8 +293,8 @@ class InMemoryBranchRepository(BranchRepository):
                 raise ValueError(f"Conversation already exists: {record.root_thread_id}")
             created = record.model_copy(
                 update={
-                    "created_at": record.created_at or _now_iso(),
-                    "updated_at": record.updated_at or _now_iso(),
+                    "created_at": record.created_at or utc_now_iso(),
+                    "updated_at": record.updated_at or utc_now_iso(),
                 }
             )
             self._conversations[record.root_thread_id] = created
@@ -345,7 +341,7 @@ class InMemoryBranchRepository(BranchRepository):
                 )
             updates: dict[str, object] = {
                 "title": title,
-                "updated_at": _now_iso(),
+                "updated_at": utc_now_iso(),
             }
             if title_pending_ai is not None:
                 updates["title_pending_ai"] = bool(title_pending_ai)
@@ -373,8 +369,8 @@ class InMemoryBranchRepository(BranchRepository):
             self._conversations[root_thread_id] = record.model_copy(
                 update={
                     "is_archived": archived,
-                    "archived_at": _now_iso() if archived else None,
-                    "updated_at": _now_iso(),
+                    "archived_at": utc_now_iso() if archived else None,
+                    "updated_at": utc_now_iso(),
                 }
             )
             updated = self._conversations[root_thread_id]

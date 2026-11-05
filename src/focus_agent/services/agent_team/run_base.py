@@ -7,6 +7,7 @@ from focus_agent.core.agent_team import (
     AgentTeamSession,
     AgentTeamTask,
 )
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.delegation.delegation import (
     AgentTask,
 )
@@ -15,7 +16,6 @@ from focus_agent.multi_agent.contracts import ResourceClaim
 from focus_agent.multi_agent.dag_scheduler import DAGScheduler
 from focus_agent.multi_agent.errors import DAGValidationError
 from focus_agent.multi_agent.failure_handler import FailureHandler
-from focus_agent.services.agent_team.helpers import _now
 from focus_agent.services.agent_team.run_execution import (
     _failure_strategy_for_exception,
     _multi_agent_dag_scheduler_enabled,
@@ -110,7 +110,7 @@ class AgentTeamRunMixin:
             max_scheduler_tasks=_MAX_MISSION_SCHEDULER_TASKS,
             dag_scheduler_enabled=_multi_agent_dag_scheduler_enabled,
             dag_validation_error_type=DAGValidationError,
-            now=_now,
+            now=utc_now_iso,
             execution_mode=_agent_team_execution_mode,
         )
 
@@ -139,7 +139,7 @@ class AgentTeamRunMixin:
             tasks=tasks,
             error=error,
             selected_task_ids=selected_task_ids,
-            now=_now,
+            now=utc_now_iso,
         )
 
     def run_task(
@@ -149,12 +149,12 @@ class AgentTeamRunMixin:
             self,
             task_id=task_id,
             user_id=user_id,
-            now=_now,
+            now=utc_now_iso,
             execution_mode=_agent_team_execution_mode,
         )
 
     def _mark_task_enqueue_failed(self, task_id: str, *, error: str) -> AgentTeamTask:
-        return _run_mark_task_enqueue_failed(self, task_id, error=error, now=_now)
+        return _run_mark_task_enqueue_failed(self, task_id, error=error, now=utc_now_iso)
 
     def run_task_claimed(self, *, task_id: str, user_id: str) -> AgentTeamTask:
         return _run_task_claimed(
@@ -170,7 +170,7 @@ class AgentTeamRunMixin:
             failure_handler_factory=FailureHandler,
             task_execution_result_factory=_TaskExecutionResult,
             artifact_kind_for_task=_artifact_kind_for_task,
-            now=_now,
+            now=utc_now_iso,
         )
 
     def maybe_schedule_next_wave(self, *, session_id: str, user_id: str) -> None:
@@ -188,14 +188,14 @@ class AgentTeamRunMixin:
             self,
             session_id=session_id,
             user_id=user_id,
-            now=_now,
+            now=utc_now_iso,
         )
 
     def retry_task(self, *, task_id: str, user_id: str) -> AgentTeamTask:
-        return _run_retry_task(self, task_id=task_id, user_id=user_id, now=_now)
+        return _run_retry_task(self, task_id=task_id, user_id=user_id, now=utc_now_iso)
 
     def cancel_task(self, *, task_id: str, user_id: str) -> AgentTeamTask:
-        return _run_cancel_task(self, task_id=task_id, user_id=user_id, now=_now)
+        return _run_cancel_task(self, task_id=task_id, user_id=user_id, now=utc_now_iso)
 
     def _execute_task_body(
         self, task: AgentTeamTask, *, user_id: str, scheduler_wave: int | None = None

@@ -8,7 +8,10 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from ..config import Settings
 from ..core.branch_messages import branch_context_messages, branch_fork_message_count
 from ..core.state import AgentState
-from ..core.tool_call_protocol import repair_dangling_tool_call_messages
+from ..core.tool_call_protocol import (
+    messages_since_latest_human,
+    repair_dangling_tool_call_messages,
+)
 from ..model_registry import default_thinking_enabled, supports_thinking_mode
 from .graph_tool_messages import tool_message_failed
 
@@ -148,7 +151,7 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
     call_signatures: dict[str, str] = {}
     streak_signature = ""
     streak_count = 0
-    for message in _messages_since_latest_human(messages):
+    for message in messages_since_latest_human(messages):
         if isinstance(message, AIMessage):
             for call in getattr(message, "tool_calls", []) or []:
                 if not isinstance(call, dict):
@@ -177,13 +180,6 @@ def _has_repeated_failed_tool_call(messages: list[Any], *, max_repetitions: int)
         if streak_count >= max_repetitions:
             return True
     return False
-
-
-def _messages_since_latest_human(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index + 1 :]
-    return messages
 
 
 def _failure_streak_signature(call: dict[str, Any]) -> str:

@@ -11,6 +11,7 @@ from focus_agent.repositories._postgres_base import PostgresMixin
 from focus_agent.repositories.postgres_schema import ensure_app_postgres_schema_on_connection
 from focus_agent.runtime.thread_pool import shared_thread_pool
 
+from ...core.time_utils import utc_now_iso
 from ..streaming import StreamEvent
 from .run_journal import (
     JournalEvent,
@@ -20,7 +21,6 @@ from .run_journal import (
     _dict_data,
     _event_id,
     _limit,
-    _now_iso,
     _snapshot,
     _tool_event_from_journal_event,
     _trajectory_summary,
@@ -64,7 +64,7 @@ class PostgresRunJournal(PostgresMixin):
         error: str | None = None,
         created_at: str | None = None,
     ) -> None:
-        now = created_at or _now_iso()
+        now = created_at or utc_now_iso()
 
         def operation(conn: Any) -> None:
             with conn.cursor() as cur:
@@ -122,7 +122,7 @@ class PostgresRunJournal(PostgresMixin):
                     SET status = %s, error = COALESCE(%s, error), updated_at = %s
                     WHERE run_id = %s
                     """,
-                    (status, error, _now_iso(), run_id),
+                    (status, error, utc_now_iso(), run_id),
                 )
 
         await self._run_db(operation)
@@ -145,7 +145,7 @@ class PostgresRunJournal(PostgresMixin):
                     SET completion_json = %s, updated_at = %s
                     WHERE run_id = %s
                     """,
-                    (Jsonb(completion), _now_iso(), run_id),
+                    (Jsonb(completion), utc_now_iso(), run_id),
                 )
 
         await self._run_db(operation)
@@ -215,7 +215,7 @@ class PostgresRunJournal(PostgresMixin):
                     data=payload,
                     sequence=effective_sequence,
                     stream_event_id=stream_event_id,
-                    created_at=created_at or _now_iso(),
+                    created_at=created_at or utc_now_iso(),
                 )
                 cur.execute(
                     """

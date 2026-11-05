@@ -115,3 +115,11 @@ class ConversationRecord(StateModel):
     created_at: str | None = None
     updated_at: str | None = None
     token_usage: dict[str, int] = Field(default_factory=dict)
+
+
+def coerce_finding_item(value: object) -> FindingItem:
+    if isinstance(value, FindingItem):
+        return value
+    if isinstance(value, dict):
+        return FindingItem.model_validate(value)
+    return FindingItem(finding=str(value))

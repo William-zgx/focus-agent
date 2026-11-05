@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _LATIN_TOKEN_PATTERNS = {
     2: re.compile(r"[a-z0-9]{2,}"),
@@ -72,7 +73,16 @@ def has_correction_signal(text: str | None) -> bool:
     return "不是" in raw and "而是" in raw
 
 
+def latest_message_text(messages: list[Any], message_type: type) -> str:
+    for message in reversed(messages):
+        if isinstance(message, message_type):
+            content = getattr(message, "content", "")
+            return str(content).strip()
+    return ""
+
+
 __all__ = [
+    "latest_message_text",
     "has_correction_signal",
     "memory_text_terms",
     "normalize_memory_dedupe_text",

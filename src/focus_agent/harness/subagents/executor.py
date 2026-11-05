@@ -4,9 +4,9 @@ import asyncio
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from ...core.time_utils import utc_now_iso
 from ..runtime import RunManager, RunRecord, RunStatus
 from ..tools.envelope import ToolResultContent, ToolResultEnvelope
 
@@ -77,7 +77,7 @@ class SubagentExecutor:
         tool_name: str = "task",
     ) -> ToolResultEnvelope:
         call_id = tool_call_id or f"subagent-call-{uuid.uuid4()}"
-        started_at = _now_iso()
+        started_at = utc_now_iso()
         accepted = await self._try_acquire_slot()
         if not accepted:
             return self._error_envelope(
@@ -94,7 +94,7 @@ class SubagentExecutor:
                     "max_parallel": self._max_parallel,
                     "active": self._active,
                     "started_at": started_at,
-                    "ended_at": _now_iso(),
+                    "ended_at": utc_now_iso(),
                 },
             )
 
@@ -115,7 +115,7 @@ class SubagentExecutor:
             await self._run_manager.set_status(record.run_id, RunStatus.RUNNING)
             result = await self._runner.run(request, run_record=record)
             await self._run_manager.set_status(record.run_id, RunStatus.SUCCESS)
-            ended_at = _now_iso()
+            ended_at = utc_now_iso()
             return ToolResultEnvelope(
                 tool_call_id=call_id,
                 tool_name=tool_name,
@@ -154,7 +154,7 @@ class SubagentExecutor:
                     ),
                     "max_parallel": self._max_parallel,
                     "started_at": started_at,
-                    "ended_at": _now_iso(),
+                    "ended_at": utc_now_iso(),
                     "error_type": type(exc).__name__,
                 },
                 artifact={"run": record.to_dict()} if record is not None else {},
@@ -190,7 +190,3 @@ class SubagentExecutor:
             runtime={str(key): value for key, value in runtime.items()},
             artifact={str(key): value for key, value in (artifact or {}).items()},
         )
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()

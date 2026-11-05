@@ -12,6 +12,7 @@ from focus_agent.core.agent_team import (
     agent_role_for_team_task_role,
 )
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.delegation.delegation import (
     AgentTask,
 )
@@ -30,7 +31,7 @@ from focus_agent.multi_agent.contracts import (
     ResourceClaim,
 )
 from focus_agent.multi_agent.failure_handler import FailureHandler
-from focus_agent.services.agent_team.helpers import _dedupe, _now
+from focus_agent.services.agent_team.helpers import _dedupe
 from focus_agent.services.agent_team.real_execution import (
     execute_real_agent_team_task,
     is_real_agent_team_execution_enabled,
@@ -129,10 +130,10 @@ def execute_task_body(
             run_status="cancelled",
             execution_status="cancelled",
             last_error="Task was cancelled before execution.",
-            task_updates={"finished_at": _now()},
+            task_updates={"finished_at": utc_now_iso()},
         )
 
-    started_at = _now()
+    started_at = utc_now_iso()
     task = service.update_task(
         task_id=task.task_id,
         user_id=user_id,
@@ -157,7 +158,7 @@ def execute_task_body(
             last_error=(
                 "Real Agent Team execution is blocked because runtime readiness is not ready."
             ),
-            task_updates={"finished_at": _now()},
+            task_updates={"finished_at": utc_now_iso()},
         )
     executor = service._delegated_executor()
     workspace: AgentTeamWorkspace | None = None
@@ -178,7 +179,7 @@ def execute_task_body(
                 workspace_status="created",
             )
         except Exception as exc:  # noqa: BLE001
-            finished_at = _now()
+            finished_at = utc_now_iso()
             return _TaskExecutionResult(
                 session_id=task.session_id,
                 final_status=AgentTeamTaskStatus.FAILED,
@@ -195,7 +196,7 @@ def execute_task_body(
                 run_status="failed",
                 execution_status="workspace_required",
                 last_error="Real Agent Team execution requires an isolated task worktree.",
-                task_updates={"finished_at": _now()},
+                task_updates={"finished_at": utc_now_iso()},
             )
         real_result = execute_real_agent_team_task(
             service,
@@ -278,7 +279,7 @@ def execute_task_body(
         max_parallel_runs=1,
     )
     if not result:
-        finished_at = _now()
+        finished_at = utc_now_iso()
         return _TaskExecutionResult(
             session_id=task.session_id,
             final_status=AgentTeamTaskStatus.BLOCKED,
@@ -376,7 +377,7 @@ def execute_task_body(
             "verification_summary": run.summary,
             "risk_notes": risk_notes,
             "started_at": run.started_at or started_at,
-            "finished_at": run.finished_at or _now(),
+            "finished_at": run.finished_at or utc_now_iso(),
         },
         output=output,
     )

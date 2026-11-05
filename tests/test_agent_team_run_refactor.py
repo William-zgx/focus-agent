@@ -34,7 +34,7 @@ def test_agent_team_run_mixin_keeps_claimed_execution_patch_seams(monkeypatch) -
     assert captured["failure_handler_factory"] is agent_team_run.FailureHandler
     assert captured["task_execution_result_factory"] is agent_team_run._TaskExecutionResult
     assert captured["artifact_kind_for_task"] is agent_team_run._artifact_kind_for_task
-    assert captured["now"] is agent_team_run._now
+    assert captured["now"] is agent_team_run.utc_now_iso
 
 
 def test_agent_team_run_operations_do_not_import_the_compatibility_mixin() -> None:

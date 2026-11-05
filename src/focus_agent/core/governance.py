@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+from .time_utils import utc_now_iso
 
 
 def new_context_evidence_id() -> str:
@@ -46,7 +43,7 @@ class ContextMemoryEvidence(BaseModel):
     token_counting: dict[str, Any] = Field(default_factory=dict)
     risk_flags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=_now_iso)
+    created_at: str = Field(default_factory=utc_now_iso)
 
     @property
     def memory_ids(self) -> list[str]:
@@ -79,8 +76,8 @@ class SkillSelectionEvent(BaseModel):
     feedback_reason: str | None = None
     user_override: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=_now_iso)
-    updated_at: str = Field(default_factory=_now_iso)
+    created_at: str = Field(default_factory=utc_now_iso)
+    updated_at: str = Field(default_factory=utc_now_iso)
 
 
 class SkillPreference(BaseModel):
@@ -89,8 +86,8 @@ class SkillPreference(BaseModel):
     skill_id: str
     state: str = "default"
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=_now_iso)
-    updated_at: str = Field(default_factory=_now_iso)
+    created_at: str = Field(default_factory=utc_now_iso)
+    updated_at: str = Field(default_factory=utc_now_iso)
 
 
 class FeedbackEvent(BaseModel):
@@ -101,7 +98,7 @@ class FeedbackEvent(BaseModel):
     sentiment: str | None = None
     category: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=_now_iso)
+    created_at: str = Field(default_factory=utc_now_iso)
 
 
 class BranchDecisionAction(StrEnum):
@@ -187,8 +184,8 @@ class BranchDecisionEvent(BaseModel):
     dismiss_reason: str | None = None
     error: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=_now_iso)
-    updated_at: str = Field(default_factory=_now_iso)
+    created_at: str = Field(default_factory=utc_now_iso)
+    updated_at: str = Field(default_factory=utc_now_iso)
     executed_at: str | None = None
 
     @property

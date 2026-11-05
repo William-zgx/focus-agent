@@ -3,12 +3,12 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
 from langchain.messages import AIMessage, ToolMessage
 
+from ..core.time_utils import utc_now_iso_z
 from .graph_tool_messages import (
     payload_published_at,
     tool_call_names_by_id,
@@ -107,7 +107,7 @@ class EvidenceItem:
             payload["published_at"] = self.published_at
         # Retrieval time and publication time describe different events. Keep
         # retrieval time even when the source supplies a publication date.
-        payload["observed_at"] = self.observed_at or _now_iso()
+        payload["observed_at"] = self.observed_at or utc_now_iso_z()
         if include_evidence_layer:
             payload["evidence_layer"] = self.evidence_layer
         return payload
@@ -682,10 +682,6 @@ def _dedupe_items(items: Iterable[EvidenceItem]) -> list[EvidenceItem]:
         seen.add(key)
         unique.append(item)
     return unique
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 __all__ = [

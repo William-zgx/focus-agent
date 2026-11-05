@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from focus_agent.core.time_utils import utc_now_iso_z
 from focus_agent.core.users import (
     AdminAuditEvent,
     AuditDecision,
@@ -44,10 +44,6 @@ class LastAdminError(UserServiceError):
     pass
 
 
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _status_value(status: UserStatus | str) -> str:
     return status.value if isinstance(status, UserStatus) else str(status)
 
@@ -75,7 +71,7 @@ class UserService:
         bootstrap_admin_user_ids: tuple[str, ...] | set[str] | None = None,
         request_id: str | None = None,
     ) -> User:
-        now = _now()
+        now = utc_now_iso_z()
         roles = self._default_roles_for_principal(
             principal,
             allow_admin_bootstrap=allow_admin_bootstrap,
@@ -168,7 +164,7 @@ class UserService:
         actor: AuthContext | User | None = None,
         request_id: str | None = None,
     ) -> User:
-        now = _now()
+        now = utc_now_iso_z()
         normalized_roles = list(normalize_roles(roles or (UserRole.MEMBER.value,)))
         if not normalized_roles:
             normalized_roles = [MEMBER_ROLE]
@@ -226,7 +222,7 @@ class UserService:
             allowed_updates["metadata"] = {}
         if "username" in allowed_updates:
             allowed_updates["username"] = _normalize_username(allowed_updates["username"])
-        updated = user.model_copy(update={**allowed_updates, "updated_at": _now()})
+        updated = user.model_copy(update={**allowed_updates, "updated_at": utc_now_iso_z()})
         try:
             saved = self.repository.save_user(updated)
         except ValueError as exc:
@@ -264,7 +260,7 @@ class UserService:
         next_status = UserStatus(_status_value(status))
         try:
             saved = self.repository.save_user_preserving_last_active_admin(
-                user.model_copy(update={"status": next_status, "updated_at": _now()})
+                user.model_copy(update={"status": next_status, "updated_at": utc_now_iso_z()})
             )
         except LastActiveAdminError as exc:
             self._audit_last_admin_denial(
@@ -301,7 +297,7 @@ class UserService:
         normalized_roles = list(normalize_roles(roles))
         try:
             saved = self.repository.save_user_preserving_last_active_admin(
-                user.model_copy(update={"roles": normalized_roles, "updated_at": _now()})
+                user.model_copy(update={"roles": normalized_roles, "updated_at": utc_now_iso_z()})
             )
         except LastActiveAdminError as exc:
             self._audit_last_admin_denial(
@@ -438,7 +434,7 @@ class UserService:
                 reason=reason,
                 metadata=dict(metadata or {}),
                 request_id=request_id,
-                created_at=_now(),
+                created_at=utc_now_iso_z(),
             )
         )
 

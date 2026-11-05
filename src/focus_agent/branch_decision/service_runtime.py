@@ -31,6 +31,7 @@ from focus_agent.services.branches.actions import (
     target_parent_thread_id,
 )
 
+from ..core.time_utils import utc_now_iso
 from .budget import recommendation_expired
 from .classifier import classify_topic_relation
 from .service_helpers import (
@@ -38,7 +39,6 @@ from .service_helpers import (
     _branch_role_for_recommendation,
     _call_semantic_topic_relation_classifier,
     _normalize_semantic_topic_relation_result,
-    _now_iso,
 )
 
 logger = logging.getLogger("focus_agent.branch_decision")
@@ -237,7 +237,7 @@ class BranchDecisionServiceRuntimeMixin:
                 action.model_copy(
                     update={
                         "status": BranchActionStatus.DISMISSED,
-                        "dismissed_at": _now_iso(),
+                        "dismissed_at": utc_now_iso(),
                     }
                 )
                 if action.action_id == pending_action.action_id
@@ -345,7 +345,7 @@ class BranchDecisionServiceRuntimeMixin:
             event,
             status=BranchDecisionStatus.PROMOTED,
             promoted_action_id=action.action_id,
-            executed_at=_now_iso(),
+            executed_at=utc_now_iso(),
             metadata={
                 **event.metadata,
                 "branch_action": action.model_dump(mode="json"),
@@ -400,7 +400,7 @@ class BranchDecisionServiceRuntimeMixin:
         return event
 
     def _update_event(self, event: BranchDecisionEvent, **updates: Any) -> BranchDecisionEvent:
-        updated = event.model_copy(update={**updates, "updated_at": _now_iso()})
+        updated = event.model_copy(update={**updates, "updated_at": utc_now_iso()})
         if has_repo_method(self.governance_repository, "update_branch_decision_event"):
             updated = self.governance_repository.update_branch_decision_event(updated)
             index_event = getattr(self, "_index_branch_decision_best_effort", None)

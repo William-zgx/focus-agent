@@ -6,7 +6,7 @@ from typing import Any
 from langchain.messages import HumanMessage
 
 from ...core.context_compaction import build_incremental_compaction_update
-from ...observability.trajectory import utc_now
+from ...core.time_utils import utc_now
 from ..coordination import background_job_key
 
 logger = logging.getLogger("focus_agent.chat")

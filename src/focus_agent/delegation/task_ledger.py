@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import Field
 
 from ..config import Settings
+from ..core.time_utils import utc_now_iso
 from ..core.types import StateModel
 from .delegation import AgentArtifact
 from .roles import AgentRole, artifact_kind_for_role, normalize_agent_role
@@ -115,7 +115,7 @@ def build_agent_task_ledger(
 
     raw_tasks = delegation_plan.get("tasks") if isinstance(delegation_plan, dict) else None
     tasks: list[AgentTaskNode] = []
-    now = _utc_now()
+    now = utc_now_iso()
     if isinstance(raw_tasks, list):
         for index, raw in enumerate(raw_tasks):
             if not isinstance(raw, dict):
@@ -389,7 +389,7 @@ def apply_critic_retry_tasks(
         {"from": task.parent_task_id, "to": task.task_id} for task in tasks if task.parent_task_id
     ]
     return ledger_model.model_copy(
-        update={"tasks": tasks, "edges": edges, "updated_at": _utc_now()}
+        update={"tasks": tasks, "edges": edges, "updated_at": utc_now_iso()}
     )
 
 
@@ -463,10 +463,6 @@ def _retry_task_ids(
 
 def _optional_str(value: Any) -> str | None:
     return str(value) if value else None
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 __all__ = [

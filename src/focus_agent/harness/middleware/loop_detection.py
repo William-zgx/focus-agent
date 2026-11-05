@@ -8,8 +8,9 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage
 
+from ...core.tool_call_protocol import messages_since_latest_human
 from .base import (
     BaseAgentMiddleware,
     MiddlewareHandler,
@@ -86,7 +87,7 @@ class LoopDetectionMiddleware(BaseAgentMiddleware):
         )
 
     def detect(self, messages: list[Any]) -> LoopDetectionResult | None:
-        recent = _messages_since_latest_human(messages)
+        recent = messages_since_latest_human(messages)
         if not recent:
             return None
 
@@ -133,13 +134,6 @@ class LoopDetectionMiddleware(BaseAgentMiddleware):
             updated["messages"] = [fallback]
             return updated
         return fallback
-
-
-def _messages_since_latest_human(messages: list[Any]) -> list[Any]:
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            return messages[index + 1 :]
-    return messages
 
 
 def _message_signature(message: Any) -> str | None:

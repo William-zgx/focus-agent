@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime
 
 from focus_agent.core.agent_team import (
     AgentTeamRecommendedAction,
@@ -9,10 +8,6 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.core.branching import BranchRole
 from focus_agent.retrieval.agent_team import index_agent_team_plan
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:
@@ -103,4 +98,4 @@ class AgentTeamHelperMixin:
         return AgentTeamRecommendedAction.MERGE
 
 
-__all__ = ["AgentTeamHelperMixin", "_ROLE_TO_BRANCH_ROLE", "_dedupe", "_now"]
+__all__ = ["AgentTeamHelperMixin", "_ROLE_TO_BRANCH_ROLE", "_dedupe"]

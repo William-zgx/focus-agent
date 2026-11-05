@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from focus_agent.config_parts.env import parse_bool
+
 RuntimeFeatureSpec = bool | object
 
 
@@ -53,11 +55,9 @@ class RuntimeFeatures(BaseModel):
     @classmethod
     def _coerce_bool_strings(cls, value: Any) -> Any:
         if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"1", "true", "yes", "on"}:
-                return True
-            if normalized in {"0", "false", "no", "off"}:
-                return False
+            parsed = parse_bool(value)
+            if parsed is not None:
+                return parsed
         return value
 
     @classmethod

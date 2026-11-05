@@ -13,7 +13,8 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
+from focus_agent.core.time_utils import utc_now_iso
+from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe
 
 
 class AgentTeamSessionTaskMixin:
@@ -25,7 +26,7 @@ class AgentTeamSessionTaskMixin:
         title: str | None = None,
         goal: str,
     ) -> AgentTeamSession:
-        now = _now()
+        now = utc_now_iso()
         resolved_root_thread_id = root_thread_id.strip() if root_thread_id else ""
         if not resolved_root_thread_id:
             resolved_root_thread_id = f"agent-team-standalone-{uuid4()}"
@@ -119,7 +120,7 @@ class AgentTeamSessionTaskMixin:
             branch_id = branch_record.branch_id
             child_thread_id = branch_record.child_thread_id
 
-        now = _now()
+        now = utc_now_iso()
         task = AgentTeamTask(
             task_id=str(uuid4()),
             session_id=session_id,
@@ -229,7 +230,7 @@ class AgentTeamSessionTaskMixin:
     ) -> AgentTeamTask:
         with self._lock:
             task = self.get_task(task_id, user_id=user_id)
-            updates: dict[str, object] = {"updated_at": _now()}
+            updates: dict[str, object] = {"updated_at": utc_now_iso()}
             if status is not None:
                 updates["status"] = AgentTeamTaskStatus(status)
             if changed_files is not None:
@@ -395,7 +396,7 @@ class AgentTeamSessionTaskMixin:
                 row_version=max(0, int(row_version)) if row_version is not None else 0,
                 cancel_epoch=max(0, int(cancel_epoch)) if cancel_epoch is not None else 0,
                 deliverable=bool(deliverable) if deliverable is not None else False,
-                created_at=_now(),
+                created_at=utc_now_iso(),
             )
             self.repository.add_task_output(output)
             artifact_ids = [*task.output_artifact_ids]
@@ -417,7 +418,7 @@ class AgentTeamSessionTaskMixin:
                         task.verification_summary,
                         test_evidence or [],
                     ),
-                    "updated_at": _now(),
+                    "updated_at": utc_now_iso(),
                 }
             )
             self.repository.save_task(updated)
@@ -437,7 +438,9 @@ class AgentTeamSessionTaskMixin:
     ) -> None:
         session = self.repository.get_session(session_id)
         self.repository.save_session(
-            session.model_copy(update={"status": status or session.status, "updated_at": _now()})
+            session.model_copy(
+                update={"status": status or session.status, "updated_at": utc_now_iso()}
+            )
         )
 
     def _refresh_session_status(self, session_id: str) -> None:

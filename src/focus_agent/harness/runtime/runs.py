@@ -5,12 +5,12 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ...core.time_utils import utc_now_iso
 from .rollback import CheckpointRollbackResult
 from .run_followups import RunFollowupsMixin
 
@@ -285,7 +285,7 @@ class RunManager(RunFollowupsMixin):
             if record is None:
                 return False
             record.task = task
-            record.updated_at = _now_iso()
+            record.updated_at = utc_now_iso()
         return True
 
     async def list_by_thread(
@@ -314,7 +314,7 @@ class RunManager(RunFollowupsMixin):
                 logger.warning("set_status called for unknown harness run %s", run_id)
                 return
             record.status = _coerce_run_status(status)
-            record.updated_at = _now_iso()
+            record.updated_at = utc_now_iso()
             if error is not None:
                 record.error = error
         await self._persist_status(record)
@@ -402,7 +402,7 @@ class RunManager(RunFollowupsMixin):
         user_id: str | None,
         rollback_target: Any | None,
     ) -> RunRecord:
-        now = _now_iso()
+        now = utc_now_iso()
         return RunRecord(
             run_id=str(uuid.uuid4()),
             thread_id=thread_id,
@@ -434,7 +434,7 @@ class RunManager(RunFollowupsMixin):
             record.rollback_ready.set()
             record.rollback_completed.set()
         record.status = RunStatus.INTERRUPTED
-        record.updated_at = _now_iso()
+        record.updated_at = utc_now_iso()
 
     async def _settle_records(self, records: Sequence[RunRecord]) -> None:
         tasks = [record.task for record in records if record.task is not None]
@@ -529,7 +529,7 @@ class RunManager(RunFollowupsMixin):
         augmented = _augment_rollback_result(result, record.metadata)
         payload = augmented.to_dict()
         record.rollback_result = payload
-        record.updated_at = _now_iso()
+        record.updated_at = utc_now_iso()
         await self.update_run_completion(record.run_id, rollback_result=payload)
 
     async def _publish_lifecycle(
@@ -589,10 +589,6 @@ class RunConflictError(Exception):
 
 class UnsupportedStrategyError(Exception):
     """Raised when a multitask strategy is known but not implemented."""
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _coerce_run_status(value: RunStatus | str) -> RunStatus:

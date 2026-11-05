@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+from focus_agent.core.coercion import optional_str
 from focus_agent.core.productivity import (
     FocusNote,
     FocusNoteStatus,
@@ -45,13 +46,13 @@ class ProductivityService:
             title=_require_title(title),
             body=str(body or ""),
             tags=_normalize_tags(tags),
-            source_thread_id=_normalize_optional_id(source_thread_id),
-            source_artifact_id=_normalize_optional_id(source_artifact_id),
-            source_kind=_normalize_optional_id(source_kind),
-            source_id=_normalize_optional_id(source_id),
-            source_url=_normalize_optional_id(source_url),
+            source_thread_id=optional_str(source_thread_id),
+            source_artifact_id=optional_str(source_artifact_id),
+            source_kind=optional_str(source_kind),
+            source_id=optional_str(source_id),
+            source_url=optional_str(source_url),
             pinned_context=dict(pinned_context or {}),
-            captured_from=_normalize_optional_id(captured_from),
+            captured_from=optional_str(captured_from),
             metadata=dict(metadata or {}),
             created_at=now,
             updated_at=now,
@@ -100,25 +101,19 @@ class ProductivityService:
                     "status": normalized_status
                     if (status is not None or is_archived is not None)
                     else None,
-                    "source_thread_id": _normalize_optional_id(source_thread_id)
+                    "source_thread_id": optional_str(source_thread_id)
                     if source_thread_id is not None
                     else None,
-                    "source_artifact_id": _normalize_optional_id(source_artifact_id)
+                    "source_artifact_id": optional_str(source_artifact_id)
                     if source_artifact_id is not None
                     else None,
-                    "source_kind": _normalize_optional_id(source_kind)
-                    if source_kind is not None
-                    else None,
-                    "source_id": _normalize_optional_id(source_id)
-                    if source_id is not None
-                    else None,
-                    "source_url": _normalize_optional_id(source_url)
-                    if source_url is not None
-                    else None,
+                    "source_kind": optional_str(source_kind) if source_kind is not None else None,
+                    "source_id": optional_str(source_id) if source_id is not None else None,
+                    "source_url": optional_str(source_url) if source_url is not None else None,
                     "pinned_context": dict(pinned_context or {})
                     if pinned_context is not None
                     else None,
-                    "captured_from": _normalize_optional_id(captured_from)
+                    "captured_from": optional_str(captured_from)
                     if captured_from is not None
                     else None,
                     "is_archived": next_is_archived
@@ -162,15 +157,15 @@ class ProductivityService:
             description=str(description or ""),
             due_at=due_at,
             priority=priority,
-            source_thread_id=_normalize_optional_id(source_thread_id),
-            source_note_id=_normalize_optional_id(source_note_id),
-            source_artifact_id=_normalize_optional_id(source_artifact_id),
-            source_kind=_normalize_optional_id(source_kind),
-            source_id=_normalize_optional_id(source_id),
-            source_url=_normalize_optional_id(source_url),
+            source_thread_id=optional_str(source_thread_id),
+            source_note_id=optional_str(source_note_id),
+            source_artifact_id=optional_str(source_artifact_id),
+            source_kind=optional_str(source_kind),
+            source_id=optional_str(source_id),
+            source_url=optional_str(source_url),
             pinned_context=dict(pinned_context or {}),
-            captured_from=_normalize_optional_id(captured_from),
-            assignee_user_id=_normalize_optional_id(assignee_user_id),
+            captured_from=optional_str(captured_from),
+            assignee_user_id=optional_str(assignee_user_id),
             tags=_normalize_tags(tags),
             metadata=dict(metadata or {}),
             created_at=now,
@@ -215,31 +210,25 @@ class ProductivityService:
                     "status": normalized_status if status is not None else None,
                     "due_at": due_at,
                     "priority": priority,
-                    "source_thread_id": _normalize_optional_id(source_thread_id)
+                    "source_thread_id": optional_str(source_thread_id)
                     if source_thread_id is not None
                     else None,
-                    "source_note_id": _normalize_optional_id(source_note_id)
+                    "source_note_id": optional_str(source_note_id)
                     if source_note_id is not None
                     else None,
-                    "source_artifact_id": _normalize_optional_id(source_artifact_id)
+                    "source_artifact_id": optional_str(source_artifact_id)
                     if source_artifact_id is not None
                     else None,
-                    "source_kind": _normalize_optional_id(source_kind)
-                    if source_kind is not None
-                    else None,
-                    "source_id": _normalize_optional_id(source_id)
-                    if source_id is not None
-                    else None,
-                    "source_url": _normalize_optional_id(source_url)
-                    if source_url is not None
-                    else None,
+                    "source_kind": optional_str(source_kind) if source_kind is not None else None,
+                    "source_id": optional_str(source_id) if source_id is not None else None,
+                    "source_url": optional_str(source_url) if source_url is not None else None,
                     "pinned_context": dict(pinned_context or {})
                     if pinned_context is not None
                     else None,
-                    "captured_from": _normalize_optional_id(captured_from)
+                    "captured_from": optional_str(captured_from)
                     if captured_from is not None
                     else None,
-                    "assignee_user_id": _normalize_optional_id(assignee_user_id)
+                    "assignee_user_id": optional_str(assignee_user_id)
                     if assignee_user_id is not None
                     else None,
                     "tags": _normalize_tags(tags) if tags is not None else None,
@@ -382,15 +371,10 @@ def _require_title(value: str | None) -> str:
     return title
 
 
-def _normalize_optional_id(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def _payload_string(payload: dict[str, Any], key: str) -> str | None:
     value = payload.get(key)
     if isinstance(value, str):
-        return _normalize_optional_id(value)
+        return optional_str(value)
     return None
 
 

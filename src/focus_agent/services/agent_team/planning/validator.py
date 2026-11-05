@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskStatus
-from focus_agent.services.agent_team.helpers import _now
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.services.agent_team.planning.dag import AgentTeamPlanningService
 from focus_agent.services.agent_team.planning.models import AgentTeamPlanDraft, AgentTeamPlanOptions
 from focus_agent.services.agent_team.planning.rules import *  # noqa: F401,F403
@@ -133,11 +133,11 @@ class AgentTeamPlanningMixin:
                 "planning_source": draft.planning_source,
                 "planning_rationale": draft.planning_rationale,
                 "planner_model_id": draft.planner_model_id,
-                "plan_generated_at": _now(),
+                "plan_generated_at": utc_now_iso(),
                 "plan_hash": draft.plan_hash,
                 "planning_error": draft.planning_error,
                 "skill_plan": draft.skill_plan,
-                "updated_at": _now(),
+                "updated_at": utc_now_iso(),
             }
         )
         self.repository.save_session(updated)

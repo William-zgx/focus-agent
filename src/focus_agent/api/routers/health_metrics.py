@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import PlainTextResponse
 
 from focus_agent.capabilities.tool_invocation import tool_invocation_runtime_snapshot
-from focus_agent.core.repo_call import safe_repo_call
+from focus_agent.core.repo_call import snapshot_metrics
 from focus_agent.engine.runtime import AppRuntime
 
 from ..contracts import RuntimeReadinessResponse
@@ -63,30 +63,17 @@ def metrics_scrape(runtime: AppRuntime = Depends(get_app_runtime)) -> PlainTextR
 
 def _background_metrics(runtime: AppRuntime) -> dict[str, int]:
     return {
-        **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(
+        **snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
+        **snapshot_metrics(
             getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
         ),
     }
 
 
 def _postgres_metrics(runtime: AppRuntime) -> dict[str, int | float]:
-    return _snapshot_metrics(
+    return snapshot_metrics(
         getattr(runtime, "postgres_connection_provider", None), "postgres_metrics_error"
     )
-
-
-def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int | float]:
-    snapshot = safe_repo_call(
-        source,
-        "snapshot",
-        default_missing={},
-        default_error={error_key: 1},
-    )
-    try:
-        return dict(snapshot)
-    except Exception:  # noqa: BLE001
-        return {error_key: 1}
 
 
 def _metrics_trajectory_data(*, runtime: AppRuntime, repo: Any | None) -> dict[str, Any]:

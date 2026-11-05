@@ -1,6 +1,6 @@
 """Agent Team service package: sessions, planning, run execution, merge review."""
 
-from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
+from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe
 from focus_agent.services.agent_team.planning import (
     AgentTeamPlanDraft,
     AgentTeamPlanningMixin,
@@ -35,7 +35,6 @@ __all__ = [
     "_DEFAULT_DISPATCH_TASKS",
     "_ROLE_TO_BRANCH_ROLE",
     "_dedupe",
-    "_now",
     "AgentTeamMergeMixin",
     "AgentTeamRunMixin",
     "AgentTeamPlanDraft",

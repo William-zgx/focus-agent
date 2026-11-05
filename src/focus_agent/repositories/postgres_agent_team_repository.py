@@ -16,8 +16,9 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 
+from ..core.time_utils import utc_now
 from ._postgres_base import PostgresMixin
-from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
+from .agent_team_repository import AgentTeamRepository, _format_time, _parse_time
 from .postgres_agent_team_execution_repository import (
     _EXECUTION_RECORD_KEY,
     PostgresAgentTeamExecutionRepositoryMixin,
@@ -465,7 +466,7 @@ class PostgresAgentTeamRepository(
                 if row is None:
                     raise KeyError(f"Unknown agent team task: {task_id}")
                 task = self._task_from_row(row)
-                now = _now()
+                now = utc_now()
                 if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
                     return None
                 if (
@@ -514,7 +515,7 @@ class PostgresAgentTeamRepository(
                 if row is None:
                     raise KeyError(f"Unknown agent team task: {task_id}")
                 task = self._task_from_row(row)
-                now = _now()
+                now = utc_now()
                 if task.claim_token != claim_token or (
                     task.claimed_until and _parse_time(task.claimed_until) <= now
                 ):
@@ -560,7 +561,7 @@ class PostgresAgentTeamRepository(
                 if row is None:
                     raise KeyError(f"Unknown agent team task: {task_id}")
                 task = self._task_from_row(row)
-                now_dt = _now()
+                now_dt = utc_now()
                 if task.claim_token != claim_token or (
                     task.claimed_until and _parse_time(task.claimed_until) <= now_dt
                 ):

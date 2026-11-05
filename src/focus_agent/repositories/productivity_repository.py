@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime
 from threading import RLock
 from uuid import uuid4
 
@@ -12,14 +12,11 @@ from focus_agent.core.productivity import (
     FocusTaskEventKind,
     FocusTaskStatus,
 )
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
+from focus_agent.core.time_utils import utc_now
 
 
 def _format_time(value: datetime | None = None) -> str:
-    return (value or _now()).isoformat()
+    return (value or utc_now()).isoformat()
 
 
 def _normalize_tags(tags: list[str] | tuple[str, ...] | None) -> list[str]:
@@ -197,6 +194,5 @@ __all__ = [
     "ProductivityRepository",
     "_format_time",
     "_normalize_tags",
-    "_now",
     "_task_event",
 ]

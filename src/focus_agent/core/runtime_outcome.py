@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from langchain.messages import AIMessage, ToolMessage
 
+from .coercion import float_or_none, optional_str
+
 ToolOutcomeStatus = Literal["succeeded", "failed", "recovered", "blocked", "skipped"]
 TaskOutcomeStatus = Literal["answered", "degraded_answer", "blocked", "failed"]
 
@@ -117,11 +119,9 @@ def tool_outcome_from_message(
         payload=payload,
         runtime_info=runtime_info,
     )
-    fallback_group = _string_or_none(runtime_info.get("fallback_group"))
+    fallback_group = optional_str(runtime_info.get("fallback_group"))
     fallback_used = bool(runtime_info.get("fallback_used") or fallback_group)
-    resolved_turn_id = (
-        _string_or_none(turn_id) or _string_or_none(runtime_info.get("turn_id")) or ""
-    )
+    resolved_turn_id = optional_str(turn_id) or optional_str(runtime_info.get("turn_id")) or ""
     resolved_human_turn_index = _int_or_none(human_turn_index)
     if resolved_human_turn_index is None:
         resolved_human_turn_index = _int_or_none(runtime_info.get("human_turn_index"))
@@ -170,7 +170,7 @@ def tool_outcome_from_message(
         "error_category": error_category,
         "error_message": error_message,
         "evidence_role": _evidence_role(tool_name=tool_name, status=status),
-        "duration_ms": _float_or_none(runtime_info.get("duration_ms")),
+        "duration_ms": float_or_none(runtime_info.get("duration_ms")),
         "cache_hit": bool(runtime_info.get("cache_hit", False)),
     }
 
@@ -541,11 +541,11 @@ def _degraded_tool_reason(
     error_message: str,
 ) -> str:
     for key in ("degraded_reason", "fallback_reason", "error", "reason"):
-        value = _string_or_none(runtime_info.get(key))
+        value = optional_str(runtime_info.get(key))
         if value:
             return value
     if fallback_used:
-        backend = _string_or_none(runtime_info.get("sandbox_backend"))
+        backend = optional_str(runtime_info.get("sandbox_backend"))
         if backend and backend.startswith("local"):
             return "local_host_execution"
         return "fallback_used"
@@ -601,15 +601,6 @@ def _task_warnings(
     return list(dict.fromkeys(warnings))[:8]
 
 
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
@@ -617,11 +608,6 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _string_or_none(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
 
 
 def _truncate_error(value: Any, max_chars: int = 500) -> str:

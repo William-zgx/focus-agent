@@ -24,6 +24,7 @@ from focus_agent.services.branches.actions import (
     target_parent_thread_id,
 )
 
+from ..core.time_utils import utc_now_iso as _now_iso
 from .budget import recommendation_deadline, recommendation_expired
 from .indexing import index_branch_decision_best_effort, zvec_branch_context_shadow_signals
 from .scorers import score_branch_decisions, score_branch_recommendation, select_best_score
@@ -37,7 +38,6 @@ from .service_helpers import (
     _is_chinese_text,
     _message_preview,
     _normalized_message_hash,
-    _now_iso,
     _recommendation_diagnostics,
     _recommendation_reason,
     _recommendation_target_for_decision,

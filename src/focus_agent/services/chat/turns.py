@@ -12,8 +12,8 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from ...core.branching import BranchMeta
 from ...core.repo_call import has_repo_method
+from ...core.time_utils import utc_now
 from ...observability.tracing import TraceCorrelation
-from ...observability.trajectory import utc_now
 from ..coordination import background_job_key
 from .context_compaction import ChatContextCompactionMixin
 from .streaming import (

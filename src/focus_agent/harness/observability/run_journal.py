@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from ...core.time_utils import utc_now_iso
 from ..streaming import StreamEvent
 from .run_journal_helpers import (
     TOOL_EVENT_NAMES,
@@ -12,7 +13,6 @@ from .run_journal_helpers import (
     _event_id,
     _limit,
     _next_sequence,
-    _now_iso,
     _replace_run,
     _snapshot,
     _tool_event_from_journal_event,
@@ -187,7 +187,7 @@ class InMemoryRunJournal:
         error: str | None = None,
         created_at: str | None = None,
     ) -> None:
-        now = created_at or _now_iso()
+        now = created_at or utc_now_iso()
         async with self._lock:
             existing = self._runs.get(run_id)
             self._runs[run_id] = JournalRun(
@@ -221,7 +221,7 @@ class InMemoryRunJournal:
                 run,
                 status=status,
                 error=error if error is not None else run.error,
-                updated_at=_now_iso(),
+                updated_at=utc_now_iso(),
             )
 
     async def update_run_completion(self, run_id: str, **kwargs: Any) -> None:
@@ -234,7 +234,7 @@ class InMemoryRunJournal:
             self._runs[run_id] = _replace_run(
                 run,
                 completion=completion,
-                updated_at=_now_iso(),
+                updated_at=utc_now_iso(),
             )
 
     async def get_run(self, run_id: str) -> JournalRun | None:
@@ -271,7 +271,7 @@ class InMemoryRunJournal:
                 if sequence is not None
                 else _next_sequence(self._events.get(run_id, [])),
                 stream_event_id=stream_event_id,
-                created_at=created_at or _now_iso(),
+                created_at=created_at or utc_now_iso(),
             )
             self._events.setdefault(run_id, []).append(entry)
             tool_event = _tool_event_from_journal_event(entry)

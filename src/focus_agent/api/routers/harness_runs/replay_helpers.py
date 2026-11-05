@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from focus_agent.branch_decision.budget import run_with_recommendation_deadline
 from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.core.time_utils import utc_now
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import (
     DisconnectMode,
@@ -32,7 +33,6 @@ from focus_agent.harness.streaming import (
     sse_frame,
 )
 from focus_agent.observability.tracing import build_trace_correlation
-from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError

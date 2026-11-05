@@ -26,7 +26,6 @@ from .actions import (
     requested_branch_action_kind,
     serialize_branch_actions,
     target_parent_thread_id,
-    utc_iso,
 )
 from .merge import BranchMemoryPromotionMixin, BranchMergeCoordinator
 from .service import BranchService, create_chat_model
@@ -34,7 +33,6 @@ from .service import BranchService, create_chat_model
 __all__ = [
     "BranchService",
     "create_chat_model",
-    "utc_iso",
     "normalize_branch_actions",
     "serialize_branch_actions",
     "latest_pending_branch_action",

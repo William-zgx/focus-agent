@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..core.types import PromptMode
 
@@ -109,3 +110,17 @@ class SkillInstallResult:
     requires_review: bool = False
     error: str | None = None
     metadata: dict[str, object] | None = None
+
+
+def merge_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
+    skill_ids: list[str] = []
+    seen: set[str] = set()
+    for group in skill_id_groups:
+        raw_items = [group] if isinstance(group, str) else list(group or [])
+        for raw_item in raw_items:
+            skill_id = str(raw_item or "").strip()
+            if not skill_id or skill_id in seen:
+                continue
+            seen.add(skill_id)
+            skill_ids.append(skill_id)
+    return tuple(skill_ids)

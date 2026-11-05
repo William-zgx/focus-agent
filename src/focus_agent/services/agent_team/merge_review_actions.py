@@ -9,7 +9,7 @@ from focus_agent.core.agent_team import (
     AgentTeamMergeReviewEvent,
     AgentTeamMergeReviewStatus,
 )
-from focus_agent.services.agent_team.helpers import _now
+from focus_agent.core.time_utils import utc_now_iso
 
 
 def _capture_merge_review_payload(review: AgentTeamMergeReview) -> dict[str, Any]:
@@ -40,7 +40,7 @@ def _merge_review_event(
         status=review.status,
         message=message,
         metadata=dict(metadata or {}),
-        created_at=_now(),
+        created_at=utc_now_iso(),
     )
 
 
@@ -56,7 +56,7 @@ def _merge_review_apply_conflict(
             "conflict_files": list(check["files"]),
             "error_message": check["message"],
             "apply_target_path": str(target_root),
-            "updated_at": _now(),
+            "updated_at": utc_now_iso(),
         }
     )
 
@@ -72,7 +72,7 @@ def _merge_review_apply_error(
             "status": AgentTeamMergeReviewStatus.ERROR,
             "error_message": apply_result["message"],
             "apply_target_path": str(target_root),
-            "updated_at": _now(),
+            "updated_at": utc_now_iso(),
         }
     )
 
@@ -87,8 +87,8 @@ def _merge_review_applied(
             "status": AgentTeamMergeReviewStatus.APPLIED,
             "apply_target_path": str(target_root),
             "error_message": None,
-            "applied_at": _now(),
-            "updated_at": _now(),
+            "applied_at": utc_now_iso(),
+            "updated_at": utc_now_iso(),
         }
     )
 

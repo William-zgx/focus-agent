@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
-from langchain.messages import AIMessage, ToolMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 DEFAULT_DANGLING_TOOL_CALL_ERROR = "Tool call did not produce a result before the next model step."
 
@@ -108,7 +108,17 @@ def tool_message_call_id(message: ToolMessage) -> str:
     return str(getattr(message, "tool_call_id", "") or "")
 
 
+def messages_since_latest_human(messages: list[Any]) -> list[Any]:
+    """Return messages after the latest HumanMessage, or all messages if none."""
+
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            return messages[index + 1 :]
+    return messages
+
+
 __all__ = [
+    "messages_since_latest_human",
     "DEFAULT_DANGLING_TOOL_CALL_ERROR",
     "missing_tool_message",
     "missing_tool_messages",

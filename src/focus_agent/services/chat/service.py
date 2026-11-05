@@ -21,14 +21,14 @@ from ...core.branching import (
 )
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
+from ...core.time_utils import utc_now
 from ...observability.tracing import (
     TraceCorrelation,
     build_invoke_config,
     build_trace_correlation,
     start_trace_span,
 )
-from ...observability.trajectory import utc_now
-from ...skills.models import SkillSelection
+from ...skills.models import SkillSelection, merge_skill_ids
 from ..branches.actions import (
     latest_pending_branch_action,
     normalize_branch_actions,
@@ -211,20 +211,6 @@ class ChatService(
                 }
             )
         return active_skills
-
-    @staticmethod
-    def _merged_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
-        skill_ids: list[str] = []
-        seen: set[str] = set()
-        for group in skill_id_groups:
-            raw_items = [group] if isinstance(group, str) else list(group or [])
-            for raw_item in raw_items:
-                skill_id = str(raw_item or "").strip()
-                if not skill_id or skill_id in seen:
-                    continue
-                seen.add(skill_id)
-                skill_ids.append(skill_id)
-        return tuple(skill_ids)
 
     @staticmethod
     def _skill_selection_metadata(
@@ -622,7 +608,7 @@ class ChatService(
         if selection.selection_source in {"explicit", "mixed"} and selection.skill_ids:
             active_skill_ids = tuple(selection.skill_ids)
         else:
-            active_skill_ids = self._merged_skill_ids(
+            active_skill_ids = merge_skill_ids(
                 selection.skill_ids,
                 current_values.get("active_skill_ids", []),
             )

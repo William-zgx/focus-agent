@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 
@@ -353,10 +352,6 @@ def _recommendation_diagnostics(
         "semantic_enabled": bool(semantic_enabled),
         "semantic_model": semantic_model,
     }
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _message_text(message: Any) -> str:

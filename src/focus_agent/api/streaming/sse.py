@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
+from focus_agent.config_parts.env import parse_bool
 from focus_agent.harness.streaming import StreamProxy, StreamProxyConfig, sse_frame
 
 SSE_MEDIA_TYPE = "text/event-stream"
@@ -22,7 +23,6 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def sse_streaming_response(content: Any) -> StreamingResponse:
@@ -30,7 +30,7 @@ def sse_streaming_response(content: Any) -> StreamingResponse:
 
 
 def _is_truthy(value: str | None) -> bool:
-    return value is not None and value.strip().lower() in _TRUTHY
+    return parse_bool(value) is True
 
 
 def should_optimize_for_request(request: Request) -> bool:

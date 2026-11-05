@@ -19,6 +19,7 @@ from focus_agent.config import (
     ProviderConfig,
     ToolCatalogConfig,
 )
+from focus_agent.config_parts.env import parse_bool
 
 from .admin_config_fields import ConfigFieldSpec
 
@@ -277,14 +278,10 @@ def _coerce_config_value(value: Any, spec: ConfigFieldSpec) -> object:
     if value is None:
         raise _admin_config_error(f"{spec.key} cannot be null.")
     if spec.value_type == "boolean":
-        if isinstance(value, bool):
-            return value
-        normalized = str(value).strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off"}:
-            return False
-        raise _admin_config_error(f"{spec.key} must be a boolean.")
+        parsed = parse_bool(value)
+        if parsed is None:
+            raise _admin_config_error(f"{spec.key} must be a boolean.")
+        return parsed
     if spec.value_type == "integer":
         return int(value)
     if spec.value_type == "float":

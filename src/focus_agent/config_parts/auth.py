@@ -6,7 +6,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-from .common import _normalize_optional_string
+from ..core.coercion import optional_str
 from .env import parse_bool
 
 DEFAULT_AUTH_JWT_SECRET = "focus-agent-dev-secret"
@@ -37,18 +37,16 @@ def _b64url_decode_string(raw: str) -> str | None:
 
 def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> AuthJwtKey | None:
     if not isinstance(raw, dict):
-        secret = _normalize_optional_string(raw)
-        kid = _normalize_optional_string(default_kid)
+        secret = optional_str(raw)
+        kid = optional_str(default_kid)
         if kid is None or secret is None:
             return None
         return AuthJwtKey(kid=kid, secret=secret)
 
-    kid = _normalize_optional_string(raw.get("kid") or raw.get("id") or default_kid)
-    secret = _normalize_optional_string(
-        raw.get("secret") or raw.get("value") or raw.get("shared_secret")
-    )
+    kid = optional_str(raw.get("kid") or raw.get("id") or default_kid)
+    secret = optional_str(raw.get("secret") or raw.get("value") or raw.get("shared_secret"))
     if secret is None:
-        jwk_secret = _normalize_optional_string(raw.get("k"))
+        jwk_secret = optional_str(raw.get("k"))
         if jwk_secret is not None:
             secret = _b64url_decode_string(jwk_secret) or jwk_secret
     if kid is None or secret is None:
@@ -56,7 +54,7 @@ def _coerce_auth_jwt_key(raw: object, *, default_kid: str | None = None) -> Auth
 
     active = parse_bool(raw.get("active"))
     if active is None:
-        status = (_normalize_optional_string(raw.get("status")) or "active").lower()
+        status = (optional_str(raw.get("status")) or "active").lower()
         active = status not in {"disabled", "inactive", "retired", "revoked"}
     return AuthJwtKey(kid=kid, secret=secret, active=active)
 
@@ -98,7 +96,7 @@ def _parse_auth_jwt_key_object(raw: object) -> tuple[AuthJwtKey, ...]:
 
 
 def _parse_auth_jwt_keys(raw: object) -> tuple[AuthJwtKey, ...]:
-    text = _normalize_optional_string(raw)
+    text = optional_str(raw)
     if text is None:
         return ()
 
@@ -136,7 +134,7 @@ def _auth_jwt_keys_from_env(env: MutableMapping[str, str]) -> tuple[AuthJwtKey, 
 def _non_development_environment_sources(env: MutableMapping[str, str]) -> tuple[str, ...]:
     sources: list[str] = []
     for key in ("APP_ENVIRONMENT", "ENVIRONMENT"):
-        value = _normalize_optional_string(env.get(key))
+        value = optional_str(env.get(key))
         if value is None:
             continue
         if value.lower() not in _DEVELOPMENT_ENVIRONMENT_NAMES:
@@ -151,14 +149,14 @@ def _non_development_environment_sources_for_settings(settings: Any) -> tuple[st
         if sources:
             return sources
 
-    value = _normalize_optional_string(getattr(settings, "app_environment", None))
+    value = optional_str(getattr(settings, "app_environment", None))
     if value is None or value.lower() in _DEVELOPMENT_ENVIRONMENT_NAMES:
         return ()
     return (f"APP_ENVIRONMENT={value}",)
 
 
 def _single_auth_secret_is_configured(settings: Any) -> bool:
-    secret = _normalize_optional_string(getattr(settings, "auth_jwt_secret", None))
+    secret = optional_str(getattr(settings, "auth_jwt_secret", None))
     if secret is None:
         return False
 
@@ -187,7 +185,7 @@ def _jwt_secret_security_failures_for(
         return ["AUTH_JWT_SECRET must be set or AUTH_JWT_KEYS must provide a signing key"]
     failures: list[str] = []
     for label, secret in secrets:
-        normalized_secret = _normalize_optional_string(secret)
+        normalized_secret = optional_str(secret)
         if normalized_secret is None:
             failures.append(f"{label} must not be empty")
             continue
@@ -251,7 +249,7 @@ def _validate_non_development_security(settings: Any, env: MutableMapping[str, s
         )
     ):
         failures.append("AUTH_JWT_KEY_ID must match an active AUTH_JWT_KEYS entry")
-    if not _normalize_optional_string(settings.auth_jwt_issuer):
+    if not optional_str(settings.auth_jwt_issuer):
         failures.append("AUTH_JWT_ISSUER must be set")
     if settings.auth_access_token_ttl_seconds <= 0:
         failures.append("AUTH_ACCESS_TOKEN_TTL_SECONDS must be greater than 0")

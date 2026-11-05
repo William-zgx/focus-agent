@@ -6,6 +6,7 @@ from typing import Any
 
 from focus_agent.config import Settings
 from focus_agent.config_parts.env import parse_bool
+from focus_agent.core.coercion import non_negative_int, optional_str, positive_int
 from focus_agent.delegation.delegation_models import AgentTask
 from focus_agent.delegation.execution import (
     DelegatedRunExecutor,
@@ -134,15 +135,15 @@ def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -
         acceptance_criteria=_str_list(
             request.input.get("acceptance_criteria") or request.metadata.get("acceptance_criteria")
         ),
-        max_turns=_positive_int(
+        max_turns=positive_int(
             request.input.get("max_turns") or request.metadata.get("max_turns"),
             default=1,
         ),
-        timeout_seconds=_positive_int(
+        timeout_seconds=positive_int(
             request.input.get("timeout_seconds") or request.metadata.get("timeout_seconds"),
             default=30,
         ),
-        max_depth=_non_negative_int(
+        max_depth=non_negative_int(
             request.input.get("max_depth") or request.metadata.get("max_depth"),
             default=1,
         ),
@@ -159,16 +160,16 @@ def _task_from_request(request: SubagentTaskRequest, *, run_record: RunRecord) -
             or request.metadata.get("run_isolation_key")
             or f"harness:{run_record.run_id}"
         ),
-        workspace_id=_optional_str(
+        workspace_id=optional_str(
             request.input.get("workspace_id") or request.metadata.get("workspace_id")
         ),
-        workspace_path=_optional_str(
+        workspace_path=optional_str(
             request.input.get("workspace_path") or request.metadata.get("workspace_path")
         ),
-        workspace_branch=_optional_str(
+        workspace_branch=optional_str(
             request.input.get("workspace_branch") or request.metadata.get("workspace_branch")
         ),
-        base_commit=_optional_str(
+        base_commit=optional_str(
             request.input.get("base_commit") or request.metadata.get("base_commit")
         ),
     )
@@ -200,29 +201,8 @@ def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, dict)]
 
 
-def _positive_int(value: Any, *, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(1, parsed)
-
-
-def _non_negative_int(value: Any, *, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(0, parsed)
-
-
 def _bool_value(value: Any) -> bool:
     return parse_bool(value) is True
-
-
-def _optional_str(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
 
 
 __all__ = ["AgentTeamSubagentRunner"]

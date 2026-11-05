@@ -17,8 +17,9 @@ from focus_agent.core.agent_team import (
     AgentTeamTask,
     AgentTeamTaskStatus,
 )
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.multi_agent.conflict_detector import MergeConflictDetector
-from focus_agent.services.agent_team.helpers import _dedupe, _now
+from focus_agent.services.agent_team.helpers import _dedupe
 from focus_agent.services.agent_team.merge_helpers import (
     _build_final_answer,
     _execution_evidence,
@@ -228,7 +229,7 @@ class AgentTeamMergeMixin:
                     update={
                         "status": AgentTeamSessionStatus.AWAITING_REVIEW,
                         "latest_merge_bundle": bundle.model_dump(mode="json"),
-                        "updated_at": _now(),
+                        "updated_at": utc_now_iso(),
                     }
                 )
             )
@@ -285,7 +286,7 @@ class AgentTeamMergeMixin:
                 if rejected_tasks is not None
                 else bundle_payload.get("rejected_tasks") or []
             ),
-            created_at=_now(),
+            created_at=utc_now_iso(),
         )
         next_status = (
             AgentTeamSessionStatus.COMPLETED
@@ -300,7 +301,7 @@ class AgentTeamMergeMixin:
                     update={
                         "status": next_status,
                         "merge_decision": decision.model_dump(mode="json"),
-                        "updated_at": _now(),
+                        "updated_at": utc_now_iso(),
                     }
                 )
             )
@@ -327,7 +328,7 @@ class AgentTeamMergeMixin:
         }
         selected = _normalize_task_selection(selected_task_ids, known_task_ids=task_ids)
         excluded = _normalize_task_selection(excluded_task_ids, known_task_ids=task_ids)
-        now = _now()
+        now = utc_now_iso()
         review = AgentTeamMergeReview(
             review_id=str(uuid4()),
             session_id=session.session_id,
@@ -398,7 +399,7 @@ class AgentTeamMergeMixin:
         task_ids = {
             task.task_id for task in self.list_tasks(session_id=session_id, user_id=user_id)
         }
-        updates: dict[str, Any] = {"updated_at": _now()}
+        updates: dict[str, Any] = {"updated_at": utc_now_iso()}
         if selected_task_ids is not None:
             updates["selected_task_ids"] = _normalize_task_selection(
                 selected_task_ids,
@@ -477,8 +478,8 @@ class AgentTeamMergeMixin:
                     "non_adoptable_task_ids": preview["non_adoptable_task_ids"],
                     "preview_check": check,
                 },
-                "previewed_at": _now(),
-                "updated_at": _now(),
+                "previewed_at": utc_now_iso(),
+                "updated_at": utc_now_iso(),
             }
         )
         with self._lock:
@@ -578,8 +579,8 @@ class AgentTeamMergeMixin:
             update={
                 "status": AgentTeamMergeReviewStatus.REJECTED,
                 "metadata": {**review.metadata, "rejection_rationale": rationale},
-                "rejected_at": _now(),
-                "updated_at": _now(),
+                "rejected_at": utc_now_iso(),
+                "updated_at": utc_now_iso(),
             }
         )
         with self._lock:

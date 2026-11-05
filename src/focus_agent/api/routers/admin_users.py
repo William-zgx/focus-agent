@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from focus_agent.core.repo_call import safe_repo_call
+from focus_agent.core.repo_call import safe_repo_call, snapshot_metrics
+from focus_agent.core.time_utils import utc_now_iso_z
 from focus_agent.core.users import AuditDecision
 from focus_agent.repositories.user_repository import AuditEventListFilters, UserListFilters
 from focus_agent.security.permissions import AuthContext
@@ -220,7 +220,7 @@ def revoke_user_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     if session.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown user session.")
-    revoked = service.repository.revoke_session(payload.session_id, revoked_at=_now())
+    revoked = service.repository.revoke_session(payload.session_id, revoked_at=utc_now_iso_z())
     service.record_admin_action(
         actor=context,
         action="users.sessions.revoke",
@@ -304,7 +304,7 @@ def background_jobs_summary(
     metrics = _background_job_metrics(runtime)
     warnings = _background_job_warnings(runtime, metrics)
     return BackgroundJobSummaryResponse(
-        generated_at=_now(),
+        generated_at=utc_now_iso_z(),
         status="degraded" if warnings else "ok",
         ready=not warnings,
         metrics=metrics,
@@ -380,10 +380,6 @@ def replay_background_dead_letter_job(
 __all__ = ["router"]
 
 
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _require_reason(reason: str | None) -> None:
     if not reason or not reason.strip():
         raise HTTPException(
@@ -394,25 +390,12 @@ def _require_reason(reason: str | None) -> None:
 
 def _background_job_metrics(runtime: Any) -> dict[str, int]:
     metrics = {
-        **_snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
-        **_snapshot_metrics(
+        **snapshot_metrics(getattr(runtime, "background_work", None), "job_backend_error"),
+        **snapshot_metrics(
             getattr(runtime, "durable_background_worker", None), "durable_worker_snapshot_error"
         ),
     }
     return {str(key): int(value) for key, value in metrics.items()}
-
-
-def _snapshot_metrics(source: Any, error_key: str) -> dict[str, int]:
-    snapshot = safe_repo_call(
-        source,
-        "snapshot",
-        default_missing={},
-        default_error={error_key: 1},
-    )
-    try:
-        return dict(snapshot)
-    except Exception:  # noqa: BLE001
-        return {error_key: 1}
 
 
 def _background_job_warnings(runtime: Any, metrics: dict[str, int]) -> list[str]:

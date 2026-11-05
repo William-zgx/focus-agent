@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from ...core.repo_call import has_repo_method
-from ...observability.trajectory import utc_now
+from ...core.time_utils import utc_now
 from ..coordination import BackgroundJobSpec, background_job_key
 
 if TYPE_CHECKING:

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from focus_agent.runtime.thread_pool import shared_thread_pool
 
+from ...core.time_utils import utc_now_iso
 from ..streaming import StreamEvent
 from .run_journal_helpers import (
     _copy_json,
@@ -16,7 +17,6 @@ from .run_journal_helpers import (
     _json_dumps,
     _json_loads,
     _limit,
-    _now_iso,
     _row_to_event,
     _row_to_run,
     _row_to_tool_event,
@@ -133,7 +133,7 @@ class SQLiteRunJournal:
         error: str | None = None,
         created_at: str | None = None,
     ) -> None:
-        now = created_at or _now_iso()
+        now = created_at or utc_now_iso()
 
         def operation(conn: sqlite3.Connection) -> None:
             existing = conn.execute(
@@ -182,7 +182,7 @@ class SQLiteRunJournal:
                 SET status = ?, error = COALESCE(?, error), updated_at = ?
                 WHERE run_id = ?
                 """,
-                (status, error, _now_iso(), run_id),
+                (status, error, utc_now_iso(), run_id),
             )
             conn.commit()
 
@@ -200,7 +200,7 @@ class SQLiteRunJournal:
             completion.update(_copy_json(kwargs))
             conn.execute(
                 "UPDATE runs SET completion_json = ?, updated_at = ? WHERE run_id = ?",
-                (_json_dumps(completion), _now_iso(), run_id),
+                (_json_dumps(completion), utc_now_iso(), run_id),
             )
             conn.commit()
 
@@ -255,7 +255,7 @@ class SQLiteRunJournal:
                 data=payload,
                 sequence=effective_sequence,
                 stream_event_id=stream_event_id,
-                created_at=created_at or _now_iso(),
+                created_at=created_at or utc_now_iso(),
             )
             conn.execute(
                 """
