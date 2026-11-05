@@ -264,7 +264,6 @@ def build_graph(
         model_for=model_for,
         model_with_tools_for=model_with_tools_for,
         run_manager=run_manager,
-        system_agent_runner=system_agent_runner,
         agent_definition_registry=agent_definition_registry,
     )
     tool_executor = make_tool_executor_node(

@@ -5,13 +5,6 @@ from typing import Any
 
 _MODULE_EXPORTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
-        ".agents.facade",
-        (
-            "FocusAgent",
-            "StreamResult",
-        ),
-    ),
-    (
         ".agents.mention",
         (
             "Mention",
@@ -174,7 +167,6 @@ __all__ = [
     "DanglingToolCallMiddleware",
     "DisconnectMode",
     "END_SENTINEL",
-    "FocusAgent",
     "FocusAgentHarness",
     "GovernanceStateSlice",
     "HEARTBEAT_SENTINEL",
@@ -216,7 +208,6 @@ __all__ = [
     "StreamEvent",
     "StreamProxy",
     "StreamProxyConfig",
-    "StreamResult",
     "StreamingConfig",
     "SubagentConfig",
     "UnsupportedStrategyError",

@@ -69,16 +69,6 @@ class PermissionEvaluator:
         self._rules: list[PermissionRule] = list(rules or [])
 
     # ------------------------------------------------------------------
-    # Rule management
-    # ------------------------------------------------------------------
-    def add_rule(self, rule: PermissionRule) -> None:
-        self._rules.append(rule)
-
-    @property
-    def rules(self) -> list[PermissionRule]:
-        return list(self._rules)
-
-    # ------------------------------------------------------------------
     # Evaluation
     # ------------------------------------------------------------------
     def evaluate(self, request: PermissionRequest) -> PermissionRule:
@@ -184,9 +174,6 @@ class DoomLoopDetector:
                 break
         return False
 
-    def clear_session(self, session_id: str) -> None:
-        self._history.pop(session_id, None)
-
 
 class PermissionManager:
     """Combine :class:`PermissionEvaluator` and :class:`DoomLoopDetector`."""
@@ -225,9 +212,6 @@ class PermissionManager:
         return rule.action, rule.reason
 
 
-# ----------------------------------------------------------------------
-# Config parsing
-# ----------------------------------------------------------------------
 __all__ = [
     "DoomLoopDetector",
     "PermissionAction",

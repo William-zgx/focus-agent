@@ -109,7 +109,6 @@ def make_agent_loop_node(
     model_for: Callable[[str, str], Any],
     model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
     run_manager: Any | None = None,
-    system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ) -> Any:
     all_tools = list(tools)

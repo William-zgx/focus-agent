@@ -47,7 +47,7 @@ class ExtensionLoader:
                 ext = self._load_extension_from_path(str(entry))
                 if ext is None:
                     continue
-                name = getattr(ext, "name", None)
+                name = ext.name
                 if name and name in seen:
                     logger.warning("Skipping duplicate extension %r from %s", name, entry)
                     continue

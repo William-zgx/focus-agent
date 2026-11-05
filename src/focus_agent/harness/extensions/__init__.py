@@ -23,14 +23,6 @@ class ToolResultInterception:
 
 
 @dataclass(slots=True)
-class CompactionInterception:
-    """Returned by ``on_compaction`` to control context compaction."""
-
-    cancel: bool = False
-    custom_summary: str | None = None
-
-
-@dataclass(slots=True)
 class ExtensionContext:
     """Context passed to every extension hook."""
 
@@ -65,8 +57,6 @@ class Extension(Protocol):
     # ---- lifecycle ---------------------------------------------------
     def on_agent_start(self, ctx: ExtensionContext) -> None: ...
 
-    def on_agent_end(self, ctx: ExtensionContext) -> None: ...
-
     # ---- tool interception ------------------------------------------
     def on_tool_call(
         self,
@@ -82,23 +72,6 @@ class Extension(Protocol):
         result: Any,
     ) -> ToolResultInterception | None: ...
 
-    # ---- message interception ---------------------------------------
-    def on_message(
-        self,
-        ctx: ExtensionContext,
-        role: str,
-        content: Any,
-    ) -> str | None:
-        """Return a replacement string for *content*, or ``None`` to leave it."""
-        ...
-
-    # ---- compaction --------------------------------------------------
-    def on_compaction(
-        self,
-        ctx: ExtensionContext,
-        messages: list[Any],
-    ) -> CompactionInterception | None: ...
-
 
 class BaseExtension:
     """No-op default implementation of :class:`Extension`."""
@@ -113,9 +86,6 @@ class BaseExtension:
         return []
 
     def on_agent_start(self, ctx: ExtensionContext) -> None:  # noqa: D401
-        return None
-
-    def on_agent_end(self, ctx: ExtensionContext) -> None:  # noqa: D401
         return None
 
     def on_tool_call(
@@ -134,21 +104,6 @@ class BaseExtension:
     ) -> ToolResultInterception | None:
         return None
 
-    def on_message(
-        self,
-        ctx: ExtensionContext,
-        role: str,
-        content: Any,
-    ) -> str | None:
-        return None
-
-    def on_compaction(
-        self,
-        ctx: ExtensionContext,
-        messages: list[Any],
-    ) -> CompactionInterception | None:
-        return None
-
 
 class ExtensionRegistry:
     """Holds the set of active extensions and dispatches hooks."""
@@ -158,12 +113,9 @@ class ExtensionRegistry:
 
     # ---- registration ------------------------------------------------
     def register(self, ext: Extension) -> None:
-        if not hasattr(ext, "name") or not ext.name:
+        if not ext.name:
             raise ValueError("Extension must define a non-empty 'name' attribute")
         self._extensions[ext.name] = ext
-
-    def unregister(self, name: str) -> None:
-        self._extensions.pop(name, None)
 
     def get(self, name: str) -> Extension | None:
         return self._extensions.get(name)
@@ -203,7 +155,6 @@ class ExtensionRegistry:
 
 __all__ = [
     "BaseExtension",
-    "CompactionInterception",
     "Extension",
     "ExtensionContext",
     "ExtensionRegistry",
