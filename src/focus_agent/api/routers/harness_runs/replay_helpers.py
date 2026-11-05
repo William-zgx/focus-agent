@@ -390,6 +390,13 @@ async def _next_run_sequence(
     run_id: str,
     current_sequence: int,
 ) -> int:
+    # Besides this producer, only RunManager lifecycle events (run.interrupt and
+    # run.rollback.*) publish into a run, and RunManager emits them only after
+    # ``_cancel_record`` sets ``abort_event`` (never cleared). Until then the local
+    # counter equals the journal count, so skip the per-event COUNT query.
+    record = runtime.run_manager.get(run_id)
+    if record is not None and not record.abort_event.is_set():
+        return current_sequence + 1
     count_events = _journal_method_optional(runtime, "count_events")
     if count_events is not None:
         try:
