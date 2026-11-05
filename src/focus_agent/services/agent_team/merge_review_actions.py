@@ -9,8 +9,7 @@ from focus_agent.core.agent_team import (
     AgentTeamMergeReviewEvent,
     AgentTeamMergeReviewStatus,
 )
-
-from .agent_team_helpers import _now
+from focus_agent.services.agent_team.helpers import _now
 
 
 def _capture_merge_review_payload(review: AgentTeamMergeReview) -> dict[str, Any]:

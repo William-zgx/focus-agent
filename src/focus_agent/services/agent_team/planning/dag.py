@@ -6,30 +6,34 @@ from typing import Any
 from focus_agent.core.agent_team import AgentTeamSession
 from focus_agent.delegation.delegation import build_agent_delegation_plan
 from focus_agent.retrieval.agent_team import AgentTeamPlanRetrievalService
-
-from ...agent_team_planning_dag import (
+from focus_agent.services.agent_team.planning.dag_compiler import (
     __all__ as _planning_dag_all,
 )
-from ...agent_team_planning_dag import (
+from focus_agent.services.agent_team.planning.dag_compiler import (
     _adaptive_task_specs,
-    _fallback_debug_deliverables,
     classify_mission,
     compile_mission_dag,
     plan_deliverables,
 )
-from ...agent_team_planning_dag import (
+from focus_agent.services.agent_team.planning.dag_compiler import (
     _fallback_task_specs as _dag_fallback_task_specs,
 )
-from ...agent_team_planning_models import (
+from focus_agent.services.agent_team.planning.deliverables import _fallback_debug_deliverables
+from focus_agent.services.agent_team.planning.models import (
     AgentTeamPlanDraft,
     AgentTeamPlanOptions,
     AgentTeamTaskDraft,
     MissionDeliverable,
     MissionProfile,
 )
-from ...agent_team_planning_rules import focused_goal as _focused_goal
-from ...agent_team_planning_rules import max_tasks_for_options as _max_tasks_for
-from ...agent_team_planning_support import (
+from focus_agent.services.agent_team.planning.rules import focused_goal as _focused_goal
+from focus_agent.services.agent_team.planning.rules import max_tasks_for_options as _max_tasks_for
+from focus_agent.services.agent_team.planning.serializer import (
+    _dedupe_values,
+    _merge_context_refs,
+    _skill_plan_for_session,
+)
+from focus_agent.services.agent_team.planning.support import (
     _adaptive_plan_rationale,
     _artifact_rationale_for,
     _context_refs_for,
@@ -42,7 +46,6 @@ from ...agent_team_planning_support import (
     _title_for,
     _validate_task_draft,
 )
-from .serializer import _dedupe_values, _merge_context_refs, _skill_plan_for_session
 
 
 class AgentTeamPlanningService:
@@ -369,7 +372,7 @@ class AgentTeamPlanningService:
 
 
 def _legacy_override(name: str, default: Any) -> Any:
-    legacy_module = sys.modules.get("focus_agent.services.agent_team_planning")
+    legacy_module = sys.modules.get("focus_agent.services.agent_team.planning")
     candidate = getattr(legacy_module, name, None) if legacy_module is not None else None
     return candidate if callable(candidate) and candidate is not default else default
 

@@ -16,14 +16,13 @@ from focus_agent.repositories.agent_team_repository import (
     AgentTeamRepository,
     InMemoryAgentTeamRepository,
 )
-from focus_agent.services.agent_team_helpers import AgentTeamHelperMixin, _now
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.helpers import AgentTeamHelperMixin, _now
+from focus_agent.services.agent_team.planning import AgentTeamPlanningMixin
+from focus_agent.services.agent_team.run import AgentTeamMergeMixin, AgentTeamRunMixin
+from focus_agent.services.agent_team.sessions import AgentTeamSessionTaskMixin
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 from focus_agent.services.branches import BranchService
 from focus_agent.services.coordination import create_in_memory_coordination_backend
-
-from .planning import AgentTeamPlanningMixin
-from .run import AgentTeamMergeMixin, AgentTeamRunMixin
-from .sessions import AgentTeamSessionTaskMixin
 
 _DEFAULT_DISPATCH_TASKS: tuple[
     tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...

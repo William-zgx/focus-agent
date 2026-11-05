@@ -4,8 +4,8 @@ The data-model/protocol layer and execution-loop layer live in dedicated
 modules, while this path remains stable for existing runtime consumers.
 """
 
-from . import agent_team_task_runtime_protocol as _protocol
-from .agent_team_task_runtime_protocol import (
+from focus_agent.services.agent_team import task_runtime_protocol as _protocol
+from focus_agent.services.agent_team.task_runtime_protocol import (
     CancellationToken,
     TaskAgentMessage,
     TaskAgentModel,
@@ -24,7 +24,7 @@ from .agent_team_task_runtime_protocol import (
     TaskToolDefinition,
     TaskToolResult,
 )
-from .agent_team_task_runtime_runner import TaskAgentRunner, TaskRunCoordinator
+from focus_agent.services.agent_team.task_runtime_runner import TaskAgentRunner, TaskRunCoordinator
 
 CheckpointSink = _protocol.CheckpointSink
 EvidenceSink = _protocol.EvidenceSink

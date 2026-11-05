@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .agent_team_helpers import _dedupe
+from focus_agent.services.agent_team.helpers import _dedupe
 
 
 def _git_env() -> dict[str, str]:

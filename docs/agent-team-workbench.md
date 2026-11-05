@@ -294,11 +294,11 @@ Ownership Audit Dashboard 复用 `OwnershipAuditEvent`，由
 src/focus_agent/core/agent_team.py
 src/focus_agent/services/agent_team/
 src/focus_agent/services/agent_team/planning/
-src/focus_agent/services/agent_team_planning.py  # retained 1.x import surface
-src/focus_agent/services/agent_team_run.py
-src/focus_agent/services/agent_team_run_orchestration.py
-src/focus_agent/services/agent_team_run_lease.py
-src/focus_agent/services/agent_team_merge.py
+src/focus_agent/services/agent_team/planning/  # planning package (dag, models, rules, support)
+src/focus_agent/services/agent_team/run_base.py
+src/focus_agent/services/agent_team/run_orchestration.py
+src/focus_agent/services/agent_team/run_lease.py
+src/focus_agent/services/agent_team/merge.py
 src/focus_agent/api/routers/agent_team.py
 src/focus_agent/api/routers/agent_team_tool_approvals.py
 ```

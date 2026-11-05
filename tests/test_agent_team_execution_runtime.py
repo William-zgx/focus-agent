@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from focus_agent.multi_agent.resource_lock import InMemoryResourceLockManager
-from focus_agent.services.agent_team_execution_runtime import (
+from focus_agent.services.agent_team.execution_runtime import (
     CancellationToken,
     TaskAgentMessage,
     TaskAgentRunner,
@@ -17,7 +17,7 @@ from focus_agent.services.agent_team_execution_runtime import (
     TaskScopedTool,
     TaskToolCall,
 )
-from focus_agent.services.agent_team_run_execution import acquire_task_resource_claims
+from focus_agent.services.agent_team.run_execution import acquire_task_resource_claims
 
 
 class SequencedFakeModel:

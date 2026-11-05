@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from focus_agent.core.agent_team import EvidenceRecord, TaskRun
-from focus_agent.services.agent_team_merge import *
-from focus_agent.services.agent_team_merge import __all__ as _agent_team_merge_all
-from focus_agent.services.agent_team_run import *
-from focus_agent.services.agent_team_run import AgentTeamRunMixin as _AgentTeamRunMixin
-from focus_agent.services.agent_team_run import __all__ as _agent_team_run_all
+from focus_agent.services.agent_team.merge import *
+from focus_agent.services.agent_team.merge import __all__ as _agent_team_merge_all
+from focus_agent.services.agent_team.run_base import *
+from focus_agent.services.agent_team.run_base import AgentTeamRunMixin as _AgentTeamRunMixin
+from focus_agent.services.agent_team.run_base import __all__ as _agent_team_run_all
 
 
 class AgentTeamRunMixin(_AgentTeamRunMixin):

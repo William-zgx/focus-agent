@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from focus_agent.services.agent_team_dag_validator import (
+from focus_agent.services.agent_team.dag_validator import (
     AgentTeamDAGValidationError,
     DAGValidationIssueCode,
     InvalidTaskStateTransitionError,
@@ -12,7 +12,7 @@ from focus_agent.services.agent_team_dag_validator import (
     validate_agent_team_revision_dag,
     validate_task_state_transition,
 )
-from focus_agent.services.agent_team_revision import (
+from focus_agent.services.agent_team.revision import (
     AgentTeamRevision,
     AgentTeamRevisionTask,
     RevisionTaskStatus,

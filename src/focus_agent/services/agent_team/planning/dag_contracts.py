@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .agent_team_planning_models import MissionDeliverable
+from focus_agent.services.agent_team.planning.models import MissionDeliverable
 
 _SANDBOX_TASK_MARKERS = {
     "build",

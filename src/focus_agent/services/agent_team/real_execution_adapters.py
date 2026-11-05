@@ -13,8 +13,7 @@ from focus_agent.config import Settings
 from focus_agent.core.agent_team import AgentTeamTask, agent_role_for_team_task_role
 from focus_agent.delegation.roles import RoleModelResolver
 from focus_agent.model_registry import create_chat_model
-
-from .agent_team_execution_runtime import (
+from focus_agent.services.agent_team.execution_runtime import (
     CancellationToken,
     TaskAgentMessage,
     TaskExecutionScope,

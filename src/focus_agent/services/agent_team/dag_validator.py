@@ -9,7 +9,7 @@ from enum import StrEnum
 
 import networkx as nx
 
-from .agent_team_revision import (
+from focus_agent.services.agent_team.revision import (
     AgentTeamRevision,
     AgentTeamRevisionTask,
     RevisionTaskStatus,

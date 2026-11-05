@@ -18,9 +18,8 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.multi_agent.conflict_detector import MergeConflictDetector
-
-from .agent_team_helpers import _dedupe, _now
-from .agent_team_merge_helpers import (
+from focus_agent.services.agent_team.helpers import _dedupe, _now
+from focus_agent.services.agent_team.merge_helpers import (
     _build_final_answer,
     _execution_evidence,
     _has_review_or_verification_evidence,
@@ -29,21 +28,21 @@ from .agent_team_merge_helpers import (
     _planning_risk_notes,
     _strong_evidence_gate_violations,
 )
-from .agent_team_merge_preview import _build_merge_review_preview
-from .agent_team_merge_review_actions import (
+from focus_agent.services.agent_team.merge_preview import _build_merge_review_preview
+from focus_agent.services.agent_team.merge_review_actions import (
     _capture_merge_review_payload,
     _merge_review_applied,
     _merge_review_apply_conflict,
     _merge_review_apply_error,
     _merge_review_event,
 )
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.merge_review_git import (
     check_patch as _check_patch,
 )
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.merge_review_git import (
     repo_root as _repo_root,
 )
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.merge_review_git import (
     run_git_apply as _run_git_apply,
 )
 

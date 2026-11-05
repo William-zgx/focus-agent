@@ -20,7 +20,7 @@ from focus_agent.delegation.roles import AgentRole
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.retrieval import InMemoryRetrievalIndex
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 
 
 class FakeBranchService:

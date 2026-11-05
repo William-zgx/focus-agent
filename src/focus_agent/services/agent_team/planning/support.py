@@ -12,16 +12,15 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.delegation.delegation import AgentDelegationPlan
 from focus_agent.delegation.roles import AgentRole
-
-from .agent_team_planning_models import (
+from focus_agent.services.agent_team.planning.models import (
     AgentTeamPlanDraft,
     AgentTeamPlanOptions,
     AgentTeamTaskDraft,
 )
-from .agent_team_planning_rules import (
+from focus_agent.services.agent_team.planning.rules import (
     focused_goal as _focused_goal,
 )
-from .agent_team_planning_rules import (
+from focus_agent.services.agent_team.planning.rules import (
     infer_focus as _infer_focus,
 )
 

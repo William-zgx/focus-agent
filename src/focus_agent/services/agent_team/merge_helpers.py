@@ -10,8 +10,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-
-from .agent_team_helpers import _dedupe
+from focus_agent.services.agent_team.helpers import _dedupe
 
 _REVIEW_EVIDENCE_ROLES = {
     "reviewer",

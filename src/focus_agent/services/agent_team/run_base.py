@@ -15,55 +15,45 @@ from focus_agent.multi_agent.contracts import ResourceClaim
 from focus_agent.multi_agent.dag_scheduler import DAGScheduler
 from focus_agent.multi_agent.errors import DAGValidationError
 from focus_agent.multi_agent.failure_handler import FailureHandler
-
-from .agent_team_helpers import _now
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.helpers import _now
+from focus_agent.services.agent_team.run_execution import (
     _failure_strategy_for_exception,
     _multi_agent_dag_scheduler_enabled,
     _multi_agent_failure_handler_enabled,
     _multi_agent_resource_lock_enabled,
     _TaskExecutionResult,
 )
-from .agent_team_run_execution import (
-    _multi_agent_v2_enabled as _multi_agent_v2_enabled,
-)
-from .agent_team_run_execution import (
-    _pending_tool_approvals_for_session as _pending_tool_approvals_for_session,
-)
-from .agent_team_run_execution import (
-    _tool_approval_payload as _tool_approval_payload,
-)
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     acquire_task_resource_claims as _run_acquire_task_resource_claims,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     cleanup_task_workspace as _run_cleanup_task_workspace,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     delegated_executor as _run_delegated_executor,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     enqueue_durable_job as _run_enqueue_durable_job,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     enqueue_task_run as _run_enqueue_task_run,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     execute_task_body as _run_execute_task_body,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     get_session_view as _run_get_session_view,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     publish_agent_team_progress as _run_publish_agent_team_progress,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     release_task_resource_claims as _run_release_task_resource_claims,
 )
-from .agent_team_run_execution import (
+from focus_agent.services.agent_team.run_execution import (
     to_delegated_task as _run_to_delegated_task,
 )
-from .agent_team_run_helpers import (
+from focus_agent.services.agent_team.run_helpers import (
     _AGENT_TEAM_TASK_CLAIM_TTL_SECONDS,
     _MAX_MISSION_SCHEDULER_TASKS,
     _agent_team_execution_mode,
@@ -71,28 +61,28 @@ from .agent_team_run_helpers import (
     _is_runnable_task,
     _max_parallel_runs_for,
 )
-from .agent_team_run_lease import _AgentTeamLeaseHeartbeat
-from .agent_team_run_orchestration import (
+from focus_agent.services.agent_team.run_lease import _AgentTeamLeaseHeartbeat
+from focus_agent.services.agent_team.run_orchestration import (
     block_dag_scheduler_error as _run_block_dag_scheduler_error,
 )
-from .agent_team_run_orchestration import cancel_session as _run_cancel_session
-from .agent_team_run_orchestration import cancel_task as _run_cancel_task
-from .agent_team_run_orchestration import (
+from focus_agent.services.agent_team.run_orchestration import cancel_session as _run_cancel_session
+from focus_agent.services.agent_team.run_orchestration import cancel_task as _run_cancel_task
+from focus_agent.services.agent_team.run_orchestration import (
     compute_dag_runnable_tasks as _run_compute_dag_runnable_tasks,
 )
-from .agent_team_run_orchestration import (
+from focus_agent.services.agent_team.run_orchestration import (
     mark_task_enqueue_failed as _run_mark_task_enqueue_failed,
 )
-from .agent_team_run_orchestration import (
+from focus_agent.services.agent_team.run_orchestration import (
     maybe_schedule_next_wave as _run_maybe_schedule_next_wave,
 )
-from .agent_team_run_orchestration import retry_task as _run_retry_task
-from .agent_team_run_orchestration import (
+from focus_agent.services.agent_team.run_orchestration import retry_task as _run_retry_task
+from focus_agent.services.agent_team.run_orchestration import (
     run_ready_tasks_once as _run_ready_tasks_once,
 )
-from .agent_team_run_orchestration import run_task as _run_task
-from .agent_team_run_orchestration import run_task_claimed as _run_task_claimed
-from .agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.run_orchestration import run_task as _run_task
+from focus_agent.services.agent_team.run_orchestration import run_task_claimed as _run_task_claimed
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 
 
 class AgentTeamRunMixin:

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from focus_agent.services.agent_team.planning.models import *  # noqa: F401,F403
+from focus_agent.services.agent_team.planning.models import __all__ as _models_all
+from focus_agent.services.agent_team.planning.support import _task_draft_from_spec
 from focus_agent.skills import SkillRegistry
-
-from ...agent_team_planning_models import *  # noqa: F401,F403
-from ...agent_team_planning_models import __all__ as _models_all
-from ...agent_team_planning_support import _task_draft_from_spec
 
 
 def _skill_plan_for_session(

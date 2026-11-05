@@ -7,19 +7,18 @@
     "legacy_template": "Keep the wire value while old sessions exist; stop new writes before schema removal."
   },
   "max_by_kind": {
-    "compatibility_shim": 67,
+    "compatibility_shim": 62,
     "deprecated_route": 4,
     "legacy_template": 7,
     "legacy_state_or_mirror": 3,
     "legacy_override_or_monkeypatch": 8
   },
-  "max_total": 89,
+  "max_total": 84,
   "schema_version": 2,
   "item_ids": [
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/core/context_assembly.py:.context.assembly",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/core/context_policy.py:.context.policy",
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/engine/graph_builder.py:.graph.builder",
-    "structure:compatibility_shim:python_import_star_facade:src/focus_agent/services/agent_team_planning.py:focus_agent.services.agent_team.planning",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/core/state.py:.state_schema:BRANCH_STATE_FIELDS",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/core/state.py:.state_schema:CONVERSATION_STATE_FIELDS",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/core/state.py:.state_schema:GOVERNANCE_RECORD_MIRROR_KEYS",
@@ -55,10 +54,6 @@
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/harness/observability/run_journal.py:.run_journal_bridge:JournaledStreamBridge",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/harness/observability/run_journal.py:.sqlite_run_journal:SQLiteRunJournal",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/admin_config.py:focus_agent.capabilities.tool_registry:build_tool_registry",
-    "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/agent_team_planning_dag.py:.agent_team_planning_deliverables:_fallback_debug_deliverables",
-    "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/agent_team_run.py:.agent_team_run_execution:_multi_agent_v2_enabled",
-    "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/agent_team_run.py:.agent_team_run_execution:_pending_tool_approvals_for_session",
-    "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/agent_team_run.py:.agent_team_run_execution:_tool_approval_payload",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/chat/service.py:...core.branching:BranchActionKind",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/chat/service.py:...core.branching:BranchActionNavigation",
     "structure:compatibility_shim:python_same_name_reexport:src/focus_agent/services/chat/threads.py:.trajectory_recording:record_turn_trajectory_best_effort",

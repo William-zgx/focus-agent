@@ -21,9 +21,12 @@ from focus_agent.core.agent_team import (
     TaskRunEvent,
     ToolExecution,
 )
-
-from .agent_team_execution_runtime import TaskExecutionEvidence, TaskRunResult, TaskRunStatus
-from .agent_team_real_execution_types import RealAgentTeamTaskExecution
+from focus_agent.services.agent_team.execution_runtime import (
+    TaskExecutionEvidence,
+    TaskRunResult,
+    TaskRunStatus,
+)
+from focus_agent.services.agent_team.real_execution_types import RealAgentTeamTaskExecution
 
 
 def outcome_from_result(

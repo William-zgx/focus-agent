@@ -7,16 +7,15 @@ from focus_agent.core.agent_team import (
     AgentTeamTask,
     AgentTeamTaskOutput,
 )
-
-from .agent_team_helpers import _dedupe
-from .agent_team_merge_helpers import _has_fake_outputs
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.helpers import _dedupe
+from focus_agent.services.agent_team.merge_helpers import _has_fake_outputs
+from focus_agent.services.agent_team.merge_review_git import (
     git_changed_files as _git_changed_files,
 )
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.merge_review_git import (
     git_diff_for_workspace as _git_diff_for_workspace,
 )
-from .agent_team_merge_review_git import (
+from focus_agent.services.agent_team.merge_review_git import (
     git_diffstat as _git_diffstat,
 )
 

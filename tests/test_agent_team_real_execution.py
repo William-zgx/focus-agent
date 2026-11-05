@@ -21,10 +21,10 @@ from focus_agent.core.agent_team import (
 )
 from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue
 from focus_agent.repositories.agent_team_repository import InMemoryAgentTeamRepository
-from focus_agent.services import agent_team_real_execution as real_execution_module
-from focus_agent.services import agent_team_run_execution as run_execution_module
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_execution_runtime import (
+from focus_agent.services.agent_team import real_execution as real_execution_module
+from focus_agent.services.agent_team import run_execution as run_execution_module
+from focus_agent.services.agent_team.execution_runtime import (
     TaskExecutionEvidence,
     TaskExecutionScope,
     TaskModelResponse,
@@ -32,15 +32,15 @@ from focus_agent.services.agent_team_execution_runtime import (
     TaskRunStatus,
     TaskToolCall,
 )
-from focus_agent.services.agent_team_real_execution import (
+from focus_agent.services.agent_team.real_execution import (
     _outcome_from_result,
     _task_scoped_tools,
     execute_real_agent_team_task,
     is_real_agent_team_execution_enabled,
 )
-from focus_agent.services.agent_team_run_execution import execute_task_body
-from focus_agent.services.agent_team_scoped_tools import build_agent_team_scoped_tools
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
+from focus_agent.services.agent_team.run_execution import execute_task_body
+from focus_agent.services.agent_team.scoped_tools import build_agent_team_scoped_tools
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
 
 
 class PostgresAgentTeamRepository(InMemoryAgentTeamRepository):

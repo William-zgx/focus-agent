@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from focus_agent.core.agent_team import AgentTeamTaskRole
-
-from .agent_team_planning_dag_contracts import (
+from focus_agent.services.agent_team.planning.dag_contracts import (
     _apply_contract_defaults,
     _dedupe_values,
     _resource_claims_for_deliverable,
 )
-from .agent_team_planning_deliverables import (
+from focus_agent.services.agent_team.planning.deliverables import (
     _debugging_deliverables,
     _implementation_deliverables,
     _research_deliverables,
@@ -17,22 +16,19 @@ from .agent_team_planning_deliverables import (
     _verification_deliverables,
     _writing_deliverables,
 )
-from .agent_team_planning_deliverables import (
-    _fallback_debug_deliverables as _fallback_debug_deliverables,
-)
-from .agent_team_planning_models import (
+from focus_agent.services.agent_team.planning.models import (
     AgentTeamPlanOptions,
     AgentTeamTaskDraft,
     MissionDeliverable,
     MissionProfile,
 )
-from .agent_team_planning_rules import (
+from focus_agent.services.agent_team.planning.rules import (
     contains_cjk as _contains_cjk,
 )
-from .agent_team_planning_rules import (
+from focus_agent.services.agent_team.planning.rules import (
     focused_goal as _focused_goal,
 )
-from .agent_team_planning_rules import (
+from focus_agent.services.agent_team.planning.rules import (
     infer_focus as _infer_focus,
 )
 

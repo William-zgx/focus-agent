@@ -30,14 +30,14 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_execution_runtime import (
+from focus_agent.services.agent_team.execution_runtime import (
     TaskAgentMessage,
     TaskAgentRunner,
     TaskExecutionScope,
     TaskModelResponse,
     TaskToolCall,
 )
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -175,7 +175,7 @@ class _RunCommandThenFinishModel:
 
 
 def _approved_runner_factory(monkeypatch: pytest.MonkeyPatch) -> None:
-    from focus_agent.services import agent_team_real_execution
+    from focus_agent.services.agent_team import real_execution as agent_team_real_execution
 
     production_runner = TaskAgentRunner
 

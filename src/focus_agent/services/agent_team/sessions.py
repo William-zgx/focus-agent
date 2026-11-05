@@ -13,7 +13,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
-from focus_agent.services.agent_team_helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
+from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
 
 
 class AgentTeamSessionTaskMixin:

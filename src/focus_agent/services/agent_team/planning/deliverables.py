@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from focus_agent.core.agent_team import AgentTeamTaskRole
-
-from .agent_team_planning_dag_contracts import (
+from focus_agent.services.agent_team.planning.dag_contracts import (
     _dedupe_values,
     _resource_claims_for_scope,
 )
-from .agent_team_planning_models import MissionDeliverable, MissionProfile
+from focus_agent.services.agent_team.planning.models import MissionDeliverable, MissionProfile
 
 
 def _deliverable(

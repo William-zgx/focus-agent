@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 from uuid import uuid4
 
-from .agent_team_task_runtime_protocol import (
+from focus_agent.services.agent_team.task_runtime_protocol import (
     CancellationToken,
     CheckpointSink,
     EvidenceSink,

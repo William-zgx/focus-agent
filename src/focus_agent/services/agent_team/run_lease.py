@@ -5,8 +5,7 @@ from typing import Any
 
 from focus_agent.core.agent_team import AgentTeamTask
 from focus_agent.multi_agent.contracts import ResourceClaim
-
-from .agent_team_run_helpers import _AGENT_TEAM_TASK_CLAIM_TTL_SECONDS
+from focus_agent.services.agent_team.run_helpers import _AGENT_TEAM_TASK_CLAIM_TTL_SECONDS
 
 
 class _AgentTeamLeaseHeartbeat:

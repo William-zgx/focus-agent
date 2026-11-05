@@ -4,8 +4,8 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
-import focus_agent.services.agent_team_run as agent_team_run
-from focus_agent.services.agent_team_run import AgentTeamRunMixin
+import focus_agent.services.agent_team.run_base as agent_team_run
+from focus_agent.services.agent_team.run_base import AgentTeamRunMixin
 
 
 def test_agent_team_run_mixin_keeps_claimed_execution_patch_seams(monkeypatch) -> None:
@@ -39,7 +39,7 @@ def test_agent_team_run_mixin_keeps_claimed_execution_patch_seams(monkeypatch) -
 
 def test_agent_team_run_operations_do_not_import_the_compatibility_mixin() -> None:
     root = Path(__file__).parents[1]
-    source = root.joinpath("src/focus_agent/services/agent_team_run_orchestration.py").read_text(
+    source = root.joinpath("src/focus_agent/services/agent_team/run_orchestration.py").read_text(
         encoding="utf-8"
     )
     imports = [
@@ -52,7 +52,7 @@ def test_agent_team_run_operations_do_not_import_the_compatibility_mixin() -> No
     assert "agent_team_run" not in imports
     assert (
         len(
-            root.joinpath("src/focus_agent/services/agent_team_run.py")
+            root.joinpath("src/focus_agent/services/agent_team/run_base.py")
             .read_text(encoding="utf-8")
             .splitlines()
         )

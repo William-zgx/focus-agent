@@ -30,15 +30,13 @@ from focus_agent.multi_agent.contracts import (
     ResourceClaim,
 )
 from focus_agent.multi_agent.failure_handler import FailureHandler
-from focus_agent.services.coordination import BackgroundJobSpec
-
-from .agent_team_helpers import _dedupe, _now
-from .agent_team_real_execution import (
+from focus_agent.services.agent_team.helpers import _dedupe, _now
+from focus_agent.services.agent_team.real_execution import (
     execute_real_agent_team_task,
     is_real_agent_team_execution_enabled,
     is_real_agent_team_execution_requested,
 )
-from .agent_team_run_helpers import (
+from focus_agent.services.agent_team.run_helpers import (
     _MAX_MISSION_SCHEDULER_TASKS,
     _MAX_MISSION_SCHEDULER_WAVES,
     _agent_team_execution_mode,
@@ -55,7 +53,8 @@ from .agent_team_run_helpers import (
     _test_evidence_for_run,
     _workspace_metadata_for_run,
 )
-from .agent_team_workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
+from focus_agent.services.coordination import BackgroundJobSpec
 
 
 @dataclass(frozen=True)

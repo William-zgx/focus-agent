@@ -18,16 +18,19 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
     TaskRun,
 )
-
-from .agent_team_execution_runtime import CancellationToken, TaskAgentRunner, TaskExecutionScope
-from .agent_team_real_execution_adapters import (
+from focus_agent.services.agent_team.execution_runtime import (
+    CancellationToken,
+    TaskAgentRunner,
+    TaskExecutionScope,
+)
+from focus_agent.services.agent_team.real_execution_adapters import (
     allowed_scoped_tool_names,
     sandbox_runner_for_service,
     task_model_for_service,
     task_prompt,
     task_scoped_tools,
 )
-from .agent_team_real_execution_records import (
+from focus_agent.services.agent_team.real_execution_records import (
     append_event,
     failed_outcome,
     finalize_failed_run,
@@ -36,8 +39,8 @@ from .agent_team_real_execution_records import (
     persist_checkpoint,
     persist_runner_evidence,
 )
-from .agent_team_real_execution_types import RealAgentTeamTaskExecution
-from .agent_team_scoped_tools import build_agent_team_scoped_tools
+from focus_agent.services.agent_team.real_execution_types import RealAgentTeamTaskExecution
+from focus_agent.services.agent_team.scoped_tools import build_agent_team_scoped_tools
 
 _outcome_from_result = outcome_from_result
 _task_scoped_tools = task_scoped_tools
@@ -55,7 +58,7 @@ def is_real_agent_team_execution_enabled(
     if runtime is None:
         return False
     try:
-        from .agent_team_readiness import build_agent_team_readiness
+        from focus_agent.services.agent_team.readiness import build_agent_team_readiness
 
         readiness = build_agent_team_readiness(settings, runtime=runtime)
     except Exception:  # noqa: BLE001

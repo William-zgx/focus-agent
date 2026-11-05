@@ -9,9 +9,8 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.delegation.execution import DelegatedRunExecutor
-
-from .agent_team_helpers import _dedupe
-from .agent_team_workspace import AgentTeamWorkspaceStatus
+from focus_agent.services.agent_team.helpers import _dedupe
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceStatus
 
 _MAX_MISSION_SCHEDULER_WAVES = 16
 _MAX_MISSION_SCHEDULER_TASKS = 64
