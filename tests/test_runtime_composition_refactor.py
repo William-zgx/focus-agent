@@ -120,7 +120,6 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
         user_repository=user_repository,
         store="store",
         memory_writer="memory-writer",
-        memory_repository=object(),
         productivity_repository=productivity_repository,
         governance_repository="governance-repository",
         memory_embedding_provider="embedding-provider",

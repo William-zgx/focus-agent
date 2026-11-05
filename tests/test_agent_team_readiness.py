@@ -10,7 +10,7 @@ from focus_agent.config import ConfiguredModel, ModelCatalogConfig, ProviderConf
 from focus_agent.config_parts.agent import load_agent_config
 from focus_agent.services.admin_config_fields import _POLICY_FIELD_SPECS
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_readiness import build_agent_team_readiness
+from focus_agent.services.agent_team.readiness import build_agent_team_readiness
 
 
 def _settings(**overrides: object) -> Settings:
@@ -329,7 +329,7 @@ def test_worktree_sandbox_readiness_requires_writable_git_workspace(
     workspace = tmp_path / "read-only-repository"
     workspace.mkdir()
     monkeypatch.setattr(
-        "focus_agent.services.agent_team_readiness._is_writable_directory",
+        "focus_agent.services.agent_team.readiness._is_writable_directory",
         lambda _path: False,
     )
     not_writable_payload = build_agent_team_readiness(_worktree_settings(str(workspace)))

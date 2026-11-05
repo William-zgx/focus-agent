@@ -291,8 +291,7 @@ def build_branch_action_proposal_result(
 
 def _thread_branch_name(service: Any, thread_id: str | None) -> str | None:
     """Display name of a thread's branch; None for the root (main) thread."""
-    repo = getattr(service.runtime, "repo", None)
-    get_by_child = getattr(repo, "get_by_child_thread_id", None)
+    get_by_child = getattr(service.runtime.repo, "get_by_child_thread_id", None)
     if not thread_id or not callable(get_by_child):
         return None
     try:

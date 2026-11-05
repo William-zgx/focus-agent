@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -11,6 +10,7 @@ from focus_agent.core.governance import (
     SkillPreference,
     SkillSelectionEvent,
 )
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
@@ -248,10 +248,6 @@ def _index_governance_feedback_best_effort(runtime: AppRuntime, item: object) ->
         return
 
 
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
 def _safe_ratio(numerator: int, denominator: int) -> float | None:
     if denominator <= 0:
         return None
@@ -344,7 +340,7 @@ def _agent_feedback_trend_response(
             1 for event in feedback_events if _is_productivity_capture(event)
         ),
         top_failing_trajectory_samples=_top_failing_trajectory_samples(runtime),
-        generated_at=_now_iso(),
+        generated_at=utc_now_iso(),
     )
 
 

@@ -62,11 +62,6 @@ def _parse_key_value_json_or_csv(value: str | None) -> dict[str, str]:
     return _split_key_value_csv(text)
 
 
-def _normalize_optional_string(value: object) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def _normalize_agent_delegation_execution_mode(value: object) -> str:
     return normalize_delegation_execution_mode(str(value or "observe"))
 

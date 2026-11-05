@@ -153,7 +153,7 @@ def _migrate_app_state(
     if sink is None:
         return {
             "status": "skipped",
-            "reason": "No app-state sink was discovered. A Postgres app-state sink can be attached via the AppStateSink protocol in focus_agent.migrate_local_state.",
+            "reason": "No app-state sink was discovered. A Postgres app-state sink can be attached via the AppStateSink protocol in focus_agent.cli.migrate_local_state.",
             **counts,
         }
 
@@ -555,7 +555,7 @@ def run_migration(
     integration_notes: list[str] = []
     if sink_info.sink is None:
         integration_notes.append(
-            "App-state migration uses the AppStateSink protocol in focus_agent.migrate_local_state. "
+            "App-state migration uses the AppStateSink protocol in focus_agent.cli.migrate_local_state. "
             "A Postgres implementation can be attached by exposing setup/upsert_thread_access_rows/"
             "upsert_conversation_rows/upsert_branch_rows from a discovered repository module."
         )

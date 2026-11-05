@@ -24,7 +24,7 @@ from focus_agent.repositories.agent_team_repository import (
 )
 from focus_agent.repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 
 
 def _git(cwd: Path, *args: str) -> str:

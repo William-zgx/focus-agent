@@ -31,11 +31,11 @@ from ui_smoke_test import (
 )
 
 from focus_agent.config import load_local_env_file
+from focus_agent.core.time_utils import utc_now
 from focus_agent.observability.trajectory import (
     SCHEMA_VERSION,
     TrajectoryStep,
     TurnTrajectoryRecord,
-    utc_now,
 )
 from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 from focus_agent.repositories.postgres_user_repository import PostgresUserRepository

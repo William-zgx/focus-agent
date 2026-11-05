@@ -9,12 +9,11 @@ from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.types import ConversationRecord
 from focus_agent.engine.local_persistence import PersistentInMemorySaver, PersistentInMemoryStore
 from focus_agent.memory.embedding import DeterministicTestEmbeddingProvider, MemoryEmbeddingService
-from focus_agent.migrate_local_state import (
+from focus_agent.migrations.local.applier import main, run_migration
+from focus_agent.migrations.local.loader import (
     AppStateSinkDiscovery,
     _migration_memory_embedding_settings,
-    main,
     parse_args,
-    run_migration,
 )
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 
@@ -230,11 +229,17 @@ def test_migrate_local_state_main_dry_run_writes_report_without_touching_postgre
     def _unexpected_call(*args, **kwargs):
         raise AssertionError("Postgres should not be touched during dry-run")
 
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _unexpected_call)
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _unexpected_call)
-    monkeypatch.setattr("focus_agent.migrate_local_state.setup_trajectory_schema", _unexpected_call)
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.create_memory_repository", _unexpected_call
+        "focus_agent.migrations.local.applier.open_postgres_store", _unexpected_call
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.open_postgres_saver", _unexpected_call
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.setup_trajectory_schema", _unexpected_call
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.create_memory_repository", _unexpected_call
     )
 
     exit_code = main(
@@ -286,13 +291,17 @@ def test_run_migration_real_is_repeatable_and_uses_app_state_sink(tmp_path, monk
     def _setup_fake_trajectory(_database_uri: str) -> None:
         trajectory_setup_calls.append("called")
 
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory
+        "focus_agent.migrations.local.applier.open_postgres_store", _open_fake_store
     )
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.create_memory_repository",
+        "focus_agent.migrations.local.applier.open_postgres_saver", _open_fake_saver
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.setup_trajectory_schema", _setup_fake_trajectory
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.create_memory_repository",
         lambda _database_uri: fake_memory_repo,
     )
 
@@ -376,17 +385,21 @@ def test_run_migration_backfills_memory_embeddings_idempotently(tmp_path, monkey
     def _setup_fake_trajectory(_database_uri: str) -> None:
         trajectory_setup_calls.append("called")
 
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_store", _open_fake_store)
-    monkeypatch.setattr("focus_agent.migrate_local_state.open_postgres_saver", _open_fake_saver)
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.setup_trajectory_schema", _setup_fake_trajectory
+        "focus_agent.migrations.local.applier.open_postgres_store", _open_fake_store
     )
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.create_memory_repository",
+        "focus_agent.migrations.local.applier.open_postgres_saver", _open_fake_saver
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.setup_trajectory_schema", _setup_fake_trajectory
+    )
+    monkeypatch.setattr(
+        "focus_agent.migrations.local.applier.create_memory_repository",
         lambda _database_uri: fake_memory_repo,
     )
     monkeypatch.setattr(
-        "focus_agent.migrate_local_state.create_memory_embedding_service",
+        "focus_agent.migrations.local.applier.create_memory_embedding_service",
         lambda _database_uri: embedding_service,
     )
 

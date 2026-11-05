@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from ...core.repo_call import has_repo_method
-from ...observability.trajectory import utc_now
+from ...core.time_utils import utc_now
 from ..coordination import BackgroundJobSpec, background_job_key
 
 if TYPE_CHECKING:
@@ -30,13 +30,6 @@ class ChatRuntimeCoordinationMixin:
         lease.acquire()
         with self._active_turns_lock:
             self._active_turn_leases[thread_id] = lease
-
-    def _heartbeat_thread_turn(self, *, thread_id: str) -> bool:
-        with self._active_turns_lock:
-            lease = self._active_turn_leases.get(thread_id)
-        if lease is None:
-            return False
-        return lease.heartbeat_once()
 
     def _release_thread_turn(self, *, thread_id: str) -> None:
         with self._active_turns_lock:
@@ -137,7 +130,7 @@ class ChatRuntimeCoordinationMixin:
         request_id: str | None,
         trace_id: str | None,
     ) -> None:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return
         config = getattr(branch_decision_service, "config", lambda: None)()

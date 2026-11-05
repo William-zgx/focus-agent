@@ -11,6 +11,7 @@ from focus_agent.harness.agents.mention import (
 )
 from focus_agent.services.branches.actions import branch_handoff_message_from_text
 from focus_agent.services.chat import ChatService
+from focus_agent.skills.models import merge_skill_ids
 
 from .replay_models import HarnessResumeRequest, HarnessRunRequest
 
@@ -65,7 +66,7 @@ def _prepare_run_payload(
     ):
         active_skill_ids = tuple(selection.skill_ids)
     else:
-        active_skill_ids = _merged_skill_ids(
+        active_skill_ids = merge_skill_ids(
             selection.skill_ids,
             initial_values.get("active_skill_ids", []),
         )
@@ -105,20 +106,6 @@ def _prepare_run_payload(
     if selection.prompt_mode is not None:
         graph_payload["prompt_mode"] = selection.prompt_mode
     return graph_payload, context, branch_meta, initial_values
-
-
-def _merged_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
-    skill_ids: list[str] = []
-    seen: set[str] = set()
-    for group in skill_id_groups:
-        raw_items = [group] if isinstance(group, str) else list(group or [])
-        for raw_item in raw_items:
-            skill_id = str(raw_item or "").strip()
-            if not skill_id or skill_id in seen:
-                continue
-            seen.add(skill_id)
-            skill_ids.append(skill_id)
-    return tuple(skill_ids)
 
 
 def _run_input_messages_for_state(

@@ -4,10 +4,8 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "FocusAgent": (".facade", "FocusAgent"),
     "FocusAgentHarness": (".factory", "FocusAgentHarness"),
     "Mention": (".mention", "Mention"),
-    "StreamResult": (".facade", "StreamResult"),
     "create_focus_agent": (".factory", "create_focus_agent"),
     "extract_primary_agent": (".mention", "extract_primary_agent"),
     "list_available_agents": (".mention", "list_available_agents"),
@@ -17,10 +15,8 @@ _EXPORTS = {
 }
 
 __all__ = [
-    "FocusAgent",
     "FocusAgentHarness",
     "Mention",
-    "StreamResult",
     "create_focus_agent",
     "extract_primary_agent",
     "list_available_agents",

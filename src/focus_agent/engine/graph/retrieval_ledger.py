@@ -17,8 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from langchain.messages import ToolMessage
 
-from ..graph_tool_history_repair import _messages_since_latest_human
-from ..graph_tool_messages import (
+from focus_agent.engine.graph.tool_messages import (
     artifact_source_refs,
     iter_tool_results,
     payload_published_at,
@@ -26,6 +25,8 @@ from ..graph_tool_messages import (
     tool_message_failed,
     tool_message_json,
 )
+
+from ...core.tool_call_protocol import messages_since_latest_human
 
 _LEDGER_NOTE_MAX_ENTRIES = 20
 # Fetch failures that will not change on retry within the same turn.
@@ -120,7 +121,7 @@ def collect_retrieval_ledger(messages: list[Any]) -> dict[str, RetrievalLedgerEn
     # show that paging deeper into an out-of-window page is not worth a round.
     published_by_ref: dict[str, str] = {}
     for message, tool_name, args in iter_tool_results(
-        _messages_since_latest_human(list(messages or []))
+        messages_since_latest_human(list(messages or []))
     ):
         call_id = str(getattr(message, "tool_call_id", "") or "")
         key = retrieval_key(tool_name, args)

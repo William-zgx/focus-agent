@@ -6,7 +6,7 @@ from pydantic import Field
 
 from ..core.branching import BranchRecord, BranchStatus
 from ..core.request_context import RequestContext
-from ..core.types import FindingItem
+from ..core.types import FindingItem, coerce_finding_item
 from ..storage.namespaces import conversation_main_namespace
 from .dedupe import has_textual_overlap, memory_semantic_key
 from .models import (
@@ -80,7 +80,7 @@ class MemoryCurator:
 
         candidates = [
             self._candidate_from_finding(
-                finding=self._coerce_finding_item(item),
+                finding=coerce_finding_item(item),
                 branch_record=branch_record,
                 context=context,
                 index=index,
@@ -313,14 +313,6 @@ class MemoryCurator:
             promotable=bool(content and finding.merge_importable),
             skip_reason=None if content and finding.merge_importable else "not_merge_importable",
         )
-
-    @staticmethod
-    def _coerce_finding_item(value: object) -> FindingItem:
-        if isinstance(value, FindingItem):
-            return value
-        if isinstance(value, dict):
-            return FindingItem.model_validate(value)
-        return FindingItem(finding=str(value))
 
 
 __all__ = [

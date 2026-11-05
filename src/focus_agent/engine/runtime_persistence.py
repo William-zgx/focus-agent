@@ -243,7 +243,11 @@ def _create_postgres_primary_persistence(
         else:
             trajectory_recorder = candidate
 
-    run_journal = runtime_mod._postgres_run_journal_cls()(settings.database_uri)
+    run_journal = runtime_mod._create_repository_with_provider(
+        runtime_mod._postgres_run_journal_cls(),
+        settings.database_uri,
+        connection_provider=postgres_connection_provider,
+    )
     runtime_mod._setup_component_if_available(run_journal)
 
     return (

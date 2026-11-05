@@ -13,7 +13,7 @@ from focus_agent.delegation.execution_types import SubagentConfig, SubagentRunRe
 from focus_agent.delegation.roles import AgentRole
 from focus_agent.repositories.agent_team_repository import InMemoryAgentTeamRepository
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspace, AgentTeamWorkspaceStatus
 
 
 class SubmitOnlyBackgroundWork:

@@ -16,8 +16,8 @@ from ..storage.namespaces import (
     user_profile_namespace,
 )
 from .branch_visibility import branch_origin_visible
-from .models import MemoryRecord, MemoryVisibility, MemoryWriteRequest, RetrievedMemoryBundle
-from .text import memory_text_terms
+from .models import MemoryRecord, MemoryWriteRequest, RetrievedMemoryBundle
+from .text import latest_message_text, memory_text_terms
 
 
 class MemoryQualityGate:
@@ -34,7 +34,7 @@ class MemoryQualityGate:
 
         messages = list(state.get("messages", []) or [])
         latest_turn = _latest_turn_messages(messages)
-        latest_user = _latest_message_text(messages, HumanMessage)
+        latest_user = latest_message_text(messages, HumanMessage)
         claim_text = _turn_summary_claim_text(record=record, messages=messages)
 
         if _has_unstable_self_correction_signal(claim_text):
@@ -154,12 +154,6 @@ class MemoryPolicy:
             namespaces.append(skill_memory_namespace(skill_id))
         return namespaces
 
-    def can_promote_branch_record(self, *, record: MemoryRecord) -> bool:
-        return record.scope.value == "branch" and record.visibility in {
-            MemoryVisibility.PROMOTABLE,
-            MemoryVisibility.SHARED,
-        }
-
     def filter_bundle_for_prompt(
         self,
         bundle: RetrievedMemoryBundle,
@@ -252,14 +246,6 @@ def _latest_turn_messages(messages: list[Any]) -> list[Any]:
         if isinstance(messages[index], HumanMessage):
             return messages[index:]
     return messages
-
-
-def _latest_message_text(messages: list[Any], message_type: type) -> str:
-    for message in reversed(messages):
-        if isinstance(message, message_type):
-            content = getattr(message, "content", "")
-            return str(content).strip()
-    return ""
 
 
 def _latest_final_ai_text(messages: list[Any]) -> str:

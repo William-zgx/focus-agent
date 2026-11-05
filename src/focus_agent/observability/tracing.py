@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from ..config import Settings
 from ..core.branching import BranchMeta
+from ..core.coercion import optional_str
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +64,7 @@ def build_trace_correlation(
     trace_id: str | None = None,
     root_span_id: str | None = None,
 ) -> TraceCorrelation:
-    normalized_request_id = _normalize_optional_string(request_id)
+    normalized_request_id = optional_str(request_id)
     seed = normalized_request_id or uuid4().hex
     return TraceCorrelation(
         request_id=normalized_request_id,
@@ -73,8 +74,8 @@ def build_trace_correlation(
             hex_chars=16,
             fallback_seed=f"{seed}:root-span",
         ),
-        environment=_normalize_optional_string(getattr(settings, "app_environment", None)),
-        deployment=_normalize_optional_string(getattr(settings, "deployment_name", None)),
+        environment=optional_str(getattr(settings, "app_environment", None)),
+        deployment=optional_str(getattr(settings, "deployment_name", None)),
         app_version=str(getattr(settings, "app_version", "")),
     )
 
@@ -97,7 +98,7 @@ class TraceSpanScope(AbstractContextManager["TraceSpanScope"]):
         self.name = name
         self.correlation = correlation or _CURRENT_CORRELATION.get()
         self.enabled = bool(enabled and self.correlation is not None)
-        self.service_name = _normalize_optional_string(service_name) or "focus-agent"
+        self.service_name = optional_str(service_name) or "focus-agent"
         self.otel_tracer_provider = (
             otel_tracer_provider
             if otel_tracer_provider is not None
@@ -183,7 +184,7 @@ class TraceSpanScope(AbstractContextManager["TraceSpanScope"]):
         correlation: TraceCorrelation, *, service_name: str = "focus-agent"
     ) -> dict[str, Any]:
         attributes: dict[str, Any] = {
-            "service.name": _normalize_optional_string(service_name) or "focus-agent",
+            "service.name": optional_str(service_name) or "focus-agent",
             "focus_agent.trace_id": correlation.trace_id,
             "focus_agent.root_span_id": correlation.root_span_id,
             "focus_agent.app_version": correlation.app_version,
@@ -241,7 +242,7 @@ def start_trace_span(
         name=name,
         correlation=trace_correlation,
         enabled=enabled,
-        service_name=_normalize_optional_string(service_name) or "focus-agent",
+        service_name=optional_str(service_name) or "focus-agent",
         otel_tracer_provider=otel_tracer_provider,
         attributes=attributes,
         span_id=span_id,
@@ -349,11 +350,6 @@ def build_invoke_config(
             root_thread_id=root_thread_id, thread_id=thread_id, branch_meta=branch_meta
         ),
     }
-
-
-def _normalize_optional_string(value: str | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
 
 
 def _normalize_hex_identifier(value: str | None, *, hex_chars: int, fallback_seed: str) -> str:

@@ -85,8 +85,8 @@ flowchart TD
 | `src/focus_agent/memory/curator.py` | branch finding promotion 前的冲突检查和候选治理。 |
 | `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前为 Zvec-first + repository FTS/rerank/dedupe fallback。 |
 | `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/usage/candidates/forget surface。 |
-| `src/focus_agent/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
-| `src/focus_agent/memory_embedding_cli.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
+| `src/focus_agent/cli/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
+| `src/focus_agent/cli/memory_embedding.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
 
 ## 3. 数据模型
 
@@ -522,7 +522,6 @@ Graph 节点顺序：
 ```text
 bootstrap_turn
 -> retrieve_memory
--> context_pipeline
 -> assemble_context
 -> plan / agent_loop / tool loop / reflect
 -> summarize_turn
@@ -803,7 +802,7 @@ Local fallback 下，这些 tools 保留 legacy LangGraph Store path。
 
 - graph path 的 `memory_save/search/forget` 参数由当前 `RequestContext` 绑定，不允许模型自由跨 user/root/namespace。
 - `memory_search` 默认读取当前 user profile 和当前 root main/episodic；只有 context 有 `branch_id/project_id` 时才加入当前 branch/project namespace。
-- `memory_search` 的 Zvec 命中仍必须回查 canonical memory；forgotten/tombstoned、跨 user/root/namespace 或状态不允许的命中会被丢弃。
+- `memory_search` 的 Zvec 命中仍必须回查 canonical memory（`PostgresMemoryRepository.get_records()` 一次批量读取全部命中；不支持批量的 repository 退回逐条 `get_record()`）；forgotten/tombstoned、跨 user/root/namespace 或状态不允许的命中会被丢弃。
 - local fallback 的 `memory_forget` 仍是 store delete，没有 Postgres tombstone；生产 canonical 行为以 Postgres 为准。
 
 ## 13. API、SDK 与 Web Console
@@ -1099,7 +1098,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 运行时与 graph：
 
 - `src/focus_agent/engine/runtime.py`
-- `src/focus_agent/engine/graph_memory_nodes.py`
+- `src/focus_agent/engine/graph/memory_nodes.py`
 - `src/focus_agent/api/route_utils/readiness.py`
 - `src/focus_agent/core/state.py`
 - `src/focus_agent/services/branches/merge.py`
@@ -1107,7 +1106,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 工具、API、SDK、Web：
 
 - `src/focus_agent/capabilities/default_tool_modules/memory.py`
-- `src/focus_agent/memory_embedding_cli.py`
+- `src/focus_agent/cli/memory_embedding.py`
 - `src/focus_agent/api/routers/memory.py`
 - `src/focus_agent/api/contract_models/memory.py`
 - `frontend-sdk/src/client/memory.ts`
@@ -1116,7 +1115,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 迁移与评估：
 
-- `src/focus_agent/migrate_local_state.py`
+- `src/focus_agent/cli/migrate_local_state.py`
 - `tests/test_memory_service.py`
 - `tests/test_memory_embedding_policy.py`
 - `tests/test_memory_embedding_cli.py`

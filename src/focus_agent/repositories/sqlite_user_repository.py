@@ -18,6 +18,8 @@ from .user_repository import (
     LastActiveAdminError,
     UserListFilters,
     UserRepository,
+    _is_active_admin,
+    _removes_active_admin,
 )
 
 
@@ -174,26 +176,18 @@ class SQLiteUserRepository(SQLiteRepositoryBase, UserRepository):
             if row is None:
                 raise KeyError(f"Unknown user: {user.user_id}")
             current = self._user_from_row(row)
-            if self._removes_active_admin(current, user):
+            if _removes_active_admin(current, user):
                 rows = conn.execute(
                     "SELECT data_json FROM users WHERE status = ?",
                     ("active",),
                 ).fetchall()
                 active_admin_count = sum(
-                    1
-                    for active_row in rows
-                    if self._is_active_admin(self._user_from_row(active_row))
+                    1 for active_row in rows if _is_active_admin(self._user_from_row(active_row))
                 )
                 if active_admin_count <= 1:
                     raise LastActiveAdminError("Cannot remove the last active admin.")
             self._update_user(conn, user)
             conn.commit()
-        return user
-
-    def get_user(self, user_id: str) -> User:
-        user = self.get_user_or_none(user_id)
-        if user is None:
-            raise KeyError(f"Unknown user: {user_id}")
         return user
 
     def get_user_or_none(self, user_id: str) -> User | None:
@@ -489,15 +483,6 @@ class SQLiteUserRepository(SQLiteRepositoryBase, UserRepository):
         )
         if cursor.rowcount == 0:
             raise KeyError(f"Unknown user: {user.user_id}")
-
-    @staticmethod
-    def _is_active_admin(user: User) -> bool:
-        status = user.status.value if hasattr(user.status, "value") else str(user.status)
-        return status == "active" and "admin" in set(user.roles)
-
-    @classmethod
-    def _removes_active_admin(cls, current: User, updated: User) -> bool:
-        return cls._is_active_admin(current) and not cls._is_active_admin(updated)
 
     @staticmethod
     def _insert_session(conn: sqlite3.Connection, session: UserSession) -> None:

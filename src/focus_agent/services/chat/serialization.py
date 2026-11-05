@@ -9,41 +9,17 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from ...core.message_utils import (
+    is_ai_message_type,
+    is_human_message_type,
+    is_tool_message_type,
+    message_type_name,
+)
 from ...core.token_usage import message_token_usage
 from ...transport.stream_events import (
     extract_visible_text_delta,
     sanitize_completed_visible_text,
 )
-
-
-def _message_type_name(message: Any) -> str:
-    if isinstance(message, dict):
-        raw_type = message.get("type") or message.get("role") or message.get("_type") or ""
-        message_type = str(raw_type or "").strip().lower()
-        return {
-            "assistant": "ai",
-            "user": "human",
-        }.get(message_type, message_type)
-    return (
-        str(
-            getattr(message, "type", message.__class__.__name__.replace("Message", "").lower())
-            or ""
-        )
-        .strip()
-        .lower()
-    )
-
-
-def is_ai_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() in {"ai", "assistant"}
-
-
-def is_human_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() in {"human", "user"}
-
-
-def is_tool_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() == "tool"
 
 
 def _list_content_to_visible_text(content: list[Any]) -> str:
@@ -79,7 +55,7 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): json_safe(item) for key, item in value.items()}
     if hasattr(value, "content") or hasattr(value, "tool_calls"):
-        message_type = _message_type_name(value)
+        message_type = message_type_name(value)
         tool_calls = json_safe(getattr(value, "tool_calls", None))
         content = message_content_to_text(getattr(value, "content", ""))
         if is_ai_message_type(message_type):
@@ -186,7 +162,7 @@ def sse_frame(*, event: str, data: dict[str, Any]) -> str:
 
 
 def serialize_message(message: Any) -> dict[str, Any]:
-    message_type = _message_type_name(message)
+    message_type = message_type_name(message)
     if isinstance(message, dict):
         raw_content = message.get("content", "")
         tool_calls = message.get("tool_calls")
@@ -273,7 +249,7 @@ def _is_followed_by_tool_activity_before_next_user(
     index: int,
 ) -> bool:
     for later in messages[index + 1 :]:
-        message_type = _message_type_name(later)
+        message_type = message_type_name(later)
         if is_human_message_type(message_type):
             return False
         if is_tool_message_type(message_type):

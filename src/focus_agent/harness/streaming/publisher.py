@@ -144,9 +144,6 @@ class AgentEventPublisher:
             self._closed = True
             self._close_task = None
 
-    async def on_run_metadata(self, **extra: Any) -> None:
-        await self._emit("run.metadata", **extra)
-
     async def on_heartbeat(self, **extra: Any) -> None:
         await self._emit("heartbeat", **extra)
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -15,6 +14,7 @@ from ...core.branching import (
     BranchMeta,
     BranchRole,
 )
+from ...core.time_utils import utc_now_iso
 from .naming_policy import BranchNamingPolicyMixin
 
 _CONFIRM_MARKERS = {
@@ -184,10 +184,6 @@ _ENGLISH_TASK_VERBS = (
     "validate",
     "work",
 )
-
-
-def utc_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def normalize_branch_actions(raw: Any) -> list[BranchActionProposal]:
@@ -383,7 +379,7 @@ def build_branch_action_proposal(
         branch_role=branch_role,
         reason=reason,
         handoff_message=branch_handoff_message_from_text(handoff_message),
-        created_at=utc_iso(),
+        created_at=utc_now_iso(),
     )
 
 
@@ -402,7 +398,7 @@ def mark_branch_action_executed(
     return action.model_copy(
         update={
             "status": BranchActionStatus.EXECUTED,
-            "executed_at": utc_iso(),
+            "executed_at": utc_now_iso(),
             "navigation": navigation,
             "error": None,
         }
@@ -413,7 +409,7 @@ def mark_branch_action_dismissed(action: BranchActionProposal) -> BranchActionPr
     return action.model_copy(
         update={
             "status": BranchActionStatus.DISMISSED,
-            "dismissed_at": utc_iso(),
+            "dismissed_at": utc_now_iso(),
             "error": None,
         }
     )
@@ -423,7 +419,7 @@ def mark_branch_action_failed(action: BranchActionProposal, error: str) -> Branc
     return action.model_copy(
         update={
             "status": BranchActionStatus.FAILED,
-            "failed_at": utc_iso(),
+            "failed_at": utc_now_iso(),
             "error": error,
         }
     )
@@ -439,7 +435,7 @@ def branch_action_audit_event(
     request_id: str | None = None,
 ) -> dict[str, Any]:
     return {
-        "created_at": utc_iso(),
+        "created_at": utc_now_iso(),
         "principal": user_id,
         "thread_id": thread_id,
         "action_id": action.action_id,
@@ -623,7 +619,6 @@ def branch_name_from_goal(goal: str | None) -> str | None:
 
 
 __all__ = [
-    "utc_iso",
     "normalize_branch_actions",
     "serialize_branch_actions",
     "latest_pending_branch_action",

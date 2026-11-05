@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from focus_agent.config import Settings
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.core.time_utils import utc_now_iso_z
 from focus_agent.core.users import User, UserSession, UserStatus
 from focus_agent.repositories.user_repository import UserRepository
 from focus_agent.security.passwords import hash_password, password_needs_rehash, verify_password
@@ -88,7 +89,7 @@ class AuthService:
         self._require_strong_password(password)
         if self.repository.get_user_by_username(normalized) is not None:
             raise UsernameTakenError("Username is already taken.")
-        now = _now()
+        now = utc_now_iso_z()
         user = User(
             user_id=normalized,
             username=normalized,
@@ -129,7 +130,7 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             self._record_failed_login(user)
             raise InvalidCredentialsError("Invalid username or password.")
-        now = _now()
+        now = utc_now_iso_z()
         updates: dict[str, object] = {
             "failed_login_count": 0,
             "locked_until": None,
@@ -146,7 +147,7 @@ class AuthService:
     def refresh(self, refresh_token: str) -> AuthTokenPair:
         session = self._active_session(refresh_token)
         user = self._active_user(session.user_id)
-        now = _now()
+        now = utc_now_iso_z()
         saved_session = self.repository.save_session(
             session.model_copy(update={"last_seen_at": now, "updated_at": now})
         )
@@ -163,7 +164,9 @@ class AuthService:
         if not refresh_token:
             return
         try:
-            self.repository.revoke_session(_refresh_token_hash(refresh_token), revoked_at=_now())
+            self.repository.revoke_session(
+                _refresh_token_hash(refresh_token), revoked_at=utc_now_iso_z()
+            )
         except KeyError:
             return
 
@@ -179,7 +182,7 @@ class AuthService:
         if not verify_password(current_password, user.password_hash):
             raise PasswordMismatchError("Current password does not match.")
         self._require_strong_password(new_password)
-        now = _now()
+        now = utc_now_iso_z()
         saved = self.repository.save_user(
             user.model_copy(
                 update={
@@ -198,7 +201,7 @@ class AuthService:
     def reset_password(self, *, user_id: str, new_password: str) -> User:
         self._require_strong_password(new_password)
         user = self.repository.get_user(user_id)
-        now = _now()
+        now = utc_now_iso_z()
         saved = self.repository.save_user(
             user.model_copy(
                 update={
@@ -220,7 +223,7 @@ class AuthService:
         user_agent: str | None,
         ip_address: str | None,
     ) -> AuthTokenPair:
-        now = _now()
+        now = utc_now_iso_z()
         refresh_token = secrets.token_urlsafe(32)
         refresh_token_hash = _refresh_token_hash(refresh_token)
         session = self.repository.create_session(
@@ -280,7 +283,10 @@ class AuthService:
 
     def _record_failed_login(self, user: User) -> None:
         failed_count = int(user.failed_login_count or 0) + 1
-        updates: dict[str, object] = {"failed_login_count": failed_count, "updated_at": _now()}
+        updates: dict[str, object] = {
+            "failed_login_count": failed_count,
+            "updated_at": utc_now_iso_z(),
+        }
         if failed_count >= MAX_FAILED_LOGIN_COUNT:
             updates["locked_until"] = _now_plus(LOCKOUT_SECONDS)
         self.repository.save_user(user.model_copy(update=updates))
@@ -295,7 +301,7 @@ class AuthService:
             raise WeakPasswordError("Password must include letters and numbers.")
 
     def _revoke_other_sessions(self, *, user_id: str, current_session_id: str | None) -> None:
-        now = _now()
+        now = utc_now_iso_z()
         if current_session_id and has_repo_method(self.repository, "revoke_other_sessions"):
             self.repository.revoke_other_sessions(
                 user_id=user_id, current_session_id=current_session_id, revoked_at=now
@@ -307,7 +313,7 @@ class AuthService:
             self.repository.revoke_session(session.session_id, revoked_at=now)
 
     def _revoke_user_sessions(self, *, user_id: str) -> None:
-        now = _now()
+        now = utc_now_iso_z()
         if has_repo_method(self.repository, "revoke_user_sessions"):
             self.repository.revoke_user_sessions(user_id=user_id, revoked_at=now)
             return
@@ -321,10 +327,6 @@ def normalize_username(username: str) -> str:
 
 def principal_for_user(user: User) -> Principal:
     return Principal(user_id=user.user_id, tenant_id=user.tenant_id, scopes=("chat", "branches"))
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _now_plus(seconds: int) -> str:

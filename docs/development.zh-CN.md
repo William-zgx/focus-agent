@@ -84,6 +84,27 @@ focus-agent-retrieval-index doctor
 focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
+命令行入口在 `pyproject.toml` 的 `[project.scripts]` 中声明，指向
+`src/focus_agent/cli/`（另有 `focus_agent.api.cli` 和 `focus_agent.prompts.cli`）；
+模块形式为 `python -m focus_agent.cli.<name>`。包以 editable 模式安装，测试和命令行
+入口都会解析到 `.venv` 安装时所在的 checkout。拉取移动了模块或入口的改动后，或切换
+checkout/worktree 后，先重新执行 `make install`（或 `make install-anthropic`）再跑测试。
+
+## 代码组织
+
+共享辅助函数集中在少数叶子模块中，新增本地副本前先复用它们：
+
+- `src/focus_agent/core/message_utils.py`：消息类型判断（`message_type_name`、
+  `is_ai_message_type` 等）和 `clip_text`
+- `src/focus_agent/core/time_utils.py`：`utc_now`、`utc_now_iso`、`utc_now_iso_z`
+- `src/focus_agent/core/coercion.py`：宽松类型转换（`positive_int`、
+  `non_negative_int`、`float_or_none`、`optional_str`）
+- `src/focus_agent/repositories/_postgres_base.py`：`PostgresMixin`（Postgres 仓储共用的
+  `__init__` 与 connection/cursor 辅助）和 `decode_json_payload`
+
+Agent Team 服务位于 `src/focus_agent/services/agent_team/` 包（规划在
+`services/agent_team/planning/`），图助手模块位于 `src/focus_agent/engine/graph/`。
+
 ## 常见开发流
 
 ### 只跑后端
@@ -140,7 +161,7 @@ architecture gate 对非生成源码使用规范化的 800 行上限。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-89 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+81 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，
@@ -181,7 +202,7 @@ uv run pytest tests/test_contract_checks.py
 
 这些生成物是受版本控制的源码。当 `make sdk-openapi-types-check` 打印 diff 时，要提交重新生成的 `docs/api/openapi.json` 和 `frontend-sdk/src/types/__generated__.ts`；当 `make contract-check` 报 SDK/API drift 时，用 `uv run python scripts/check_contracts.py --update` 更新对应 `tests/contracts/*.json` snapshot，并先 review snapshot diff 再提交。
 
-3. 如果改动影响 frontend SDK 实现，尤其是 `src/client.ts`、`src/client/`、`src/types.ts`、`src/types/`、`src/transport.ts`、`src/parser.ts`、`src/reducers.ts`、`src/toolProtocol.ts`、`src/guards.ts` 或 transport validation 文件：
+3. 如果改动影响 frontend SDK 实现，尤其是 `frontend-sdk/src/client.ts`、`frontend-sdk/src/client/`、`frontend-sdk/src/types.ts`、`frontend-sdk/src/types/`、`frontend-sdk/src/transport.ts`、`frontend-sdk/src/parser.ts`、`frontend-sdk/src/reducers.ts`、`frontend-sdk/src/toolProtocol.ts`、`frontend-sdk/src/guards.ts` 或 transport validation 文件：
 
 ```bash
 make sdk-check
@@ -200,7 +221,7 @@ make web-check
 make web-build
 ```
 
-包级 `web-lint` / `web-format-check` 脚本目前有意只覆盖 `src/entities` 和 `src/features/trajectory-observability`；`make web-lint-full` 和 `make web-format-check-full` 覆盖完整 `apps/web/src`。`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
+包级 `web-lint` / `web-format-check` 脚本目前有意只覆盖 `apps/web/src/entities` 和 `apps/web/src/features/trajectory-observability`；`make web-lint-full` 和 `make web-format-check-full` 覆盖完整 `apps/web/src`。`make web-check` 和 `make web-build` 仍是完整 Web App 类型检查和构建门禁。
 
 如果是较大的前端或 runtime 重构，请跑维护中的前端质量组合：
 

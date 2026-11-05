@@ -19,6 +19,7 @@ from .models import (
     MemoryVisibility,
     MemoryWriteRequest,
 )
+from .text import latest_message_text
 
 
 class MemoryExtractor:
@@ -48,7 +49,7 @@ class MemoryExtractor:
         context: RequestContext,
     ) -> list[MemoryWriteRequest]:
         records: list[MemoryWriteRequest] = []
-        latest_user = _latest_message_text(state.get("messages", []), HumanMessage)
+        latest_user = latest_message_text(state.get("messages", []), HumanMessage)
         inferred = self._extract_explicit_user_memory(latest_user=latest_user, context=context)
         if inferred is not None:
             records.append(inferred)
@@ -112,8 +113,8 @@ class MemoryExtractor:
         state: dict[str, Any],
     ) -> MemoryWriteRequest | None:
         messages = state.get("messages", [])
-        last_user = _latest_message_text(messages, HumanMessage)
-        last_ai = _latest_message_text(messages, AIMessage)
+        last_user = latest_message_text(messages, HumanMessage)
+        last_ai = latest_message_text(messages, AIMessage)
         if _looks_like_low_signal_ack(last_ai):
             return None
         if not last_ai:
@@ -168,14 +169,6 @@ class MemoryExtractor:
                 importance=0.8,
             )
         return None
-
-
-def _latest_message_text(messages: list[Any], message_type: type) -> str:
-    for message in reversed(messages):
-        if isinstance(message, message_type):
-            content = getattr(message, "content", "")
-            return str(content).strip()
-    return ""
 
 
 def _turn_summary_source_thread_id(*, context: RequestContext, state: dict[str, Any]) -> str:

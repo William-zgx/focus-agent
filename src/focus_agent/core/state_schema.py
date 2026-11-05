@@ -58,8 +58,6 @@ AgentStateKey: TypeAlias = Literal[
     "active_skill_ids",
     "available_skills_block",
     "active_skills_block",
-    "context_extra_blocks",
-    "context_pipeline_meta",
     "selected_model",
     "selected_thinking_mode",
     "role_route_plan",
@@ -295,8 +293,6 @@ ALL_AGENT_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "active_skill_ids",
     "available_skills_block",
     "active_skills_block",
-    "context_extra_blocks",
-    "context_pipeline_meta",
     "selected_model",
     "selected_thinking_mode",
     "role_route_plan",
@@ -351,8 +347,6 @@ CONVERSATION_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "active_skill_ids",
     "available_skills_block",
     "active_skills_block",
-    "context_extra_blocks",
-    "context_pipeline_meta",
 )
 BRANCH_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "branch_meta",
@@ -481,8 +475,6 @@ OBSERVABILITY_STATE_FIELDS: tuple[AgentStateKey, ...] = (
     "critic_gate_result",
     "memory_retrieval_plan",
     "memory_write_result",
-    "context_extra_blocks",
-    "context_pipeline_meta",
 )
 STATE_DOMAIN_FIELDS: Mapping[AgentStateDomain, tuple[AgentStateKey, ...]] = MappingProxyType(
     {

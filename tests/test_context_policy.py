@@ -16,7 +16,7 @@ from focus_agent.core.types import (
     FindingItem,
     PromptMode,
 )
-from focus_agent.engine.graph_output_language import (
+from focus_agent.engine.graph.output_language import (
     enforce_temporal_anchor,
     repair_chinese_output,
 )

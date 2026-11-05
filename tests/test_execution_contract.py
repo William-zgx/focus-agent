@@ -4,14 +4,14 @@ import json
 
 from langchain.messages import AIMessage, ToolMessage
 
-from focus_agent.engine.graph_evidence import normalize_evidence_bundle, normalize_evidence_ledger
-from focus_agent.engine.graph_execution_contract import (
+from focus_agent.engine.graph.evidence import normalize_evidence_bundle, normalize_evidence_ledger
+from focus_agent.engine.graph.execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
     tool_result_names,
     verify_answer_against_evidence,
 )
-from focus_agent.engine.graph_execution_facts import skill_execution_evidence_facts
+from focus_agent.engine.graph.execution_facts import skill_execution_evidence_facts
 
 
 def test_live_web_contract_requires_search_after_temporal_anchor_only():
@@ -63,6 +63,43 @@ def test_live_web_contract_requires_explicit_search_and_fetch_tools():
     assert only_search["status"] == "missing_required_tools"
     assert only_search["missing"] == ["web_fetch"]
     assert both_tools["status"] == "satisfied"
+
+
+def test_live_web_contract_accepts_web_fetch_evidence_for_default_search_requirement():
+    contract = build_execution_contract(
+        policy="live_web_research",
+        temporal_anchor_required=True,
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["current_utc_time", "web_fetch"],
+        evidence_ledger=[{"url": "https://docs.python.org/3.14/whatsnew/3.14.html"}],
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+    without_web = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["current_utc_time"],
+        evidence_ledger=[],
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+
+    assert contract["required_tools"] == ["current_utc_time", "web_search"]
+    assert evaluated["status"] == "satisfied"
+    assert evaluated["missing"] == []
+    assert without_web["missing"] == ["web_search"]
+
+
+def test_source_request_phrases_require_external_evidence():
+    from focus_agent.engine.graph.policy_intent_parsing import requires_external_evidence
+
+    assert requires_external_evidence("列出 3 个 C 扩展的兼容状态，各给来源。")
+    assert requires_external_evidence("每一点给出来源链接")
+    assert requires_external_evidence("Summarize the release notes with sources")
+    assert not requires_external_evidence("不要给来源，直接说结论")
+    assert not requires_external_evidence("提供来源代码的说明")
+    assert not requires_external_evidence("给出处理方案")
 
 
 def test_skill_execution_contract_requires_primary_tool_result():
@@ -918,7 +955,7 @@ def test_recent_few_weeks_uses_rolling_thirty_day_window():
 def test_fresh_evidence_window_follows_the_requested_period():
     from datetime import date
 
-    from focus_agent.engine.graph_execution_contract import _fresh_evidence_min_date
+    from focus_agent.engine.graph.execution_contract import _fresh_evidence_min_date
 
     today = date(2026, 10, 7)
     # An explicit year is the window, not "published today".
@@ -928,7 +965,7 @@ def test_fresh_evidence_window_follows_the_requested_period():
 
 
 def test_undated_fetched_page_counts_as_current_for_long_windows_only():
-    from focus_agent.engine.graph_execution_contract import _freshness_issue
+    from focus_agent.engine.graph.execution_contract import _freshness_issue
 
     page = {
         "source_tool": "web_fetch",

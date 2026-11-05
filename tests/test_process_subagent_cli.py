@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from focus_agent import task_cli
+from focus_agent.cli import task as task_cli
 from focus_agent.harness.runtime import RunManager
 from focus_agent.harness.subagents import SubagentExecutor, SubagentTaskRequest
 from focus_agent.harness.subagents.process_runner import (
@@ -97,7 +97,7 @@ def test_task_cli_module_command_emits_success_without_network():
         [
             sys.executable,
             "-m",
-            "focus_agent.task_cli",
+            "focus_agent.cli.task",
             "task",
             "run",
             "--thread-id",
@@ -128,7 +128,7 @@ def test_task_cli_module_command_emits_failure_envelope_without_network():
         [
             sys.executable,
             "-m",
-            "focus_agent.task_cli",
+            "focus_agent.cli.task",
             "task",
             "run",
             "--thread-id",
@@ -352,7 +352,7 @@ def _task_cli_script(directory: Path) -> Path:
             f"{sys.executable}\n"
             "import sys\n"
             f"sys.path.insert(0, {str(_SOURCE_ROOT)!r})\n"
-            "from focus_agent.task_cli import main\n"
+            "from focus_agent.cli.task import main\n"
             "raise SystemExit(main())\n"
         ),
     )

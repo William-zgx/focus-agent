@@ -144,7 +144,7 @@ def test_alert_report_fails_closed_on_firing_alerts_or_missing_rules() -> None:
 def test_postgres_migration_report_accepts_report_or_command_evidence() -> None:
     passed = evaluate_postgres_migration_report(
         {
-            "command": "uv run python -m focus_agent.migrate_local_state --report-path reports/pg.json",
+            "command": "uv run python -m focus_agent.cli.migrate_local_state --report-path reports/pg.json",
             "status": "passed",
         }
     )

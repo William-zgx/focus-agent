@@ -3,14 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from ..core.branching import ImportedConclusion
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem
 from ..retrieval import RetrievalIndex
 from ..storage.namespaces import (
     branch_local_memory_namespace,
-    conversation_main_namespace,
-    root_thread_episodic_namespace,
 )
 from .dedupe import (
     has_textual_overlap,
@@ -155,27 +152,6 @@ class MemoryWriter:
                 )
         return outcome
 
-    def write_turn_summary(self, *, context: RequestContext, summary: str) -> str | None:
-        if not summary.strip():
-            return None
-        keys = self.write_records(
-            [
-                MemoryWriteRequest(
-                    kind=MemoryKind.TURN_SUMMARY,
-                    scope=MemoryScope.ROOT_THREAD,
-                    visibility=MemoryVisibility.PRIVATE,
-                    namespace=root_thread_episodic_namespace(context.root_thread_id),
-                    content=summary,
-                    summary=summary[:240],
-                    root_thread_id=context.root_thread_id,
-                    user_id=context.user_id,
-                    source_thread_id=_turn_summary_source_thread_id(context=context),
-                    source_branch_id=context.branch_id,
-                )
-            ]
-        )
-        return keys[0] if keys else None
-
     def write_branch_findings(
         self,
         *,
@@ -226,57 +202,6 @@ class MemoryWriter:
             else:
                 skipped.append({"summary": record.summary or record.content[:80], "reason": reason})
         return accepted, skipped
-
-    def write_imported_conclusion(
-        self, *, context: RequestContext, imported: ImportedConclusion
-    ) -> str:
-        keys = self.write_records(
-            [
-                MemoryWriteRequest(
-                    kind=MemoryKind.IMPORTED_CONCLUSION,
-                    scope=MemoryScope.ROOT_THREAD,
-                    visibility=MemoryVisibility.SHARED,
-                    namespace=conversation_main_namespace(context.root_thread_id),
-                    content=imported.summary,
-                    summary=imported.summary,
-                    evidence_refs=imported.evidence_refs,
-                    source_thread_id=context.parent_thread_id or context.root_thread_id,
-                    source_branch_id=imported.branch_id,
-                    root_thread_id=context.root_thread_id,
-                    user_id=context.user_id,
-                    tags=[imported.branch_name, imported.mode.value],
-                    promoted_to_main=True,
-                )
-            ]
-        )
-        return keys[0]
-
-    def promote_branch_findings(
-        self,
-        *,
-        context: RequestContext,
-        branch_id: str,
-        findings: list[FindingItem],
-    ) -> list[str]:
-        records = [
-            MemoryWriteRequest(
-                kind=MemoryKind.BRANCH_FINDING,
-                scope=MemoryScope.ROOT_THREAD,
-                visibility=MemoryVisibility.SHARED,
-                namespace=conversation_main_namespace(context.root_thread_id),
-                content=item.finding,
-                summary=item.finding,
-                evidence_refs=item.evidence_refs,
-                source_thread_id=context.parent_thread_id or context.root_thread_id,
-                source_branch_id=branch_id,
-                root_thread_id=context.root_thread_id,
-                user_id=context.user_id,
-                confidence=item.confidence,
-                promoted_to_main=True,
-            )
-            for item in findings
-        ]
-        return self.write_records(records)
 
     def _upsert_record(self, record: MemoryWriteRequest) -> tuple[str, str]:
         existing = self._find_existing_record(record)

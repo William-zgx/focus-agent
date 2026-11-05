@@ -77,7 +77,7 @@ def _passing_postgres_migration_report_path(tmp_path: Path) -> Path:
     return _write_json(
         tmp_path / "postgres-migration.json",
         {
-            "command": "uv run python -m focus_agent.migrate_local_state --report-path reports/pg.json",
+            "command": "uv run python -m focus_agent.cli.migrate_local_state --report-path reports/pg.json",
             "errors": [],
             "passed": True,
             "status": "passed",
@@ -532,7 +532,7 @@ def test_release_health_check_postgres_migration_report_blocks_release(tmp_path:
     postgres_report = _write_json(
         tmp_path / "postgres-migration-failed.json",
         {
-            "command": "uv run python -m focus_agent.migrate_local_state",
+            "command": "uv run python -m focus_agent.cli.migrate_local_state",
             "errors": ["schema drift"],
             "status": "failed",
         },

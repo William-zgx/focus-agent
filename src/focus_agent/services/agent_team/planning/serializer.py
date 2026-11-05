@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from focus_agent.services.agent_team.planning.models import *  # noqa: F401,F403
+from focus_agent.services.agent_team.planning.models import __all__ as _models_all
+from focus_agent.services.agent_team.planning.support import _task_draft_from_spec
 from focus_agent.skills import SkillRegistry
 
-from ...agent_team_planning_models import *  # noqa: F401,F403
-from ...agent_team_planning_models import __all__ as _models_all
-from ...agent_team_planning_support import _task_draft_from_spec
 
-
-def _skill_plan_for_session(settings: Any | None, session: Any) -> dict[str, Any]:
+def _skill_plan_for_session(
+    settings: Any | None, session: Any, *, skill_registry: Any | None = None
+) -> dict[str, Any]:
     if settings is None or not bool(getattr(settings, "agent_team_skill_scout_enabled", True)):
         return {}
 
-    registry = SkillRegistry.from_settings(settings)
+    registry = skill_registry or SkillRegistry.from_settings(settings)
     selection = registry.select_for_message(session.goal)
     candidates = registry.search_skills(session.goal, scope="installed", limit=5)
     selected_skills = [

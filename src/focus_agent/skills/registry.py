@@ -190,14 +190,6 @@ class SkillRegistry(SkillRegistryManagementMixin, SkillRegistryDiscoveryMixin):
     def disabled_skill_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._disabled_skill_ids))
 
-    def set_disabled_skill_ids(self, disabled_skill_ids: Iterable[str]) -> None:
-        self._disabled_skill_ids = {
-            _normalize_skill_id(skill_id)
-            for skill_id in disabled_skill_ids
-            if str(skill_id).strip()
-        }
-        self._reindex()
-
     def is_skill_enabled(self, skill_id: str) -> bool:
         return self._enabled and _normalize_skill_id(skill_id) not in self._disabled_skill_ids
 

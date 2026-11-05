@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+from focus_agent.cli.retrieval_index import build_parser
 from focus_agent.core.agent_team import (
     AgentTeamArtifactKind,
     AgentTeamSession,
@@ -40,7 +41,6 @@ from focus_agent.retrieval.workspace import (
     WorkspaceSemanticSearchService,
     index_workspace,
 )
-from focus_agent.retrieval_index_cli import build_parser
 
 
 class _FakeEmbeddingProvider:

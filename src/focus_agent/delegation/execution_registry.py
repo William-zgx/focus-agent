@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import Field
 
 from ..config import Settings
+from ..core.coercion import non_negative_int, positive_int
 from ..core.types import StateModel
 from .delegation_models import AgentTask
 from .execution_modes import DelegationExecutionMode, ModelFactory
@@ -25,14 +26,12 @@ class SubagentRegistry(StateModel):
             role: SubagentConfig(
                 role=role,
                 model_id=resolver.resolve(role),
-                max_turns=_safe_positive_int(
-                    getattr(settings, "agent_subagent_max_turns", 1), default=1
-                ),
-                timeout_seconds=_safe_positive_int(
+                max_turns=positive_int(getattr(settings, "agent_subagent_max_turns", 1), default=1),
+                timeout_seconds=positive_int(
                     getattr(settings, "agent_subagent_timeout_seconds", 30),
                     default=30,
                 ),
-                max_depth=_safe_non_negative_int(
+                max_depth=non_negative_int(
                     getattr(settings, "agent_subagent_max_depth", 1), default=1
                 ),
                 context_refs=refs,
@@ -89,22 +88,6 @@ def executor_for_mode(
     return BackgroundDelegatedRunExecutor(
         model=model, model_factory=model_factory, settings=settings, max_workers=max_workers
     )
-
-
-def _safe_positive_int(value: Any, *, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(1, parsed)
-
-
-def _safe_non_negative_int(value: Any, *, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(0, parsed)
 
 
 __all__ = [

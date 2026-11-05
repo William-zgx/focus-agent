@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from typing import Any
-
 from psycopg.types.json import Jsonb
 
 from focus_agent.core.productivity import (
@@ -12,7 +9,6 @@ from focus_agent.core.productivity import (
     FocusTaskEventKind,
     FocusTaskStatus,
 )
-from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ._postgres_base import PostgresMixin
 from .postgres_schema import ensure_app_postgres_schema_on_connection
@@ -20,26 +16,9 @@ from .productivity_repository import ProductivityRepository, _task_event
 
 
 class PostgresProductivityRepository(PostgresMixin, ProductivityRepository):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def setup(self) -> None:
         with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
-
-    @staticmethod
-    def _decode_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
 
     @classmethod
     def _note_from_row(cls, row: dict[str, object]) -> FocusNote:

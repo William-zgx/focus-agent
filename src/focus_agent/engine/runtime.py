@@ -4,7 +4,6 @@ import logging
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from typing import Any
 
 from ..branch_decision import BranchDecisionService
 from ..capabilities import ToolRegistry, build_tool_registry
@@ -67,9 +66,6 @@ from .runtime_composition import (
 )
 from .runtime_composition import (
     create_memory_embedding_service as _create_memory_embedding_service_impl,
-)
-from .runtime_composition import (
-    create_runtime_graph as _create_runtime_graph_impl,
 )
 from .runtime_composition import (
     create_runtime_harness as _create_runtime_harness_impl,
@@ -180,19 +176,9 @@ class AppRuntime:
     coordination_backend: CoordinationBackend
     postgres_connection_provider: PostgresConnectionProvider | None
     _exit_stack: ExitStack
-    # Newly-integrated components
-    focus_agent: Any | None = None
-    agent_registry: Any | None = None
-    extension_registry: Any | None = None
-    permission_manager: Any | None = None
-    system_agent_runner: Any | None = None
-    context_pipeline: Any | None = None
 
     def close(self) -> None:
         self._exit_stack.close()
-
-    def conversation_store_namespace(self, context: RequestContext) -> tuple[str, ...]:
-        return conversation_namespace_for_context(context)
 
     def start_durable_background_worker(
         self, chat_service: object
@@ -282,7 +268,6 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         user_repository=persistence.user_repository,
         store=persistence.store,
         memory_writer=memory.memory_writer,
-        memory_repository=persistence.memory_repository,
         productivity_repository=persistence.productivity_repository,
         governance_repository=governance_repository,
         memory_embedding_provider=memory.memory_embedding_provider,
@@ -333,53 +318,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         postgres_connection_provider=persistence.postgres_connection_provider,
         _exit_stack=exit_stack,
     )
-    _attach_new_runtime_components(
-        runtime,
-        harness=harness,
-        memory=memory,
-        registries=registries,
-    )
-    return runtime
-
-
-def _attach_new_runtime_components(
-    runtime: AppRuntime,
-    *,
-    harness: object,
-    memory: RuntimeMemoryComponents,
-    registries: RuntimeRegistries,
-) -> None:
-    """Wire up the facade/registries/pipeline onto the runtime."""
-
     try:
         runtime.agent_team_service._agent_team_runtime = runtime
     except Exception:  # noqa: BLE001
         logger.debug("Agent Team runtime readiness context unavailable", exc_info=True)
-
-    # a) FocusAgent facade
-    try:
-        from ..harness.agents.facade import FocusAgent
-
-        runtime.focus_agent = FocusAgent(harness)
-    except Exception:  # noqa: BLE001
-        logger.debug("FocusAgent facade unavailable", exc_info=True)
-
-    # b-e) Expose harness-held registries/managers
-    runtime.agent_registry = getattr(harness, "agent_definition_registry", None)
-    runtime.extension_registry = getattr(harness, "extension_registry", None)
-    runtime.permission_manager = getattr(harness, "permission_manager", None)
-    runtime.system_agent_runner = getattr(harness, "system_agent_runner", None)
-
-    # f) Default context pipeline
-    try:
-        from ..engine.context_pipeline import create_default_pipeline
-
-        runtime.context_pipeline = create_default_pipeline(
-            memory_retriever=memory.memory_retriever,
-            skill_registry=registries.skill_registry,
-        )
-    except Exception:  # noqa: BLE001
-        logger.debug("Context pipeline unavailable", exc_info=True)
+    return runtime
 
 
 def _start_multi_agent_maintenance_worker(
@@ -521,22 +464,6 @@ def _create_runtime_registries(
     )
 
 
-def _create_runtime_graph(
-    *,
-    settings: Settings,
-    persistence: RuntimePersistence,
-    memory: RuntimeMemoryComponents,
-    registries: RuntimeRegistries,
-) -> object:
-    return _create_runtime_graph_impl(
-        settings=settings,
-        persistence=persistence,
-        memory=memory,
-        registries=registries,
-        graph_builder=build_graph,
-    )
-
-
 def _create_runtime_harness(
     *,
     settings: Settings,
@@ -563,7 +490,6 @@ def _create_runtime_services(
     user_repository: UserRepository,
     store: object,
     memory_writer: MemoryWriter,
-    memory_repository: object | None,
     productivity_repository: ProductivityRepository,
     governance_repository: object,
     memory_embedding_provider: object | None,

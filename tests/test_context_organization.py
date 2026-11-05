@@ -8,8 +8,8 @@ from focus_agent.core.context_compaction import build_incremental_compaction_upd
 from focus_agent.core.context_policy import assemble_context
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import FindingItem, PromptMode
-from focus_agent.engine.graph_memory_nodes import make_assemble_context_node
-from focus_agent.engine.graph_tool_history_repair import _messages_for_model
+from focus_agent.engine.graph.memory_nodes import make_assemble_context_node
+from focus_agent.engine.graph.tool_history_repair import _messages_for_model
 from focus_agent.memory import MemoryKind, MemoryRecord, MemoryScope
 from focus_agent.services.branches.lifecycle import _local_snapshot_seed_values
 from focus_agent.skills import SkillRegistry

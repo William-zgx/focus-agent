@@ -21,8 +21,9 @@ from focus_agent.core.agent_team import (
     ToolExecution,
 )
 
+from ..core.time_utils import utc_now
 from ._sqlite_base import SQLiteRepositoryBase
-from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
+from .agent_team_repository import AgentTeamRepository, _format_time, _parse_time
 
 _EXECUTION_RECORD_MODELS: dict[str, type[BaseModel]] = {
     "task_runs": TaskRun,
@@ -287,7 +288,7 @@ class SQLiteAgentTeamRepository(SQLiteRepositoryBase, AgentTeamRepository):
                 conn.rollback()
                 raise KeyError(f"Unknown agent team task: {task_id}")
             task = self._task_from_row(row)
-            now = _now()
+            now = utc_now()
             if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
                 conn.rollback()
                 return None
@@ -331,7 +332,7 @@ class SQLiteAgentTeamRepository(SQLiteRepositoryBase, AgentTeamRepository):
                 conn.rollback()
                 raise KeyError(f"Unknown agent team task: {task_id}")
             task = self._task_from_row(row)
-            now = _now()
+            now = utc_now()
             if task.claim_token != claim_token or (
                 task.claimed_until and _parse_time(task.claimed_until) <= now
             ):
@@ -371,7 +372,7 @@ class SQLiteAgentTeamRepository(SQLiteRepositoryBase, AgentTeamRepository):
                 conn.rollback()
                 raise KeyError(f"Unknown agent team task: {task_id}")
             task = self._task_from_row(row)
-            now_dt = _now()
+            now_dt = utc_now()
             if task.claim_token != claim_token or (
                 task.claimed_until and _parse_time(task.claimed_until) <= now_dt
             ):

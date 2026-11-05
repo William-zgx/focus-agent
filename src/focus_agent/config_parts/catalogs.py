@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
+from ..core.coercion import optional_str
 from .catalog_config_types import (
     ApplyPatchToolConfig,
     ArtifactListToolConfig,
@@ -44,7 +45,7 @@ from .catalog_config_types import (
     WorkspaceTreeToolConfig,
     WriteTextArtifactToolConfig,
 )
-from .common import _normalize_optional_string, _split_csv
+from .common import _split_csv
 from .env import parse_bool
 
 DEFAULT_MODEL_CATALOG_DOC = ".focus_agent/models.toml"
@@ -132,7 +133,7 @@ def _validate_provider_id(provider_id: str, *, source: str, location: str) -> No
 
 
 def _normalize_provider_id(raw: object, *, source: str, location: str) -> str:
-    provider_id = _normalize_optional_string(raw)
+    provider_id = optional_str(raw)
     if provider_id is None:
         raise _catalog_error(source, f"{location}.id is required.")
     provider_id = provider_id.lower()
@@ -177,11 +178,11 @@ def _tool_enabled(raw: object, default: bool = True) -> bool:
 
 
 def _tool_label(raw: object, default: str) -> str:
-    return _normalize_optional_string(raw) or default
+    return optional_str(raw) or default
 
 
 def _tool_description(raw: object, default: str) -> str:
-    return _normalize_optional_string(raw) or default
+    return optional_str(raw) or default
 
 
 def _load_basic_tool_config(
@@ -208,7 +209,7 @@ def _load_basic_tool_config(
         elif field_name in int_fields:
             values[field_name] = int(raw_section.get(field_name, default_value))
         elif field_name in optional_string_fields:
-            values[field_name] = _normalize_optional_string(raw_value) or default_value
+            values[field_name] = optional_str(raw_value) or default_value
         elif field_name in tuple_fields:
             values[field_name] = _split_listish(raw_value) or default_value
         else:
@@ -492,7 +493,7 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
     for index, item in enumerate(raw.get("providers", []) or []):
         if not isinstance(item, dict):
             raise _catalog_error(source, f"providers[{index}] must be a TOML table.")
-        provider_id = _normalize_optional_string(item.get("id"))
+        provider_id = optional_str(item.get("id"))
         if provider_id is None:
             raise _catalog_error(source, f"providers[{index}].id is required.")
         provider_id = provider_id.lower()
@@ -503,15 +504,15 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
         provider_entries.append(
             ProviderConfig(
                 id=provider_id,
-                label=_normalize_optional_string(item.get("label")),
-                backend_provider=_normalize_optional_string(item.get("backend_provider")),
+                label=optional_str(item.get("label")),
+                backend_provider=optional_str(item.get("backend_provider")),
                 aliases=tuple(alias.lower() for alias in _split_listish(item.get("aliases"))),
-                logo_slug=_normalize_optional_string(item.get("logo_slug")),
-                logo_letter=_normalize_optional_string(item.get("logo_letter")),
-                base_url_env=_normalize_optional_string(item.get("base_url_env")),
-                base_url_default=_normalize_optional_string(item.get("base_url_default")),
-                api_key_env=_normalize_optional_string(item.get("api_key_env")),
-                api_key_default=_normalize_optional_string(item.get("api_key_default")),
+                logo_slug=optional_str(item.get("logo_slug")),
+                logo_letter=optional_str(item.get("logo_letter")),
+                base_url_env=optional_str(item.get("base_url_env")),
+                base_url_default=optional_str(item.get("base_url_default")),
+                api_key_env=optional_str(item.get("api_key_env")),
+                api_key_default=optional_str(item.get("api_key_default")),
             )
         )
     aliases = _validate_provider_aliases(tuple(provider_entries), source=source)
@@ -521,7 +522,7 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
     for index, item in enumerate(raw.get("models", []) or []):
         if not isinstance(item, dict):
             raise _catalog_error(source, f"models[{index}] must be a TOML table.")
-        model_id = _normalize_optional_string(item.get("id"))
+        model_id = optional_str(item.get("id"))
         if model_id is None:
             raise _catalog_error(source, f"models[{index}].id is required.")
         provider_name = _model_provider_name(model_id)
@@ -532,7 +533,7 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
         if model_key in seen_model_ids:
             raise _catalog_error(source, f"models[{index}].id duplicates {model_key!r}.")
         seen_model_ids.add(model_key)
-        protocol = (_normalize_optional_string(item.get("protocol")) or "chat").lower()
+        protocol = (optional_str(item.get("protocol")) or "chat").lower()
         if protocol not in _MODEL_PROTOCOLS:
             allowed = ", ".join(sorted(_MODEL_PROTOCOLS))
             raise _catalog_error(
@@ -542,7 +543,7 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
         model_entries.append(
             ConfiguredModel(
                 id=model_id,
-                label=_normalize_optional_string(item.get("label")),
+                label=optional_str(item.get("label")),
                 protocol=protocol,
                 supports_thinking=parse_bool(item.get("supports_thinking")),
                 default_thinking_enabled=parse_bool(item.get("default_thinking_enabled")),
@@ -553,26 +554,24 @@ def load_model_catalog_toml(content: str, *, source: str = "model catalog") -> M
                 thinking_disabled_request_kwargs=_copy_toml_mapping(
                     item.get("thinking_disabled_request_kwargs")
                 ),
-                thinking_disabled_model_name=_normalize_optional_string(
-                    item.get("thinking_disabled_model_name")
-                ),
-                reasoning_effort=_normalize_optional_string(item.get("reasoning_effort")),
+                thinking_disabled_model_name=optional_str(item.get("thinking_disabled_model_name")),
+                reasoning_effort=optional_str(item.get("reasoning_effort")),
                 no_temperature=parse_bool(item.get("no_temperature")),
-                thinking_enable_extra_body_type=_normalize_optional_string(
+                thinking_enable_extra_body_type=optional_str(
                     item.get("thinking_enable_extra_body_type")
                 ),
-                thinking_disable_extra_body_type=_normalize_optional_string(
+                thinking_disable_extra_body_type=optional_str(
                     item.get("thinking_disable_extra_body_type")
                 ),
-                thinking_disable_switch_model=_normalize_optional_string(
+                thinking_disable_switch_model=optional_str(
                     item.get("thinking_disable_switch_model")
                 ),
             )
         )
 
     return ModelCatalogConfig(
-        default_model=_normalize_optional_string(raw.get("default_model")),
-        helper_model=_normalize_optional_string(raw.get("helper_model")),
+        default_model=optional_str(raw.get("default_model")),
+        helper_model=optional_str(raw.get("helper_model")),
         model_choices=_split_listish(raw.get("model_choices")),
         providers=tuple(provider_entries),
         models=tuple(model_entries),

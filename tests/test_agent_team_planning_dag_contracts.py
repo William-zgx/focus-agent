@@ -1,8 +1,8 @@
 from focus_agent.core.agent_team import AgentTeamTaskRole
-from focus_agent.services.agent_team_planning_dag_contracts import (
+from focus_agent.services.agent_team.planning.dag_contracts import (
     _resource_claims_for_deliverable,
 )
-from focus_agent.services.agent_team_planning_models import MissionDeliverable
+from focus_agent.services.agent_team.planning.models import MissionDeliverable
 
 
 def _deliverable(

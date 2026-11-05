@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from focus_agent.services.agent_team_approval_resume import (
+from focus_agent.services.agent_team.approval_resume import (
     AgentTeamApprovalResumeService,
     AgentTeamApprovalStatus,
     InMemoryAgentTeamApprovalTaskState,

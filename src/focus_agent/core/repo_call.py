@@ -41,3 +41,18 @@ def safe_repo_call(
         raise
     except except_errors:
         return default_error
+
+
+def snapshot_metrics(source: Any, error_key: str) -> dict[str, Any]:
+    """Return ``source.snapshot()`` as a dict, or ``{error_key: 1}`` when it fails."""
+
+    snapshot = safe_repo_call(
+        source,
+        "snapshot",
+        default_missing={},
+        default_error={error_key: 1},
+    )
+    try:
+        return dict(snapshot)
+    except Exception:  # noqa: BLE001
+        return {error_key: 1}

@@ -4,7 +4,7 @@ import hashlib
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
@@ -122,10 +122,6 @@ class TurnTrajectoryRecord:
             "finished_at": self.finished_at.isoformat(),
             "trajectory": [step.to_dict() for step in self.trajectory],
         }
-
-
-def utc_now() -> datetime:
-    return datetime.now(UTC)
 
 
 def extract_trajectory_steps(

@@ -1,0 +1,355 @@
+from __future__ import annotations
+
+import json
+from copy import deepcopy
+from typing import Any
+
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.runtime import Runtime
+from langgraph.types import interrupt
+
+from focus_agent.config import Settings
+from focus_agent.core.branch_brief import fork_brief_goal_update
+from focus_agent.core.context.policy import assemble_context as build_context_slice
+from focus_agent.core.merge_review_inputs import finding_text
+from focus_agent.core.request_context import RequestContext
+from focus_agent.core.state import AgentState
+from focus_agent.core.types import FindingItem, PromptMode
+from focus_agent.delegation.context_engineering import build_context_engineering_decision
+from focus_agent.engine.graph.tool_history_repair import _latest_human_message_text
+from focus_agent.engine.graph.tool_result_fallback import (
+    _context_budget_from_state,
+    _latest_final_ai_text,
+)
+from focus_agent.memory import (
+    MemoryExtractor,
+    MemoryRetriever,
+    MemoryWriter,
+    MemoryWriteRequest,
+    render_memory_block,
+)
+from focus_agent.skills import SkillRegistry
+
+
+def _resolve_prompt_mode(state: AgentState) -> PromptMode:
+    stored = state.get("prompt_mode")
+    if isinstance(stored, PromptMode):
+        return stored
+    if isinstance(stored, str):
+        try:
+            return PromptMode(stored)
+        except ValueError:
+            pass
+    if state.get("merge_proposal") and not state.get("merge_decision"):
+        return PromptMode.BRANCH_REVIEW
+    return PromptMode.EXPLORE
+
+
+def make_retrieve_memory_node(
+    memory_retriever: MemoryRetriever,
+) -> Any:
+    def retrieve_memory(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        latest_user = _latest_human_message_text(state.get("messages", []))
+        prompt_mode = _resolve_prompt_mode(state)
+        bundle = memory_retriever.retrieve_for_turn(
+            context=runtime.context,
+            state=dict(state),
+            query=latest_user,
+            prompt_mode=prompt_mode,
+        )
+        return {
+            "retrieved_memories": [
+                {
+                    **hit.record.model_dump(mode="json"),
+                    "score": hit.score,
+                    "matched_terms": hit.matched_terms,
+                }
+                for hit in bundle.hits
+            ],
+            "memory_prompt_block": render_memory_block(bundle),
+            "memory_retrieval_plan": bundle.retrieval_plan,
+            "prompt_mode": prompt_mode,
+        }
+
+    return retrieve_memory
+
+
+def make_assemble_context_node(
+    *,
+    settings: Settings,
+    skill_registry: SkillRegistry,
+) -> Any:
+    def assemble_context(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        latest_user = _latest_human_message_text(state.get("messages", []))
+        prompt_mode = _resolve_prompt_mode(state)
+        active_skill_ids = tuple(
+            runtime.context.skill_hints
+            or tuple(str(item) for item in state.get("active_skill_ids", []) or ())
+        )
+        active_skills_block = skill_registry.render_active_skills_block(active_skill_ids)
+        available_skills_block = skill_registry.render_available_skills_block()
+        prompt_state = dict(state)
+        context_slice = build_context_slice(
+            {
+                **prompt_state,
+                "pinned_items": deepcopy(state.get("pinned_items", [])),
+                "merge_queue": deepcopy(state.get("merge_queue", [])),
+                "_memory_lines": [
+                    item.get("summary") or item.get("content") or str(item)
+                    for item in state.get("retrieved_memories", [])
+                ],
+                "_scene": runtime.context.scene,
+                "_active_skills_block": active_skills_block,
+                "_available_skills_block": available_skills_block,
+            },
+            prompt_mode,
+        )
+        task_brief = state.get("task_brief")
+        if not task_brief and latest_user:
+            task_brief = latest_user[:300]
+        assembled_context = context_slice.render_prompt()
+        updates: dict[str, Any] = {
+            "recent_messages": context_slice.recent_messages,
+            "assembled_context": assembled_context,
+            "task_brief": task_brief or state.get("task_brief", ""),
+            "prompt_mode": prompt_mode,
+            "active_skill_ids": list(active_skill_ids),
+            "active_skills_block": active_skills_block,
+            "available_skills_block": available_skills_block,
+            # Pin the branch goal once the first local user turn supplies it.
+            **fork_brief_goal_update(state),
+        }
+        if settings.agent_context_engineering_v2_enabled:
+            decision = build_context_engineering_decision(
+                settings=settings,
+                state={
+                    **dict(state),
+                    "recent_messages": context_slice.recent_messages,
+                    "context_budget": _context_budget_from_state(state),
+                },
+                prompt_mode=prompt_mode,
+                assembled_context=assembled_context,
+                role="executor",
+                artifact_dir=settings.artifact_dir,
+            ).model_dump(mode="json")
+            compressed_prompt = decision.pop("compressed_prompt", None)
+            if compressed_prompt:
+                updates["assembled_context"] = str(compressed_prompt)
+            updates["context_budget_decision"] = decision.get("budget")
+            updates["context_compression_plan"] = decision.get("compression_plan")
+            updates["context_artifact_refs"] = list(decision.get("artifact_refs") or [])
+            updates["role_context_views"] = list(decision.get("role_context_views") or [])
+            updates["plan_meta"] = {
+                **(state.get("plan_meta") or {}),
+                "context_budget_decision": updates["context_budget_decision"],
+                "context_compression_plan": updates["context_compression_plan"],
+                "context_artifact_refs": updates["context_artifact_refs"],
+                "role_context_views": updates["role_context_views"],
+            }
+        return updates
+
+    return assemble_context
+
+
+def summarize_turn(state: AgentState) -> dict[str, Any]:
+    from focus_agent.core.context_compaction import build_incremental_compaction_update
+
+    previous_meta = (
+        state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}
+    )
+    return build_incremental_compaction_update(
+        state,
+        previous_meta,
+        trigger="turn_summary",
+        force=False,
+    )
+
+
+def _should_extract_memories(state: AgentState) -> bool:
+    verification = state.get("answer_verification") or (state.get("plan_meta") or {}).get(
+        "answer_verification"
+    )
+    if isinstance(verification, dict):
+        status = str(verification.get("status") or "").strip()
+        if status in {"unsupported", "contradicted", "blocked"}:
+            return False
+    reflection = state.get("reflection")
+    reflection_status = getattr(reflection, "status", None) or (
+        reflection.get("status") if isinstance(reflection, dict) else None
+    )
+    if reflection_status == "replan":
+        return False
+    messages = list(state.get("messages", []) or [])
+    if not messages:
+        return False
+    last_message = messages[-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
+        return False
+    return bool(_latest_final_ai_text(messages))
+
+
+def _saved_branch_memory(result: ToolMessage) -> bool:
+    try:
+        payload = json.loads(str(result.content or ""))
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and bool(payload.get("saved"))
+        and payload.get("scope") == "branch"
+    )
+
+
+def branch_memory_tool_findings(
+    state: AgentState, *, branch_id: str | None
+) -> list[dict[str, Any]]:
+    """Branch-scoped ``memory_save`` calls from the latest turn, as branch-local findings."""
+    if not branch_id:
+        return []
+    messages = list(state.get("messages", []) or [])
+    start = max(
+        (index for index, message in enumerate(messages) if isinstance(message, HumanMessage)),
+        default=0,
+    )
+    turn = messages[start:]
+    results = {
+        str(message.tool_call_id): message for message in turn if isinstance(message, ToolMessage)
+    }
+    known = {
+        " ".join(finding_text(item).split())
+        for item in state.get("branch_local_findings", []) or []
+    }
+    findings: list[dict[str, Any]] = []
+    for message in turn:
+        for call in getattr(message, "tool_calls", None) or []:
+            if call.get("name") != "memory_save":
+                continue
+            result = results.get(str(call.get("id") or ""))
+            if result is None or not _saved_branch_memory(result):
+                continue
+            args = call.get("args") or {}
+            text = " ".join(str(args.get("summary") or args.get("content") or "").split())[:400]
+            if not text or text in known:
+                continue
+            known.add(text)
+            findings.append(
+                FindingItem(finding=text, source_branch_id=str(branch_id)).model_dump(mode="json")
+            )
+    return findings
+
+
+def make_extract_memories_node(
+    memory_extractor: MemoryExtractor,
+) -> Any:
+    def extract_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        tool_findings = branch_memory_tool_findings(state, branch_id=runtime.context.branch_id)
+        branch_updates = {"branch_local_findings": tool_findings} if tool_findings else {}
+        if not _should_extract_memories(state):
+            verification = state.get("answer_verification") or (state.get("plan_meta") or {}).get(
+                "answer_verification"
+            )
+            skipped = []
+            if isinstance(verification, dict) and str(verification.get("status") or "") in {
+                "unsupported",
+                "contradicted",
+                "blocked",
+            }:
+                skipped.append(
+                    {
+                        "reason": "answer_verification_failed",
+                        "status": str(verification.get("status") or ""),
+                    }
+                )
+            return {
+                **branch_updates,
+                "memory_write_requests": [],
+                "memory_write_result": {
+                    "prepared": 0,
+                    "written": [],
+                    "merged": [],
+                    "skipped": skipped,
+                    "failed": [],
+                },
+            }
+        extraction = memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
+        return {
+            **branch_updates,
+            "memory_write_requests": [
+                record.model_dump(mode="json") for record in extraction.records
+            ],
+            "memory_write_result": {
+                "prepared": len(extraction.records),
+                "written": [],
+                "merged": [],
+                "skipped": list(extraction.skipped_reasons),
+                "failed": [],
+                "summary": extraction.summary,
+            },
+        }
+
+    return extract_memories
+
+
+def make_write_memories_node(
+    memory_writer: MemoryWriter,
+) -> Any:
+    def write_memories(
+        state: AgentState,
+        runtime: Runtime[RequestContext],
+    ) -> dict[str, Any]:
+        raw_requests = list(state.get("memory_write_requests", []) or [])
+        if not raw_requests:
+            return {
+                "memory_write_requests": [],
+                "memory_write_result": state.get("memory_write_result", {}),
+            }
+        records = [MemoryWriteRequest.model_validate(item) for item in raw_requests]
+        outcome = memory_writer.persist_records(
+            records,
+            context=runtime.context,
+            state=dict(state),
+        )
+        return {
+            "memory_write_requests": [],
+            "memory_write_result": outcome,
+        }
+
+    return write_memories
+
+
+def maybe_interrupt_for_merge(state: AgentState) -> dict[str, Any]:
+    if state.get("merge_proposal") and not state.get("merge_decision"):
+        decision = interrupt(
+            {
+                "kind": "merge_review",
+                "proposal": state["merge_proposal"],
+                "message": (
+                    "Review the branch proposal and choose whether to import it into "
+                    "the parent thread."
+                ),
+            }
+        )
+        return {"merge_decision": decision}
+    return {}
+
+
+__all__ = [
+    "_resolve_prompt_mode",
+    "branch_memory_tool_findings",
+    "_should_extract_memories",
+    "make_assemble_context_node",
+    "make_extract_memories_node",
+    "make_retrieve_memory_node",
+    "make_write_memories_node",
+    "maybe_interrupt_for_merge",
+    "summarize_turn",
+]

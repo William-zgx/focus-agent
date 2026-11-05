@@ -4,9 +4,9 @@ import json
 import sqlite3
 import uuid
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from focus_agent.core.coercion import float_or_none
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.observability.trajectory import TrajectoryStep
 
@@ -131,7 +131,7 @@ def _tool_event_from_journal_event(event: JournalEvent) -> JournalToolEvent | No
         args=_tool_args(data.get("args") or data.get("arguments")),
         result=data.get("result") if "result" in data else data.get("observation"),
         error=_first_str(data, "error"),
-        duration_ms=_optional_float(data.get("duration_ms")),
+        duration_ms=float_or_none(data.get("duration_ms")),
         metadata={key: value for key, value in data.items() if key not in _TOOL_PAYLOAD_KEYS},
         created_at=event.created_at,
     )
@@ -257,15 +257,6 @@ def _first_str(data: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
-def _optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _copy_json(value: T) -> T:
     return json.loads(_json_dumps(value))
 
@@ -285,10 +276,6 @@ def _json_loads_any(value: str | None) -> Any:
     if not value:
         return None
     return json.loads(value)
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _event_id() -> str:

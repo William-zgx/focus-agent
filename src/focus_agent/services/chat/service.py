@@ -21,14 +21,14 @@ from ...core.branching import (
 )
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
+from ...core.time_utils import utc_now
 from ...observability.tracing import (
     TraceCorrelation,
     build_invoke_config,
     build_trace_correlation,
     start_trace_span,
 )
-from ...observability.trajectory import utc_now
-from ...skills.models import SkillSelection
+from ...skills.models import SkillSelection, merge_skill_ids
 from ..branches.actions import (
     latest_pending_branch_action,
     normalize_branch_actions,
@@ -116,9 +116,10 @@ class ChatService(
         branch_meta: BranchMeta | None,
         interrupts: list[Any],
         trace_correlation: TraceCorrelation | None = None,
-        strict_state_read: bool = False,
+        values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        values = self._safe_get_values(thread_id, strict=strict_state_read)
+        if values is None:
+            values = self._safe_get_values(thread_id)
         payload = response_payload(
             thread_id=thread_id,
             user_id=user_id,
@@ -133,7 +134,7 @@ class ChatService(
             trace_correlation=trace_correlation,
         )
         payload["active_skills"] = self._active_skill_metadata(payload.get("active_skill_ids", []))
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is not None and hasattr(
             branch_decision_service, "summary_for_thread"
         ):
@@ -157,7 +158,7 @@ class ChatService(
         )
 
     def _active_skill_metadata(self, skill_ids: Any) -> list[dict[str, Any]]:
-        registry = getattr(self.runtime, "skill_registry", None)
+        registry = self.runtime.skill_registry
         resolve = getattr(registry, "resolve", None)
         is_skill_enabled = getattr(registry, "is_skill_enabled", None)
         active_skills: list[dict[str, Any]] = []
@@ -210,20 +211,6 @@ class ChatService(
                 }
             )
         return active_skills
-
-    @staticmethod
-    def _merged_skill_ids(*skill_id_groups: Any) -> tuple[str, ...]:
-        skill_ids: list[str] = []
-        seen: set[str] = set()
-        for group in skill_id_groups:
-            raw_items = [group] if isinstance(group, str) else list(group or [])
-            for raw_item in raw_items:
-                skill_id = str(raw_item or "").strip()
-                if not skill_id or skill_id in seen:
-                    continue
-                seen.add(skill_id)
-                skill_ids.append(skill_id)
-        return tuple(skill_ids)
 
     @staticmethod
     def _skill_selection_metadata(
@@ -427,7 +414,7 @@ class ChatService(
         message: str,
         request_id: str | None,
     ) -> dict[str, Any] | None:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return None
         recommendation_config = getattr(branch_decision_service, "recommendation_config", None)
@@ -553,7 +540,7 @@ class ChatService(
         }
 
     def _branch_recommendation_turn_enabled(self) -> bool:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return False
         recommendation_config = getattr(branch_decision_service, "recommendation_config", None)
@@ -621,7 +608,7 @@ class ChatService(
         if selection.selection_source in {"explicit", "mixed"} and selection.skill_ids:
             active_skill_ids = tuple(selection.skill_ids)
         else:
-            active_skill_ids = self._merged_skill_ids(
+            active_skill_ids = merge_skill_ids(
                 selection.skill_ids,
                 current_values.get("active_skill_ids", []),
             )
@@ -674,8 +661,17 @@ class ChatService(
     def get_thread_state(
         self, *, thread_id: str, user_id: str, request_id: str | None = None
     ) -> dict[str, Any]:
-        context, branch_meta, _ = self._context_for_thread(thread_id=thread_id, user_id=user_id)
-        self._ensure_access(thread_id=thread_id, user_id=user_id, context=context)
+        # One strict checkpoint read feeds context resolution, interrupts and the
+        # payload; _context_for_thread runs the access check before backfill.
+        snapshot = self._safe_snapshot(thread_id, strict=True)
+        snapshot_values = self._snapshot_values(snapshot)
+        context, branch_meta, values = self._context_for_thread(
+            thread_id=thread_id, user_id=user_id, values=snapshot_values
+        )
+        if values is not snapshot_values:
+            # Backfill wrote imported records; re-read so appended messages carry
+            # the ids assigned by the checkpoint reducers.
+            values = self._safe_get_values(thread_id, strict=True)
         trace_correlation = build_trace_correlation(
             settings=self.runtime.settings,
             request_id=request_id,
@@ -685,9 +681,9 @@ class ChatService(
             user_id=user_id,
             context=context,
             branch_meta=branch_meta,
-            interrupts=self._safe_get_interrupts(thread_id, strict=True),
+            interrupts=self._snapshot_interrupts(snapshot),
             trace_correlation=trace_correlation,
-            strict_state_read=True,
+            values=values,
         )
 
     def _select_skills_for_message(
@@ -696,7 +692,7 @@ class ChatService(
         message: str,
         explicit_skill_hints: tuple[str, ...],
     ) -> SkillSelection:
-        registry = getattr(self.runtime, "skill_registry", None)
+        registry = self.runtime.skill_registry
         if registry is None:
             return SkillSelection(
                 skill_ids=tuple(str(item) for item in explicit_skill_hints),

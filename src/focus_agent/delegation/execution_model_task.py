@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from threading import RLock
 from typing import Any, Literal
 
@@ -12,10 +11,11 @@ from langchain.messages import HumanMessage, SystemMessage
 from focus_agent.prompts import get_registry
 
 from ..config import Settings
+from ..core.time_utils import utc_now_iso
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_types import SubagentConfig, SubagentRunResult
-from .roles import AgentRole
+from .roles import AgentRole, artifact_kind_for_role
 
 _CWD_LOCK = RLock()
 _MODEL_TASK_SYSTEM_PROMPT_ID = "delegation.model_task.system"
@@ -31,7 +31,7 @@ def execute_model_task(
     settings: Settings | None,
     max_result_chars: int,
 ) -> SubagentRunResult:
-    started = utc_now()
+    started = utc_now_iso()
     try:
         runnable = _model_for_task(
             model=model, model_factory=model_factory, config=config, settings=settings
@@ -52,7 +52,7 @@ def execute_model_task(
         status, error = _status_from_output(task, parsed)
         artifact = AgentArtifact(
             artifact_id=f"artifact-{task.task_id}-{mode}-result",
-            kind=artifact_kind(task.role),
+            kind=artifact_kind_for_role(task.role),
             title=f"{task.role.value} {mode} delegated result",
             summary=summary,
             payload={
@@ -82,7 +82,7 @@ def execute_model_task(
             cost=0.0,
             model_id=config.model_id,
             started_at=started,
-            finished_at=utc_now(),
+            finished_at=utc_now_iso(),
             execution_mode=mode,
             workspace_id=config.workspace_id,
             workspace_path=config.workspace_path,
@@ -110,7 +110,7 @@ def failed_result(
         error=error,
         model_id=config.model_id,
         started_at=started_at,
-        finished_at=utc_now(),
+        finished_at=utc_now_iso(),
         execution_mode=mode,
         workspace_id=config.workspace_id,
         workspace_path=config.workspace_path,
@@ -125,7 +125,7 @@ def blocked_result_with_reason(
     mode: DelegationExecutionMode,
     reason: str,
 ) -> SubagentRunResult:
-    now = utc_now()
+    now = utc_now_iso()
     return SubagentRunResult(
         run_id=f"run-{task.task_id}",
         task_id=task.task_id,
@@ -142,24 +142,6 @@ def blocked_result_with_reason(
         workspace_branch=config.workspace_branch,
         base_commit=config.base_commit,
     )
-
-
-def artifact_kind(role: AgentRole) -> str:
-    if role == AgentRole.PLANNER:
-        return "plan"
-    if role == AgentRole.CRITIC:
-        return "critic_verdict"
-    if role == AgentRole.MEMORY_CURATOR:
-        return "memory_candidate"
-    if role == AgentRole.SKILL_SCOUT:
-        return "tool_route_evidence"
-    if role == AgentRole.EXECUTOR:
-        return "patch_summary"
-    return "evidence"
-
-
-def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _model_for_task(
@@ -263,9 +245,7 @@ def _status_from_output(
 
 
 __all__ = [
-    "artifact_kind",
     "blocked_result_with_reason",
     "execute_model_task",
     "failed_result",
-    "utc_now",
 ]

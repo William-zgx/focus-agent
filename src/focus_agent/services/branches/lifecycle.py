@@ -6,13 +6,12 @@ from copy import deepcopy
 
 from ...core.branch_brief import build_fork_brief, pending_fork_handoff_goal
 from ...core.branch_messages import (
-    _is_tool_message_type,
-    _message_type_name,
     branch_seed_messages,
     branch_visible_messages,
 )
 from ...core.branching import BranchMeta, BranchRecord, BranchRole, BranchStatus
 from ...core.merge_review_inputs import fork_inherited_counts_for
+from ...core.message_utils import is_tool_message_type, message_type_name
 from ...core.types import ConversationRecord, PromptMode
 
 logger = logging.getLogger("focus_agent.branches")
@@ -118,7 +117,7 @@ def _parent_values_at_message(parent_values: dict, message_id: str) -> dict:
     cut = next(index for index, item in enumerate(messages) if _message_id(item) == message_id) + 1
     # Keep tool results that answer the cut message so the seed never ends on
     # an unanswered tool call.
-    while cut < len(messages) and _is_tool_message_type(_message_type_name(messages[cut])):
+    while cut < len(messages) and is_tool_message_type(message_type_name(messages[cut])):
         cut += 1
     later_messages = messages[cut:]
     if not later_messages:
@@ -139,7 +138,7 @@ def _parent_values_at_message(parent_values: dict, message_id: str) -> dict:
     later_tool_call_ids = {
         str(getattr(item, "tool_call_id", "") or "")
         for item in later_messages
-        if _is_tool_message_type(_message_type_name(item))
+        if is_tool_message_type(message_type_name(item))
     } - {""}
     cut_values["tool_outcomes"] = [
         item

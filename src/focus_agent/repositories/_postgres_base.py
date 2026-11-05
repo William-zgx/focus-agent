@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -11,9 +12,28 @@ from psycopg.rows import dict_row as dict_row_factory
 from focus_agent.storage.postgres import PostgresConnectionProvider
 
 
+def decode_json_payload(value: object) -> dict[str, Any]:
+    if isinstance(value, str):
+        return json.loads(value)
+    if isinstance(value, dict):
+        return value
+    return dict(value)  # type: ignore[arg-type]
+
+
 class PostgresMixin:
     database_uri: str
     connection_provider: PostgresConnectionProvider | None
+
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ):
+        self.database_uri = database_uri
+        self.connection_provider = connection_provider
+
+    _decode_payload = staticmethod(decode_json_payload)
 
     @contextmanager
     def _connection(self, *, dict_row: bool = False) -> Iterator[object]:
@@ -42,4 +62,4 @@ class PostgresMixin:
         return self._connection(dict_row=True)
 
 
-__all__ = ["PostgresMixin", "dict_row_factory", "psycopg"]
+__all__ = ["PostgresMixin", "decode_json_payload", "dict_row_factory", "psycopg"]

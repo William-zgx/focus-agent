@@ -12,12 +12,10 @@ from typing import Any
 
 from .branch_brief import message_visible_text, thread_summary_text
 from .branch_messages import (
-    _is_ai_message_type,
-    _is_human_message_type,
-    _message_type_name,
     branch_fork_message_count,
     branch_visible_messages,
 )
+from .message_utils import clip_text, is_ai_message_type, is_human_message_type, message_type_name
 
 # State lists inherited at fork; their fork-time lengths are stored in
 # ``branch_meta["fork_inherited_counts"]`` so later entries are branch-owned.
@@ -34,13 +32,6 @@ TRANSCRIPT_MESSAGE_MAX_CHARS = 600
 TRANSCRIPT_MIDDLE_MAX_CHARS = 140
 TRANSCRIPT_MIDDLE_LIMIT = 12
 _LIST_LIMIT = 12
-
-
-def clip_text(value: Any, max_chars: int) -> str:
-    text = " ".join(str(value or "").split())
-    if len(text) <= max_chars:
-        return text
-    return text[: max(0, max_chars - 1)].rstrip() + "…"
 
 
 def fork_inherited_counts_for(values: Mapping[str, Any]) -> dict[str, int]:
@@ -92,8 +83,8 @@ def branch_local_messages(values: Mapping[str, Any]) -> list[Any]:
         candidates = branch_visible_messages(messages, values=dict(values))
     local: list[Any] = []
     for message in candidates:
-        message_type = _message_type_name(message)
-        if not (_is_human_message_type(message_type) or _is_ai_message_type(message_type)):
+        message_type = message_type_name(message)
+        if not (is_human_message_type(message_type) or is_ai_message_type(message_type)):
             continue
         if message_visible_text(message):
             local.append(message)
@@ -101,7 +92,7 @@ def branch_local_messages(values: Mapping[str, Any]) -> list[Any]:
 
 
 def _role(message: Any) -> str:
-    return "user" if _is_human_message_type(_message_type_name(message)) else "assistant"
+    return "user" if is_human_message_type(message_type_name(message)) else "assistant"
 
 
 def render_transcript(messages: list[Any]) -> str:

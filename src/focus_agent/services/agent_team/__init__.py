@@ -1,11 +1,7 @@
-"""Consolidated Agent Team service modules.
+"""Agent Team service package: sessions, planning, run execution, merge review."""
 
-Backward compatibility is preserved by legacy shims under focus_agent.services.agent_team_*.py.
-"""
-
-from ..agent_team_helpers import _ROLE_TO_BRANCH_ROLE, _dedupe, _now
-from ..agent_team_workspace import AgentTeamWorkspaceService
-from .planning import (
+from focus_agent.services.agent_team.helpers import _ROLE_TO_BRANCH_ROLE, _dedupe
+from focus_agent.services.agent_team.planning import (
     AgentTeamPlanDraft,
     AgentTeamPlanningMixin,
     AgentTeamPlanningService,
@@ -29,8 +25,9 @@ from .planning import (
     max_tasks_for_options,
     plan_deliverables,
 )
-from .run import AgentTeamMergeMixin, AgentTeamRunMixin
-from .service import _DEFAULT_DISPATCH_TASKS, AgentTeamService
+from focus_agent.services.agent_team.run import AgentTeamMergeMixin, AgentTeamRunMixin
+from focus_agent.services.agent_team.service import _DEFAULT_DISPATCH_TASKS, AgentTeamService
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 
 __all__ = [
     "AgentTeamService",
@@ -38,7 +35,6 @@ __all__ = [
     "_DEFAULT_DISPATCH_TASKS",
     "_ROLE_TO_BRANCH_ROLE",
     "_dedupe",
-    "_now",
     "AgentTeamMergeMixin",
     "AgentTeamRunMixin",
     "AgentTeamPlanDraft",
@@ -52,16 +48,6 @@ __all__ = [
     "plan_deliverables",
     "_adaptive_task_specs",
     "_fallback_task_specs",
-    "MissionDeliverable",
-    "MissionProfile",
-    "classify_mission",
-    "compile_mission_dag",
-    "plan_deliverables",
-    "AgentTeamPlanDraft",
-    "AgentTeamPlanOptions",
-    "AgentTeamTaskDraft",
-    "MissionDeliverable",
-    "MissionProfile",
     "_dedupe_values",
     "_merge_context_refs",
     "_skill_plan_for_session",

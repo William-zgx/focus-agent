@@ -6,7 +6,7 @@ from typing import Any, NoReturn
 from fastapi import HTTPException, status
 
 from focus_agent.engine.runtime import AppRuntime
-from focus_agent.services.agent_team_readiness import build_agent_team_readiness
+from focus_agent.services.agent_team.readiness import build_agent_team_readiness
 
 from ..contract_models.agent_team import (
     AgentTeamReadinessCapabilities,

@@ -41,6 +41,8 @@ If you are developing against Anthropic instead of OpenAI:
 make install-anthropic
 ```
 
+The package is installed in editable mode. Rerun the install target after pulling changes that move modules or console-script entry points, and before running tests from a different checkout or worktree.
+
 ### Local configuration
 
 ```bash
@@ -150,6 +152,7 @@ Please try to keep changes aligned with the existing goals of the repository:
 When adding code:
 
 - prefer canonical imports from the normalized module layout under `src/focus_agent/`
+- reuse the shared helpers listed under "Code Organization" in [docs/development.md](docs/development.md) before adding new utility functions
 - avoid introducing secrets into tracked files
 - keep compatibility shims only when they help migration or public package stability
 - favor targeted changes over large unrelated refactors

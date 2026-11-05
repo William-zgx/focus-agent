@@ -2948,3 +2948,57 @@ def test_produce_run_stream_keeps_closed_sequence_after_lifecycle_event(monkeypa
         assert [event.data["sequence"] for event in events] == [1, 2, 3, 4]
 
     asyncio.run(scenario())
+
+
+def test_publish_run_event_skips_journal_count_until_run_is_aborted():
+    class _Journal:
+        def __init__(self):
+            self.count_calls = 0
+
+        async def count_events(self, run_id: str) -> int:
+            self.count_calls += 1
+            return 5
+
+    class _Bridge:
+        def __init__(self):
+            self.sequences = []
+
+        async def publish(self, run_id: str, event: str, data: dict):
+            self.sequences.append(data["sequence"])
+
+    async def scenario():
+        record = SimpleNamespace(abort_event=asyncio.Event())
+        journal = _Journal()
+        bridge = _Bridge()
+        runtime = SimpleNamespace(
+            event_store=journal,
+            stream_bridge=bridge,
+            run_manager=SimpleNamespace(get=lambda run_id: record),
+        )
+        sequence = 0
+        for _ in range(3):
+            sequence = await replay_helpers._publish_run_event(
+                runtime=runtime,
+                run_id="run-1",
+                thread_id="thread-1",
+                sequence=sequence,
+                event_name="message.delta",
+                source_node_name=None,
+                data={},
+            )
+        assert journal.count_calls == 0
+        # After abort, RunManager may have published lifecycle events directly.
+        record.abort_event.set()
+        sequence = await replay_helpers._publish_run_event(
+            runtime=runtime,
+            run_id="run-1",
+            thread_id="thread-1",
+            sequence=sequence,
+            event_name="run.failed",
+            source_node_name=None,
+            data={},
+        )
+        assert journal.count_calls == 1
+        assert bridge.sequences == [1, 2, 3, 6]
+
+    asyncio.run(scenario())

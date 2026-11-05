@@ -18,6 +18,7 @@ from focus_agent.core.agent_team import (
     TaskRunEvent,
     ToolExecution,
 )
+from focus_agent.core.time_utils import utc_now
 
 
 class AgentTeamRepository(ABC):
@@ -61,7 +62,7 @@ class AgentTeamRepository(ABC):
         task = self.get_task(task_id)
         if task.status not in {AgentTeamTaskStatus.QUEUED, AgentTeamTaskStatus.RUNNING}:
             return None
-        now = _now()
+        now = utc_now()
         if task.claimed_until and task.claim_token and _parse_time(task.claimed_until) > now:
             return None
         claim_token = uuid4().hex
@@ -84,7 +85,7 @@ class AgentTeamRepository(ABC):
 
     def heartbeat_task_claim(self, *, task_id: str, claim_token: str, ttl_seconds: float) -> bool:
         task = self.get_task(task_id)
-        now = _now()
+        now = utc_now()
         if task.claim_token != claim_token or (
             task.claimed_until and _parse_time(task.claimed_until) <= now
         ):
@@ -110,7 +111,7 @@ class AgentTeamRepository(ABC):
         error: str | None = None,
     ) -> AgentTeamTask:
         task = self.get_task(task_id)
-        now_dt = _now()
+        now_dt = utc_now()
         if task.claim_token != claim_token or (
             task.claimed_until and _parse_time(task.claimed_until) <= now_dt
         ):
@@ -450,10 +451,6 @@ class InMemoryAgentTeamRepository(AgentTeamRepository):
 
 
 __all__ = ["AgentTeamRepository", "InMemoryAgentTeamRepository"]
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 def _format_time(value: datetime) -> str:

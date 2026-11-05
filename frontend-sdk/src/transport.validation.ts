@@ -23,7 +23,7 @@ const KNOWN_EVENT_NAMES = new Set<FocusAgentEventName>([
   "task.update",
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

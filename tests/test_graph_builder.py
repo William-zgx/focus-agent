@@ -17,6 +17,7 @@ from focus_agent.engine.graph.agent_loop_helpers_skill_planning import (
     build_active_skill_execution_plan,
 )
 from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
+from focus_agent.engine.graph.tool_result_fallback import _invoke_with_tool_result_fallback
 from focus_agent.engine.graph_builder import (
     _canonicalize_tool_call_args,
     _classify_turn_tool_policy,
@@ -34,7 +35,6 @@ from focus_agent.engine.graph_builder import (
     build_graph,
     build_tool_intent_plan,
 )
-from focus_agent.engine.graph_tool_result_fallback import _invoke_with_tool_result_fallback
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue

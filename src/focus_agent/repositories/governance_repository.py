@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from threading import RLock
 from typing import Protocol
 
@@ -11,10 +10,7 @@ from focus_agent.core.governance import (
     SkillPreference,
     SkillSelectionEvent,
 )
-
-
-def _format_time() -> str:
-    return datetime.now(UTC).isoformat()
+from focus_agent.core.time_utils import utc_now_iso
 
 
 class ContextMemoryEvidenceRepository(Protocol):
@@ -181,7 +177,7 @@ class InMemoryGovernanceRepository:
                     "feedback": feedback,
                     "feedback_reason": reason,
                     "user_override": dict(user_override or event.user_override),
-                    "updated_at": _format_time(),
+                    "updated_at": utc_now_iso(),
                 }
             )
             self._skill_events[selection_id] = updated

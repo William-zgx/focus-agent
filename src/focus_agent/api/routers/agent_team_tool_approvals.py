@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
+from focus_agent.services.agent_team.run_execution import _tool_approval_payload
 
 from ..contract_models.agent_team import (
     AgentTeamToolApprovalActionRequest,
@@ -154,23 +155,6 @@ def _get_tool_approval_request(approval_queue: object, request_id: str):
         if str(getattr(request, "request_id", "")) == request_id:
             return request
     return None
-
-
-def _tool_approval_payload(request: object) -> dict[str, object]:
-    status = getattr(request, "status", "pending")
-    status_value = getattr(status, "value", status)
-    return {
-        "request_id": str(getattr(request, "request_id", "")),
-        "session_id": str(getattr(request, "session_id", "")),
-        "agent_id": str(getattr(request, "agent_id", "")),
-        "tool_name": str(getattr(request, "tool_name", "")),
-        "tool_args": dict(getattr(request, "tool_args", {}) or {}),
-        "risk_level": str(getattr(request, "risk_level", "low") or "low"),
-        "status": str(status_value or "pending"),
-        "submitted_at": float(getattr(request, "submitted_at", 0.0) or 0.0),
-        "timeout_at": float(getattr(request, "timeout_at", 0.0) or 0.0),
-        "decided_by": getattr(request, "decided_by", None),
-    }
 
 
 __all__ = [

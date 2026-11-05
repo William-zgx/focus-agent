@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 
 from focus_agent.memory.models import MemoryRecord
 
+from ._postgres_base import decode_json_payload
 from .memory_repository import MemoryEmbeddingMetadata
 
 
@@ -143,9 +144,4 @@ def record_from_payload(payload: object) -> MemoryRecord:
     return MemoryRecord.model_validate(data)
 
 
-def decode_json(value: object) -> dict[str, Any]:
-    if isinstance(value, str):
-        return json.loads(value)
-    if isinstance(value, dict):
-        return value
-    return dict(value)  # type: ignore[arg-type]
+decode_json = decode_json_payload

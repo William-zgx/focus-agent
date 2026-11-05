@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import psycopg
@@ -14,7 +13,6 @@ from focus_agent.core.users import (
     UserSession,
 )
 from focus_agent.security.tokens import Principal
-from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ._postgres_base import PostgresMixin
 from .postgres_schema import ensure_app_postgres_schema_on_connection
@@ -23,21 +21,13 @@ from .user_repository import (
     LastActiveAdminError,
     UserListFilters,
     UserRepository,
+    _removes_active_admin,
 )
 
 _ADMIN_DEMOTION_LOCK_KEY = 6_716_136_569_760_316_001
 
 
 class PostgresUserRepository(PostgresMixin, UserRepository):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def setup(self) -> None:
         with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
@@ -116,14 +106,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                     """
                 )
 
-    @staticmethod
-    def _decode_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
-
     @classmethod
     def _user_from_row(cls, row: dict[str, object]) -> User:
         return User.model_validate(cls._decode_payload(row["data_json"]))
@@ -180,7 +162,7 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                 if row is None:
                     raise KeyError(f"Unknown user: {user.user_id}")
                 current = self._user_from_row(row)
-                if self._removes_active_admin(current, user):
+                if _removes_active_admin(current, user):
                     cur.execute(
                         """
                         SELECT COUNT(*) AS count
@@ -194,12 +176,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                     if active_admin_count <= 1:
                         raise LastActiveAdminError("Cannot remove the last active admin.")
                 self._update_user(cur, user)
-        return user
-
-    def get_user(self, user_id: str) -> User:
-        user = self.get_user_or_none(user_id)
-        if user is None:
-            raise KeyError(f"Unknown user: {user_id}")
         return user
 
     def get_user_or_none(self, user_id: str) -> User | None:
@@ -490,15 +466,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
         )
         if cur.rowcount == 0:
             raise KeyError(f"Unknown user: {user.user_id}")
-
-    @staticmethod
-    def _is_active_admin(user: User) -> bool:
-        status = user.status.value if hasattr(user.status, "value") else str(user.status)
-        return status == "active" and "admin" in set(user.roles)
-
-    @classmethod
-    def _removes_active_admin(cls, current: User, updated: User) -> bool:
-        return cls._is_active_admin(current) and not cls._is_active_admin(updated)
 
     def _insert_session(self, cur: object, session: UserSession) -> None:
         cur.execute(

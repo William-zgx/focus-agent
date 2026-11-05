@@ -7,6 +7,45 @@ from typing import Any, Literal
 from langchain.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 
+from focus_agent.engine.graph.governance_nodes import (
+    make_delegation_governance_node,
+    make_role_route_dry_run_node,
+)
+from focus_agent.engine.graph.memory_nodes import (
+    make_assemble_context_node,
+    make_extract_memories_node,
+    make_retrieve_memory_node,
+    make_write_memories_node,
+    maybe_interrupt_for_merge,
+)
+from focus_agent.engine.graph.memory_nodes import (
+    summarize_turn as _summarize_turn_impl,
+)
+from focus_agent.engine.graph.plan_nodes import (
+    _format_plan_block,
+    _parse_plan_json,
+    _parse_reflection_json,
+    _should_plan,
+    make_plan_node,
+    make_reflect_node,
+    make_should_continue_after_reflect,
+)
+from focus_agent.engine.graph.textual_tool_call_repair import (
+    _looks_like_textual_tool_call_artifact,
+    _repair_tool_free_answer_response,
+)
+from focus_agent.engine.graph.tool_call_repair import (
+    _canonicalize_tool_call_args,
+    _repair_and_dedupe_tool_calls,
+)
+from focus_agent.engine.graph.tool_history_repair import (
+    _count_tool_call_rounds_since_latest_human,
+    _ensure_reasoning_content_for_tool_call_history,
+    _messages_for_model,
+    _should_force_tool_free_answer,
+)
+from focus_agent.engine.graph.tool_result_fallback import _fallback_answer_from_tool_results
+
 from ...capabilities import ToolRegistry, build_tool_registry
 from ...capabilities.tool_runtime import ToolResultCacheStore
 from ...config import Settings
@@ -21,44 +60,8 @@ from ...memory import (
 )
 from ...model_registry import create_chat_model
 from ...skills import SkillRegistry
-from ..graph_governance_nodes import (
-    make_delegation_governance_node,
-    make_role_route_dry_run_node,
-)
-from ..graph_memory_nodes import (
-    make_assemble_context_node,
-    make_extract_memories_node,
-    make_retrieve_memory_node,
-    make_write_memories_node,
-    maybe_interrupt_for_merge,
-)
-from ..graph_memory_nodes import (
-    summarize_turn as _summarize_turn_impl,
-)
-from ..graph_plan_nodes import (
-    _format_plan_block,
-    _parse_plan_json,
-    _parse_reflection_json,
-    _should_plan,
-    make_plan_node,
-    make_reflect_node,
-    make_should_continue_after_reflect,
-)
-from ..graph_textual_tool_call_repair import (
-    _looks_like_textual_tool_call_artifact,
-    _repair_tool_free_answer_response,
-)
-from ..graph_tool_call_repair import _canonicalize_tool_call_args, _repair_and_dedupe_tool_calls
-from ..graph_tool_history_repair import (
-    _count_tool_call_rounds_since_latest_human,
-    _ensure_reasoning_content_for_tool_call_history,
-    _messages_for_model,
-    _should_force_tool_free_answer,
-)
-from ..graph_tool_result_fallback import _fallback_answer_from_tool_results
 from ..model_factory import GraphModelFactory
 from .agent_loop import make_agent_loop_node
-from .context_pipeline_node import make_context_pipeline_node
 from .policy import (
     TurnToolExposure,
     _classify_turn_tool_exposure,
@@ -249,16 +252,6 @@ def build_graph(
         settings=settings,
         skill_registry=effective_skill_registry,
     )
-    # ContextPipeline augment node: runs between retrieve_memory and
-    # assemble_context. It receives the same dependencies as the legacy
-    # nodes but operates in "augment" mode so it never double-emits blocks
-    # already produced by assemble_context. If it raises, the node returns
-    # {} and the legacy path is unaffected.
-    context_pipeline_node = make_context_pipeline_node(
-        memory_retriever=effective_memory_retriever,
-        skill_registry=effective_skill_registry,
-        agent_registry=agent_definition_registry,
-    )
     role_route_dry_run = make_role_route_dry_run_node(settings=settings, tools=tools)
     delegation_governance = make_delegation_governance_node(
         settings=settings,
@@ -275,7 +268,6 @@ def build_graph(
         model_for=model_for,
         model_with_tools_for=model_with_tools_for,
         run_manager=run_manager,
-        system_agent_runner=system_agent_runner,
         agent_definition_registry=agent_definition_registry,
     )
     tool_executor = make_tool_executor_node(
@@ -325,7 +317,6 @@ def build_graph(
     builder = StateGraph(AgentState, context_schema=RequestContext)
     builder.add_node("bootstrap_turn", bootstrap_turn)
     builder.add_node("retrieve_memory", retrieve_memory)
-    builder.add_node("context_pipeline", context_pipeline_node)
     builder.add_node("assemble_context", assemble_context)
     builder.add_node("role_route_dry_run", role_route_dry_run)
     builder.add_node("delegation_governance", delegation_governance)
@@ -340,8 +331,7 @@ def build_graph(
 
     builder.add_edge(START, "bootstrap_turn")
     builder.add_edge("bootstrap_turn", "retrieve_memory")
-    builder.add_edge("retrieve_memory", "context_pipeline")
-    builder.add_edge("context_pipeline", "assemble_context")
+    builder.add_edge("retrieve_memory", "assemble_context")
     builder.add_edge("assemble_context", "role_route_dry_run")
     builder.add_edge("role_route_dry_run", "delegation_governance")
     builder.add_edge("delegation_governance", "plan")

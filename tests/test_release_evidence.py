@@ -83,7 +83,7 @@ def _postgres_migration_report(path: Path) -> Path:
     return _write_json(
         path,
         {
-            "command": "uv run python -m focus_agent.migrate_local_state --report-path reports/pg.json",
+            "command": "uv run python -m focus_agent.cli.migrate_local_state --report-path reports/pg.json",
             "errors": [],
             "migrations": [{"name": "schema", "status": "verified"}],
             "passed": True,

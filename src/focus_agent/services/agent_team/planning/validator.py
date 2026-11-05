@@ -3,13 +3,16 @@ from __future__ import annotations
 from typing import Any
 
 from focus_agent.core.agent_team import AgentTeamSession, AgentTeamTask, AgentTeamTaskStatus
-
-from ...agent_team_helpers import _now
-from ...agent_team_planning_models import AgentTeamPlanDraft, AgentTeamPlanOptions
-from ...agent_team_planning_rules import *  # noqa: F401,F403
-from ...agent_team_planning_rules import __all__ as _rules_all
-from ...agent_team_planning_support import _is_unstarted, _task_identity, _validate_task_draft
-from .dag import AgentTeamPlanningService
+from focus_agent.core.time_utils import utc_now_iso
+from focus_agent.services.agent_team.planning.dag import AgentTeamPlanningService
+from focus_agent.services.agent_team.planning.models import AgentTeamPlanDraft, AgentTeamPlanOptions
+from focus_agent.services.agent_team.planning.rules import *  # noqa: F401,F403
+from focus_agent.services.agent_team.planning.rules import __all__ as _rules_all
+from focus_agent.services.agent_team.planning.support import (
+    _is_unstarted,
+    _task_identity,
+    _validate_task_draft,
+)
 
 
 class AgentTeamPlanningMixin:
@@ -39,6 +42,9 @@ class AgentTeamPlanningMixin:
             retrieval_index=getattr(self, "retrieval_index", None),
             embedding_provider=getattr(self, "memory_embedding_provider", None),
             repository=getattr(self, "repository", None),
+            skill_registry=getattr(
+                getattr(self, "_agent_team_runtime", None), "skill_registry", None
+            ),
         ).build_plan(
             session=session,
             options=options,
@@ -127,11 +133,11 @@ class AgentTeamPlanningMixin:
                 "planning_source": draft.planning_source,
                 "planning_rationale": draft.planning_rationale,
                 "planner_model_id": draft.planner_model_id,
-                "plan_generated_at": _now(),
+                "plan_generated_at": utc_now_iso(),
                 "plan_hash": draft.plan_hash,
                 "planning_error": draft.planning_error,
                 "skill_plan": draft.skill_plan,
-                "updated_at": _now(),
+                "updated_at": utc_now_iso(),
             }
         )
         self.repository.save_session(updated)

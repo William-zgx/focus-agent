@@ -18,7 +18,7 @@ from ...core.branching import (
 )
 from ...core.merge_review_inputs import UPSTREAM_STATE_KEY, branch_owned_findings, finding_text
 from ...core.request_context import RequestContext
-from ...core.types import FindingItem
+from ...core.types import FindingItem, coerce_finding_item
 from ...memory import MemoryCurator, MemoryWriter
 from ...memory.models import MemoryKind, MemoryScope, MemoryVisibility, MemoryWriteRequest
 from ...storage.namespaces import branch_namespace, conversation_main_namespace
@@ -394,13 +394,13 @@ class BranchMemoryPromotionMixin:
             return memory_writer.write_branch_findings(
                 context=context,
                 branch_name=branch_record.branch_name,
-                findings=[self._coerce_finding_item(finding) for finding in findings],
+                findings=[coerce_finding_item(finding) for finding in findings],
             )
 
         namespace = branch_namespace(branch_record.root_thread_id, branch_record.branch_id)
         keys: list[str] = []
         for finding in findings:
-            item = self._coerce_finding_item(finding)
+            item = coerce_finding_item(finding)
             key = str(uuid.uuid4())
             self.store.put(
                 namespace,
@@ -474,7 +474,7 @@ class BranchMemoryPromotionMixin:
     def _filter_merge_importable_findings(cls, findings: list[object]) -> list[FindingItem]:
         promotable: list[FindingItem] = []
         for finding in findings:
-            item = cls._coerce_finding_item(finding)
+            item = coerce_finding_item(finding)
             if item.merge_importable:
                 promotable.append(item)
         return promotable
@@ -657,14 +657,6 @@ class BranchMemoryPromotionMixin:
             )
             keys.append(key)
         return keys
-
-    @staticmethod
-    def _coerce_finding_item(value: object) -> FindingItem:
-        if isinstance(value, FindingItem):
-            return value
-        if isinstance(value, dict):
-            return FindingItem.model_validate(value)
-        return FindingItem(finding=str(value))
 
     @staticmethod
     def _build_branch_request_context(branch_record: BranchRecord) -> RequestContext:

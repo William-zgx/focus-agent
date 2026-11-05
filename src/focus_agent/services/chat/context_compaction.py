@@ -6,8 +6,7 @@ from typing import Any
 from langchain.messages import HumanMessage
 
 from ...core.context_compaction import build_incremental_compaction_update
-from ...core.repo_call import has_repo_method
-from ...observability.trajectory import utc_now
+from ...core.time_utils import utc_now
 from ..coordination import background_job_key
 
 logger = logging.getLogger("focus_agent.chat")
@@ -21,7 +20,7 @@ class ChatContextCompactionMixin:
             from ...context_usage import build_context_usage
 
             selected_model = str(values.get("selected_model") or self.runtime.settings.model)
-            registry = getattr(self.runtime, "tool_registry", None)
+            registry = self.runtime.tool_registry
             available_tools = tuple(getattr(registry, "tools", ()) or ())
             return build_context_usage(
                 values,
@@ -102,7 +101,7 @@ class ChatContextCompactionMixin:
         that already know the owner, the check must happen before
         ``_context_for_thread`` can read or derive any state.
         """
-        repo = getattr(self.runtime, "repo", None)
+        repo = self.runtime.repo
         get_owner = getattr(repo, "get_thread_owner", None)
         assert_owner = getattr(repo, "assert_thread_owner", None)
         if not callable(get_owner) or not callable(assert_owner):
@@ -279,15 +278,12 @@ class ChatContextCompactionMixin:
             return
 
         def schedule_compact_later(*, delay: float, attempt: int) -> None:
-            if has_repo_method(self, "_submit_background_work"):
-                self._submit_background_work(
-                    key=job_key,
-                    func=compact_later,
-                    delay_seconds=delay,
-                    attempt=attempt,
-                )
-                return
-            compact_later(attempt=attempt)
+            self._submit_background_work(
+                key=job_key,
+                func=compact_later,
+                delay_seconds=delay,
+                attempt=attempt,
+            )
 
         def compact_later(*, attempt: int) -> None:
             from .errors import ConcurrentTurnError
@@ -302,8 +298,7 @@ class ChatContextCompactionMixin:
             except Exception as exc:
                 if isinstance(exc, ConcurrentTurnError):
                     if attempt < 2:
-                        if has_repo_method(self, "_release_background_job_key"):
-                            self._release_background_job_key(job_key)
+                        self._release_background_job_key(job_key)
                         schedule_compact_later(delay=0.2, attempt=attempt + 1)
                         return
                     logger.debug(

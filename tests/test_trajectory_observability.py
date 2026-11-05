@@ -7,11 +7,11 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.core.state import make_agent_state_record
+from focus_agent.core.time_utils import utc_now
 from focus_agent.observability.tracing import build_trace_correlation
 from focus_agent.observability.trajectory import (
     build_turn_trajectory_record,
     extract_trajectory_steps,
-    utc_now,
 )
 from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 

@@ -10,7 +10,7 @@ import pytest
 from focus_agent.capabilities.sandbox_execution import (
     SandboxExecutionRequest,
 )
-from focus_agent.services.agent_team_scoped_tools import build_agent_team_scoped_tools
+from focus_agent.services.agent_team.scoped_tools import build_agent_team_scoped_tools
 
 
 class FakeSandboxRunner:

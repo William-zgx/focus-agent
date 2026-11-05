@@ -5,12 +5,12 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ...core.time_utils import utc_now_iso
 from .rollback import CheckpointRollbackResult
 from .run_followups import RunFollowupsMixin
 
@@ -79,13 +79,6 @@ class RunRequest(BaseModel):
     multitask_strategy: MultitaskStrategy = MultitaskStrategy.REJECT
     after_seconds: float | None = Field(default=None, ge=0.0)
     user_id: str | None = None
-
-    def normalized_stream_modes(self, default: Sequence[str] | None = None) -> list[str]:
-        if self.stream_mode is None:
-            return list(default or ("messages", "custom", "updates", "tasks"))
-        if isinstance(self.stream_mode, str):
-            return [self.stream_mode]
-        return list(self.stream_mode)
 
     def run_kwargs(self) -> dict[str, Any]:
         return {
@@ -226,24 +219,6 @@ class RunManager(RunFollowupsMixin):
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
         return record
 
-    async def create_from_request(
-        self,
-        thread_id: str,
-        request: RunRequest,
-        *,
-        multitask_strategy: MultitaskStrategy | str | None = None,
-    ) -> RunRecord:
-        return await self.create_or_reject(
-            thread_id,
-            request.assistant_id,
-            on_disconnect=request.on_disconnect,
-            metadata=request.metadata,
-            kwargs=request.run_kwargs(),
-            multitask_strategy=multitask_strategy or request.multitask_strategy,
-            user_id=request.user_id,
-            rollback_target=None,
-        )
-
     async def create_or_reject(
         self,
         thread_id: str,
@@ -310,7 +285,7 @@ class RunManager(RunFollowupsMixin):
             if record is None:
                 return False
             record.task = task
-            record.updated_at = _now_iso()
+            record.updated_at = utc_now_iso()
         return True
 
     async def list_by_thread(
@@ -326,15 +301,6 @@ class RunManager(RunFollowupsMixin):
                 if run.thread_id == thread_id and (user_id is None or run.user_id == user_id)
             ]
 
-    async def has_inflight(self, thread_id: str, *, user_id: str | None = None) -> bool:
-        async with self._lock:
-            return any(
-                run.thread_id == thread_id
-                and run.inflight
-                and (user_id is None or run.user_id == user_id)
-                for run in self._runs.values()
-            )
-
     async def set_status(
         self,
         run_id: str,
@@ -348,7 +314,7 @@ class RunManager(RunFollowupsMixin):
                 logger.warning("set_status called for unknown harness run %s", run_id)
                 return
             record.status = _coerce_run_status(status)
-            record.updated_at = _now_iso()
+            record.updated_at = utc_now_iso()
             if error is not None:
                 record.error = error
         await self._persist_status(record)
@@ -436,7 +402,7 @@ class RunManager(RunFollowupsMixin):
         user_id: str | None,
         rollback_target: Any | None,
     ) -> RunRecord:
-        now = _now_iso()
+        now = utc_now_iso()
         return RunRecord(
             run_id=str(uuid.uuid4()),
             thread_id=thread_id,
@@ -468,7 +434,7 @@ class RunManager(RunFollowupsMixin):
             record.rollback_ready.set()
             record.rollback_completed.set()
         record.status = RunStatus.INTERRUPTED
-        record.updated_at = _now_iso()
+        record.updated_at = utc_now_iso()
 
     async def _settle_records(self, records: Sequence[RunRecord]) -> None:
         tasks = [record.task for record in records if record.task is not None]
@@ -563,7 +529,7 @@ class RunManager(RunFollowupsMixin):
         augmented = _augment_rollback_result(result, record.metadata)
         payload = augmented.to_dict()
         record.rollback_result = payload
-        record.updated_at = _now_iso()
+        record.updated_at = utc_now_iso()
         await self.update_run_completion(record.run_id, rollback_result=payload)
 
     async def _publish_lifecycle(
@@ -623,10 +589,6 @@ class RunConflictError(Exception):
 
 class UnsupportedStrategyError(Exception):
     """Raised when a multitask strategy is known but not implemented."""
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _coerce_run_status(value: RunStatus | str) -> RunStatus:

@@ -79,7 +79,7 @@ def _sample_alert_report() -> dict[str, Any]:
 def _sample_postgres_migration_report() -> dict[str, Any]:
     return {
         "command": (
-            "uv run python -m focus_agent.migrate_local_state --database-uri "
+            "uv run python -m focus_agent.cli.migrate_local_state --database-uri "
             "<postgres-uri> --artifact-scan --report-path reports/release-gate/postgres-migration.json"
         ),
         "errors": [],

@@ -7,11 +7,12 @@ import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 
 from focus_agent.engine.local_persistence import PersistentSQLiteSaver, PersistentSQLiteStore
-from focus_agent.migrate_local_state import parse_args, run_migration
+from focus_agent.migrations.local.applier import run_migration
 from focus_agent.migrations.local.loader import (
     AppStateSinkDiscovery,
     load_local_checkpoints,
     load_local_store_items,
+    parse_args,
     resolve_source_layout,
 )
 

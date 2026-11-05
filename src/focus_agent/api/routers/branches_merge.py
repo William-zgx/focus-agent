@@ -81,7 +81,7 @@ def rename_branch_route(
     runtime: AppRuntime = Depends(get_app_runtime),
     principal: Principal = Depends(get_current_principal),
 ):
-    branch_name = str(payload.branch_name or "").strip()
+    branch_name = payload.branch_name.strip()
     if not branch_name:
         raise HTTPException(status_code=400, detail="Branch name cannot be empty.")
     with _child_thread_errors(

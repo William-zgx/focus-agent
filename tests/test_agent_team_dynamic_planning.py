@@ -10,7 +10,7 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskStatus,
 )
 from focus_agent.services.agent_team import AgentTeamService
-from focus_agent.services.agent_team_run_helpers import _allowed_tools_for_task
+from focus_agent.services.agent_team.run_helpers import _allowed_tools_for_task
 
 
 def _write_skill(
@@ -338,7 +338,7 @@ def test_agent_team_fallback_planning_uses_profile_specific_debug_dag(
         raise RuntimeError("planner fixture failed")
 
     monkeypatch.setattr(
-        "focus_agent.services.agent_team_planning._adaptive_task_specs",
+        "focus_agent.services.agent_team.planning._adaptive_task_specs",
         _raise_adaptive_failure,
     )
     service = AgentTeamService(branch_service=None)
@@ -380,7 +380,7 @@ def test_agent_team_plan_falls_back_only_when_adaptive_planning_fails(
         raise RuntimeError("planner fixture failed")
 
     monkeypatch.setattr(
-        "focus_agent.services.agent_team_planning._adaptive_task_specs",
+        "focus_agent.services.agent_team.planning._adaptive_task_specs",
         _raise_adaptive_failure,
     )
     service = AgentTeamService(branch_service=None)

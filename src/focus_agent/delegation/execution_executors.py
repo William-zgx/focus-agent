@@ -4,29 +4,29 @@ from concurrent.futures import as_completed
 from typing import Any
 
 from ..config import Settings
+from ..core.time_utils import utc_now_iso
 from ..runtime.thread_pool import shared_thread_pool
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_model_task import (
-    artifact_kind,
     blocked_result_with_reason,
     execute_model_task,
     failed_result,
-    utc_now,
 )
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_registry import SubagentRegistry
 from .execution_types import DelegatedRunExecutor, SubagentConfig, SubagentRunResult
+from .roles import artifact_kind_for_role
 
 
 class FakeDelegatedRunExecutor:
     mode: DelegationExecutionMode = "fake"
 
     def execute(self, task: AgentTask, config: SubagentConfig) -> SubagentRunResult:
-        started = utc_now()
+        started = utc_now_iso()
         run_id = f"run-{task.task_id}"
         artifact = AgentArtifact(
             artifact_id=f"artifact-{task.task_id}-fake-result",
-            kind=artifact_kind(task.role),
+            kind=artifact_kind_for_role(task.role),
             title=f"{task.role.value} fake delegated result",
             summary=_fake_summary(task),
             payload={
@@ -50,7 +50,7 @@ class FakeDelegatedRunExecutor:
             cost=0.0,
             model_id=config.model_id,
             started_at=started,
-            finished_at=utc_now(),
+            finished_at=utc_now_iso(),
             execution_mode=self.mode,
         )
 
@@ -119,7 +119,7 @@ class BackgroundDelegatedRunExecutor(InlineDelegatedRunExecutor):
                     ordered[index] = future.result()
                 except Exception as exc:  # noqa: BLE001
                     ordered[index] = failed_result(
-                        task, config, self.mode, str(exc), started_at=utc_now()
+                        task, config, self.mode, str(exc), started_at=utc_now_iso()
                     )
                 try:
                     _submit_next()
@@ -157,7 +157,7 @@ def run_delegated_tasks(
             indexed_results[index] = executor.execute(task, config)
         except Exception as exc:  # noqa: BLE001
             indexed_results[index] = failed_result(
-                task, config, executor.mode, str(exc), started_at=utc_now()
+                task, config, executor.mode, str(exc), started_at=utc_now_iso()
             )
     return [indexed_results[index] for index in sorted(indexed_results)]
 

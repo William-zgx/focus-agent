@@ -11,19 +11,19 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskRole,
     AgentTeamTaskStatus,
 )
+from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.observability.metrics import AGENT_TEAM_SCHEDULER_LOCK_WAIT_MS
 from focus_agent.repositories.agent_team_repository import (
     AgentTeamRepository,
     InMemoryAgentTeamRepository,
 )
-from focus_agent.services.agent_team_helpers import AgentTeamHelperMixin, _now
-from focus_agent.services.agent_team_workspace import AgentTeamWorkspaceService
+from focus_agent.services.agent_team.helpers import AgentTeamHelperMixin
+from focus_agent.services.agent_team.planning import AgentTeamPlanningMixin
+from focus_agent.services.agent_team.run import AgentTeamMergeMixin, AgentTeamRunMixin
+from focus_agent.services.agent_team.sessions import AgentTeamSessionTaskMixin
+from focus_agent.services.agent_team.workspace import AgentTeamWorkspaceService
 from focus_agent.services.branches import BranchService
 from focus_agent.services.coordination import create_in_memory_coordination_backend
-
-from .planning import AgentTeamPlanningMixin
-from .run import AgentTeamMergeMixin, AgentTeamRunMixin
-from .sessions import AgentTeamSessionTaskMixin
 
 _DEFAULT_DISPATCH_TASKS: tuple[
     tuple[AgentTeamTaskRole, str, tuple[str, ...], tuple[AgentTeamTaskRole, ...]], ...
@@ -128,8 +128,8 @@ class AgentTeamDispatchMixin:
                     "planning_source": session.planning_source or "legacy_template",
                     "planning_rationale": session.planning_rationale
                     or "Legacy dispatch template generated the fixed compatibility task set.",
-                    "plan_generated_at": session.plan_generated_at or _now(),
-                    "updated_at": _now(),
+                    "plan_generated_at": session.plan_generated_at or utc_now_iso(),
+                    "updated_at": utc_now_iso(),
                 }
             )
             self.repository.save_session(session)

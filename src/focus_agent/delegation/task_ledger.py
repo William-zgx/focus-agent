@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import Field
 
 from ..config import Settings
+from ..core.time_utils import utc_now_iso
 from ..core.types import StateModel
 from .delegation import AgentArtifact
-from .roles import AgentRole, normalize_agent_role
+from .roles import AgentRole, artifact_kind_for_role, normalize_agent_role
 
 AgentTaskLedgerStatus = Literal[
     "disabled", "planned", "running", "completed", "blocked", "rejected"
@@ -115,7 +115,7 @@ def build_agent_task_ledger(
 
     raw_tasks = delegation_plan.get("tasks") if isinstance(delegation_plan, dict) else None
     tasks: list[AgentTaskNode] = []
-    now = _utc_now()
+    now = utc_now_iso()
     if isinstance(raw_tasks, list):
         for index, raw in enumerate(raw_tasks):
             if not isinstance(raw, dict):
@@ -180,7 +180,7 @@ def build_delegated_artifacts(
     runs_by_task = _runs_by_task(delegation_plan)
     for task in ledger_model.tasks:
         run = runs_by_task.get(task.task_id, {})
-        kind = _artifact_kind_for_role(task.role)
+        kind: DelegatedArtifactKind = artifact_kind_for_role(task.role)  # type: ignore[assignment]
         status = _artifact_status_for_run(run)
         produced_artifacts = [
             AgentArtifact.model_validate(item).model_dump(mode="json")
@@ -389,7 +389,7 @@ def apply_critic_retry_tasks(
         {"from": task.parent_task_id, "to": task.task_id} for task in tasks if task.parent_task_id
     ]
     return ledger_model.model_copy(
-        update={"tasks": tasks, "edges": edges, "updated_at": _utc_now()}
+        update={"tasks": tasks, "edges": edges, "updated_at": utc_now_iso()}
     )
 
 
@@ -411,20 +411,6 @@ def _artifact_status_for_run(run: dict[str, Any]) -> DelegatedArtifactStatus:
     if status == "failed":
         return "rejected"
     return "draft"
-
-
-def _artifact_kind_for_role(role: AgentRole) -> DelegatedArtifactKind:
-    if role == AgentRole.PLANNER:
-        return "plan"
-    if role == AgentRole.CRITIC:
-        return "critic_verdict"
-    if role == AgentRole.MEMORY_CURATOR:
-        return "memory_candidate"
-    if role == AgentRole.SKILL_SCOUT:
-        return "tool_route_evidence"
-    if role == AgentRole.EXECUTOR:
-        return "patch_summary"
-    return "evidence"
 
 
 def _runs_by_task(delegation_plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
@@ -477,10 +463,6 @@ def _retry_task_ids(
 
 def _optional_str(value: Any) -> str | None:
     return str(value) if value else None
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 __all__ = [

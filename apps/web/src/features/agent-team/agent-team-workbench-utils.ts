@@ -453,42 +453,6 @@ export function defaultTaskActionLabel({
 	return isChineseUi ? "生成方案" : "Generate plan";
 }
 
-export function runReadyTasksActionLabel({
-	isChineseUi,
-	isPending,
-	readyCount,
-	runningCount,
-}: {
-	isChineseUi: boolean;
-	isPending: boolean;
-	readyCount: number;
-	runningCount: number;
-}) {
-	if (isPending) return isChineseUi ? "启动中..." : "Starting...";
-	if (runningCount) return isChineseUi ? "Mission 运行中" : "Mission running";
-	if (!readyCount) return isChineseUi ? "暂无就绪任务" : "No ready tasks";
-	return isChineseUi
-		? `运行 Mission (${readyCount})`
-		: `Run Mission (${readyCount})`;
-}
-
-export function mergeBundleActionLabel({
-	isChineseUi,
-	isGenerating,
-	canGenerate,
-	hasBundle,
-}: {
-	isChineseUi: boolean;
-	isGenerating: boolean;
-	canGenerate: boolean;
-	hasBundle: boolean;
-}) {
-	if (isGenerating) return isChineseUi ? "生成中..." : "Generating...";
-	if (!canGenerate) return isChineseUi ? "先生成方案" : "Generate plan first";
-	if (hasBundle) return isChineseUi ? "重新生成结果" : "Regenerate result";
-	return isChineseUi ? "生成最终结果" : "Generate final result";
-}
-
 export function planningSourceLabel(
 	source: string | null | undefined,
 	isChineseUi: boolean,

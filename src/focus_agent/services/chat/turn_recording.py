@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-import threading
 from typing import Any
 
 from ...core.branching import BranchMeta
-from ...core.repo_call import has_repo_method
 from ...observability.tracing import TraceCorrelation
 from ..coordination import background_job_key
 from .trajectory_recording import record_turn_trajectory_best_effort
@@ -22,23 +19,15 @@ class ChatTurnRecordingMixin:
         branch_meta: BranchMeta | None,
         kind: str,
     ) -> None:
-        branch_service = getattr(self.runtime, "branch_service", None)
+        branch_service = self.runtime.branch_service
         if branch_service is None:
             return
         if kind not in self._POST_TURN_REFRESH_KINDS:
             return
 
         def dispatch_background(func, **kwargs) -> None:
-            if has_repo_method(self, "_submit_background_work"):
-                task_key = str(kwargs.pop("_background_task_key"))
-                self._submit_background_work(key=task_key, func=func, **kwargs)
-                return
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                threading.Thread(target=func, kwargs=kwargs, daemon=True).start()
-                return
-            loop.create_task(asyncio.to_thread(func, **kwargs))
+            task_key = str(kwargs.pop("_background_task_key"))
+            self._submit_background_work(key=task_key, func=func, **kwargs)
 
         if branch_meta is None:
             refresh_title = getattr(
@@ -105,9 +94,9 @@ class ChatTurnRecordingMixin:
         error: str | None = None,
     ) -> None:
         record_turn_trajectory_best_effort(
-            recorder=getattr(self.runtime, "trajectory_recorder", None),
-            retrieval_index=getattr(self.runtime, "retrieval_index", None),
-            embedding_provider=getattr(self.runtime, "memory_embedding_provider", None),
+            recorder=self.runtime.trajectory_recorder,
+            retrieval_index=self.runtime.retrieval_index,
+            embedding_provider=self.runtime.memory_embedding_provider,
             settings=self.runtime.settings,
             thread_id=thread_id,
             user_id=user_id,

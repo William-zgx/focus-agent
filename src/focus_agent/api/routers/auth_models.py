@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 
+from focus_agent.core.time_utils import utc_now_iso_z
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.model_registry import build_model_catalog
 from focus_agent.security.permissions import is_admin_role, permissions_for_roles
@@ -219,7 +219,7 @@ def revoke_my_session(
         ) from exc
     if session.user_id != principal.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown user session.")
-    revoked = service.repository.revoke_session(session_id, revoked_at=_now())
+    revoked = service.repository.revoke_session(session_id, revoked_at=utc_now_iso_z())
     return UserSessionResponse.from_session(revoked)
 
 
@@ -334,10 +334,6 @@ def _auth_exception(exc: AuthServiceError, status_code: int) -> HTTPException:
 
 def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client is not None else None
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _refresh_session_id(refresh_token: str | None) -> str | None:

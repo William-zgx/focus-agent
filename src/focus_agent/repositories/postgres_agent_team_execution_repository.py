@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -26,14 +25,6 @@ class PostgresAgentTeamExecutionRepositoryMixin:
     public Postgres repository facade.
     """
 
-    @staticmethod
-    def _decode_execution_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
-
     @classmethod
     def _execution_record_payload(
         cls,
@@ -53,7 +44,7 @@ class PostgresAgentTeamExecutionRepositoryMixin:
         | type[EvidenceRecord]
         | type[TaskRunEvent],
     ) -> TaskRun | TaskCheckpoint | ToolExecution | EvidenceRecord | TaskRunEvent:
-        container = cls._decode_execution_payload(row[field])
+        container = cls._decode_payload(row[field])
         payload = container.get(_EXECUTION_RECORD_KEY)
         if not isinstance(payload, Mapping):
             raise ValueError(
@@ -63,7 +54,7 @@ class PostgresAgentTeamExecutionRepositoryMixin:
 
     @classmethod
     def _is_execution_record_row(cls, row: Mapping[str, object], *, field: str) -> bool:
-        container = cls._decode_execution_payload(row[field])
+        container = cls._decode_payload(row[field])
         return isinstance(container.get(_EXECUTION_RECORD_KEY), Mapping)
 
     @classmethod

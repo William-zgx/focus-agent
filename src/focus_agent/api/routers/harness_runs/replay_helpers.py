@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from focus_agent.branch_decision.budget import run_with_recommendation_deadline
 from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.core.time_utils import utc_now
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import (
     DisconnectMode,
@@ -32,7 +33,6 @@ from focus_agent.harness.streaming import (
     sse_frame,
 )
 from focus_agent.observability.tracing import build_trace_correlation
-from focus_agent.observability.trajectory import utc_now
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
@@ -248,10 +248,9 @@ async def _run_branch_action_turn_to_completion(
         return await asyncio.shield(worker)
     except asyncio.CancelledError:
         current_task = asyncio.current_task()
-        uncancel = getattr(current_task, "uncancel", None) if current_task is not None else None
-        if current_task is not None and callable(uncancel):
+        if current_task is not None:
             for _ in range(current_task.cancelling()):
-                uncancel()
+                current_task.uncancel()
         return await asyncio.shield(worker)
 
 
@@ -390,6 +389,13 @@ async def _next_run_sequence(
     run_id: str,
     current_sequence: int,
 ) -> int:
+    # Besides this producer, only RunManager lifecycle events (run.interrupt and
+    # run.rollback.*) publish into a run, and RunManager emits them only after
+    # ``_cancel_record`` sets ``abort_event`` (never cleared). Until then the local
+    # counter equals the journal count, so skip the per-event COUNT query.
+    record = runtime.run_manager.get(run_id)
+    if record is not None and not record.abort_event.is_set():
+        return current_sequence + 1
     count_events = _journal_method_optional(runtime, "count_events")
     if count_events is not None:
         try:

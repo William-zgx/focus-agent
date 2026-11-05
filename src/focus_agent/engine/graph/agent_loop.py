@@ -8,6 +8,33 @@ from typing import Any
 from langchain.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
 
+from focus_agent.engine.graph.execution_contract import (
+    build_execution_contract,
+)
+from focus_agent.engine.graph.textual_tool_call_repair import (
+    _looks_like_textual_tool_call_artifact,
+    _repair_textual_tool_call_response,
+    _repair_tool_free_answer_response,
+)
+from focus_agent.engine.graph.tool_call_repair import (
+    _known_tool_names,
+    _repair_and_dedupe_tool_calls,
+)
+from focus_agent.engine.graph.tool_history_repair import (
+    _ensure_reasoning_content_for_tool_call_history,
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _messages_for_model,
+    _should_force_tool_free_answer,
+)
+from focus_agent.engine.graph.tool_result_fallback import (
+    _context_budget_from_state,
+    _degraded_answer_from_tool_results,
+    _fallback_answer_from_tool_results,
+    _invoke_with_tool_result_fallback,
+    _tool_result_synthesis_prompt,
+)
+
 from ...capabilities import ToolRegistry
 from ...capabilities.tool_router import build_tool_route_plan, infer_tool_router_role
 from ...config import Settings
@@ -16,29 +43,6 @@ from ...core.request_context import RequestContext
 from ...core.state import AgentState
 from ...skills import SkillRegistry
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
-from ..graph_execution_contract import (
-    build_execution_contract,
-)
-from ..graph_textual_tool_call_repair import (
-    _looks_like_textual_tool_call_artifact,
-    _repair_textual_tool_call_response,
-    _repair_tool_free_answer_response,
-)
-from ..graph_tool_call_repair import _known_tool_names, _repair_and_dedupe_tool_calls
-from ..graph_tool_history_repair import (
-    _ensure_reasoning_content_for_tool_call_history,
-    _latest_human_message_text,
-    _latest_turn_messages,
-    _messages_for_model,
-    _should_force_tool_free_answer,
-)
-from ..graph_tool_result_fallback import (
-    _context_budget_from_state,
-    _degraded_answer_from_tool_results,
-    _fallback_answer_from_tool_results,
-    _invoke_with_tool_result_fallback,
-    _tool_result_synthesis_prompt,
-)
 from .agent_loop_first_calls import (
     anchor_planned_web_search_args,
     planned_web_fetch_call,
@@ -109,7 +113,6 @@ def make_agent_loop_node(
     model_for: Callable[[str, str], Any],
     model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
     run_manager: Any | None = None,
-    system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ) -> Any:
     all_tools = list(tools)

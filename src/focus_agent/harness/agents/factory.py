@@ -39,7 +39,6 @@ class FocusAgentHarness:
     # Newly-integrated components (populated by ``create_focus_agent``)
     agent_definition_registry: Any | None = None  # AgentDefinitionRegistry
     extension_registry: Any | None = None  # ExtensionRegistry
-    extension_loader: Any | None = None  # ExtensionLoader
     permission_manager: Any | None = None  # PermissionManager
     system_agent_runner: Any | None = None  # SystemAgentRunner
 
@@ -47,32 +46,6 @@ class FocusAgentHarness:
         """Invoke the graph through the harness middleware stack."""
 
         return self.middleware.invoke(self.graph.invoke, payload, **kwargs)
-
-    def make_event_publisher(self, run_id: str, thread_id: str) -> Any:
-        """Create an :class:`AgentEventPublisher` bound to this harness's bridge."""
-
-        from ..streaming import AgentEventPublisher
-
-        return AgentEventPublisher.for_harness(self, run_id=run_id, thread_id=thread_id)
-
-    def facade(self) -> Any:
-        """Return a :class:`FocusAgent` streaming facade wrapping this harness."""
-
-        from .facade import FocusAgent
-
-        return FocusAgent(self)
-
-    @property
-    def focus_agent(self) -> Any:
-        """Return a :class:`FocusAgent` facade bound to this harness.
-
-        The facade is imported lazily to avoid circular imports at module load
-        time; each call returns a fresh lightweight wrapper.
-        """
-
-        from .facade import FocusAgent
-
-        return FocusAgent(self)
 
     async def stream_chunks(
         self,
@@ -227,7 +200,6 @@ def create_focus_agent(
         tool_registry=effective_tool_registry,
         agent_definition_registry=agent_definition_registry,
         extension_registry=new_components.get("extension_registry"),
-        extension_loader=new_components.get("extension_loader"),
         permission_manager=new_components.get("permission_manager"),
         system_agent_runner=system_agent_runner,
     )
@@ -243,41 +215,23 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
     """
 
     components: dict[str, Any] = {}
-    extension_dirs = list(getattr(config, "extension_dirs", []) or [])
-    agent_definition_dirs = list(getattr(config, "agent_definition_dirs", []) or [])
-    enable_extensions = bool(getattr(config, "enable_extensions", True))
-    enable_permission_system = bool(getattr(config, "enable_permission_system", True))
-    doom_loop_threshold = int(getattr(config, "doom_loop_threshold", 3) or 3)
-    enable_system_agents = bool(getattr(config, "enable_system_agents", True))
 
     # a) Agent definition registry with built-in personas.
     try:
         from .definition import create_default_registry
 
-        reg: Any = create_default_registry()
-        load_dir = getattr(reg, "load_directory", None)
-        if load_dir is not None:
-            for directory in agent_definition_dirs:
-                try:
-                    load_dir(directory)
-                except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to load agent definitions from %s",
-                        directory,
-                        exc_info=True,
-                    )
-        components["agent_definition_registry"] = reg
+        components["agent_definition_registry"] = create_default_registry()
     except Exception:  # noqa: BLE001
         logger.debug("Agent definition registry unavailable", exc_info=True)
 
     # b) Extension registry + loader.
-    if enable_extensions:
+    if config.enable_extensions:
         try:
             from ..extensions import ExtensionRegistry
             from ..extensions.loader import ExtensionLoader
 
             ext_registry: Any = ExtensionRegistry()
-            loader: Any = ExtensionLoader(extension_dirs=extension_dirs)
+            loader: Any = ExtensionLoader(extension_dirs=config.extension_dirs)
             try:
                 for ext in loader.discover():
                     try:
@@ -291,12 +245,11 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
             except Exception:  # noqa: BLE001
                 logger.debug("Extension discovery failed", exc_info=True)
             components["extension_registry"] = ext_registry
-            components["extension_loader"] = loader
         except Exception:  # noqa: BLE001
             logger.debug("Extension subsystem unavailable", exc_info=True)
 
     # c) Permission manager — default to an allow-all rule for development.
-    if enable_permission_system:
+    if config.enable_permission_system:
         try:
             from ..governance.permissions import (
                 PermissionAction,
@@ -315,13 +268,13 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
             ]
             components["permission_manager"] = PermissionManager(
                 rules=default_rules,
-                doom_loop_threshold=doom_loop_threshold,
+                doom_loop_threshold=config.doom_loop_threshold,
             )
         except Exception:  # noqa: BLE001
             logger.debug("Permission manager unavailable", exc_info=True)
 
     # d) System agent runner.
-    if enable_system_agents:
+    if config.enable_system_agents:
         try:
             from .system_agents import SystemAgentRunner, create_default_system_agent_registry
 
@@ -330,22 +283,7 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             logger.debug("System agent runner unavailable", exc_info=True)
 
-    # NOTE: AgentEventPublisher is intentionally NOT constructed here.
-    # It requires (run_id, thread_id) which are per-run, not per-harness.
-    # Use FocusAgentHarness.make_event_publisher(run_id, thread_id) instead.
-
     return components
-
-
-# Backwards-compatible alias used (if anywhere) for the previous post-hoc init.
-def _initialize_new_components(harness: FocusAgentHarness, *, config: HarnessConfig) -> None:
-    """No-op shim retained for backwards compatibility.
-
-    Components are now constructed in :func:`_build_new_components` *before*
-    the graph is built, so that the graph can wire in references to
-    ``run_manager``, ``system_agent_runner``, and ``agent_definition_registry``.
-    """
-    pass
 
 
 def _lifecycle_publisher_for_bridge(
@@ -383,13 +321,13 @@ def _subagent_executor_for_config(
         return None
     # Select the runner based on config. Process isolation is opt-in
     # (defaults to False) so existing deployments keep in-process behavior.
-    if getattr(config.subagents, "use_process_isolation", False):
+    if config.subagents.use_process_isolation:
         from ..subagents.process_runner import ProcessSubagentTaskRunner
 
         runner: Any = ProcessSubagentTaskRunner(
-            cli_entry_point=getattr(config.subagents, "cli_entry_point", None),
-            default_timeout_seconds=getattr(config.subagents, "process_timeout_seconds", 300),
-            graceful_shutdown_seconds=getattr(config.subagents, "graceful_shutdown_seconds", 10),
+            cli_entry_point=config.subagents.cli_entry_point,
+            default_timeout_seconds=config.subagents.process_timeout_seconds,
+            graceful_shutdown_seconds=config.subagents.graceful_shutdown_seconds,
         )
     else:
         runner = AgentTeamSubagentRunner(settings=settings, model_factory=model_provider)

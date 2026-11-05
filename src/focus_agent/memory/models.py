@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from ..core.time_utils import utc_now
 
 
 class MemoryModel(BaseModel):
@@ -82,8 +80,8 @@ class MemoryRecord(MemoryModel):
     embedding_status: Literal["pending", "ready", "failed"] = "pending"
     embedding_model_id: str | None = None
     embedding_updated_at: datetime | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     deleted_at: datetime | None = None
 
 
@@ -148,7 +146,7 @@ class MemoryAuditEvent(MemoryModel):
     source_branch_id: str | None = None
     request_id: str | None = None
     data: dict[str, object] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class MemoryCandidate(MemoryModel):
@@ -162,8 +160,8 @@ class MemoryCandidate(MemoryModel):
     evidence_refs: list[str] = Field(default_factory=list)
     record: MemoryWriteRequest
     reason: str | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class MemoryRetrievalPlan(MemoryModel):
