@@ -8,6 +8,7 @@ from typing import Any, Literal
 from focus_agent.engine.graph.evidence import (
     EVIDENCE_LAYER_BODY,
     EVIDENCE_LAYER_SOURCE,
+    WEB_EVIDENCE_TOOLS,
 )
 from focus_agent.engine.graph.evidence import (
     _is_internal_summary as _is_internal_evidence_summary,
@@ -98,16 +99,19 @@ def build_execution_contract(
             explicit_required_web_tools = True
     if temporal_anchor_required and "current_utc_time" in available:
         required_tools.append("current_utc_time")
-    if explicit_required_web_tools:
-        pass
-    elif preferred_first_tool == "web_fetch" or _should_prefer_web_fetch(user_query):
-        required_tools.append("web_fetch")
-    else:
-        required_tools.append("web_search")
+    interchangeable_web_tools: list[str] = []
+    if not explicit_required_web_tools:
+        # Either web tool yields web evidence; only an explicit user request pins both.
+        if preferred_first_tool == "web_fetch" or _should_prefer_web_fetch(user_query):
+            required_tools.append("web_fetch")
+        else:
+            required_tools.append("web_search")
+        interchangeable_web_tools = sorted(WEB_EVIDENCE_TOOLS)
     return {
         "policy": normalized_policy,
         "user_query": user_query,
         "required_tools": required_tools,
+        "interchangeable_web_tools": interchangeable_web_tools,
         "required_evidence": True if required_evidence is None else bool(required_evidence),
         "temporal_anchor_required": bool(temporal_anchor_required),
         "status": "missing_required_tools",
@@ -130,6 +134,9 @@ def evaluate_execution_contract(
         return {**dict(contract), "status": "blocked"}
     required_tools = [str(item) for item in contract.get("required_tools") or [] if str(item)]
     seen = {str(item) for item in tool_results_seen if str(item)}
+    interchangeable = {str(item) for item in contract.get("interchangeable_web_tools") or []}
+    if seen & interchangeable:
+        seen |= interchangeable
     missing = [name for name in required_tools if name not in seen]
     available = {str(item) for item in available_tool_names if str(item)}
     blocked = [name for name in missing if name not in available]

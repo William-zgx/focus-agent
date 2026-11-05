@@ -23,7 +23,7 @@ TRUST_TIER_MEDIUM: TrustTier = "medium"
 TRUST_TIER_BACKGROUND: TrustTier = "background"
 TRUST_TIER_LOW: TrustTier = "low"
 
-_WEB_EVIDENCE_TOOLS = {"web_search", "web_fetch"}
+WEB_EVIDENCE_TOOLS = frozenset({"web_search", "web_fetch"})
 
 _HIGH_TRUST_DOMAINS = {
     "china-embassy.gov.cn",
@@ -132,7 +132,7 @@ def normalize_evidence_bundle(
         if relevant_call_ids is not None and tool_call_id not in relevant_call_ids:
             continue
         tool_name = _tool_name_for_message(message, call_names=call_names)
-        if tool_name not in _WEB_EVIDENCE_TOOLS:
+        if tool_name not in WEB_EVIDENCE_TOOLS:
             continue
         payload = tool_message_json(message)
         if not isinstance(payload, dict):
@@ -174,7 +174,7 @@ def normalize_evidence_ledger(
         if relevant_call_ids is not None and tool_call_id not in relevant_call_ids:
             continue
         tool_name = _tool_name_for_message(message, call_names=call_names)
-        if tool_name not in _WEB_EVIDENCE_TOOLS:
+        if tool_name not in WEB_EVIDENCE_TOOLS:
             continue
         payload = tool_message_json(message)
         if not isinstance(payload, dict):
@@ -233,7 +233,7 @@ def relevant_web_tool_call_ids(
             continue
         tool_call_id = _clean_text(getattr(message, "tool_call_id", ""))
         tool_name = _tool_name_for_message(message, call_names=call_names)
-        if tool_call_id and tool_name in _WEB_EVIDENCE_TOOLS:
+        if tool_call_id and tool_name in WEB_EVIDENCE_TOOLS:
             payload = tool_message_json(message)
             haystack = " ".join(
                 part
@@ -509,7 +509,7 @@ def _tool_name_for_message(message: ToolMessage, *, call_names: dict[str, str]) 
     payload = tool_message_json(message)
     if isinstance(payload, dict):
         tool_name = _clean_text(payload.get("tool"))
-        if tool_name in _WEB_EVIDENCE_TOOLS:
+        if tool_name in WEB_EVIDENCE_TOOLS:
             return tool_name
         if isinstance(payload.get("results"), list) and (
             payload.get("provider") or payload.get("query")

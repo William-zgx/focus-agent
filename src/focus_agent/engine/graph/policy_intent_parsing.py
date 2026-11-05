@@ -62,8 +62,11 @@ def requires_external_evidence(text: str) -> bool:
     requests = re.finditer(
         r"(?:给出|提供|引用|核对|核实|查证|附上|查一下|搜索).{0,24}"
         r"(?:官方来源|官方公告|原始来源|一手来源)"
+        r"|(?:给|给出|附|附上|提供|标注|注明)(?:可核实的?|对应的?|相应的?)?"
+        r"(?:来源链接|参考链接|出处链接|来源(?!代码|文件|码))"
         r"|\b(?:cite|provide|include|verify|check)\b.{0,40}\b(?:official|primary|original)\s+"
-        r"(?:sources?|announcements?|references?)\b",
+        r"(?:sources?|announcements?|references?)\b"
+        r"|\b(?:cite|with|include|provide|list)\s+(?:the\s+|your\s+)?(?:sources?|citations?|source\s+links?)\b",
         normalized,
         re.IGNORECASE,
     )

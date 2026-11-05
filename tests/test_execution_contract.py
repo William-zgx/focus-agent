@@ -65,6 +65,43 @@ def test_live_web_contract_requires_explicit_search_and_fetch_tools():
     assert both_tools["status"] == "satisfied"
 
 
+def test_live_web_contract_accepts_web_fetch_evidence_for_default_search_requirement():
+    contract = build_execution_contract(
+        policy="live_web_research",
+        temporal_anchor_required=True,
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+
+    evaluated = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["current_utc_time", "web_fetch"],
+        evidence_ledger=[{"url": "https://docs.python.org/3.14/whatsnew/3.14.html"}],
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+    without_web = evaluate_execution_contract(
+        contract,
+        tool_results_seen=["current_utc_time"],
+        evidence_ledger=[],
+        available_tool_names=["current_utc_time", "web_search", "web_fetch"],
+    )
+
+    assert contract["required_tools"] == ["current_utc_time", "web_search"]
+    assert evaluated["status"] == "satisfied"
+    assert evaluated["missing"] == []
+    assert without_web["missing"] == ["web_search"]
+
+
+def test_source_request_phrases_require_external_evidence():
+    from focus_agent.engine.graph.policy_intent_parsing import requires_external_evidence
+
+    assert requires_external_evidence("列出 3 个 C 扩展的兼容状态，各给来源。")
+    assert requires_external_evidence("每一点给出来源链接")
+    assert requires_external_evidence("Summarize the release notes with sources")
+    assert not requires_external_evidence("不要给来源，直接说结论")
+    assert not requires_external_evidence("提供来源代码的说明")
+    assert not requires_external_evidence("给出处理方案")
+
+
 def test_skill_execution_contract_requires_primary_tool_result():
     messages = [
         AIMessage(
