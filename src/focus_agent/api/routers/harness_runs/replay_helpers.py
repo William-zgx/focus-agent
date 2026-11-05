@@ -248,10 +248,9 @@ async def _run_branch_action_turn_to_completion(
         return await asyncio.shield(worker)
     except asyncio.CancelledError:
         current_task = asyncio.current_task()
-        uncancel = getattr(current_task, "uncancel", None) if current_task is not None else None
-        if current_task is not None and callable(uncancel):
+        if current_task is not None:
             for _ in range(current_task.cancelling()):
-                uncancel()
+                current_task.uncancel()
         return await asyncio.shield(worker)
 
 

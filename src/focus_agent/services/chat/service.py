@@ -134,7 +134,7 @@ class ChatService(
             trace_correlation=trace_correlation,
         )
         payload["active_skills"] = self._active_skill_metadata(payload.get("active_skill_ids", []))
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is not None and hasattr(
             branch_decision_service, "summary_for_thread"
         ):
@@ -158,7 +158,7 @@ class ChatService(
         )
 
     def _active_skill_metadata(self, skill_ids: Any) -> list[dict[str, Any]]:
-        registry = getattr(self.runtime, "skill_registry", None)
+        registry = self.runtime.skill_registry
         resolve = getattr(registry, "resolve", None)
         is_skill_enabled = getattr(registry, "is_skill_enabled", None)
         active_skills: list[dict[str, Any]] = []
@@ -428,7 +428,7 @@ class ChatService(
         message: str,
         request_id: str | None,
     ) -> dict[str, Any] | None:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return None
         recommendation_config = getattr(branch_decision_service, "recommendation_config", None)
@@ -554,7 +554,7 @@ class ChatService(
         }
 
     def _branch_recommendation_turn_enabled(self) -> bool:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return False
         recommendation_config = getattr(branch_decision_service, "recommendation_config", None)
@@ -706,7 +706,7 @@ class ChatService(
         message: str,
         explicit_skill_hints: tuple[str, ...],
     ) -> SkillSelection:
-        registry = getattr(self.runtime, "skill_registry", None)
+        registry = self.runtime.skill_registry
         if registry is None:
             return SkillSelection(
                 skill_ids=tuple(str(item) for item in explicit_skill_hints),

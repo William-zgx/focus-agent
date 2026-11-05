@@ -99,7 +99,7 @@ def create_conversation(
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ConversationSummaryResponse:
     existing = _list_or_bootstrap_conversations(runtime=runtime, user_id=principal.user_id)
-    requested_title = str(payload.title or "").strip()
+    requested_title = (payload.title or "").strip()
     title = requested_title or f"Conversation {len(existing) + 1}"
     root_thread_id = f"{principal.user_id}-{uuid4()}"
     runtime.repo.ensure_thread_owner(
@@ -127,7 +127,7 @@ def update_conversation(
     principal: Principal = Depends(get_current_principal),
     runtime: AppRuntime = Depends(get_app_runtime),
 ) -> ConversationSummaryResponse:
-    title = str(payload.title or "").strip()
+    title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Conversation title cannot be empty.")
     with map_service_errors(

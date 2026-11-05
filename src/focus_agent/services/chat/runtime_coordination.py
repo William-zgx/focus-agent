@@ -130,7 +130,7 @@ class ChatRuntimeCoordinationMixin:
         request_id: str | None,
         trace_id: str | None,
     ) -> None:
-        branch_decision_service = getattr(self.runtime, "branch_decision_service", None)
+        branch_decision_service = self.runtime.branch_decision_service
         if branch_decision_service is None:
             return
         config = getattr(branch_decision_service, "config", lambda: None)()
