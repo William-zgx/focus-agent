@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import psycopg
@@ -14,7 +13,6 @@ from focus_agent.core.users import (
     UserSession,
 )
 from focus_agent.security.tokens import Principal
-from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ._postgres_base import PostgresMixin
 from .postgres_schema import ensure_app_postgres_schema_on_connection
@@ -29,15 +27,6 @@ _ADMIN_DEMOTION_LOCK_KEY = 6_716_136_569_760_316_001
 
 
 class PostgresUserRepository(PostgresMixin, UserRepository):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def setup(self) -> None:
         with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
@@ -115,14 +104,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                     WHERE refresh_token_hash <> ''
                     """
                 )
-
-    @staticmethod
-    def _decode_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
 
     @classmethod
     def _user_from_row(cls, row: dict[str, object]) -> User:

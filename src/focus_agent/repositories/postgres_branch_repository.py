@@ -5,8 +5,6 @@ from collections.abc import MutableSequence
 import psycopg as psycopg
 from psycopg.types.json import Jsonb
 
-from focus_agent.storage.postgres import PostgresConnectionProvider
-
 from ..core.branching import (
     BranchRecord,
     BranchRole,
@@ -37,15 +35,6 @@ _CONVERSATION_COLUMNS = """
 
 
 class PostgresBranchRepository(PostgresMixin, PostgresBranchMapperMixin, BranchRepository):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def setup(self) -> None:
         with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)

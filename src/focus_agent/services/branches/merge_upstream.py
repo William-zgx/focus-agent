@@ -7,9 +7,9 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...core.branch_brief import message_visible_text, visible_dialogue_messages
-from ...core.branch_messages import _is_human_message_type, _message_type_name
 from ...core.branching import MergeConflict, MergeProposal
-from ...core.merge_review_inputs import clip_text, split_at_fork
+from ...core.merge_review_inputs import split_at_fork
+from ...core.message_utils import clip_text, is_human_message_type, message_type_name
 from ...memory.dedupe import has_textual_overlap
 from ...memory.text import normalize_memory_dedupe_text
 
@@ -55,7 +55,7 @@ def upstream_changes(
     new_messages = parent_messages[forked_count:]
     new_turns = [
         {
-            "role": "user" if _is_human_message_type(_message_type_name(message)) else "assistant",
+            "role": "user" if is_human_message_type(message_type_name(message)) else "assistant",
             "content": clip_text(message_visible_text(message), 400),
         }
         for message in visible_dialogue_messages(new_messages, values={})

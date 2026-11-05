@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from .message_utils import clip_text
+
 APPROVED_CONCLUSIONS_TITLE = "Approved branch conclusions"
 APPROVED_CONCLUSIONS_MAX_ENTRIES = 6
 APPROVED_CONCLUSIONS_MAX_CHARS = 3600
@@ -18,13 +20,6 @@ _ITEM_MAX_CHARS = 240
 _FINDINGS_PER_ENTRY = 6
 _QUESTIONS_PER_ENTRY = 3
 _ARTIFACTS_PER_ENTRY = 4
-
-
-def _clip(value: Any, max_chars: int) -> str:
-    text = " ".join(str(value or "").split())
-    if len(text) <= max_chars:
-        return text
-    return text[: max(0, max_chars - 1)].rstrip() + "…"
 
 
 def _strings(values: Any, *, limit: int) -> list[str]:
@@ -43,22 +38,22 @@ def approved_conclusion_entries(merge_queue: Iterable[Any]) -> list[dict[str, An
 
 
 def _entry_lines(entry: Mapping[str, Any]) -> list[str]:
-    label = _clip(entry.get("branch_name") or entry.get("branch_id") or "branch", 60)
+    label = clip_text(entry.get("branch_name") or entry.get("branch_id") or "branch", 60)
     imported_at = str(entry.get("imported_at") or "")[:10]
     tag = f"[{label} · {imported_at}]" if imported_at else f"[{label}]"
     refs = _strings(entry.get("evidence_refs"), limit=6)
     finding_refs = entry.get("finding_evidence_refs")
-    lines = [f"{tag} {_clip(entry.get('summary'), _SUMMARY_MAX_CHARS)}"]
+    lines = [f"{tag} {clip_text(entry.get('summary'), _SUMMARY_MAX_CHARS)}"]
     for finding in _strings(entry.get("key_findings"), limit=_FINDINGS_PER_ENTRY):
         own = finding_refs.get(finding) if isinstance(finding_refs, Mapping) else None
         cited = _strings(own if own is not None else refs, limit=4)
         suffix = f" [evidence: {', '.join(cited)}]" if cited else ""
-        lines.append(f"{tag} finding: {_clip(finding, _ITEM_MAX_CHARS)}{suffix}")
+        lines.append(f"{tag} finding: {clip_text(finding, _ITEM_MAX_CHARS)}{suffix}")
     for question in _strings(entry.get("open_questions"), limit=_QUESTIONS_PER_ENTRY):
-        lines.append(f"{tag} open question: {_clip(question, _ITEM_MAX_CHARS)}")
+        lines.append(f"{tag} open question: {clip_text(question, _ITEM_MAX_CHARS)}")
     artifacts = _strings(entry.get("artifacts"), limit=_ARTIFACTS_PER_ENTRY)
     if artifacts:
-        lines.append(f"{tag} artifacts: {_clip(', '.join(artifacts), _ITEM_MAX_CHARS)}")
+        lines.append(f"{tag} artifacts: {clip_text(', '.join(artifacts), _ITEM_MAX_CHARS)}")
     return lines
 
 

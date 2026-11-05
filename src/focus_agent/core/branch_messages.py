@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .message_utils import (
+    is_ai_message_type,
+    is_human_message_type,
+    is_tool_message_type,
+    message_type_name,
+)
+
 _CONFIRM_MARKERS = {
     "直接切过去",
     "切过去",
@@ -53,36 +60,6 @@ _COPIED_BRANCH_CONTROL_AI_PREFIXES = (
 
 def _compact(message: str) -> str:
     return re.sub(r"\s+", "", str(message or "").strip().lower())
-
-
-def _message_type_name(message: Any) -> str:
-    if isinstance(message, dict):
-        raw_type = message.get("type") or message.get("role") or message.get("_type") or ""
-        message_type = str(raw_type or "").strip().lower()
-        return {
-            "assistant": "ai",
-            "user": "human",
-        }.get(message_type, message_type)
-    return (
-        str(
-            getattr(message, "type", message.__class__.__name__.replace("Message", "").lower())
-            or ""
-        )
-        .strip()
-        .lower()
-    )
-
-
-def _is_ai_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() in {"ai", "assistant"}
-
-
-def _is_human_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() in {"human", "user"}
-
-
-def _is_tool_message_type(message_type: Any) -> bool:
-    return str(message_type or "").strip().lower() == "tool"
 
 
 def _message_content(message: Any) -> Any:
@@ -140,20 +117,20 @@ def _is_branch_action_request(message: str) -> bool:
 
 
 def _normalized_human_message_text(message: Any) -> str:
-    if not _is_human_message_type(_message_type_name(message)):
+    if not is_human_message_type(message_type_name(message)):
         return ""
     return " ".join(_message_content_to_text(_message_content(message)).split())
 
 
 def _is_copied_branch_control_ai_message(message: Any) -> bool:
-    if not _is_ai_message_type(_message_type_name(message)):
+    if not is_ai_message_type(message_type_name(message)):
         return False
     text = " ".join(_message_content_to_text(_message_content(message)).split())
     return any(text.startswith(prefix) for prefix in _COPIED_BRANCH_CONTROL_AI_PREFIXES)
 
 
 def _is_copied_branch_control_human_message(message: Any) -> bool:
-    if not _is_human_message_type(_message_type_name(message)):
+    if not is_human_message_type(message_type_name(message)):
         return False
     text = _message_content_to_text(_message_content(message))
     return (
@@ -245,10 +222,10 @@ def _is_local_duplicate_handoff_before_response(
     if not text:
         return False
     for later in messages[index + 1 :]:
-        later_type = _message_type_name(later)
-        if _is_human_message_type(later_type):
+        later_type = message_type_name(later)
+        if is_human_message_type(later_type):
             return _normalized_human_message_text(later) == text
-        if _is_ai_message_type(later_type) or _is_tool_message_type(later_type):
+        if is_ai_message_type(later_type) or is_tool_message_type(later_type):
             return False
     return False
 
@@ -288,11 +265,11 @@ def branch_context_messages(messages: list[Any], *, values: dict[str, Any]) -> l
     if copied_count is None or copied_count > len(messages):
         return branch_visible_messages(messages, values=values)
     local = messages[copied_count:]
-    if any(_is_human_message_type(_message_type_name(message)) for message in local):
+    if any(is_human_message_type(message_type_name(message)) for message in local):
         return branch_visible_messages(local, values={})
     seed = branch_visible_messages(messages[:copied_count], values=values)
     for index in range(len(seed) - 1, -1, -1):
-        if _is_human_message_type(_message_type_name(seed[index])):
+        if is_human_message_type(message_type_name(seed[index])):
             return [*seed[index:], *local]
     return local
 

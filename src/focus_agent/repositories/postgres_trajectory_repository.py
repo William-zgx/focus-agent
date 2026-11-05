@@ -7,8 +7,6 @@ from typing import Any
 
 import psycopg as psycopg
 
-from focus_agent.storage.postgres import PostgresConnectionProvider
-
 from ..observability.trajectory import TurnTrajectoryRecord
 from ._postgres_base import PostgresMixin
 from .postgres_trajectory_mappers import PostgresTrajectoryMapperMixin
@@ -54,15 +52,6 @@ class PostgresTrajectoryRepository(
     PostgresTrajectoryQueryMixin,
     PostgresTrajectoryMapperMixin,
 ):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def record_turn(self, record: TurnTrajectoryRecord) -> None:
         with self._cursor(dict_row=True) as cur:
             cur.execute(

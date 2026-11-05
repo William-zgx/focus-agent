@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
@@ -16,7 +15,6 @@ from focus_agent.core.agent_team import (
     AgentTeamTaskOutput,
     AgentTeamTaskStatus,
 )
-from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ._postgres_base import PostgresMixin
 from .agent_team_repository import AgentTeamRepository, _format_time, _now, _parse_time
@@ -30,15 +28,6 @@ from .postgres_schema import ensure_app_postgres_schema_on_connection
 class PostgresAgentTeamRepository(
     PostgresMixin, PostgresAgentTeamExecutionRepositoryMixin, AgentTeamRepository
 ):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
     def setup(self) -> None:
         with self._connection() as conn:
             ensure_app_postgres_schema_on_connection(conn)
@@ -52,14 +41,6 @@ class PostgresAgentTeamRepository(
         | AgentTeamMergeReviewEvent,
     ) -> dict[str, Any]:
         return value.model_dump(mode="json")
-
-    @staticmethod
-    def _decode_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
 
     @classmethod
     def _session_from_row(cls, row: dict[str, object]) -> AgentTeamSession:

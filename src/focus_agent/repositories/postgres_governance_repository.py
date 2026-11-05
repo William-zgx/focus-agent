@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -14,7 +13,6 @@ from focus_agent.core.governance import (
     SkillPreference,
     SkillSelectionEvent,
 )
-from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from ._postgres_base import PostgresMixin
 
@@ -50,23 +48,6 @@ _FEEDBACK_EVENT_COLUMNS = """
 
 
 class PostgresGovernanceRepository(PostgresMixin):
-    def __init__(
-        self,
-        database_uri: str,
-        *,
-        connection_provider: PostgresConnectionProvider | None = None,
-    ):
-        self.database_uri = database_uri
-        self.connection_provider = connection_provider
-
-    @staticmethod
-    def _decode_payload(value: object) -> dict[str, Any]:
-        if isinstance(value, str):
-            return json.loads(value)
-        if isinstance(value, dict):
-            return value
-        return dict(value)  # type: ignore[arg-type]
-
     @classmethod
     def _context_evidence_from_row(cls, row: dict[str, object]) -> ContextMemoryEvidence:
         payload = cls._decode_payload(row["data_json"])
