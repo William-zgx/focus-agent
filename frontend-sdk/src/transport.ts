@@ -1,7 +1,7 @@
 import { FocusAgentRequestError } from "./errors.js";
 import { iterSSEEvents } from "./parser.js";
 import type { FocusAgentEvent } from "./types.js";
-import { validateFocusAgentEvent } from "./transport.validation.js";
+import { isRecord, validateFocusAgentEvent } from "./transport.validation.js";
 
 export interface FocusAgentTransportOptions {
   baseUrl: string;
@@ -51,10 +51,6 @@ function normalizeNetworkError(error: unknown): never {
 function isJsonResponse(response: Response): boolean {
   const contentType = response.headers.get("content-type") ?? "";
   return JSON_CONTENT_TYPE_PATTERN.test(contentType);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringOrNumber(value: unknown): string | number | undefined {

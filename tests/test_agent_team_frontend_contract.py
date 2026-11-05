@@ -282,6 +282,8 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
                 AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts",
                 AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx",
                 AGENT_TEAM_ROOT / "agent-team-workbench-task-lanes.tsx",
+                AGENT_TEAM_ROOT / "agent-team-workbench-derived-state.ts",
+                AGENT_TEAM_ROOT / "agent-team-workbench-decision-state.ts",
             ]
         )
         + "\n"
@@ -312,9 +314,9 @@ def test_agent_team_workbench_preserves_latest_merge_bundle_after_reload():
     assert "compactTaskGoal" in workbench_text
     assert "evidenceItems" in workbench_text
     assert "task.verification_summary" in workbench_text
-    assert "activeBundle.test_evidence" in workbench_text
+    assert "activeBundle?.test_evidence" in workbench_text
     assert "Final Preview" in workbench_text
-    assert "finalAnswerText" in workbench_text
+    assert "finalResultStateForWorkbench" in workbench_text
     assert "source_output_ids" in workbench_text
     assert "fa-agent-team-execution-mode" in workbench_text
     assert "white-space: pre-line" in stylesheet_text

@@ -246,7 +246,6 @@ export function Badge({ className, tone = "status", ...props }: BadgeProps) {
 }
 
 export const Tag = Badge;
-export const Chip = Badge;
 
 export interface TabsProps<T extends string> {
 	activeId: T;

@@ -102,8 +102,10 @@ def test_workbench_exposes_dynamic_planning_controls_and_metadata():
     assert 'from "./agent-team-cockpit-panels"' in cockpit_entry_text
     assert 'from "./agent-team-cockpit-types"' in cockpit_entry_text
     for text in ["生成方案", "重新拆解", "运行 Mission", "生成最终结果"]:
-        assert text in workbench_text or text in _read(
-            AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts"
+        assert (
+            text in workbench_text
+            or text in _read(AGENT_TEAM_ROOT / "agent-team-workbench-utils.ts")
+            or text in _read(AGENT_TEAM_ROOT / "agent-team-workbench-decision-state.ts")
         )
 
     assert "fa-agent-team-guided-layout" in workbench_text
@@ -194,6 +196,8 @@ def test_default_result_panel_summarizes_raw_execution_text():
     )
     cockpit_entry_text = _read(AGENT_TEAM_ROOT / "agent-team-cockpit.tsx")
     result_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-merge-handoff.tsx")
+    final_result_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-derived-state.ts")
+    task_view_text = _read(AGENT_TEAM_ROOT / "agent-team-workbench-task-view-helpers.tsx")
     styles_text = _read_agent_team_styles()
 
     assert "export function AgentTeamCockpit" in cockpit_entry_text
@@ -204,17 +208,16 @@ def test_default_result_panel_summarizes_raw_execution_text():
     assert "模拟执行" in workbench_text
     assert "真实模型执行" in workbench_text
     assert "后台执行" in workbench_text
-    assert "finalResultSummary" in result_text
-    assert "finalAnswerText" in result_text
-    assert "final_answer" in result_text
-    assert "final_answer_status" in result_text
-    assert "final_answer_warnings" in result_text
+    assert "finalResultStateForWorkbench" in final_result_text
+    assert "final_answer" in final_result_text
+    assert "final_answer_status" in final_result_text
+    assert "final_answer_warnings" in final_result_text
+    assert "isBundleSimulated" in final_result_text
+    assert "模拟或 placeholder 结果不可交付" in final_result_text
+    assert "isRawRunText" in task_view_text
+    assert "模拟回传" in task_view_text
     assert "source_output_ids" in result_text
-    assert "isRawRunText" in result_text
-    assert "任务产出已回传" in result_text
     assert "原始依据" in result_text
     assert "Raw outputs" in result_text
-    assert "limitUserFacingItems" in result_text
-    assert "模拟执行提示" in result_text
     assert "当前下一步" not in result_text
     assert "-webkit-line-clamp: 2" in styles_text
