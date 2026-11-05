@@ -47,9 +47,11 @@ class UserRepository(ABC):
     def save_user_preserving_last_active_admin(self, user: User) -> User:
         raise NotImplementedError
 
-    @abstractmethod
     def get_user(self, user_id: str) -> User:
-        raise NotImplementedError
+        user = self.get_user_or_none(user_id)
+        if user is None:
+            raise KeyError(f"Unknown user: {user_id}")
+        return user
 
     @abstractmethod
     def get_user_or_none(self, user_id: str) -> User | None:
@@ -162,12 +164,6 @@ class InMemoryUserRepository(UserRepository):
             if _removes_active_admin(current, user) and active_admin_count <= 1:
                 raise LastActiveAdminError("Cannot remove the last active admin.")
             return self.save_user(user)
-
-    def get_user(self, user_id: str) -> User:
-        user = self.get_user_or_none(user_id)
-        if user is None:
-            raise KeyError(f"Unknown user: {user_id}")
-        return user
 
     def get_user_or_none(self, user_id: str) -> User | None:
         with self._lock:

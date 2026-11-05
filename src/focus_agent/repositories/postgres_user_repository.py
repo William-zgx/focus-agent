@@ -21,6 +21,7 @@ from .user_repository import (
     LastActiveAdminError,
     UserListFilters,
     UserRepository,
+    _removes_active_admin,
 )
 
 _ADMIN_DEMOTION_LOCK_KEY = 6_716_136_569_760_316_001
@@ -161,7 +162,7 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                 if row is None:
                     raise KeyError(f"Unknown user: {user.user_id}")
                 current = self._user_from_row(row)
-                if self._removes_active_admin(current, user):
+                if _removes_active_admin(current, user):
                     cur.execute(
                         """
                         SELECT COUNT(*) AS count
@@ -175,12 +176,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
                     if active_admin_count <= 1:
                         raise LastActiveAdminError("Cannot remove the last active admin.")
                 self._update_user(cur, user)
-        return user
-
-    def get_user(self, user_id: str) -> User:
-        user = self.get_user_or_none(user_id)
-        if user is None:
-            raise KeyError(f"Unknown user: {user_id}")
         return user
 
     def get_user_or_none(self, user_id: str) -> User | None:
@@ -471,15 +466,6 @@ class PostgresUserRepository(PostgresMixin, UserRepository):
         )
         if cur.rowcount == 0:
             raise KeyError(f"Unknown user: {user.user_id}")
-
-    @staticmethod
-    def _is_active_admin(user: User) -> bool:
-        status = user.status.value if hasattr(user.status, "value") else str(user.status)
-        return status == "active" and "admin" in set(user.roles)
-
-    @classmethod
-    def _removes_active_admin(cls, current: User, updated: User) -> bool:
-        return cls._is_active_admin(current) and not cls._is_active_admin(updated)
 
     def _insert_session(self, cur: object, session: UserSession) -> None:
         cur.execute(

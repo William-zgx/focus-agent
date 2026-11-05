@@ -39,6 +39,9 @@ class AgentTeamPlanningMixin:
             retrieval_index=getattr(self, "retrieval_index", None),
             embedding_provider=getattr(self, "memory_embedding_provider", None),
             repository=getattr(self, "repository", None),
+            skill_registry=getattr(
+                getattr(self, "_agent_team_runtime", None), "skill_registry", None
+            ),
         ).build_plan(
             session=session,
             options=options,

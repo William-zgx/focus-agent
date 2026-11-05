@@ -53,11 +53,13 @@ class AgentTeamPlanningService:
         retrieval_index: Any | None = None,
         embedding_provider: Any | None = None,
         repository: Any | None = None,
+        skill_registry: Any | None = None,
     ):
         self.settings = settings
         self.retrieval_index = retrieval_index
         self.embedding_provider = embedding_provider
         self.repository = repository
+        self.skill_registry = skill_registry
 
     def build_plan(
         self,
@@ -120,7 +122,9 @@ class AgentTeamPlanningService:
         session: AgentTeamSession,
         options: AgentTeamPlanOptions,
     ) -> AgentTeamPlanDraft:
-        skill_plan = _skill_plan_for_session(self.settings, session)
+        skill_plan = _skill_plan_for_session(
+            self.settings, session, skill_registry=self.skill_registry
+        )
         if not skill_plan:
             return draft
 

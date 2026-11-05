@@ -10,7 +10,7 @@ from pydantic import Field
 from ..config import Settings
 from ..core.types import StateModel
 from .delegation import AgentArtifact
-from .roles import AgentRole, normalize_agent_role
+from .roles import AgentRole, artifact_kind_for_role, normalize_agent_role
 
 AgentTaskLedgerStatus = Literal[
     "disabled", "planned", "running", "completed", "blocked", "rejected"
@@ -180,7 +180,7 @@ def build_delegated_artifacts(
     runs_by_task = _runs_by_task(delegation_plan)
     for task in ledger_model.tasks:
         run = runs_by_task.get(task.task_id, {})
-        kind = _artifact_kind_for_role(task.role)
+        kind: DelegatedArtifactKind = artifact_kind_for_role(task.role)  # type: ignore[assignment]
         status = _artifact_status_for_run(run)
         produced_artifacts = [
             AgentArtifact.model_validate(item).model_dump(mode="json")
@@ -411,20 +411,6 @@ def _artifact_status_for_run(run: dict[str, Any]) -> DelegatedArtifactStatus:
     if status == "failed":
         return "rejected"
     return "draft"
-
-
-def _artifact_kind_for_role(role: AgentRole) -> DelegatedArtifactKind:
-    if role == AgentRole.PLANNER:
-        return "plan"
-    if role == AgentRole.CRITIC:
-        return "critic_verdict"
-    if role == AgentRole.MEMORY_CURATOR:
-        return "memory_candidate"
-    if role == AgentRole.SKILL_SCOUT:
-        return "tool_route_evidence"
-    if role == AgentRole.EXECUTOR:
-        return "patch_summary"
-    return "evidence"
 
 
 def _runs_by_task(delegation_plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:

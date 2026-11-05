@@ -7,7 +7,6 @@ from ..config import Settings
 from ..runtime.thread_pool import shared_thread_pool
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_model_task import (
-    artifact_kind,
     blocked_result_with_reason,
     execute_model_task,
     failed_result,
@@ -16,6 +15,7 @@ from .execution_model_task import (
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_registry import SubagentRegistry
 from .execution_types import DelegatedRunExecutor, SubagentConfig, SubagentRunResult
+from .roles import artifact_kind_for_role
 
 
 class FakeDelegatedRunExecutor:
@@ -26,7 +26,7 @@ class FakeDelegatedRunExecutor:
         run_id = f"run-{task.task_id}"
         artifact = AgentArtifact(
             artifact_id=f"artifact-{task.task_id}-fake-result",
-            kind=artifact_kind(task.role),
+            kind=artifact_kind_for_role(task.role),
             title=f"{task.role.value} fake delegated result",
             summary=_fake_summary(task),
             payload={

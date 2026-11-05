@@ -15,7 +15,7 @@ from ..config import Settings
 from .delegation_models import AgentArtifact, AgentTask
 from .execution_modes import DelegationExecutionMode, ModelFactory
 from .execution_types import SubagentConfig, SubagentRunResult
-from .roles import AgentRole
+from .roles import AgentRole, artifact_kind_for_role
 
 _CWD_LOCK = RLock()
 _MODEL_TASK_SYSTEM_PROMPT_ID = "delegation.model_task.system"
@@ -52,7 +52,7 @@ def execute_model_task(
         status, error = _status_from_output(task, parsed)
         artifact = AgentArtifact(
             artifact_id=f"artifact-{task.task_id}-{mode}-result",
-            kind=artifact_kind(task.role),
+            kind=artifact_kind_for_role(task.role),
             title=f"{task.role.value} {mode} delegated result",
             summary=summary,
             payload={
@@ -142,20 +142,6 @@ def blocked_result_with_reason(
         workspace_branch=config.workspace_branch,
         base_commit=config.base_commit,
     )
-
-
-def artifact_kind(role: AgentRole) -> str:
-    if role == AgentRole.PLANNER:
-        return "plan"
-    if role == AgentRole.CRITIC:
-        return "critic_verdict"
-    if role == AgentRole.MEMORY_CURATOR:
-        return "memory_candidate"
-    if role == AgentRole.SKILL_SCOUT:
-        return "tool_route_evidence"
-    if role == AgentRole.EXECUTOR:
-        return "patch_summary"
-    return "evidence"
 
 
 def utc_now() -> str:
@@ -263,7 +249,6 @@ def _status_from_output(
 
 
 __all__ = [
-    "artifact_kind",
     "blocked_result_with_reason",
     "execute_model_task",
     "failed_result",

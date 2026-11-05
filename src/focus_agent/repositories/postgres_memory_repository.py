@@ -383,6 +383,17 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
             return None
         return record_from_payload(row["data_json"])
 
+    def get_records(self, memory_ids: list[str]) -> dict[str, MemoryRecord]:
+        if not memory_ids:
+            return {}
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                "SELECT memory_id, data_json FROM focus_memories WHERE memory_id = ANY(%s)",
+                (list(memory_ids),),
+            )
+            rows = cur.fetchall()
+        return {str(row["memory_id"]): record_from_payload(row["data_json"]) for row in rows}
+
     def forget_record(
         self,
         *,

@@ -82,18 +82,26 @@ function normalizedProtocolText(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function looksLikeKnownToolMarker(text: string, knownToolNames?: Iterable<string>): boolean {
-  if (TEXTUAL_TOOL_ARTIFACT_MARKERS.some((marker) => text.includes(marker))) {
-    return true;
+function textualToolNames(knownToolNames?: Iterable<string>): ReadonlySet<string> {
+  if (!knownToolNames) {
+    return DEFAULT_TEXTUAL_TOOL_NAMES;
   }
-
   const toolNames = new Set(DEFAULT_TEXTUAL_TOOL_NAMES);
-  for (const name of knownToolNames ?? []) {
+  for (const name of knownToolNames) {
     const normalized = String(name).trim().toLowerCase();
     if (normalized) {
       toolNames.add(normalized);
     }
   }
+  return toolNames;
+}
+
+function looksLikeKnownToolMarker(text: string, knownToolNames?: Iterable<string>): boolean {
+  if (TEXTUAL_TOOL_ARTIFACT_MARKERS.some((marker) => text.includes(marker))) {
+    return true;
+  }
+
+  const toolNames = textualToolNames(knownToolNames);
 
   BRACKET_TOOL_MARKER_RE.lastIndex = 0;
   for (const match of text.matchAll(BRACKET_TOOL_MARKER_RE)) {
@@ -136,13 +144,7 @@ function looksLikeToolCallRecord(value: unknown, knownToolNames?: Iterable<strin
   if (!normalizedName) {
     return false;
   }
-  const toolNames = new Set(DEFAULT_TEXTUAL_TOOL_NAMES);
-  for (const knownName of knownToolNames ?? []) {
-    const normalized = String(knownName).trim().toLowerCase();
-    if (normalized) {
-      toolNames.add(normalized);
-    }
-  }
+  const toolNames = textualToolNames(knownToolNames);
   const hasArgs =
     "args" in record ||
     "arguments" in record ||

@@ -379,7 +379,22 @@ def _governance_for(role: AgentRole, available_tool_names: tuple[str, ...]) -> R
     )
 
 
+_ROLE_ARTIFACT_KINDS: dict[AgentRole, str] = {
+    AgentRole.PLANNER: "plan",
+    AgentRole.CRITIC: "critic_verdict",
+    AgentRole.MEMORY_CURATOR: "memory_candidate",
+    AgentRole.SKILL_SCOUT: "tool_route_evidence",
+    AgentRole.EXECUTOR: "patch_summary",
+}
+
+
+def artifact_kind_for_role(role: AgentRole) -> str:
+    """Artifact kind a delegated task of ``role`` produces; defaults to ``evidence``."""
+    return _ROLE_ARTIFACT_KINDS.get(role, "evidence")
+
+
 __all__ = [
+    "artifact_kind_for_role",
     "AgentDecision",
     "AgentRole",
     "RoleModelResolver",

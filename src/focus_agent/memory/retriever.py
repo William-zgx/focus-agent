@@ -350,9 +350,10 @@ class MemoryRetriever:
         except Exception:
             logger.warning("memory zvec search failed; falling back to repository", exc_info=True)
             return [], "failed"
+        records = _get_records(self.repository, [hit.source_id for hit in hits])
         normalized: list[MemorySearchHit] = []
         for hit in hits:
-            record = self.repository.get_record(hit.source_id)
+            record = records.get(hit.source_id)
             if record is None or tuple(record.namespace) != namespace:
                 continue
             if getattr(record.status, "value", record.status) != "active":
@@ -610,3 +611,16 @@ def _current_plan_step_goal(state: dict) -> str:
         if step.id == current_step_id:
             return str(step.goal or "").strip()
     return ""
+
+
+def _get_records(repository: object, memory_ids: list[str]) -> dict[str, MemoryRecord]:
+    """Fetch records in one query when the repository supports batching."""
+    batch = getattr(repository, "get_records", None)
+    if callable(batch):
+        return batch(memory_ids)
+    found: dict[str, MemoryRecord] = {}
+    for memory_id in memory_ids:
+        record = repository.get_record(memory_id)
+        if record is not None:
+            found[memory_id] = record
+    return found
