@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from langchain.messages import AIMessage, HumanMessage
 
-from focus_agent.engine.graph_memory_nodes import _should_extract_memories
+from focus_agent.engine.graph.memory_nodes import _should_extract_memories
 from focus_agent.services.branches.merge import _merge_import_blocked_reason
 
 

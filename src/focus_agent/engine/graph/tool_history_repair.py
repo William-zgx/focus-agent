@@ -5,15 +5,15 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from ..config import Settings
-from ..core.branch_messages import branch_context_messages, branch_fork_message_count
-from ..core.state import AgentState
-from ..core.tool_call_protocol import (
+from focus_agent.config import Settings
+from focus_agent.core.branch_messages import branch_context_messages, branch_fork_message_count
+from focus_agent.core.state import AgentState
+from focus_agent.core.tool_call_protocol import (
     messages_since_latest_human,
     repair_dangling_tool_call_messages,
 )
-from ..model_registry import default_thinking_enabled, supports_thinking_mode
-from .graph_tool_messages import tool_message_failed
+from focus_agent.engine.graph.tool_messages import tool_message_failed
+from focus_agent.model_registry import default_thinking_enabled, supports_thinking_mode
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 4
 

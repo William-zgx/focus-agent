@@ -6,11 +6,11 @@ import json
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from focus_agent.engine import graph_web_result_fallback
-from focus_agent.engine.graph_evidence import normalize_evidence_bundle, normalize_evidence_ledger
-from focus_agent.engine.graph_execution_contract import tool_result_names
-from focus_agent.engine.graph_tool_history_repair import _has_repeated_failed_tool_call
-from focus_agent.engine.graph_tool_messages import (
+from focus_agent.engine.graph import web_result_fallback as graph_web_result_fallback
+from focus_agent.engine.graph.evidence import normalize_evidence_bundle, normalize_evidence_ledger
+from focus_agent.engine.graph.execution_contract import tool_result_names
+from focus_agent.engine.graph.tool_history_repair import _has_repeated_failed_tool_call
+from focus_agent.engine.graph.tool_messages import (
     artifact_source_refs,
     payload_published_at,
     tool_message_failed,

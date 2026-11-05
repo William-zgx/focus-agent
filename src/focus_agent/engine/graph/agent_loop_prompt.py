@@ -8,8 +8,9 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
+from focus_agent.engine.graph.plan_nodes import _format_plan_block
+
 from ...core.types import Plan
-from ..graph_plan_nodes import _format_plan_block
 from .lexicon import contains_cjk
 
 _logger = logging.getLogger(__name__)

@@ -14,7 +14,7 @@ from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool as langchain_tool
 
 from focus_agent.config import Settings
-from focus_agent.engine.graph_governance_nodes import make_delegation_governance_node
+from focus_agent.engine.graph.governance_nodes import make_delegation_governance_node
 
 from .cli import _case_model_variants, _load_model_matrix, _write_failed_cases_dataset
 from .judges import EnvironmentJudge, RuleJudge, TrajectoryJudge

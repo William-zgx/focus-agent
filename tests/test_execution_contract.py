@@ -4,14 +4,14 @@ import json
 
 from langchain.messages import AIMessage, ToolMessage
 
-from focus_agent.engine.graph_evidence import normalize_evidence_bundle, normalize_evidence_ledger
-from focus_agent.engine.graph_execution_contract import (
+from focus_agent.engine.graph.evidence import normalize_evidence_bundle, normalize_evidence_ledger
+from focus_agent.engine.graph.execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
     tool_result_names,
     verify_answer_against_evidence,
 )
-from focus_agent.engine.graph_execution_facts import skill_execution_evidence_facts
+from focus_agent.engine.graph.execution_facts import skill_execution_evidence_facts
 
 
 def test_live_web_contract_requires_search_after_temporal_anchor_only():
@@ -918,7 +918,7 @@ def test_recent_few_weeks_uses_rolling_thirty_day_window():
 def test_fresh_evidence_window_follows_the_requested_period():
     from datetime import date
 
-    from focus_agent.engine.graph_execution_contract import _fresh_evidence_min_date
+    from focus_agent.engine.graph.execution_contract import _fresh_evidence_min_date
 
     today = date(2026, 10, 7)
     # An explicit year is the window, not "published today".
@@ -928,7 +928,7 @@ def test_fresh_evidence_window_follows_the_requested_period():
 
 
 def test_undated_fetched_page_counts_as_current_for_long_windows_only():
-    from focus_agent.engine.graph_execution_contract import _freshness_issue
+    from focus_agent.engine.graph.execution_contract import _freshness_issue
 
     page = {
         "source_tool": "web_fetch",

@@ -17,8 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from langchain.messages import ToolMessage
 
-from ...core.tool_call_protocol import messages_since_latest_human
-from ..graph_tool_messages import (
+from focus_agent.engine.graph.tool_messages import (
     artifact_source_refs,
     iter_tool_results,
     payload_published_at,
@@ -26,6 +25,8 @@ from ..graph_tool_messages import (
     tool_message_failed,
     tool_message_json,
 )
+
+from ...core.tool_call_protocol import messages_since_latest_human
 
 _LEDGER_NOTE_MAX_ENTRIES = 20
 # Fetch failures that will not change on retry within the same turn.

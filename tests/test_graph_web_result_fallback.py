@@ -1,6 +1,7 @@
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from focus_agent.engine import graph_tool_result_fallback, graph_web_result_fallback
+from focus_agent.engine.graph import web_result_fallback as graph_web_result_fallback
+from focus_agent.engine.graph import tool_result_fallback as graph_tool_result_fallback
 
 
 def test_graph_web_result_fallback_synthesizes_weather_with_source() -> None:
@@ -236,7 +237,7 @@ def test_synthesis_digest_keeps_every_fetched_page_whole():
 
     from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-    from focus_agent.engine.graph_tool_result_fallback import _tool_result_synthesis_prompt
+    from focus_agent.engine.graph.tool_result_fallback import _tool_result_synthesis_prompt
 
     vendors = ["openai", "anthropic", "google", "mistral", "meta"]
     messages = [HumanMessage(content="Compare the latest flagship model pricing of each vendor")]
@@ -303,7 +304,7 @@ def test_tool_result_synthesis_on_model_error_honours_turn_budget():
     from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
     from focus_agent.core.types import ContextBudget
-    from focus_agent.engine.graph_tool_result_fallback import _invoke_with_tool_result_fallback
+    from focus_agent.engine.graph.tool_result_fallback import _invoke_with_tool_result_fallback
 
     class FailingThenSynthesizingModel:
         def __init__(self):

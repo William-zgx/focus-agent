@@ -43,7 +43,7 @@ Code anchors for the status above:
 - Approval queue and un-wired resume service: [`approval_queue.py`](../../src/focus_agent/multi_agent/approval_queue.py) and [`agent_team_approval_resume.py`](../../src/focus_agent/services/agent_team/approval_resume.py).
 - Canonical memory merge and embedding shadow: [`models.py`](../../src/focus_agent/memory/models.py), [`service.py`](../../src/focus_agent/memory/service.py), and [`postgres_memory_repository.py`](../../src/focus_agent/repositories/postgres_memory_repository.py).
 - Context budget and feedback surfaces: [`context_usage.py`](../../src/focus_agent/context_usage.py), [`agent_governance.py`](../../src/focus_agent/api/routers/agent_governance.py), and [`governance_feedback.py`](../../src/focus_agent/retrieval/governance_feedback.py).
-- Result verification and task budgets: [`graph_execution_contract.py`](../../src/focus_agent/engine/graph_execution_contract.py), [`delegation_models.py`](../../src/focus_agent/delegation/delegation_models.py), and [`agent_team_real_execution.py`](../../src/focus_agent/services/agent_team/real_execution.py).
+- Result verification and task budgets: [`graph_execution_contract.py`](../../src/focus_agent/engine/graph/execution_contract.py), [`delegation_models.py`](../../src/focus_agent/delegation/delegation_models.py), and [`agent_team_real_execution.py`](../../src/focus_agent/services/agent_team/real_execution.py).
 
 Frozen contracts:
 

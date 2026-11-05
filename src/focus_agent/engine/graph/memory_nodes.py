@@ -8,24 +8,27 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from ..config import Settings
-from ..core.branch_brief import fork_brief_goal_update
-from ..core.context.policy import assemble_context as build_context_slice
-from ..core.merge_review_inputs import finding_text
-from ..core.request_context import RequestContext
-from ..core.state import AgentState
-from ..core.types import FindingItem, PromptMode
-from ..delegation.context_engineering import build_context_engineering_decision
-from ..memory import (
+from focus_agent.config import Settings
+from focus_agent.core.branch_brief import fork_brief_goal_update
+from focus_agent.core.context.policy import assemble_context as build_context_slice
+from focus_agent.core.merge_review_inputs import finding_text
+from focus_agent.core.request_context import RequestContext
+from focus_agent.core.state import AgentState
+from focus_agent.core.types import FindingItem, PromptMode
+from focus_agent.delegation.context_engineering import build_context_engineering_decision
+from focus_agent.engine.graph.tool_history_repair import _latest_human_message_text
+from focus_agent.engine.graph.tool_result_fallback import (
+    _context_budget_from_state,
+    _latest_final_ai_text,
+)
+from focus_agent.memory import (
     MemoryExtractor,
     MemoryRetriever,
     MemoryWriter,
     MemoryWriteRequest,
     render_memory_block,
 )
-from ..skills import SkillRegistry
-from .graph_tool_history_repair import _latest_human_message_text
-from .graph_tool_result_fallback import _context_budget_from_state, _latest_final_ai_text
+from focus_agent.skills import SkillRegistry
 
 
 def _resolve_prompt_mode(state: AgentState) -> PromptMode:
@@ -155,7 +158,7 @@ def make_assemble_context_node(
 
 
 def summarize_turn(state: AgentState) -> dict[str, Any]:
-    from ..core.context_compaction import build_incremental_compaction_update
+    from focus_agent.core.context_compaction import build_incremental_compaction_update
 
     previous_meta = (
         state.get("context_compaction") if isinstance(state.get("context_compaction"), dict) else {}

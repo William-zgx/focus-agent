@@ -9,10 +9,11 @@ from typing import Any, NamedTuple
 
 from langchain.messages import ToolMessage
 
+from focus_agent.engine.graph.tool_call_repair import _tool_call_dedupe_key
+
 from ...capabilities.default_tool_modules.memory import authorize_memory_tool_args
 from ...capabilities.tool_runtime import build_tool_error_message
 from ...core.repo_call import has_repo_method
-from ..graph_tool_call_repair import _tool_call_dedupe_key
 from .retrieval_ledger import RetrievalLedgerEntry, retrieval_key
 from .tool_result_hooks import _ask_permission_result, _blocked_tool_error, _denied_tool_result
 

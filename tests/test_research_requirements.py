@@ -3,12 +3,12 @@ from datetime import date
 import pytest
 
 from focus_agent.core.runtime_outcome import build_task_outcome
-from focus_agent.engine.graph.policy import build_tool_intent_plan
-from focus_agent.engine.graph_execution_contract import (
+from focus_agent.engine.graph.execution_contract import (
     build_execution_contract,
     evaluate_execution_contract,
     verify_answer_against_evidence,
 )
+from focus_agent.engine.graph.policy import build_tool_intent_plan
 
 
 @pytest.mark.parametrize(
@@ -146,11 +146,11 @@ def test_explicit_required_tool_does_not_disappear_when_unavailable():
     ],
 )
 def test_search_and_verification_share_explicit_window(query, start):
-    from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
-    from focus_agent.engine.graph_execution_contract import (
+    from focus_agent.engine.graph.execution_contract import (
         _fresh_evidence_min_date,
         _query_needs_fresh_evidence,
     )
+    from focus_agent.engine.graph.policy_temporal import _temporal_live_web_search_args
 
     assert _query_needs_fresh_evidence(query)
     assert _fresh_evidence_min_date(query, date(2026, 10, 8)).isoformat() == start
@@ -164,7 +164,7 @@ def test_search_and_verification_share_explicit_window(query, start):
 
 
 def test_requested_publication_dates_cannot_use_fetch_time_instead():
-    from focus_agent.engine.graph_execution_contract import _freshness_issue
+    from focus_agent.engine.graph.execution_contract import _freshness_issue
 
     contract = {
         "policy": "live_web_research",

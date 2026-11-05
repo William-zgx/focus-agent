@@ -1098,7 +1098,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 运行时与 graph：
 
 - `src/focus_agent/engine/runtime.py`
-- `src/focus_agent/engine/graph_memory_nodes.py`
+- `src/focus_agent/engine/graph/memory_nodes.py`
 - `src/focus_agent/api/route_utils/readiness.py`
 - `src/focus_agent/core/state.py`
 - `src/focus_agent/services/branches/merge.py`

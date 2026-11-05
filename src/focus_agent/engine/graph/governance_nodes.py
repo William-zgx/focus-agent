@@ -3,23 +3,23 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from ..capabilities.tool_router import infer_tool_router_role
-from ..config import Settings
-from ..core.state import AgentState, append_agent_state_record
-from ..delegation.delegation_planning import build_agent_delegation_plan
-from ..delegation.delegation_routing import build_model_route_decision
-from ..delegation.execution_executors import run_delegated_tasks
-from ..delegation.execution_registry import SubagentRegistry, executor_for_mode
-from ..delegation.roles import build_role_route_plan
-from ..delegation.task_ledger import (
+from focus_agent.capabilities.tool_router import infer_tool_router_role
+from focus_agent.config import Settings
+from focus_agent.core.state import AgentState, append_agent_state_record
+from focus_agent.delegation.delegation_planning import build_agent_delegation_plan
+from focus_agent.delegation.delegation_routing import build_model_route_decision
+from focus_agent.delegation.execution_executors import run_delegated_tasks
+from focus_agent.delegation.execution_registry import SubagentRegistry, executor_for_mode
+from focus_agent.delegation.roles import build_role_route_plan
+from focus_agent.delegation.task_ledger import (
     apply_critic_retry_tasks,
     build_agent_task_ledger,
     build_delegated_artifacts,
     evaluate_critic_gate,
     synthesize_delegated_artifacts,
 )
-from .graph.policy import _classify_turn_tool_policy
-from .graph_tool_history_repair import _latest_human_message_text
+from focus_agent.engine.graph.policy import _classify_turn_tool_policy
+from focus_agent.engine.graph.tool_history_repair import _latest_human_message_text
 
 
 def make_role_route_dry_run_node(

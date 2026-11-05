@@ -9,7 +9,7 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from focus_agent.core.branching import MergeDecision, MergeMode, MergeProposal
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import PromptMode
-from focus_agent.engine.graph_memory_nodes import branch_memory_tool_findings
+from focus_agent.engine.graph.memory_nodes import branch_memory_tool_findings
 from focus_agent.engine.local_persistence import PersistentInMemoryStore
 from focus_agent.memory import MemoryRetriever, MemoryWriter
 from focus_agent.memory.assembler import render_scoped_context_memories

@@ -4,38 +4,39 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from ...core.context_request import build_context_request
-from ...core.runtime_outcome import build_task_outcome
-from ...core.state import append_agent_state_record
-from ...delegation.delegation_repair import build_failure_records, build_review_queue
-from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE
-from ..graph_evidence import (
+from focus_agent.engine.graph.evidence import (
     evidence_bundle_to_citation_refs,
     normalize_evidence_bundle,
     normalize_evidence_ledger,
 )
-from ..graph_execution_contract import (
+from focus_agent.engine.graph.execution_contract import (
     evaluate_execution_contract,
     tool_result_names,
     verify_answer_against_evidence,
 )
-from ..graph_execution_facts import skill_execution_evidence_facts
-from ..graph_output_language import enforce_temporal_anchor, repair_chinese_output
-from ..graph_textual_tool_call_repair import (
+from focus_agent.engine.graph.execution_facts import skill_execution_evidence_facts
+from focus_agent.engine.graph.output_language import enforce_temporal_anchor, repair_chinese_output
+from focus_agent.engine.graph.textual_tool_call_repair import (
     _looks_like_textual_tool_call_artifact,
     _repair_textual_tool_call_response,
 )
-from ..graph_tool_call_repair import _repair_and_dedupe_tool_calls
-from ..graph_tool_history_repair import (
+from focus_agent.engine.graph.tool_call_repair import _repair_and_dedupe_tool_calls
+from focus_agent.engine.graph.tool_history_repair import (
     _ensure_reasoning_content_for_tool_call_history,
     _latest_turn_messages,
 )
-from ..graph_tool_result_fallback import (
+from focus_agent.engine.graph.tool_result_fallback import (
     _degraded_answer_from_tool_results,
     _fallback_answer_from_tool_results,
     _invoke_with_tool_result_fallback,
     _should_replace_unfound_workspace_answer,
 )
+
+from ...core.context_request import build_context_request
+from ...core.runtime_outcome import build_task_outcome
+from ...core.state import append_agent_state_record
+from ...delegation.delegation_repair import build_failure_records, build_review_queue
+from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE
 from .agent_loop_helpers import (
     _latest_tool_result_content,
     _latest_turn_has_tool_result,

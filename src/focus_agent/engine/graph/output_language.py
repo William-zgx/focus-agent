@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from .graph.lexicon import CJK_RE, HTTP_URL_RE
+from focus_agent.engine.graph.lexicon import CJK_RE, HTTP_URL_RE
 
 _ANCHOR_DATE_RE = re.compile(
     r"(?:当前\s*(?:UTC)?\s*时间|UTC\s*时间|today|current\s*UTC\s*time)"
