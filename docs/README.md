@@ -88,7 +88,7 @@ flowchart LR
 - [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 - [frontend-visual-system.md](frontend-visual-system.md)：Web App token、primitive、CSS module ownership、style governance、bundle budget、截图/a11y 验证口径。
 - [architecture-debt-baseline.json](architecture-debt-baseline.json)：architecture gate 的 800 行阈值；当前没有 grandfathered large-file debt。
-- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与逐类 exit criteria；当前总量为 **89**，1.x public facade 仍保留。
+- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与逐类 exit criteria；当前总量为 **81**，1.x public facade 仍保留。
 
 ## Core Topics / 核心专题
 
@@ -151,7 +151,7 @@ flowchart LR
 - 本地持久化说明必须区分两条路径：维护中的 `make` 启动命令会管理 repo-local PostgreSQL；直接 API 启动且无 `DATABASE_URI` 时使用持久 SQLite app-state/checkpoint/store。
 - App Postgres schema 以代码 `SCHEMA_VERSION` 为准（当前 **v19**）；文档中的 schema 说明必须与 `src/focus_agent/repositories/postgres_schema.py` 同步。
 - 1.x public import surfaces、保留路由和历史状态读取器仍受 item-ID baseline
-  管理；逐类迁移调用方后再删除。出现外部采用方时增加 telemetry 和兼容窗口，不能把 89 项库存宣称为已清零。
+  管理；逐类迁移调用方后再删除。出现外部采用方时增加 telemetry 和兼容窗口，不能把 81 项库存宣称为已清零。
 - 后端路由、Pydantic response model 或 SDK 类型变化时，必须同步 `docs/api/openapi.json`、`frontend-sdk/src/types/__generated__.ts` 和必要的 `tests/contracts/*.json` snapshot；本地运行 `make sdk-openapi-types-check` 与 `make contract-check`。
 - 非生成源码超过 800 行会触发 architecture gate；兼容库存新增、删除或 identity 漂移必须通过 `make compat-gate` 显式更新和审查，不允许只放宽总量。
 - `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Agent Governance、Branch Decisions、Auth / Access、Agent Team、Admin Console、Streaming Contract、Runtime Outcomes、Context Window、Memory、Zvec Retrieval、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
@@ -159,4 +159,4 @@ flowchart LR
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 当前状态放 canonical 专题；待实施方案放有日期和状态的 `plans/` 子目录并从本索引链接；执行记录和历史草稿明确标注 historical，不作为当前能力证据。
 - `implemented`、默认启用、端到端已接通和已通过验收分别说明。声明验证通过必须有对应版本、环境、命令与结果，不能仅依据模块存在或旧报告。
-- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **89**）；README 与专题文档不得漂移。
+- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **81**）；README 与专题文档不得漂移。

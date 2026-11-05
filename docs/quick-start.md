@@ -22,6 +22,8 @@ make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```
 
+The Python package is installed in editable mode. After pulling changes that move modules or console-script entry points, rerun `make install-openai` (or `make install-anthropic`) so `focus-agent-*` commands and tests resolve against this checkout.
+
 `make setup-local` creates the default local config files under `.focus_agent/` if they are missing:
 
 - `.focus_agent/local.env`

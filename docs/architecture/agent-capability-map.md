@@ -1,6 +1,6 @@
 # Agent Capability Map
 
-Updated: 2026-11-01 (branch-workflow evidence and current implementation paths).
+Updated: 2026-11-05 (code anchors updated for the `services/agent_team/` and `engine/graph/` package layout).
 
 Current architecture capability map for the platform workbench. Positioning and
 product layers: [../project-overview.md](../project-overview.md). This map is a
@@ -40,10 +40,10 @@ Status meanings:
 Code anchors for the status above:
 
 - Harness lifecycle and in-process followups: [`runs.py`](../../src/focus_agent/harness/runtime/runs.py) and [`run_followups.py`](../../src/focus_agent/harness/runtime/run_followups.py).
-- Approval queue and un-wired resume service: [`approval_queue.py`](../../src/focus_agent/multi_agent/approval_queue.py) and [`agent_team_approval_resume.py`](../../src/focus_agent/services/agent_team/approval_resume.py).
+- Approval queue and un-wired resume service: [`approval_queue.py`](../../src/focus_agent/multi_agent/approval_queue.py) and [`agent_team/approval_resume.py`](../../src/focus_agent/services/agent_team/approval_resume.py).
 - Canonical memory merge and embedding shadow: [`models.py`](../../src/focus_agent/memory/models.py), [`service.py`](../../src/focus_agent/memory/service.py), and [`postgres_memory_repository.py`](../../src/focus_agent/repositories/postgres_memory_repository.py).
 - Context budget and feedback surfaces: [`context_usage.py`](../../src/focus_agent/context_usage.py), [`agent_governance.py`](../../src/focus_agent/api/routers/agent_governance.py), and [`governance_feedback.py`](../../src/focus_agent/retrieval/governance_feedback.py).
-- Result verification and task budgets: [`graph_execution_contract.py`](../../src/focus_agent/engine/graph/execution_contract.py), [`delegation_models.py`](../../src/focus_agent/delegation/delegation_models.py), and [`agent_team_real_execution.py`](../../src/focus_agent/services/agent_team/real_execution.py).
+- Result verification and task budgets: [`graph/execution_contract.py`](../../src/focus_agent/engine/graph/execution_contract.py), [`delegation_models.py`](../../src/focus_agent/delegation/delegation_models.py), and [`agent_team/real_execution.py`](../../src/focus_agent/services/agent_team/real_execution.py).
 
 Frozen contracts:
 

@@ -57,6 +57,32 @@ focus-agent-retrieval-index doctor
 focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 ```
 
+Console scripts are declared in `pyproject.toml` `[project.scripts]` and point at
+`src/focus_agent/cli/` (plus `focus_agent.api.cli` and `focus_agent.prompts.cli`);
+the module form is `python -m focus_agent.cli.<name>`. The package is installed
+in editable mode, so tests and console scripts resolve against whichever
+checkout `.venv` was installed from. After pulling changes that move modules or
+entry points, or when switching checkouts/worktrees, rerun `make install` (or
+`make install-anthropic`) before running tests.
+
+## Code Organization
+
+Shared helpers live in a few leaf modules. Reuse them before adding another
+local copy:
+
+- `src/focus_agent/core/message_utils.py`: message-type detection
+  (`message_type_name`, `is_ai_message_type`, ...) and `clip_text`
+- `src/focus_agent/core/time_utils.py`: `utc_now`, `utc_now_iso`, `utc_now_iso_z`
+- `src/focus_agent/core/coercion.py`: lenient value coercion (`positive_int`,
+  `non_negative_int`, `float_or_none`, `optional_str`)
+- `src/focus_agent/repositories/_postgres_base.py`: `PostgresMixin` (shared
+  Postgres repository `__init__` and connection/cursor helpers) and
+  `decode_json_payload`
+
+Agent Team services live in the `src/focus_agent/services/agent_team/` package
+(planning in `services/agent_team/planning/`), and graph helpers live in
+`src/focus_agent/engine/graph/`.
+
 ## Common Flows
 
 ### Backend only
@@ -115,7 +141,7 @@ large files, so every scanned file above 800 lines is a regression; a file that
 was split below the limit must not be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 89 items.
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 81 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an
@@ -175,7 +201,7 @@ SDK/API drift, update the relevant `tests/contracts/*.json` snapshot with
 `uv run python scripts/check_contracts.py --update` and review the snapshot
 diff before committing.
 
-3. If the frontend SDK implementation changed, especially `src/client.ts`, `src/client/`, `src/types.ts`, `src/types/`, `src/transport.ts`, `src/parser.ts`, `src/reducers.ts`, `src/toolProtocol.ts`, `src/guards.ts`, or transport validation files:
+3. If the frontend SDK implementation changed, especially `frontend-sdk/src/client.ts`, `frontend-sdk/src/client/`, `frontend-sdk/src/types.ts`, `frontend-sdk/src/types/`, `frontend-sdk/src/transport.ts`, `frontend-sdk/src/parser.ts`, `frontend-sdk/src/reducers.ts`, `frontend-sdk/src/toolProtocol.ts`, `frontend-sdk/src/guards.ts`, or transport validation files:
 
 ```bash
 make sdk-check
@@ -194,7 +220,7 @@ make web-check
 make web-build
 ```
 
-The package-level `web-lint` / `web-format-check` scripts remain intentionally scoped today to `src/entities` and `src/features/trajectory-observability`; `make web-lint-full` and `make web-format-check-full` cover all `apps/web/src`. `make web-check` and `make web-build` remain the full app type/build gates.
+The package-level `web-lint` / `web-format-check` scripts remain intentionally scoped today to `apps/web/src/entities` and `apps/web/src/features/trajectory-observability`; `make web-lint-full` and `make web-format-check-full` cover all `apps/web/src`. `make web-check` and `make web-build` remain the full app type/build gates.
 
 For broad frontend/runtime refactors, run the maintained frontend quality bundle:
 

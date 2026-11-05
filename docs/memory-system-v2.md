@@ -802,7 +802,7 @@ Local fallback 下，这些 tools 保留 legacy LangGraph Store path。
 
 - graph path 的 `memory_save/search/forget` 参数由当前 `RequestContext` 绑定，不允许模型自由跨 user/root/namespace。
 - `memory_search` 默认读取当前 user profile 和当前 root main/episodic；只有 context 有 `branch_id/project_id` 时才加入当前 branch/project namespace。
-- `memory_search` 的 Zvec 命中仍必须回查 canonical memory；forgotten/tombstoned、跨 user/root/namespace 或状态不允许的命中会被丢弃。
+- `memory_search` 的 Zvec 命中仍必须回查 canonical memory（`PostgresMemoryRepository.get_records()` 一次批量读取全部命中；不支持批量的 repository 退回逐条 `get_record()`）；forgotten/tombstoned、跨 user/root/namespace 或状态不允许的命中会被丢弃。
 - local fallback 的 `memory_forget` 仍是 store delete，没有 Postgres tombstone；生产 canonical 行为以 Postgres 为准。
 
 ## 13. API、SDK 与 Web Console

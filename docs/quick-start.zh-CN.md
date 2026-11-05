@@ -33,6 +33,8 @@ make setup-local
 pnpm install --registry=https://registry.npmjs.org
 ```
 
+Python 包以 editable 模式安装。拉取移动了模块或命令行入口的改动后，请重新执行 `make install-openai`（或 `make install-anthropic`），让 `focus-agent-*` 命令和测试解析到当前 checkout。
+
 `make setup-local` 会在缺失时创建 `.focus_agent/` 下的默认本地配置：
 
 - `.focus_agent/local.env`
