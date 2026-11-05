@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 
-from .config import load_local_env_file
-from .core.branching import BranchRole, MergeDecision
-from .core.request_context import RequestContext
-from .engine.runtime import create_runtime
-from .services.chat import ChatService
+from focus_agent.config import load_local_env_file
+from focus_agent.core.branching import BranchRole, MergeDecision
+from focus_agent.core.request_context import RequestContext
+from focus_agent.engine.runtime import create_runtime
+from focus_agent.services.chat import ChatService
 
 load_local_env_file()
 

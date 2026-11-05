@@ -6,17 +6,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .config import Settings
-from .engine.runtime import create_runtime
-from .retrieval.agent_team import index_agent_team_plan
-from .retrieval.artifacts import index_artifact_content
-from .retrieval.branch_context import index_branch_decision_event
-from .retrieval.factory import create_retrieval_index
-from .retrieval.failure_cases import index_failure_case_from_trajectory
-from .retrieval.governance_feedback import index_governance_feedback
-from .retrieval.trajectory import index_trajectory_record
-from .retrieval.workspace import index_workspace
-from .storage import LocalArtifactStore
+from focus_agent.config import Settings
+from focus_agent.engine.runtime import create_runtime
+from focus_agent.retrieval.agent_team import index_agent_team_plan
+from focus_agent.retrieval.artifacts import index_artifact_content
+from focus_agent.retrieval.branch_context import index_branch_decision_event
+from focus_agent.retrieval.factory import create_retrieval_index
+from focus_agent.retrieval.failure_cases import index_failure_case_from_trajectory
+from focus_agent.retrieval.governance_feedback import index_governance_feedback
+from focus_agent.retrieval.trajectory import index_trajectory_record
+from focus_agent.retrieval.workspace import index_workspace
+from focus_agent.storage import LocalArtifactStore
 
 
 def build_parser() -> argparse.ArgumentParser:

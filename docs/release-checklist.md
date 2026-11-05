@@ -235,7 +235,7 @@ represented by the deployment.
 Postgres migration verification can be attached as a machine-readable report from the migration command. When moving local state into Postgres, use the migration report path as the release-health/evidence input:
 
 ```bash
-uv run python -m focus_agent.migrate_local_state \
+uv run python -m focus_agent.cli.migrate_local_state \
   --database-uri postgresql://user:pass@host:5432/focus_agent \
   --artifact-scan \
   --report-path reports/release-gate/postgres-migration.json

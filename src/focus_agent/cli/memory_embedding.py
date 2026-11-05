@@ -7,14 +7,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .config import Settings
-from .memory.embedding import (
+from focus_agent.config import Settings
+from focus_agent.memory.embedding import (
     MemoryEmbeddingError,
     MemoryEmbeddingService,
     create_memory_embedding_provider,
 )
-from .repositories.memory_repository import MemoryListQuery
-from .repositories.postgres_memory_repository import PostgresMemoryRepository
+from focus_agent.repositories.memory_repository import MemoryListQuery
+from focus_agent.repositories.postgres_memory_repository import PostgresMemoryRepository
 
 
 @dataclass(frozen=True, slots=True)

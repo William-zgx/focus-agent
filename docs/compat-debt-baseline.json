@@ -7,13 +7,13 @@
     "legacy_template": "Keep the wire value while old sessions exist; stop new writes before schema removal."
   },
   "max_by_kind": {
-    "compatibility_shim": 61,
+    "compatibility_shim": 60,
     "deprecated_route": 4,
     "legacy_template": 7,
     "legacy_state_or_mirror": 3,
-    "legacy_override_or_monkeypatch": 8
+    "legacy_override_or_monkeypatch": 7
   },
-  "max_total": 83,
+  "max_total": 81,
   "schema_version": 2,
   "item_ids": [
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/core/context_assembly.py:.context.assembly",
@@ -60,7 +60,6 @@
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:scripts/nightly_regression_sections.py:_active_repo_root",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:scripts/release_health_check.py:_install_observability_import_stubs",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/capabilities/tool_events.py:_stream_writer",
-    "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/migrate_local_state.py:run_migration",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/repositories/_postgres_base.py:PostgresMixin._connection",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/services/agent_team/planning/dag.py:_legacy_override",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/services/branches/service.py:create_chat_model",
@@ -76,7 +75,6 @@
     "text:compatibility_shim:src/focus_agent/graph.py:1",
     "text:compatibility_shim:src/focus_agent/harness/agents/__init__.py:1",
     "text:compatibility_shim:src/focus_agent/memory/__init__.py:1",
-    "text:compatibility_shim:src/focus_agent/migrate_local_state.py:1",
     "text:compatibility_shim:src/focus_agent/multi_agent/errors.py:1",
     "text:compatibility_shim:src/focus_agent/multi_agent/errors.py:2",
     "text:compatibility_shim:src/focus_agent/multi_agent/errors.py:3",

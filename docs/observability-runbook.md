@@ -485,7 +485,7 @@ manifest and summary match the local pack.
 Postgres migration verification can be attached as either a machine-readable migration report or the command evidence that generated it:
 
 ```bash
-uv run python -m focus_agent.migrate_local_state \
+uv run python -m focus_agent.cli.migrate_local_state \
   --database-uri postgresql://user:pass@host:5432/focus_agent \
   --artifact-scan \
   --report-path reports/release-gate/postgres-migration.json

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from .repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
+from focus_agent.repositories.postgres_trajectory_repository import PostgresTrajectoryRepository
 
 
 class TrajectoryReadRepository(Protocol):

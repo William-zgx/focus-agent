@@ -1,7 +1,7 @@
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from focus_agent.engine.graph import web_result_fallback as graph_web_result_fallback
 from focus_agent.engine.graph import tool_result_fallback as graph_tool_result_fallback
+from focus_agent.engine.graph import web_result_fallback as graph_web_result_fallback
 
 
 def test_graph_web_result_fallback_synthesizes_weather_with_source() -> None:

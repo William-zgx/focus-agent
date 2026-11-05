@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from focus_agent import memory_embedding_cli as cli
+from focus_agent.cli import memory_embedding as cli
 from focus_agent.config import Settings
 
 

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from focus_agent import trajectory_cli
+from focus_agent.cli import trajectory as trajectory_cli
 
 
 def test_list_command_passes_filters_and_prints_json(monkeypatch, capsys):

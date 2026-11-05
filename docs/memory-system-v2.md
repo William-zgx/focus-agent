@@ -85,8 +85,8 @@ flowchart TD
 | `src/focus_agent/memory/curator.py` | branch finding promotion 前的冲突检查和候选治理。 |
 | `src/focus_agent/capabilities/default_tool_modules/memory.py` | agent-visible `memory_save/search/forget` tools；save/forget 接入 repository + optional embedding service，search 当前为 Zvec-first + repository FTS/rerank/dedupe fallback。 |
 | `src/focus_agent/api/routers/memory.py` | memory console 用 HTTP list/detail/audit/usage/candidates/forget surface。 |
-| `src/focus_agent/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
-| `src/focus_agent/memory_embedding_cli.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
+| `src/focus_agent/cli/migrate_local_state.py` / `src/focus_agent/migrations/local/` | 从 canonical SQLite 或 legacy LangGraph Store 迁移本地 app-state、checkpoint/store 和 memory；可选补齐 memory embeddings。 |
+| `src/focus_agent/cli/memory_embedding.py` | `focus-agent-memory-embedding doctor/rebuild` 维护命令。 |
 
 ## 3. 数据模型
 
@@ -1106,7 +1106,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 工具、API、SDK、Web：
 
 - `src/focus_agent/capabilities/default_tool_modules/memory.py`
-- `src/focus_agent/memory_embedding_cli.py`
+- `src/focus_agent/cli/memory_embedding.py`
 - `src/focus_agent/api/routers/memory.py`
 - `src/focus_agent/api/contract_models/memory.py`
 - `frontend-sdk/src/client/memory.ts`
@@ -1115,7 +1115,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 
 迁移与评估：
 
-- `src/focus_agent/migrate_local_state.py`
+- `src/focus_agent/cli/migrate_local_state.py`
 - `tests/test_memory_service.py`
 - `tests/test_memory_embedding_policy.py`
 - `tests/test_memory_embedding_cli.py`
