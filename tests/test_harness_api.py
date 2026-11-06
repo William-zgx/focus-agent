@@ -6,6 +6,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 
@@ -14,6 +15,7 @@ from focus_agent.api.route_utils.branch_handoff_decisions import (
 )
 from focus_agent.api.routers.harness_runs import (
     detail,
+    promote,
     replay_execution,
     replay_helpers,
     replay_models,
@@ -1188,6 +1190,58 @@ def test_authorize_run_access_rejects_mismatched_user():
         assert exc.status_code == 403
     else:  # pragma: no cover
         raise AssertionError("expected authorization failure")
+
+
+def test_cancel_harness_run_is_idempotent_for_already_stopped_run():
+    """A stream disconnect usually stops the run before the explicit cancel lands."""
+
+    record = {
+        "run_id": "run-1",
+        "thread_id": "thread-1",
+        "user_id": "user-1",
+        "status": "interrupted",
+    }
+
+    class _RunManager:
+        def get(self, run_id: str):
+            return None
+
+        async def cancel(self, run_id: str, *, action: str):
+            return False
+
+    class _Chat:
+        def _preflight_thread_access(self, **kwargs):
+            return SimpleNamespace(), None, {}
+
+    async def _persisted(run_id: str):
+        return dict(record) if run_id == "run-1" else None
+
+    runtime = SimpleNamespace(
+        run_manager=_RunManager(),
+        event_store=SimpleNamespace(get_run=_persisted),
+    )
+
+    async def scenario():
+        response = await promote.cancel_harness_run(
+            run_id="run-1",
+            payload=replay_models.HarnessRunCancelRequest(action="interrupt"),
+            runtime=runtime,
+            chat=_Chat(),
+            principal=SimpleNamespace(user_id="user-1"),
+        )
+        assert response.run["status"] == "interrupted"
+
+        with pytest.raises(HTTPException) as exc:
+            await promote.cancel_harness_run(
+                run_id="missing",
+                payload=replay_models.HarnessRunCancelRequest(action="interrupt"),
+                runtime=runtime,
+                chat=_Chat(),
+                principal=SimpleNamespace(user_id="user-1"),
+            )
+        assert exc.value.status_code == 404
+
+    asyncio.run(scenario())
 
 
 def test_stream_existing_harness_run_replays_with_last_event_id_without_cancelling():

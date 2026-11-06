@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.security.tokens import Principal
@@ -23,21 +23,17 @@ async def cancel_harness_run(
     chat: ChatService = Depends(get_chat_service),
     principal: Principal = Depends(get_current_principal),
 ) -> HarnessRunResponse:
-    await _load_authorized_run_payload(
+    run_payload = await _load_authorized_run_payload(
         runtime=runtime,
         chat=chat,
         principal=principal,
         run_id=run_id,
     )
     action = "rollback" if payload.action == "rollback" else "interrupt"
-    cancelled = await runtime.run_manager.cancel(run_id, action=action)
-    if not cancelled:
-        raise HTTPException(status_code=404, detail=f"Active run not found: {run_id}")
-    return _harness_run_response(
-        runtime=runtime,
-        run_id=run_id,
-        fallback_record={"run_id": run_id},
-    )
+    # Idempotent: a run that already stopped (e.g. cancelled by stream disconnect)
+    # returns its current record; unknown runs already 404 above.
+    await runtime.run_manager.cancel(run_id, action=action)
+    return _harness_run_response(runtime=runtime, run_id=run_id, fallback_record=run_payload)
 
 
 @router.post("/threads/{thread_id:path}/runs/cancel")
