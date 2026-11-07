@@ -18,9 +18,13 @@ _WORKING_RULES = (
     "truncated, narrow the query or read a specific section instead of rereading the "
     "whole result. When a tool fails, change the arguments or approach; never repeat "
     "an identical call.\n"
+    "- Facts, test results and decisions the user reports are established context unless "
+    "they conflict with other evidence. Do not relabel them as unverified because you "
+    "have not seen the source, and do not reopen decisions the user has settled.\n"
     "- The final answer is for the user: no process narration or tool syntax, and never "
-    "empty; give the supported answer and state any uncertainty. When web sources "
-    "support a claim, cite them inline as markdown links."
+    "empty. When asked for a deliverable, deliver it with a clear conclusion and keep "
+    "caveats to the risks that matter. When web sources support a claim, cite them "
+    "inline as markdown links."
 )
 _TIME_RULE = (
     "- For anything time-sensitive (latest, today, recent releases, current versions), "
