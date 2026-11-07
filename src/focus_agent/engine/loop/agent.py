@@ -76,10 +76,11 @@ def make_loop_agent_node(
     model_with_tools_for: Callable[[str, str, list[Any] | None], Any],
     run_manager: Any | None = None,
     agent_definition_registry: Any | None = None,
+    stream_phase: str = STREAM_VISIBILITY_VISIBLE,
 ) -> Any:
     all_tools = list(tools)
     max_tool_rounds = max(1, int(settings.agent_max_tool_rounds))
-    visible_model_for = _model_for_stream_phase(model_for, STREAM_VISIBILITY_VISIBLE)
+    final_answer_model_for = _model_for_stream_phase(model_for, stream_phase)
     quarantined_model_for = _model_for_stream_phase(model_for, STREAM_VISIBILITY_QUARANTINE)
     quarantined_model_with_tools_for = _model_with_tools_for_stream_phase(
         model_with_tools_for, STREAM_VISIBILITY_QUARANTINE
@@ -168,7 +169,7 @@ def make_loop_agent_node(
                 else model_for(selected_model, thinking_mode)
             )
             response = _invoke_with_tool_result_fallback(
-                _with_stream_phase(model, STREAM_VISIBILITY_VISIBLE),
+                _with_stream_phase(model, stream_phase),
                 prompt_messages,
                 fallback_messages=fallback_messages,
                 known_tool_names=known_names,
@@ -214,7 +215,7 @@ def make_loop_agent_node(
                     context_budget=context_budget,
                     selected_model=selected_model,
                     selected_thinking_mode=thinking_mode,
-                    model_for=visible_model_for,
+                    model_for=final_answer_model_for,
                     known_tool_names=known_names,
                 )
                 if not _message_content_text(response).strip():

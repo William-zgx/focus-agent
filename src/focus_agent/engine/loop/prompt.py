@@ -41,6 +41,11 @@ _TOOL_BUDGET_EXHAUSTED_NOTE = (
     "The tool budget for this turn is used up and no tools are available. Answer now "
     "from the evidence already gathered, and say plainly which parts remain unverified."
 )
+_SUBTASK_RULE = (
+    "- Use run_subtask for broad research or independent investigations whose intermediate "
+    "context would flood this conversation, not for trivial lookups. Give it a complete, "
+    "self-contained prompt."
+)
 
 
 def operating_note(tool_names: Iterable[str], *, tool_budget_exhausted: bool) -> str:
@@ -56,6 +61,8 @@ def operating_note(tool_names: Iterable[str], *, tool_budget_exhausted: bool) ->
         rules.append(_WEB_RULE)
     if TODO_WRITE_TOOL_NAME in names:
         rules.append(_TODO_RULE)
+    if "run_subtask" in names:
+        rules.append(_SUBTASK_RULE)
     return "\n".join(rules)
 
 

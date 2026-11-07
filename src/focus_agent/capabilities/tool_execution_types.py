@@ -7,12 +7,16 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from langchain.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
 
 from .tool_registry import ToolRuntimeMeta
 
 TOOL_APPROVAL_INTERRUPT_KIND = "tool_approval"
 TOOL_APPROVAL_POLICY_VERSION = "tool_approval.v2"
 REDACTED_ARG_VALUE = "[REDACTED]"
+TOOL_CALL_ID_CONFIG_KEY = "__focus_agent_tool_call_id"
+SELECTED_MODEL_CONFIG_KEY = "__focus_agent_selected_model"
+SELECTED_THINKING_MODE_CONFIG_KEY = "__focus_agent_selected_thinking_mode"
 _COMMON_SENSITIVE_ARG_MARKERS = (
     "api_key",
     "apikey",
@@ -32,6 +36,7 @@ class ToolExecutionInput:
     args: dict[str, Any]
     tool: Any
     runtime: ToolRuntimeMeta
+    invocation_config: RunnableConfig | None = None
 
 
 @dataclass(slots=True)

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import patch_config
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
@@ -21,6 +22,9 @@ from ...capabilities.ask_user_question import (
 )
 from ...capabilities.tool_messages import build_tool_message
 from ...capabilities.tool_runtime import (
+    SELECTED_MODEL_CONFIG_KEY,
+    SELECTED_THINKING_MODE_CONFIG_KEY,
+    TOOL_CALL_ID_CONFIG_KEY,
     ToolExecutionInput,
     ToolResultCacheStore,
     build_cache_scope_key,
@@ -99,6 +103,7 @@ def make_tool_executor_node(
     multi_agent_approval_timeout_seconds: float = 60.0,
     approval_queue: Any | None = None,
     harness_services: HarnessToolServices | None = None,
+    include_tool_invocation_context: bool = False,
 ) -> Any:
     artifact_read_tool = tools_by_name.get("artifact_read")
     artifact_read_metadata = getattr(artifact_read_tool, "metadata", {}) or {}
@@ -112,6 +117,7 @@ def make_tool_executor_node(
     ) -> dict[str, Any]:
         services = harness_services
         last_message = state["messages"][-1]
+        invocation_base_config = get_config() if include_tool_invocation_context else None
         context_budget = _context_budget_from_state(state)
         branch_meta = state.get("branch_meta") or {}
         branch_id = None
@@ -218,6 +224,20 @@ def make_tool_executor_node(
                 args=tool_args,
                 tool=tool,
                 runtime=runtime_meta,
+                invocation_config=(
+                    patch_config(
+                        invocation_base_config,
+                        configurable={
+                            TOOL_CALL_ID_CONFIG_KEY: tool_call_id,
+                            SELECTED_MODEL_CONFIG_KEY: str(state.get("selected_model") or ""),
+                            SELECTED_THINKING_MODE_CONFIG_KEY: str(
+                                state.get("selected_thinking_mode") or ""
+                            ),
+                        },
+                    )
+                    if invocation_base_config is not None
+                    else None
+                ),
             )
             if tool_name == ASK_USER_QUESTION_TOOL_NAME:
                 try:

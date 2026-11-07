@@ -37,6 +37,7 @@ from ..graph.tool_execution import HarnessToolServices
 from ..graph.turn_hooks import TurnLifecycle
 from .agent import make_loop_agent_node
 from .compaction import make_model_compaction_summarizer
+from .subtask import with_subtask_tool
 from .todos import TODO_WRITE_TOOL_NAME, build_todo_write_tool
 
 
@@ -90,6 +91,11 @@ def build_loop_graph(
             chat_model_factory=chat_model_factory,
         )
     )
+    components = with_subtask_tool(
+        settings=settings,
+        components=components,
+        harness_services=harness_services,
+    )
     lifecycle = TurnLifecycle(
         harness_services=harness_services,
         system_agent_runner=system_agent_runner,
@@ -126,6 +132,7 @@ def build_loop_graph(
             components=components,
             approval_queue=approval_queue,
             harness_services=harness_services,
+            include_tool_invocation_context=True,
         ),
     )
     builder.add_node("summarize_turn", lifecycle.summarize_turn)

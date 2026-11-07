@@ -80,6 +80,7 @@ def make_graph_tool_executor(
     components: GraphComponents,
     approval_queue: Any | None,
     harness_services: HarnessToolServices | None,
+    include_tool_invocation_context: bool = False,
 ) -> Any:
     return make_tool_executor_node(
         tools_by_name=components.tool_registry.by_name,
@@ -92,6 +93,7 @@ def make_graph_tool_executor(
         multi_agent_approval_timeout_seconds=settings.multi_agent_approval_timeout_seconds,
         approval_queue=approval_queue,
         harness_services=harness_services,
+        include_tool_invocation_context=include_tool_invocation_context,
     )
 
 

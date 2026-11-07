@@ -8,6 +8,9 @@ from ..core.types import ContextBudget
 from .tool_cache import ToolResultCacheStore, build_cache_scope_key, invalidate_after_side_effect
 from .tool_execution import execute_single
 from .tool_execution_types import (
+    SELECTED_MODEL_CONFIG_KEY,
+    SELECTED_THINKING_MODE_CONFIG_KEY,
+    TOOL_CALL_ID_CONFIG_KEY,
     ToolExecutionInput,
     ToolExecutionResult,
     ToolParallelClassification,
@@ -22,6 +25,9 @@ from .tool_messages import build_tool_error_message
 from .tool_parallel import classify_tool_parallel_execution, run_parallel_batch
 
 __all__ = [
+    "SELECTED_MODEL_CONFIG_KEY",
+    "SELECTED_THINKING_MODE_CONFIG_KEY",
+    "TOOL_CALL_ID_CONFIG_KEY",
     "ToolExecutionInput",
     "ToolExecutionResult",
     "ToolInvocationTimeoutError",

@@ -147,7 +147,7 @@ def test_v2_direct_answer_binds_all_tools_and_streams_visibly(monkeypatch, tmp_p
 
     final = result.value["messages"][-1]
     assert final.content == "Paris is the capital of France."
-    assert model.bound_tool_names == [["lookup", "todo_write"]]
+    assert model.bound_tool_names == [["lookup", "run_subtask", "todo_write"]]
     assert {"metadata": {"stream_phase": "visible"}, "tags": ["stream_phase:visible"]} in (
         model.configs
     )
@@ -222,7 +222,11 @@ def test_v2_tool_budget_forces_an_answer_without_tools(monkeypatch, tmp_path):
 
     result = _invoke(graph, _ask("Collect facts"), "thread-budget")
 
-    assert model.bound_tool_names == [["lookup", "todo_write"], ["lookup", "todo_write"], []]
+    assert model.bound_tool_names == [
+        ["lookup", "run_subtask", "todo_write"],
+        ["lookup", "run_subtask", "todo_write"],
+        [],
+    ]
     last_prompt_system = [m.content for m in model.prompts[-1] if isinstance(m, SystemMessage)]
     assert any("tool budget for this turn is used up" in text for text in last_prompt_system)
     assert result.value["messages"][-1].content == "Answer from gathered facts."
@@ -269,7 +273,11 @@ def test_v2_synthesizes_an_answer_when_the_model_goes_silent_after_tools(monkeyp
     result = _invoke(graph, _ask("What do we know about focus?"), "thread-silent")
 
     assert result.value["messages"][-1].content == "Synthesized from fact:focus."
-    assert model.bound_tool_names == [["lookup", "todo_write"], ["lookup", "todo_write"], []]
+    assert model.bound_tool_names == [
+        ["lookup", "run_subtask", "todo_write"],
+        ["lookup", "run_subtask", "todo_write"],
+        [],
+    ]
     assert model.configs[-1] == {
         "metadata": {"stream_phase": "visible"},
         "tags": ["stream_phase:visible"],
