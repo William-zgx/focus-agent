@@ -225,6 +225,54 @@ def test_v2_tool_budget_forces_an_answer_without_tools(monkeypatch, tmp_path):
     assert result.value["plan_meta"]["tool_budget_exhausted"] is True
 
 
+def test_v2_withholds_tools_when_their_schemas_alone_overflow_the_budget(monkeypatch, tmp_path):
+    @tool
+    def bulky(name: str) -> str:
+        """Placeholder."""
+        return name
+
+    bulky.description = "Bulky tool description. " * 200
+    model = _ScriptedModel([AIMessage(content="A short essay.")])
+    graph = _v2_graph(monkeypatch, model, tmp_path, tools=(bulky,))
+    payload = _ask("Write a short essay.")
+    payload["context_budget"] = {
+        "prompt_token_limit": 360,
+        "output_token_reserve": 0,
+        "chars_per_token": 1,
+    }
+
+    result = _invoke(graph, payload, "thread-schema-budget")
+
+    assert model.bound_tool_names == [[]]
+    assert result.value["messages"][-1].content == "A short essay."
+    assert result.value["plan_meta"]["tools_withheld_for_context"] is True
+    assert "context_budget_exhausted" not in result.value["plan_meta"]
+
+
+def test_v2_synthesizes_an_answer_when_the_model_goes_silent_after_tools(monkeypatch, tmp_path):
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "call-1", "name": "lookup", "args": {"name": "focus"}}],
+            ),
+            AIMessage(content=""),
+            AIMessage(content="Synthesized from fact:focus."),
+        ]
+    )
+    graph = _v2_graph(monkeypatch, model, tmp_path)
+
+    result = _invoke(graph, _ask("What do we know about focus?"), "thread-silent")
+
+    assert result.value["messages"][-1].content == "Synthesized from fact:focus."
+    assert model.bound_tool_names == [["lookup"], ["lookup"], []]
+    assert model.configs[-1] == {
+        "metadata": {"stream_phase": "visible"},
+        "tags": ["stream_phase:visible"],
+    }
+    assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "empty_final_answer"
+
+
 def test_v2_approval_interrupt_keeps_payload_and_resumes(monkeypatch, tmp_path):
     executed: list[str] = []
 
