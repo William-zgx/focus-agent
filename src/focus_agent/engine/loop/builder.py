@@ -4,6 +4,10 @@ bootstrap_turn -> retrieve_memory -> assemble_context -> agent_loop
 agent_loop <-> tool_executor
 agent_loop -> summarize_turn -> extract_memories -> write_memories
            -> maybe_interrupt_for_merge -> END
+
+``extract_memories`` writes only turn bookkeeping (turn summaries and
+branch findings) here: durable user/project memory is the model's call through
+the ``memory_*`` tools.
 """
 
 from __future__ import annotations
@@ -136,7 +140,10 @@ def build_loop_graph(
         ),
     )
     builder.add_node("summarize_turn", lifecycle.summarize_turn)
-    builder.add_node("extract_memories", make_extract_memories_node(components.memory_extractor))
+    builder.add_node(
+        "extract_memories",
+        make_extract_memories_node(components.memory_extractor, infer_durable_memories=False),
+    )
     builder.add_node("write_memories", make_write_memories_node(components.memory_writer))
     builder.add_node("maybe_interrupt_for_merge", lifecycle.maybe_interrupt_for_merge)
 

@@ -249,14 +249,16 @@ class WebFetchToolConfig:
 class MemorySaveToolConfig:
     enabled: bool = True
     label: str = "Memory Save"
-    description: str = "Save an explicit durable memory such as a user preference or project fact."
+    description: str = "Save a durable memory the user stated about themselves, their preferences, or the project, so future conversations can recall it."
 
 
 @dataclass(frozen=True, slots=True)
 class MemorySearchToolConfig:
     enabled: bool = True
     label: str = "Memory Search"
-    description: str = "Search durable memories by query across the default memory namespaces."
+    description: str = (
+        "Search saved memories by query when earlier context would materially help the answer."
+    )
     default_limit: int = 5
     max_limit: int = 20
 
@@ -265,7 +267,7 @@ class MemorySearchToolConfig:
 class MemoryForgetToolConfig:
     enabled: bool = True
     label: str = "Memory Forget"
-    description: str = "Delete a saved memory by id from an explicit or default memory namespace."
+    description: str = "Delete a saved memory by memory_id when the user asks you to forget it."
 
 
 @dataclass(frozen=True, slots=True)

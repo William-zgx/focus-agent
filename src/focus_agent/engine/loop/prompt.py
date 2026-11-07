@@ -37,6 +37,20 @@ _TODO_RULE = (
     "completed as soon as it is done. Send the update together with your next tool calls "
     "instead of as a separate step. Skip it for simple questions and single-step tasks."
 )
+# memory_search/memory_forget guidance is only useful alongside memory_save.
+_MEMORY_RULES = {
+    "memory_save": (
+        "- Use memory_save when the user states a durable fact about themselves, their "
+        "preferences, or the project that will matter in future conversations, or when they "
+        "ask you to remember something. Skip transient task details, secrets and credentials, "
+        "and facts already in the memories above."
+    ),
+    "memory_search": (
+        "- Use memory_search when past context would materially help and is not already "
+        "in the prompt."
+    ),
+    "memory_forget": "- Use memory_forget when the user asks you to forget something.",
+}
 _TOOL_BUDGET_EXHAUSTED_NOTE = (
     "The tool budget for this turn is used up and no tools are available. Answer now "
     "from the evidence already gathered, and say plainly which parts remain unverified."
@@ -63,6 +77,8 @@ def operating_note(tool_names: Iterable[str], *, tool_budget_exhausted: bool) ->
         rules.append(_TODO_RULE)
     if "run_subtask" in names:
         rules.append(_SUBTASK_RULE)
+    if "memory_save" in names:
+        rules.extend(rule for name, rule in _MEMORY_RULES.items() if name in names)
     return "\n".join(rules)
 
 

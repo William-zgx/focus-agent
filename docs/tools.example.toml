@@ -131,19 +131,19 @@ allowed_domains = []
 [memory_save]
 enabled = true
 label = "Memory Save"
-description = "Save an explicit durable memory such as a user preference or project fact."
+description = "Save a durable memory the user stated about themselves, their preferences, or the project, so future conversations can recall it."
 
 [memory_search]
 enabled = true
 label = "Memory Search"
-description = "Search durable memories by query across the default memory namespaces."
+description = "Search saved memories by query when earlier context would materially help the answer."
 default_limit = 5
 max_limit = 20
 
 [memory_forget]
 enabled = true
 label = "Memory Forget"
-description = "Delete a saved memory by id from an explicit or default memory namespace."
+description = "Delete a saved memory by memory_id when the user asks you to forget it."
 
 [conversation_summary]
 enabled = true

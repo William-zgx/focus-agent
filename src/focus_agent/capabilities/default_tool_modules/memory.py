@@ -356,7 +356,7 @@ def build_memory_save_tool(
         confidence: float | None = None,
         importance: float = 0.6,
     ) -> str:
-        """Save an explicit durable memory such as a user preference or project fact."""
+        """Save a durable memory the user stated about themselves, their preferences, or the project, so future conversations can recall it."""
         tool_name = "memory_save"
         emit_tool_event(
             tool_name=tool_name, stage="start", kind=kind, scope=scope, namespace=namespace
@@ -441,7 +441,7 @@ def build_memory_search_tool(
         project_id: str | None = None,
         limit: int | None = None,
     ) -> str:
-        """Search durable memories by query across the default memory namespaces."""
+        """Search saved memories by query when earlier context would materially help the answer."""
         tool_name = "memory_search"
         emit_tool_event(
             tool_name=tool_name, stage="start", query=query, namespace=namespace, limit=limit
@@ -513,7 +513,7 @@ def build_memory_forget_tool(
         branch_id: str | None = None,
         project_id: str | None = None,
     ) -> str:
-        """Delete a saved memory by id from an explicit or default memory namespace."""
+        """Delete a saved memory by memory_id when the user asks you to forget it."""
         tool_name = "memory_forget"
         emit_tool_event(
             tool_name=tool_name, stage="start", memory_id=memory_id, namespace=namespace
