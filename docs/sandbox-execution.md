@@ -19,12 +19,15 @@ backend result:
 - `fallback_used` / `fallback_reason`: explicit downgrade signal
 - `network_policy` and `resource_limits`: effective execution policy
 
-The desired security model is Docker-first. Local backends exist so development
-and trusted local Skill workflows can still run when Docker is unavailable or the
-sandbox image has not been built. A local fallback is never treated as equivalent
-to a Docker sandbox. The persistent thread workspace is a filesystem reuse
-boundary, not durable task execution: it does not make a generic harness run,
-follow-up, or approval resume survive process loss.
+The security model is Docker-first and fails closed: if Docker or the sandbox
+image is unavailable, commands are refused unless local execution was explicitly
+opted into with `FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK=1` or
+`FOCUS_AGENT_SANDBOX_BACKEND=local`. Local backends exist so development and
+trusted local Skill workflows can run without Docker after that opt-in. A local
+fallback is never treated as equivalent to a Docker sandbox. The persistent
+thread workspace is a filesystem reuse boundary, not durable task execution: it
+does not make a generic harness run, follow-up, or approval resume survive
+process loss.
 
 ## Execution Topology
 
@@ -141,8 +144,9 @@ per command path while debugging Docker lifecycle issues.
 There are two local fallback paths:
 
 - `local_subprocess`: used by `run_workspace_command` when Docker is unavailable
-  and fallback is allowed.
-- `local_venv`: used by declared Skill entrypoints as a development fallback.
+  and fallback was explicitly allowed.
+- `local_venv`: used by declared Skill entrypoints as a development fallback,
+  under the same explicit opt-in.
 
 Both return structured output and always mark:
 
@@ -223,7 +227,7 @@ Important environment variables:
 | --- | --- |
 | `FOCUS_AGENT_SANDBOX_BACKEND` | `auto`, `docker`, or `local` |
 | `FOCUS_AGENT_SANDBOX_IMAGE` | Docker image tag, default `focus-agent-sandbox:latest` |
-| `FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK` | `1` allows dev fallback in `auto`; `0` fails closed |
+| `FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK` | Default `0`: `auto` fails closed when Docker is unavailable. `1` opts into host execution for local development |
 | `FOCUS_AGENT_SANDBOX_REUSE_CONTAINERS` | `1` reuses thread-level Docker containers; `0` forces per-command containers |
 
 `FOCUS_AGENT_SANDBOX_BACKEND=docker` disables local fallback. Use it when you

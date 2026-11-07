@@ -6063,6 +6063,59 @@ def test_graph_tool_executor_requires_approval_before_apply_patch(monkeypatch, t
     assert patch_decision["reason"] == "approval_required"
 
 
+def test_graph_tool_executor_default_allow_permission_does_not_skip_approval(monkeypatch, tmp_path):
+    from focus_agent.engine.graph.tool_execution import HarnessToolServices
+    from focus_agent.harness.agents.factory import _build_new_components
+    from focus_agent.harness.schemas import HarnessConfig
+
+    call_count = 0
+
+    @tool
+    def apply_patch(patch: str) -> str:
+        """Apply a workspace patch."""
+        nonlocal call_count
+        call_count += 1
+        return patch
+
+    fake_model = _SingleRoundToolModel(
+        tool_calls=[
+            {"id": "patch-allowed", "name": "apply_patch", "args": {"patch": "diff --git a/a b/a"}}
+        ],
+        final_answer="patch handled",
+    )
+    monkeypatch.setattr(
+        "focus_agent.engine.graph.builder.create_chat_model",
+        lambda *args, **kwargs: fake_model,
+    )
+    permission_manager = _build_new_components(HarnessConfig())["permission_manager"]
+
+    graph = build_graph(
+        settings=Settings(
+            agent_tool_router_enabled=True,
+            agent_tool_router_enforce=True,
+        ),
+        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
+        tool_registry=ToolRegistry(tools=(apply_patch,)),
+        harness_services=HarnessToolServices(permission_manager=permission_manager),
+    )
+
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="修改当前项目里的 README 文件")],
+            "selected_model": "openai:deepseek-reasoner",
+        },
+        config={"configurable": {"thread_id": "thread-allow-still-approval"}},
+        context=RequestContext(user_id="user-1", root_thread_id="thread-allow-still-approval"),
+        version="v2",
+    )
+
+    assert call_count == 0
+    assert result.interrupts
+    interrupt_payload = getattr(result.interrupts[0], "value", None)
+    assert interrupt_payload["kind"] == "tool_approval"
+    assert interrupt_payload["tool_call_id"] == "patch-allowed"
+
+
 def test_graph_tool_executor_validates_approval_tools_before_interrupt(monkeypatch, tmp_path):
     call_count = 0
 

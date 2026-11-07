@@ -210,7 +210,6 @@ def make_tool_executor_node(
                 messages_by_index[index] = interception.error
                 continue
             tool_args = interception.args
-            permission_allowed = interception.permission_allowed
 
             execution_input = ToolExecutionInput(
                 index=index,
@@ -288,7 +287,7 @@ def make_tool_executor_node(
                     },
                 )
                 continue
-            if runtime_meta.requires_approval and not permission_allowed:
+            if runtime_meta.requires_approval:
                 approval_payload = build_tool_approval_interrupt_payload(execution_input)
                 if multi_agent_async_approval_enabled:
                     if has_repo_method(approval_queue, "submit_pending"):

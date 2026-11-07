@@ -29,7 +29,7 @@ class SandboxExecutionService:
         *,
         primary_backend: Any,
         fallback_backend: Any | None = None,
-        allow_fallback: bool = True,
+        allow_fallback: bool = False,
     ) -> None:
         self.primary_backend = primary_backend
         self.fallback_backend = fallback_backend
@@ -114,7 +114,7 @@ def default_sandbox_execution_service(
     backend = os.environ.get("FOCUS_AGENT_SANDBOX_BACKEND", "auto").strip().lower()
     image = os.environ.get("FOCUS_AGENT_SANDBOX_IMAGE", execution._DEFAULT_DOCKER_IMAGE).strip()
     resolved_allow_fallback = (
-        env_bool(os.environ, "FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", default=True)
+        env_bool(os.environ, "FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", default=False)
         if allow_fallback is None
         else bool(allow_fallback)
     )

@@ -707,6 +707,37 @@ def test_default_sandbox_service_uses_standard_execution_image(monkeypatch):
     assert service.primary_backend.image == "focus-agent-sandbox:latest"
 
 
+def test_default_sandbox_service_fails_closed_without_explicit_local_opt_in(tmp_path, monkeypatch):
+    monkeypatch.delenv("FOCUS_AGENT_SANDBOX_BACKEND", raising=False)
+    monkeypatch.delenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", raising=False)
+    monkeypatch.setattr(
+        sandbox_execution,
+        "_docker_image_available",
+        lambda *, docker_binary, image: False,
+    )
+    marker = tmp_path / "ran-on-host"
+
+    service = default_sandbox_execution_service()
+
+    assert service.allow_fallback is False
+    with pytest.raises(SandboxBackendUnavailableError):
+        service.run(
+            SandboxExecutionRequest(
+                workspace_root=tmp_path,
+                command=[sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"],
+                cwd=".",
+                timeout_seconds=30,
+                max_output_chars=1000,
+                allow_network=False,
+                tool_name="test",
+            )
+        )
+    assert not marker.exists()
+
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1")
+    assert default_sandbox_execution_service().allow_fallback is True
+
+
 def test_docker_backend_missing_image_error_includes_preflight_command(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sandbox_execution,
