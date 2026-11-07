@@ -513,6 +513,18 @@ flowchart LR
 - Timeout and upstream cancellation bypass fallback and cache, and runtime metadata records `timeout_seconds` or `cancelled`.
 - Runtime observations are trimmed by per-tool limits before being returned to the model.
 
+### Configured command hooks
+
+Administrators can declare `[[hooks.pre_tool_use]]` and `[[hooks.post_tool_use]]` tables in the server tool catalog. Each entry has a `command` argv array, an optional fnmatch `matcher` on the exposed tool name (default `"*"`), and `timeout_seconds` (default `10`). Commands run synchronously with `shell=False`; they are built-in extension hooks, not model-provided commands or a new tool-execution interception layer.
+
+Every hook receives one JSON object on stdin. Common fields are `event`, `tool_name`, `tool_input`, `thread_id`, and `run_id`. Post hooks also receive `tool_result` (text clipped to 4000 characters) and `status`. Hook stdin/stdout content is not logged at info level because it can contain sensitive tool arguments or results.
+
+- A pre-hook exit code of `2` blocks the call and uses stderr as the reason. Exit `0` with stdout JSON such as `{"decision":"block","reason":"..."}` also blocks it. Other exit codes, timeouts, spawn failures, and exit `0` without a block decision do not block; errors and timeouts produce warnings.
+- Post hooks are observational. Exit `0` with stdout JSON such as `{"additional_context":"..."}` appends that text to the ToolMessage content through the existing result-interception path. Hook errors never fail the underlying tool.
+- Post hooks run for executed results, including cache hits and retries. They do not run for preflight failures, pre-hook/permission denials, approval-pending/rejected results, or the special `ask_user_question` path.
+
+These sections come only from server configuration files and are loaded when the harness is constructed. They are not Admin request fields; unrelated Admin tool-config rewrites preserve the already-loaded sections.
+
 Cache scopes are intentionally conservative:
 
 - `turn` is for values that should only survive within one user turn. The namespace includes the root thread and turn id, so parallel conversations do not clear each other.
@@ -681,6 +693,35 @@ flowchart LR
 - Connector tools should default off and require user configuration.
 - Tools should emit structured tool events so the frontend can show clear activity cards.
 - Sensitive configuration should report presence or absence, never raw secrets.
+
+### Declarative permission rules
+
+The same server tool catalog accepts ordered `[[permissions.rules]]` entries:
+
+```toml
+[[permissions.rules]]
+action = "allow"
+tool = "*"
+
+[[permissions.rules]]
+action = "deny"
+tool = "bash"
+command = "rm -rf *"
+reason = "Destructive commands are disabled."
+
+[[permissions.rules]]
+action = "ask"
+tool = "web_fetch"
+reason = "Confirm this fetch with the user."
+```
+
+`action` is `allow`, `ask`, or `deny`. `tool` and optional `agent` are fnmatch patterns; `command` adds a `tool:command` candidate for bash-like tools, including `run_workspace_command`. MCP rules target the exposed `mcp__<server>__<tool>` name. The last matching rule wins. Configured rules sit on top of a lowest-priority allow-all rule, so a call that no configured rule matches still runs (subject to its own `requires_approval`).
+
+DENY returns the structured denied ToolMessage without executing the tool. ASK uses the same approval payload, approval queue when configured, LangGraph interrupt, and approve/reject resume contract as a tool whose metadata declares `requires_approval`; it is not a dead-end tool error. Approval approves only that invocation, while rejection returns the existing structured rejected-tool result. ALLOW never waives metadata-driven human approval, including the MCP default.
+
+Both agent cores share this behavior. A `run_subtask` child cannot pause its parent's tool call, so its executor explicitly disables approval interrupts: an ASK becomes a clear blocked ToolMessage and never escapes as an interrupt. Approval-required tools and `ask_user_question` remain excluded from the child registry.
+
+Permission rules and command hooks are file-based administration policy, not per-request overrides. Keep them in deployment-controlled catalog files and rebuild/restart the harness after direct file edits.
 
 ## Design Checklist for New Tools
 

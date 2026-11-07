@@ -42,6 +42,7 @@ from .retrieval_ledger import collect_retrieval_ledger
 from .tool_call_guards import _intercept_tool_call, _preflight_tool_call, _route_plan_mapping
 from .tool_result_hooks import (
     _apply_result_hooks,
+    _ask_permission_result,
     _patch_tool_message_content,
     _patch_tool_message_error,
 )
@@ -104,6 +105,7 @@ def make_tool_executor_node(
     approval_queue: Any | None = None,
     harness_services: HarnessToolServices | None = None,
     include_tool_invocation_context: bool = False,
+    allow_approval_interrupts: bool = True,
 ) -> Any:
     artifact_read_tool = tools_by_name.get("artifact_read")
     artifact_read_metadata = getattr(artifact_read_tool, "metadata", {}) or {}
@@ -307,7 +309,19 @@ def make_tool_executor_node(
                     },
                 )
                 continue
-            if runtime_meta.requires_approval:
+            requires_approval = bool(
+                runtime_meta.requires_approval or interception.requires_approval
+            )
+            if requires_approval and not allow_approval_interrupts:
+                reason = interception.approval_reason or "permission required"
+                messages_by_index[index] = _ask_permission_result(
+                    tool_call_id,
+                    tool_name,
+                    tool_args,
+                    f"{reason}; human approval is unavailable in this execution context",
+                )
+                continue
+            if requires_approval:
                 approval_payload = build_tool_approval_interrupt_payload(execution_input)
                 if multi_agent_async_approval_enabled:
                     if has_repo_method(approval_queue, "submit_pending"):
@@ -418,6 +432,7 @@ def make_tool_executor_node(
             thread_id=thread_id,
             run_id=run_id,
             active_agent_name=active_agent_name,
+            execution_inputs_by_index=execution_inputs_by_index,
         )
         for result in initial_results:
             messages_by_index[result.index] = result.message
@@ -465,6 +480,7 @@ def make_tool_executor_node(
                 thread_id=thread_id,
                 run_id=run_id,
                 active_agent_name=active_agent_name,
+                execution_inputs_by_index=execution_inputs_by_index,
             )
             for result in retry_results:
                 messages_by_index[result.index] = result.message

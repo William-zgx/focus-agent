@@ -212,6 +212,33 @@ order = 100
 # requires_approval = true
 # timeout_seconds = 60
 
+# Optional server-only permission rules. The last matching rule wins; calls that
+# match no rule are allowed. ALLOW never waives a tool's own requires_approval
+# metadata, and ASK pauses for the same human approval as requires_approval tools.
+# [[permissions.rules]]
+# action = "deny"
+# tool = "run_workspace_command"
+# command = "rm -rf *"
+# reason = "Destructive workspace commands are disabled."
+
+# [[permissions.rules]]
+# action = "ask"
+# tool = "web_fetch"
+# reason = "Confirm this fetch with the user."
+
+# Optional server-only command hooks. Commands are argv arrays (shell=False).
+# pre_tool_use blocks on exit 2 or a JSON {"decision":"block"} response.
+# post_tool_use can return JSON {"additional_context":"..."}.
+# [[hooks.pre_tool_use]]
+# matcher = "run_workspace_command"
+# command = ["/absolute/path/to/python", "/absolute/path/to/pre_hook.py"]
+# timeout_seconds = 10
+
+# [[hooks.post_tool_use]]
+# matcher = "web_*"
+# command = ["/absolute/path/to/python", "/absolute/path/to/post_hook.py"]
+# timeout_seconds = 10
+
 [web_search]
 enabled = true
 label = "Web Search"

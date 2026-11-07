@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain.tools import tool
@@ -9,8 +11,14 @@ from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.config_parts.agent import load_agent_config
 from focus_agent.core.request_context import RequestContext
+from focus_agent.engine.graph.tool_execution import HarnessToolServices
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.harness.governance.permissions import (
+    PermissionAction,
+    PermissionManager,
+    PermissionRule,
+)
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 
 
@@ -64,7 +72,15 @@ class _ScriptedModel:
         return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
 
 
-def _v2_graph(monkeypatch, model, tmp_path, *, tools=(lookup,), **settings):
+def _v2_graph(
+    monkeypatch,
+    model,
+    tmp_path,
+    *,
+    tools=(lookup,),
+    harness_services=None,
+    **settings,
+):
     monkeypatch.setattr(
         "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: model,
@@ -75,6 +91,7 @@ def _v2_graph(monkeypatch, model, tmp_path, *, tools=(lookup,), **settings):
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(mode="off"),
         tool_registry=ToolRegistry(tools=tuple(tools)),
+        harness_services=harness_services,
     )
 
 
@@ -356,6 +373,134 @@ def test_v2_approval_interrupt_keeps_payload_and_resumes(monkeypatch, tmp_path):
 
     assert executed == ["x"]
     assert resumed.value["messages"][-1].content == "approval handled"
+
+
+@pytest.mark.parametrize("approved", [True, False])
+def test_v2_permission_ask_uses_approval_resume(monkeypatch, tmp_path, approved):
+    executed: list[str] = []
+
+    @tool
+    def guarded_lookup(name: str) -> str:
+        """Lookup guarded only by a permission rule."""
+        executed.append(name)
+        return f"approved:{name}"
+
+    guarded_lookup.metadata = {"parallel_safe": True, "cacheable": False}
+    manager = PermissionManager(
+        rules=[
+            PermissionRule(
+                action=PermissionAction.ASK,
+                tool_pattern="guarded_lookup",
+                reason="administrator requires confirmation",
+            )
+        ]
+    )
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"id": "permission-1", "name": "guarded_lookup", "args": {"name": "x"}}
+                ],
+            ),
+            AIMessage(content="permission handled"),
+        ]
+    )
+    graph = _v2_graph(
+        monkeypatch,
+        model,
+        tmp_path,
+        tools=(guarded_lookup,),
+        harness_services=HarnessToolServices(permission_manager=manager),
+    )
+    thread_id = f"thread-permission-ask-{approved}"
+
+    interrupted = _invoke(graph, _ask("run the guarded lookup"), thread_id)
+
+    assert executed == []
+    payload = interrupted.interrupts[0].value
+    assert payload["kind"] == "tool_approval"
+    assert payload["tool_name"] == "guarded_lookup"
+    assert payload["tool_call_id"] == "permission-1"
+
+    resumed = _invoke(
+        graph,
+        Command(
+            resume={
+                "kind": "tool_approval",
+                "interrupt_id": payload["interrupt_id"],
+                "tool_call_id": "permission-1",
+                "approved": approved,
+            }
+        ),
+        thread_id,
+    )
+
+    tool_message = next(
+        message
+        for message in resumed.value["messages"]
+        if isinstance(message, ToolMessage) and message.tool_call_id == "permission-1"
+    )
+    assert resumed.value["messages"][-1].content == "permission handled"
+    if approved:
+        assert executed == ["x"]
+        assert tool_message.content == "approved:x"
+    else:
+        assert executed == []
+        error = json.loads(str(tool_message.content))
+        assert error["runtime"]["tool_approval_denied"] is True
+        assert "denied" in error["error"]
+
+
+def test_v2_permission_deny_returns_denied_tool_result(monkeypatch, tmp_path):
+    executed: list[str] = []
+
+    @tool
+    def denied_lookup(name: str) -> str:
+        """Lookup denied by a permission rule."""
+        executed.append(name)
+        return name
+
+    denied_lookup.metadata = {"parallel_safe": True, "cacheable": False}
+    manager = PermissionManager(
+        rules=[
+            PermissionRule(
+                action=PermissionAction.DENY,
+                tool_pattern="denied_lookup",
+                reason="blocked by administrator",
+            )
+        ]
+    )
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "denied-1", "name": "denied_lookup", "args": {"name": "x"}}],
+            ),
+            AIMessage(content="denial handled"),
+        ]
+    )
+    graph = _v2_graph(
+        monkeypatch,
+        model,
+        tmp_path,
+        tools=(denied_lookup,),
+        harness_services=HarnessToolServices(permission_manager=manager),
+    )
+
+    result = _invoke(graph, _ask("run the denied lookup"), "thread-permission-deny")
+
+    assert executed == []
+    assert not result.interrupts
+    tool_message = next(
+        message
+        for message in result.value["messages"]
+        if isinstance(message, ToolMessage) and message.tool_call_id == "denied-1"
+    )
+    error = json.loads(str(tool_message.content))
+    assert error["error"] == "blocked by administrator"
+    assert error["runtime"]["permission_denied"] is True
+    assert result.value["messages"][-1].content == "denial handled"
 
 
 def test_v2_second_turn_sees_prior_history(monkeypatch, tmp_path):

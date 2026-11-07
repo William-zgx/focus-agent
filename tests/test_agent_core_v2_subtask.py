@@ -14,8 +14,14 @@ from pydantic import PrivateAttr
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
+from focus_agent.engine.graph.tool_execution import HarnessToolServices
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.harness.governance.permissions import (
+    PermissionAction,
+    PermissionManager,
+    PermissionRule,
+)
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 from focus_agent.transport.stream_events import (
     STREAM_VISIBILITY_QUARANTINE,
@@ -84,7 +90,15 @@ class _ScriptedModel:
         return response
 
 
-def _v2_graph(monkeypatch, model, tmp_path, *, tools=(lookup,), **settings):
+def _v2_graph(
+    monkeypatch,
+    model,
+    tmp_path,
+    *,
+    tools=(lookup,),
+    harness_services=None,
+    **settings,
+):
     monkeypatch.setattr(
         "focus_agent.engine.graph.builder.create_chat_model",
         lambda *args, **kwargs: model,
@@ -95,6 +109,7 @@ def _v2_graph(monkeypatch, model, tmp_path, *, tools=(lookup,), **settings):
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(mode="off"),
         tool_registry=ToolRegistry(tools=tuple(tools)),
+        harness_services=harness_services,
     )
 
 
@@ -538,3 +553,68 @@ def test_v2_nested_subtask_chunks_are_never_visible(monkeypatch, tmp_path):
         call["config"].get("metadata", {}).get("stream_phase") == STREAM_VISIBILITY_VISIBLE
         for call in parent_model_calls
     )
+
+
+def test_v2_subtask_permission_ask_blocks_without_interrupt(monkeypatch, tmp_path):
+    executed: list[str] = []
+
+    @tool
+    def guarded_lookup(name: str) -> str:
+        """Lookup guarded by an ASK rule."""
+        executed.append(name)
+        return name
+
+    guarded_lookup.metadata = {"parallel_safe": True, "cacheable": False}
+
+    class DelegatingModel(_ScriptedModel):
+        def next_response(self, prompt_messages, _tool_names):
+            if any(
+                isinstance(message, SystemMessage) and "fresh sub-agent" in message.content
+                for message in prompt_messages
+            ):
+                if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                    return AIMessage(content="child finished without approval")
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"id": "child-ask", "name": "guarded_lookup", "args": {"name": "x"}}
+                    ],
+                )
+            if any(isinstance(message, ToolMessage) for message in prompt_messages):
+                return AIMessage(content="parent finished")
+            return _subtask_call()
+
+    manager = PermissionManager(
+        rules=[
+            PermissionRule(action=PermissionAction.ALLOW, tool_pattern="*"),
+            PermissionRule(
+                action=PermissionAction.ASK,
+                tool_pattern="guarded_lookup",
+                reason="child calls cannot request approval",
+            ),
+        ]
+    )
+    model = DelegatingModel([])
+    graph = _v2_graph(
+        monkeypatch,
+        model,
+        tmp_path,
+        tools=(guarded_lookup,),
+        harness_services=HarnessToolServices(permission_manager=manager),
+    )
+
+    result = _invoke(graph, _ask("Delegate guarded work."), "thread-subtask-permission-ask")
+
+    assert executed == []
+    assert not result.interrupts
+    assert result.value["messages"][-1].content == "parent finished"
+    child_calls = [call for call in model.calls if _is_subtask_call(call)]
+    assert len(child_calls) == 2
+    blocked = next(
+        message
+        for message in child_calls[-1]["messages"]
+        if isinstance(message, ToolMessage) and message.tool_call_id == "child-ask"
+    )
+    payload = json.loads(str(blocked.content))
+    assert payload["runtime"]["permission_ask"] is True
+    assert "human approval is unavailable" in payload["error"]

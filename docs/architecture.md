@@ -466,7 +466,8 @@ flowchart LR
 - `assemble_context` 组装 recent messages、rolling summary、memory block、skill block 和 prompt budget。
 - `agent_loop` 根据 tool policy 与 Tool Router 绑定工具；模型创建和 bind-tools 缓存由 `engine/model_factory.py` 承担。
 - message/tool-call repair helpers 保持在 graph builder/message helper 边界内，避免 provider stream chunk 泄漏到 prompt。
-- `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。
+- `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。调用前依次经过 preflight、extension `on_tool_call`、middleware 与 `PermissionManager`：DENY 返回结构化拒绝；ASK 与 `requires_approval` 共用 approval payload / `approval_queue` / LangGraph interrupt / approve/reject resume 路径，ALLOW 不会跳过工具自身审批。`run_subtask` 子图显式关闭 approval interrupt，ASK 在子代理内变成 blocked ToolMessage，不会从父工具调用中抛出 interrupt。
+- 执行后通过 middleware 与 extension `on_tool_result` 处理结果；工具 catalog 中的 `[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 由同一个内置 command-hook Extension 执行，不新增 tool execution 拦截层。pre hook 可阻断，post hook 可通过 `additional_context` 追加模型可见结果。
 - `reflect` 只在 Plan-Act-Reflect 开启并产生 plan 时参与。
 - `extract_memories` / `write_memories` 是 turn 后记忆写入路径。
 - `maybe_interrupt_for_merge` 对 merge proposal 触发 human review interrupt。
@@ -787,6 +788,7 @@ Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。
 - rate limit：无 `DATABASE_URI` 时使用进程内 backend；Postgres-backed runtime 使用 `focus_rate_limit_buckets` 共享固定窗口计数。
 - 统一错误信封。
 - Tool Router 对 network、workspace write、memory write 做 role-level 收紧。
+- `[[permissions.rules]]` 提供声明式 allow / ask / deny；`[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 提供管理员命令钩子。两者只能来自服务端工具 catalog，不接受请求级覆盖；hook command 使用 argv + `shell=False`，stdin/stdout 不在 info 日志中输出。
 
 生产部署必须显式设置 `AUTH_JWT_SECRET` 或 active JWT key set，签名 secret 不得使用开发默认值且至少 32 字符，关闭 demo token，并显式配置管理员。管理员高风险操作需要 reason 并写入审计事件；token scope 不能单独授予 admin 权限。
 

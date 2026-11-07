@@ -105,10 +105,13 @@ def test_intercept_permission_actions() -> None:
     assert allowed.error is None
 
     ask = _intercept(HarnessToolServices(permission_manager=manager(PermissionAction.ASK)))
-    assert _runtime_info(ask.error)["permission_ask"] is True
+    assert ask.error is None
+    assert ask.requires_approval is True
+    assert ask.approval_reason == "why"
 
     ask_with_approval = _intercept(
         HarnessToolServices(permission_manager=manager(PermissionAction.ASK)),
         requires_approval=True,
     )
     assert ask_with_approval.error is None
+    assert ask_with_approval.requires_approval is True

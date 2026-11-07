@@ -38,6 +38,33 @@ class ConfiguredModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PermissionRuleConfig:
+    action: str
+    tool: str = "*"
+    command: str | None = None
+    agent: str = "*"
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionsConfig:
+    rules: tuple[PermissionRuleConfig, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CommandHookConfig:
+    command: tuple[str, ...]
+    matcher: str = "*"
+    timeout_seconds: float = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class HooksConfig:
+    pre_tool_use: tuple[CommandHookConfig, ...] = ()
+    post_tool_use: tuple[CommandHookConfig, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class MCPServerConfig:
     name: str
     transport: str

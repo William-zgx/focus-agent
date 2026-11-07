@@ -219,6 +219,7 @@ def _compile_subtask_graph(
             components=components,
             approval_queue=None,
             harness_services=harness_services,
+            allow_approval_interrupts=False,
         ),
     )
     builder.add_edge(START, "agent_loop")
