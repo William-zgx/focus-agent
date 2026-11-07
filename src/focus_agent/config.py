@@ -208,6 +208,8 @@ class Settings:
     agent_team_adoption_enabled: bool = False
     feedback_capture_enabled: bool = True
     context_memory_evidence_enabled: bool = True
+    agent_core: str = "v1"
+    agent_max_tool_rounds: int = 16
     plan_act_reflect_enabled: bool = True
     plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
     plan_task_brief_min_chars: int = 120

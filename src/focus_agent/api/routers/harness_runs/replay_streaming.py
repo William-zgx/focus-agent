@@ -21,7 +21,6 @@ from focus_agent.transport.stream_events import (
     extract_reasoning_delta,
     extract_visible_text_candidate_delta,
     looks_like_stream_visible_text_artifact,
-    safe_stream_visible_text_transition,
     sanitize_stream_metadata,
     sanitize_stream_visible_text,
     stream_visibility_phase_from_metadata,
@@ -66,6 +65,7 @@ from .replay_helpers import (
     _turn_recording_baseline,
 )
 from .replay_models import HarnessResumeRequest, HarnessRunRequest
+from .visible_text_stream import VisibleTextStream
 
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
@@ -221,8 +221,7 @@ async def _produce_run_stream(
     kind: str = "chat.turn",
     skip_branch_recommendation: bool = False,
 ) -> None:
-    visible_text_buffer = ""
-    visible_text_pending = ""
+    visible_text = VisibleTextStream()
     reasoning_buffer = ""
     reasoning_text_pending = ""
     cancelled = False
@@ -347,6 +346,9 @@ async def _produce_run_stream(
                 source_node = _source_node(safe_metadata, namespace)
                 is_internal = source_node in _INTERNAL_MESSAGE_STREAM_NODES
                 tool_chunks = extract_tool_call_chunks(message_chunk)
+                message_id = str(getattr(message_chunk, "id", None) or run_id)
+                if tool_chunks:
+                    visible_text.note_tool_call(message_id)
                 visible_delta = extract_visible_text_candidate_delta(message_chunk)
                 safe_visible_delta = sanitize_stream_visible_text(visible_delta)
                 hide_visible_delta = (
@@ -360,24 +362,15 @@ async def _produce_run_stream(
                     )
                 )
                 if hide_visible_delta:
-                    visible_text_pending = ""
+                    visible_text.drop_pending()
                 if visible_delta and not hide_visible_delta:
-                    next_visible_text, visible_text_pending = safe_stream_visible_text_transition(
-                        visible_text_buffer,
-                        visible_delta,
-                        pending_text=visible_text_pending,
-                    )
-                    if next_visible_text.startswith(visible_text_buffer):
-                        publish_delta = next_visible_text[len(visible_text_buffer) :]
-                    else:
-                        publish_delta = next_visible_text
-                    visible_text_buffer = next_visible_text
+                    publish_delta = visible_text.push(message_id, visible_delta)
                     if publish_delta:
                         await publish(
                             "message.delta",
                             source_node,
                             delta=publish_delta,
-                            message_id=str(getattr(message_chunk, "id", None) or run_id),
+                            message_id=message_id,
                             metadata=safe_metadata,
                             namespace=namespace,
                         )
@@ -398,7 +391,7 @@ async def _produce_run_stream(
                             "reasoning.delta",
                             source_node,
                             delta=publish_reasoning_delta,
-                            message_id=str(getattr(message_chunk, "id", None) or run_id),
+                            message_id=message_id,
                             metadata=safe_metadata,
                             namespace=namespace,
                         )
@@ -470,7 +463,9 @@ async def _produce_run_stream(
             final_visible_text = graph_final_text
             final_visible_source = "graph_state"
         else:
-            final_visible_text = _safe_completed_visible_text(visible_text_buffer)
+            final_visible_text = _safe_completed_visible_text(
+                visible_text.completed_fallback_text()
+            )
             final_visible_source = "stream_buffer"
         if final_visible_text:
             await publish(

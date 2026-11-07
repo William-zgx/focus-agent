@@ -51,6 +51,15 @@ def _normalize_branch_recommendation_mode(value: object) -> str:
     raise ValueError("AGENT_BRANCH_RECOMMENDATION_MODE must be one of: shadow, suggest")
 
 
+def _normalize_agent_core(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"", "v1", "legacy"}:
+        return "v1"
+    if normalized in {"v2", "loop"}:
+        return "v2"
+    raise ValueError("AGENT_CORE must be one of: v1, v2")
+
+
 def _normalize_agent_team_rollout_phase(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"", "off", "disabled"}:
@@ -113,6 +122,10 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         default=defaults.agent_branch_recommendation_enabled,
     )
     return {
+        "agent_core": _normalize_agent_core(env.get("AGENT_CORE", defaults.agent_core)),
+        "agent_max_tool_rounds": max(
+            1, env_int(env, "AGENT_MAX_TOOL_ROUNDS", defaults.agent_max_tool_rounds)
+        ),
         "plan_act_reflect_enabled": env_bool(
             env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
         ),
