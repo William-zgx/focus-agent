@@ -32,9 +32,11 @@ from ..graph.memory_nodes import (
     make_retrieve_memory_node,
     make_write_memories_node,
 )
+from ..graph.tool_call_repair import _known_tool_names
 from ..graph.tool_execution import HarnessToolServices
 from ..graph.turn_hooks import TurnLifecycle
 from .agent import make_loop_agent_node
+from .compaction import make_model_compaction_summarizer
 from .todos import TODO_WRITE_TOOL_NAME, build_todo_write_tool
 
 
@@ -89,7 +91,14 @@ def build_loop_graph(
         )
     )
     lifecycle = TurnLifecycle(
-        harness_services=harness_services, system_agent_runner=system_agent_runner
+        harness_services=harness_services,
+        system_agent_runner=system_agent_runner,
+        summarize=make_model_compaction_summarizer(
+            settings=settings,
+            model_for=components.model_for,
+            known_tool_names=_known_tool_names(components.tools),
+            available_tools=components.tools,
+        ),
     )
 
     builder = StateGraph(AgentState, context_schema=RequestContext)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from langchain.messages import HumanMessage
@@ -72,9 +73,11 @@ class TurnLifecycle:
         *,
         harness_services: HarnessToolServices | None,
         system_agent_runner: Any | None,
+        summarize: Callable[[AgentState], dict[str, Any]] = _summarize_turn_impl,
     ) -> None:
         self._services = harness_services
         self._system_agent_runner = system_agent_runner
+        self._summarize = summarize
         self._agent_start_fired_threads: set[str] = set()
 
     def _turn_ctx(self, state: AgentState) -> dict[str, Any]:
@@ -145,7 +148,7 @@ class TurnLifecycle:
         }
 
     def summarize_turn(self, state: AgentState, runtime: Any) -> dict[str, Any]:
-        result = _summarize_turn_impl(state)
+        result = self._summarize(state)
         _fire_system_agent(
             self._system_agent_runner,
             "turn_end",

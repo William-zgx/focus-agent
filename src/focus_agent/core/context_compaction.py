@@ -27,6 +27,11 @@ from .types import ContextBudget
 DEFAULT_RECENT_MESSAGE_LIMIT = 12
 MAX_HISTORY_EXCERPTS = 24
 COMPACTION_VERSION = 2
+HISTORY_SUMMARY_MAX_CHARS = MAX_HISTORY_EXCERPTS * MAX_ITEM_CHARS
+SUMMARY_METHOD_KEY = "summary_method"
+SUMMARY_FALLBACK_REASON_KEY = "summary_fallback_reason"
+# Describe only the text written by the latest pass, so a rebuild never inherits them.
+_PER_PASS_SUMMARY_KEYS = frozenset({SUMMARY_METHOD_KEY, SUMMARY_FALLBACK_REASON_KEY})
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +126,20 @@ def compaction_message_boundary(
     )
 
 
+def state_compaction_boundary(
+    values: Mapping[str, Any], cursor_meta: Mapping[str, Any] | None = None
+) -> CompactionBoundary:
+    """Resolve the boundary for ``values`` using its own recent-window budget."""
+
+    return compaction_message_boundary(
+        _source_messages(values),
+        recent_limit=_recent_limit(values),
+        recent_token_limit=_recent_token_limit(values),
+        budget=_context_budget(values.get("context_budget")),
+        cursor_meta=cursor_meta,
+    )
+
+
 def build_incremental_compaction_update(
     values: Mapping[str, Any],
     previous_meta: Mapping[str, Any] | None = None,
@@ -138,19 +157,17 @@ def build_incremental_compaction_update(
     """
 
     current = dict(values)
-    previous = dict(previous_meta or {})
+    previous = {
+        key: value
+        for key, value in dict(previous_meta or {}).items()
+        if key not in _PER_PASS_SUMMARY_KEYS
+    }
     branch_id = _branch_id(current)
     branch_changed = bool(previous.get("source_branch_id")) and (
         str(previous.get("source_branch_id")) != branch_id
     )
     cursor_meta = {} if branch_changed else previous
-    boundary = compaction_message_boundary(
-        _source_messages(current),
-        recent_limit=_recent_limit(current),
-        recent_token_limit=_recent_token_limit(current),
-        budget=_context_budget(current.get("context_budget")),
-        cursor_meta=cursor_meta,
-    )
+    boundary = state_compaction_boundary(current, cursor_meta)
 
     old_summary = str(current.get("rolling_summary") or "")
     old_history = (
@@ -501,8 +518,12 @@ def _branch_id(values: Mapping[str, Any]) -> str:
 
 __all__ = [
     "COMPACTION_VERSION",
+    "HISTORY_SUMMARY_MAX_CHARS",
+    "SUMMARY_FALLBACK_REASON_KEY",
+    "SUMMARY_METHOD_KEY",
     "CompactionBoundary",
     "build_incremental_compaction_update",
     "compaction_message_boundary",
     "select_recent_messages",
+    "state_compaction_boundary",
 ]
