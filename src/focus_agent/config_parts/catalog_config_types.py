@@ -38,6 +38,22 @@ class ConfiguredModel:
 
 
 @dataclass(frozen=True, slots=True)
+class MCPServerConfig:
+    name: str
+    transport: str
+    command: str | None = None
+    args: tuple[str, ...] = ()
+    env: dict[str, str] = field(default_factory=dict)
+    env_from: dict[str, str] = field(default_factory=dict)
+    url: str | None = None
+    headers_from_env: dict[str, str] = field(default_factory=dict)
+    enabled: bool = True
+    allowed_tools: tuple[str, ...] = ()
+    requires_approval: bool = True
+    timeout_seconds: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
 class WebSearchConfig:
     enabled: bool = True
     label: str = "Web Search"

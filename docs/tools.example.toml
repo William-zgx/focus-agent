@@ -190,7 +190,7 @@ label = "Skills Refresh Index"
 description = "Refresh the runtime skill index after project or source changes."
 
 # Optional controlled provider registry entries. Provider ids here can only
-# configure builtin, skill, or provider factories registered by application code.
+# configure builtin, skill, mcp, or provider factories registered by application code.
 [[providers]]
 id = "builtin"
 enabled = true
@@ -200,6 +200,17 @@ order = 0
 id = "skill"
 enabled = true
 order = 100
+
+# Optional MCP client (requires `make install-mcp`). Uncomment to enable.
+# [[mcp_servers]]
+# name = "demo"
+# transport = "stdio"
+# command = "python"
+# args = ["/absolute/path/to/mcp_server.py"]
+# env_from = {API_KEY = "DEMO_MCP_API_KEY"}
+# allowed_tools = ["add"]
+# requires_approval = true
+# timeout_seconds = 60
 
 [web_search]
 enabled = true

@@ -225,6 +225,28 @@ Borrowings from LLM Space / DeerFlow-style harness practice that stay inside Foc
 - Progressive skill loading is reinforced in the skill-system prompt: the available-skills catalog stays short; `skill_view` loads full instructions when a skill matches.
 - Artifact delivery guidance (present path/id after `write_text_artifact`) mirrors `present_files`-style "user must see the deliverable" without unrestricted host shell.
 
+### MCP servers
+
+External MCP tools are available to both agent cores when the optional MCP extra is installed (`make install-mcp`) and servers are declared in the tool catalog. No configured servers means no client connections and no registry changes.
+
+```toml
+[[mcp_servers]]
+name = "demo"
+transport = "stdio"
+command = "python"
+args = ["/absolute/path/to/mcp_server.py"]
+env = {MODE = "production"}
+env_from = {API_KEY = "DEMO_MCP_API_KEY"}
+enabled = true
+allowed_tools = ["add"]
+requires_approval = true
+timeout_seconds = 60
+```
+
+Server names use `[a-z0-9_]+`; exposed tools are named `mcp__<server>__<tool>`. `streamable_http` servers use `url` and optional `headers_from_env = {Authorization = "MCP_TOKEN"}` instead of `command`, `args`, and `env_from`. Environment mappings resolve secrets at connection time and their values are not logged. Keep `requires_approval` enabled unless the external server is trusted; read-only annotations only change side-effect and parallel-safety metadata.
+
+Discovery and each tool call open a fresh session, so calls pay process/connection and initialization overhead. A server that fails discovery is skipped with a warning without blocking other providers.
+
 ### Admin configuration surface
 
 Skill availability is intentionally managed through Admin settings rather than by deleting files:
@@ -236,7 +258,7 @@ Skill availability is intentionally managed through Admin settings rather than b
 
 Disabled skills remain visible in the catalog for auditing and re-enablement, but they are skipped by search, prefix activation, semantic matching, available-skill prompt rendering, and active-skill prompt injection.
 
-MCP-related workflows are represented as skills and tools today, for example FastMCP or mcporter workflows when installed. These entries describe an installed Skill/host-control workflow, not a builtin MCP client or connection session. MCP Server lifecycle management is a reserved Admin connection surface until a first-class backend configuration contract exists.
+MCP-related workflows can also be represented as skills, for example FastMCP or mcporter workflows when installed. These entries describe an installed Skill/host-control workflow rather than a catalog-configured MCP client. MCP server processes are not managed through Admin connection lifecycle APIs; direct MCP connections use the `[[mcp_servers]]` tool-catalog contract above.
 
 ### Current limitations
 
@@ -247,11 +269,12 @@ MCP-related workflows are represented as skills and tools today, for example Fas
 - General Skill execution is declared-entrypoint only. The runtime does not expose arbitrary shell or host socket access through the Skill system.
 
 The current connector boundary is therefore partial: public `web_search` and
-policy-checked `web_fetch` are builtin tools, while browser/computer control,
-account-backed connector sessions, and first-class MCP transport/lifecycle are
-not builtin runtime capabilities. A Skill mentioning one of those integrations
-still requires its declared entrypoint, dependency, network policy, and any
-separate broker/approval path.
+policy-checked `web_fetch` are builtin tools, while browser/computer control
+and account-backed connector sessions are not builtin runtime capabilities.
+Catalog-configured MCP tools use per-call sessions rather than persistent
+Admin-managed connections. A Skill mentioning another integration still
+requires its declared entrypoint, dependency, network policy, and any separate
+broker/approval path.
 
 ## Connector Boundary
 

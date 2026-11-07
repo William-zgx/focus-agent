@@ -21,6 +21,7 @@ from ..skills.registry_rendering import (
 )
 from .default_tool_modules import common as _tool_common
 from .default_tools import get_default_tools
+from .mcp_tools import build_mcp_tool_provider
 from .skill_entrypoint_runner import run_skill_entrypoint_in_sandbox_service
 from .tool_manifest import StaticToolProvider, ToolManifest, ToolProvider, normalize_tool_metadata
 
@@ -648,6 +649,10 @@ def _build_skill_tool_provider(context: ToolProviderFactoryContext) -> ToolProvi
     )
 
 
+def _build_mcp_tool_provider(context: ToolProviderFactoryContext) -> ToolProvider:
+    return build_mcp_tool_provider(context.settings.tool_catalog.mcp_servers)
+
+
 _TOOL_PROVIDER_FACTORY_REGISTRY = ToolProviderFactoryRegistry()
 _TOOL_PROVIDER_FACTORY_REGISTRY.register(
     "builtin",
@@ -658,4 +663,9 @@ _TOOL_PROVIDER_FACTORY_REGISTRY.register(
     "skill",
     _build_skill_tool_provider,
     default_order=100,
+)
+_TOOL_PROVIDER_FACTORY_REGISTRY.register(
+    "mcp",
+    _build_mcp_tool_provider,
+    default_order=200,
 )
