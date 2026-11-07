@@ -52,9 +52,10 @@ Set in `scripts/branch_ab/run_experiment.py::_isolated_env`:
 - One fresh process and temporary state directory per (task, arm, repeat).
 - Catalog-controlled tools disabled (`scripts/branch_ab/tools.disabled.toml`)
   and skills off (`FOCUS_AGENT_SKILLS_ENABLED=false`): every fact is in the
-  conversation. The runtime still registers `run_skill_entrypoint` independently
-  of these switches; planners can see it. This residual exposure affects both
-  arms and is recorded as a limitation, not a fully tool-free runtime.
+  conversation. Until 2026-11-07 the runtime registered `run_skill_entrypoint`
+  regardless of these switches, so planners in the earlier baseline and fix-1
+  runs could see it (both arms alike). It is now registered only when skills are
+  enabled.
 - Branch recommendation, branch decision, delegation, web search and memory
   embeddings off; `MODEL_REQUEST_TIMEOUT_SECONDS=600` for slow relay endpoints.
 - Before each turn, before fork and before the merge proposal, the runner waits

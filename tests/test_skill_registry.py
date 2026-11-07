@@ -592,6 +592,22 @@ def test_skill_registry_global_disable_and_reload_from_settings(tmp_path):
     assert "review" in {result.skill_id for result in registry.search_skills("review")}
 
 
+def test_run_skill_entrypoint_is_registered_only_when_skills_are_enabled(tmp_path):
+    _write_skill(tmp_path, name="plan", description="Planning mode", triggers="plan:")
+    settings = Settings(skills_enabled=False, skill_directories=(str(tmp_path),))
+
+    disabled = build_tool_registry(
+        settings=settings, skill_registry=SkillRegistry.from_settings(settings)
+    )
+    settings.skills_enabled = True
+    enabled = build_tool_registry(
+        settings=settings, skill_registry=SkillRegistry.from_settings(settings)
+    )
+
+    assert "run_skill_entrypoint" not in disabled.by_name
+    assert "run_skill_entrypoint" in enabled.by_name
+
+
 def test_migrated_hermes_builtin_skills_list_view_search_and_prefix_activate():
     registry = SkillRegistry([bundled_skills_dir()])
     listed = json.loads(render_skills_list_json(registry))

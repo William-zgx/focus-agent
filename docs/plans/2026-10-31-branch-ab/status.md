@@ -30,7 +30,8 @@ fork 出的子分支里做，合并提案经批准后导入主线，再在主线
   catalog 在 `reports/branch_ab/models.relay.toml`，环境变量见 `/tmp/branch-ab-relay-env.sh`）。
 - 两组相同的运行配置（`run_experiment.py::_isolated_env`）：
   - 关闭 catalog 控制的工具（`scripts/branch_ab/tools.disabled.toml`）：题目事实都在对话里。
-    `run_skill_entrypoint` 仍被 runtime 无条件注册，两组规划器均可见；不能把此配置称为完全无工具。
+    当时 `run_skill_entrypoint` 仍被 runtime 无条件注册，两组规划器均可见；不能把此配置称为完全无工具。
+    2026-11-07 起该工具仅在启用 skills 时注册。
   - `FOCUS_AGENT_SKILLS_ENABLED=false`；`MODEL_REQUEST_TIMEOUT_SECONDS=600`（网关约 20 tok/s）。
   - 每轮发送前、fork 前、生成合并提案前，等待后台任务（压缩、标题）清空。
 - 评分口径：
@@ -108,6 +109,7 @@ pass 判定一致 85%；按题目的分支−线性差值方向 25/32 一致、1
   系统改用分支最后一条回复的约 220 字截断片段作为 summary 并导入，未报任何错误。
 - 计划器的“可用工具”总带 `run_skill_entrypoint`：`capabilities/tool_registry.py` 无条件注册，
   不受工具 catalog 控制。两组都受影响，导致计划 → 反思 → 重新规划的额外调用。
+  2026-11-07 已修复：仅在启用 skills 时注册。
 
 ## 修复 1 完整复测（2026-11-01）
 
