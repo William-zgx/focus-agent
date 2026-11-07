@@ -59,6 +59,7 @@ from ..graph.tool_result_fallback import (
     _context_budget_from_state,
     _has_tool_result_messages,
     _invoke_with_tool_result_fallback,
+    _tool_result_fallback_message,
 )
 from .prompt import operating_note
 from .todos import todos_block
@@ -216,6 +217,8 @@ def make_loop_agent_node(
                     model_for=visible_model_for,
                     known_tool_names=known_names,
                 )
+                if not _message_content_text(response).strip():
+                    response = _tool_result_fallback_message(fallback_messages)
             response = _repair_and_dedupe_tool_calls(response)
 
         updates: dict[str, Any] = {"llm_calls": int(state.get("llm_calls", 0) or 0) + 1}

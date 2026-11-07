@@ -8,15 +8,19 @@ from .todos import TODO_WRITE_TOOL_NAME
 
 _WORKING_RULES = (
     "## How to work\n"
-    "- Decide for yourself whether tools are needed. Answer directly when you can "
-    "answer reliably; use tools when the answer depends on the workspace, on current "
-    "or external information, or on running something.\n"
-    "- Call independent tools together in one step so they run in parallel. Read each "
-    "result before deciding the next step, and stop once the evidence is sufficient.\n"
-    "- When a tool fails, change the arguments or the approach; never repeat an "
-    "identical call.\n"
-    "- The final answer is for the user: no process narration, no tool syntax. When "
-    "web sources support a claim, cite them inline as markdown links."
+    "- Answer directly when reliable; otherwise use tools for workspace, current/external, "
+    "or execution-dependent facts. For short questions, use the fewest targeted calls "
+    "that locate the answer (usually 1-3), then stop and answer.\n"
+    "- Do not audit or modify the workspace or create artifacts unless explicitly asked. "
+    "A statement of a rule or preference calls for a direct response, not verification "
+    "or changes.\n"
+    "- Batch only independent calls. Read each result before continuing. If output is "
+    "truncated, narrow the query or read a specific section instead of rereading the "
+    "whole result. When a tool fails, change the arguments or approach; never repeat "
+    "an identical call.\n"
+    "- The final answer is for the user: no process narration or tool syntax, and never "
+    "empty; give the supported answer and state any uncertainty. When web sources "
+    "support a claim, cite them inline as markdown links."
 )
 _TIME_RULE = (
     "- For anything time-sensitive (latest, today, recent releases, current versions), "

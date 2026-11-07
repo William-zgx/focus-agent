@@ -167,6 +167,10 @@ def test_v2_prompt_carries_operating_rules_once(monkeypatch, tmp_path):
 
     system_texts = [m.content for m in model.prompts[0] if isinstance(m, SystemMessage)]
     assert sum("## How to work" in text for text in system_texts) == 1
+    working_rules = next(text for text in system_texts if "## How to work" in text)
+    assert "usually 1-3" in working_rules
+    assert "not verification or changes" in working_rules
+    assert "narrow the query" in working_rules
     assert isinstance(model.prompts[0][-1], HumanMessage)
 
 
@@ -270,6 +274,27 @@ def test_v2_synthesizes_an_answer_when_the_model_goes_silent_after_tools(monkeyp
         "metadata": {"stream_phase": "visible"},
         "tags": ["stream_phase:visible"],
     }
+    assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "empty_final_answer"
+
+
+def test_v2_falls_back_when_synthesis_has_no_visible_text(monkeypatch, tmp_path):
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "call-1", "name": "lookup", "args": {"name": "focus"}}],
+            ),
+            AIMessage(content=[]),
+            AIMessage(content=[]),
+        ]
+    )
+    graph = _v2_graph(monkeypatch, model, tmp_path)
+
+    result = _invoke(graph, _ask("What do we know about focus?"), "thread-empty-blocks")
+
+    final = result.value["messages"][-1]
+    assert final.content
+    assert final.additional_kwargs["tool_result_fallback_reason"] == "model_synthesis_failed"
     assert result.value["plan_meta"]["tool_protocol_repair_reason"] == "empty_final_answer"
 
 
