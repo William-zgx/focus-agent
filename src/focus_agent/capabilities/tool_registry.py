@@ -608,7 +608,8 @@ def _build_skill_tools(*, settings: Settings, skill_registry: SkillRegistry) -> 
         tools.append(skills_refresh_index)
     if settings.tool_catalog.skill_sources.enabled:
         tools.append(skill_sources)
-    tools.append(run_skill_entrypoint)
+    if skill_registry.enabled:
+        tools.append(run_skill_entrypoint)
     return tools
 
 
