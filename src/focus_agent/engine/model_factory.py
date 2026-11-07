@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from contextvars import copy_context
 from typing import Any
 
 from langgraph.config import get_stream_writer
@@ -40,8 +41,12 @@ class _TimeoutBoundModel:
             finally:
                 completed.set()
 
+        # Run in a copy of the caller's context: LangGraph keeps the active run config
+        # (messages-stream callbacks, stream_phase tags) in contextvars, and a bare
+        # thread would drop it, so token chunks would never reach the stream.
         threading.Thread(
-            target=invoke_model,
+            target=copy_context().run,
+            args=(invoke_model,),
             name="focus-agent-model-invoke",
             daemon=True,
         ).start()
