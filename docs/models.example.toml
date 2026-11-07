@@ -83,3 +83,23 @@ label = "Qwen 2.5 7B"
 # thinking_enabled_request_kwargs = { reasoning_effort = "high", extra_body = { thinking = { type = "enabled" } } }
 # thinking_disabled_request_kwargs = { extra_body = { thinking = { type = "disabled" } } }
 # thinking_disabled_model_name = "custom-chat"
+#
+# Claude through a native Anthropic Messages API gateway (commented example;
+# enable only after installing the optional langchain-anthropic dependency):
+#
+# [[providers]]
+# id = "claude_gateway"
+# label = "Claude Gateway"
+# backend_provider = "anthropic"
+# base_url_env = "CLAUDE_GATEWAY_BASE_URL"
+# base_url_default = "https://claude-gateway.example.com"
+# api_key_env = "CLAUDE_GATEWAY_API_KEY"
+#
+# [[models]]
+# id = "claude_gateway:claude-opus-5-5"
+# label = "Claude Opus"
+# # Claude 5.x rejects `temperature` ("deprecated for this model"); omit it.
+# no_temperature = true
+# supports_thinking = true
+# default_thinking_enabled = true
+# request_kwargs = { default_headers = { "x-gateway-tenant" = "focus-agent" }, max_tokens = 16384 }

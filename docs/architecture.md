@@ -249,7 +249,7 @@ flowchart LR
     Registry --> API["GET /v1/models"]
     Registry --> Factory["create_chat_model"]
     API --> Web["Web model selector"]
-    Factory --> Adapter["LangChain model / reasoning-aware OpenAI-compatible adapter"]
+    Factory --> Adapter["Native Anthropic / LangChain / reasoning-aware OpenAI-compatible adapter"]
 ```
 
 边界：
@@ -258,6 +258,7 @@ flowchart LR
 - 本地部署通过 `.focus_agent/models.toml` 覆盖；容器部署通过 `/data/models.toml` 覆盖。
 - `Settings` 加载本地 catalog 后由 `model_registry` 合并包内默认与本地配置，并校验 provider id、alias 冲突、重复 model、未知 provider 引用等错误。
 - `/v1/models` 暴露 model id、provider label、thinking capability 和可选 logo metadata；Web model selector 优先使用后端返回的 metadata，不再按 provider 写死文案。
+- `backend_provider = "anthropic"` 的 Claude 模型走原生 Anthropic Messages 通道；v2 请求在 tools、system 和最新消息尾部设置至多四个 prompt cache breakpoint，并保留 signed thinking blocks。缓存命中以实际 prompt 前缀稳定性为准，OpenAI-compatible 模型不添加 Anthropic cache marker。
 - OpenAI-compatible 且需要 `reasoning_content` 透传的模型走 `ReasoningAwareChatOpenAI`；`MoonshotChatOpenAI` 仍作为旧导入别名保留。
 - 新增单部署模型时优先改 `.focus_agent/models.toml` 和 `.focus_agent/local.env`；只有要成为所有新环境的内置默认支持时，才改包内 `defaults/models.toml`。
 

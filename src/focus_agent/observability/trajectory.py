@@ -373,13 +373,17 @@ def _build_metrics(
     input_tokens = 0
     output_tokens = 0
     total_tokens = 0
+    cache_read_input_tokens = 0
+    cache_creation_input_tokens = 0
     for msg in messages or []:
         usage = message_token_usage(msg)
         if usage is not None:
             input_tokens += int(usage.get("input_tokens", 0) or 0)
             output_tokens += int(usage.get("output_tokens", 0) or 0)
             total_tokens += int(usage.get("total_tokens", 0) or 0)
-    return {
+            cache_read_input_tokens += int(usage.get("cache_read_input_tokens", 0) or 0)
+            cache_creation_input_tokens += int(usage.get("cache_creation_input_tokens", 0) or 0)
+    metrics = {
         "latency_ms": latency_ms,
         "tool_calls": len(trajectory),
         "llm_calls": llm_calls,
@@ -390,6 +394,10 @@ def _build_metrics(
         "fallback_uses": sum(1 for step in trajectory if step.fallback_used),
         "parallel_tool_calls": sum(1 for step in trajectory if (step.parallel_batch_size or 0) > 1),
     }
+    if cache_read_input_tokens or cache_creation_input_tokens:
+        metrics["cache_read_input_tokens"] = cache_read_input_tokens
+        metrics["cache_creation_input_tokens"] = cache_creation_input_tokens
+    return metrics
 
 
 def _latest_final_ai_text(messages: list[Any]) -> str | None:

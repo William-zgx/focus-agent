@@ -434,13 +434,8 @@ def create_chat_model(
         settings=settings,
     )
 
-    # P2 wiring: resolve the four-axis ModelRoute (protocol/endpoint/auth/
-    # framing) for native-protocol support. This is best-effort and wrapped
-    # in a try/except: a failure here must never break model creation, since
-    # we still use langchain's OpenAI-compatible client for all requests
-    # today. The route is logged at debug level and stored alongside the
-    # resolved client kwargs; a future native-protocol client can read it
-    # off of init_kwargs to bypass langchain entirely.
+    # Resolve route metadata for observability; native and OpenAI-compatible
+    # clients below consume the same resolved endpoint and credential kwargs.
     init_kwargs: dict[str, object] = {
         **resolved.client_kwargs,
         **resolved.request_kwargs,
@@ -490,6 +485,21 @@ def create_chat_model(
     )
     if max_retries is not None:
         init_kwargs["max_retries"] = max(0, int(max_retries))
+    safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
+    if resolved.backend_provider == "anthropic":
+        from .providers.anthropic_channel import create_anthropic_chat_model
+
+        configured = _configured_model(model_id, settings=settings)
+        thinking_enabled = bool(
+            configured
+            and configured.supports_thinking
+            and _effective_thinking_mode(configured, thinking_mode) == "enabled"
+        )
+        return create_anthropic_chat_model(
+            model=resolved.model_name,
+            thinking_enabled=thinking_enabled,
+            **safe_init_kwargs,
+        )
     if resolved.backend_provider == "openai" and (
         resolved.provider == "moonshot"
         or _needs_openai_reasoning_passthrough(model_id, settings=settings)
@@ -497,16 +507,11 @@ def create_chat_model(
         from .providers.reasoning_openai import ReasoningAwareChatOpenAI
 
         if resolved.provider == "moonshot":
-            init_kwargs.setdefault("stream_usage", True)
-        # Pop the route metadata before passing to langchain constructors,
-        # which reject unknown kwargs. The route dict is captured by the
-        # closure above for future native-protocol client construction.
-        safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
+            safe_init_kwargs.setdefault("stream_usage", True)
         return ReasoningAwareChatOpenAI(
             model=resolved.model_name,
             **safe_init_kwargs,
         )
-    safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
     return init_chat_model(
         f"{resolved.backend_provider}:{resolved.model_name}",
         **safe_init_kwargs,

@@ -4,6 +4,30 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
+def _cache_usage_values(payload: dict[str, Any]) -> dict[str, Any]:
+    details = payload.get("input_token_details")
+    details = details if isinstance(details, dict) else {}
+    values: dict[str, Any] = {}
+    for key, aliases, detail_key in (
+        (
+            "cache_read_input_tokens",
+            ("cache_read_input_tokens", "cache_read"),
+            "cache_read",
+        ),
+        (
+            "cache_creation_input_tokens",
+            ("cache_creation_input_tokens", "cache_creation"),
+            "cache_creation",
+        ),
+    ):
+        value = next((payload[alias] for alias in aliases if payload.get(alias) is not None), None)
+        if value is None:
+            value = details.get(detail_key)
+        if value is not None:
+            values[key] = value
+    return values
+
+
 def normalize_token_usage(raw: dict[str, Any] | None = None) -> dict[str, int]:
     payload = dict(raw or {})
     input_tokens = _int_value(
@@ -22,22 +46,29 @@ def normalize_token_usage(raw: dict[str, Any] | None = None) -> dict[str, int]:
     )
     if total_tokens <= 0:
         total_tokens = input_tokens + output_tokens
-    return {
+    normalized = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
     }
+    for key, value in _cache_usage_values(payload).items():
+        normalized[key] = _int_value(value)
+    return normalized
 
 
 def accumulate_token_usage(
     current: dict[str, int], delta: dict[str, Any] | None = None
 ) -> dict[str, int]:
     normalized = normalize_token_usage(delta)
-    return {
+    accumulated = {
         "input_tokens": int(current.get("input_tokens") or 0) + normalized["input_tokens"],
         "output_tokens": int(current.get("output_tokens") or 0) + normalized["output_tokens"],
         "total_tokens": int(current.get("total_tokens") or 0) + normalized["total_tokens"],
     }
+    for key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+        if key in current or key in normalized:
+            accumulated[key] = int(current.get(key) or 0) + int(normalized.get(key) or 0)
+    return accumulated
 
 
 def message_token_usage(message: Any) -> dict[str, int] | None:
@@ -97,8 +128,9 @@ def _merge_usage_candidates(candidates: list[dict[str, Any]]) -> dict[str, int] 
             merged["output_tokens"] = output_tokens
         if total_tokens and "total_tokens" not in merged:
             merged["total_tokens"] = total_tokens
-        if all(key in merged for key in ("input_tokens", "output_tokens", "total_tokens")):
-            break
+        for key, value in _cache_usage_values(candidate).items():
+            if key not in merged:
+                merged[key] = _int_value(value)
     if not merged:
         return None
     normalized = normalize_token_usage(merged)
