@@ -9,6 +9,7 @@ from langchain.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from ...config import Settings
+from ...core.branch_messages import branch_context_messages
 from ...core.context_request import ContextRequest, build_context_request
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_task_outcome
@@ -60,6 +61,7 @@ from ..graph.tool_result_fallback import (
     _invoke_with_tool_result_fallback,
 )
 from .prompt import operating_note
+from .todos import todos_block
 
 AGENT_CORE_V2 = "v2"
 _MODEL_DRIVEN_POLICY = "model_driven"
@@ -108,6 +110,8 @@ def make_loop_agent_node(
         known_names = _known_tool_names(available_tools or all_tools)
         history = _messages_for_model(state)
         steer_block = _steer_block(_drain_steer_messages(run_manager, _root_thread_id(runtime)))
+        # Todos come from the full branch transcript; the model view may be compacted.
+        todos_note = todos_block(branch_context_messages(state_messages, values=state))
 
         def request_with(offered_tools: list[Any]) -> ContextRequest:
             prompt = _build_prompt_messages(
@@ -116,9 +120,16 @@ def make_loop_agent_node(
                 plan=None,
                 current_step_id="",
                 steer_block=steer_block,
-                policy_note=operating_note(
-                    _known_tool_names(offered_tools) if offered_tools else (),
-                    tool_budget_exhausted=tool_budget_exhausted,
+                policy_note="\n\n".join(
+                    part
+                    for part in (
+                        operating_note(
+                            _known_tool_names(offered_tools) if offered_tools else (),
+                            tool_budget_exhausted=tool_budget_exhausted,
+                        ),
+                        todos_note,
+                    )
+                    if part
                 ),
             )
             return build_context_request(

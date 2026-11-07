@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .todos import TODO_WRITE_TOOL_NAME
+
 _WORKING_RULES = (
     "## How to work\n"
     "- Decide for yourself whether tools are needed. Answer directly when you can "
@@ -25,6 +27,12 @@ _WEB_RULE = (
     "- For external facts, search with focused queries, then open the most relevant "
     "pages with web_fetch before relying on them; search snippets alone are weak evidence."
 )
+_TODO_RULE = (
+    "- For multi-step work with three or more distinct steps, track progress with "
+    "todo_write: list the steps before starting, keep one item in_progress, and mark each "
+    "completed as soon as it is done. Send the update together with your next tool calls "
+    "instead of as a separate step. Skip it for simple questions and single-step tasks."
+)
 _TOOL_BUDGET_EXHAUSTED_NOTE = (
     "The tool budget for this turn is used up and no tools are available. Answer now "
     "from the evidence already gathered, and say plainly which parts remain unverified."
@@ -42,6 +50,8 @@ def operating_note(tool_names: Iterable[str], *, tool_budget_exhausted: bool) ->
         rules.append(_TIME_RULE)
     if {"web_search", "web_fetch"} <= names:
         rules.append(_WEB_RULE)
+    if TODO_WRITE_TOOL_NAME in names:
+        rules.append(_TODO_RULE)
     return "\n".join(rules)
 
 

@@ -9,17 +9,23 @@ agent_loop -> summarize_turn -> extract_memories -> write_memories
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
 from ...capabilities import ToolRegistry
+from ...capabilities.tool_manifest import ToolManifest
 from ...config import Settings
 from ...core.request_context import RequestContext
 from ...core.state import AgentState
 from ...memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ...skills import SkillRegistry
-from ..graph.components import make_graph_tool_executor, resolve_graph_components
+from ..graph.components import (
+    GraphComponents,
+    make_graph_tool_executor,
+    resolve_graph_components,
+)
 from ..graph.memory_nodes import (
     make_assemble_context_node,
     make_extract_memories_node,
@@ -29,12 +35,25 @@ from ..graph.memory_nodes import (
 from ..graph.tool_execution import HarnessToolServices
 from ..graph.turn_hooks import TurnLifecycle
 from .agent import make_loop_agent_node
+from .todos import TODO_WRITE_TOOL_NAME, build_todo_write_tool
 
 
 def _route_after_agent(state: AgentState) -> Literal["tool_executor", "summarize_turn"]:
     if getattr(state["messages"][-1], "tool_calls", None):
         return "tool_executor"
     return "summarize_turn"
+
+
+def _with_todo_write(components: GraphComponents) -> GraphComponents:
+    registry = components.tool_registry
+    if TODO_WRITE_TOOL_NAME in registry.by_name:
+        return components
+    todo_write = build_todo_write_tool()
+    registry = ToolRegistry(
+        tools=(*registry.tools, todo_write),
+        manifests=(*registry.manifests, ToolManifest.from_tool(todo_write)),
+    )
+    return replace(components, tool_registry=registry, tools=list(registry.tools))
 
 
 def build_loop_graph(
@@ -55,17 +74,19 @@ def build_loop_graph(
     system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ):
-    components = resolve_graph_components(
-        settings=settings,
-        checkpointer=checkpointer,
-        store=store,
-        memory_retriever=memory_retriever,
-        memory_policy=memory_policy,
-        memory_writer=memory_writer,
-        memory_extractor=memory_extractor,
-        skill_registry=skill_registry,
-        tool_registry=tool_registry,
-        chat_model_factory=chat_model_factory,
+    components = _with_todo_write(
+        resolve_graph_components(
+            settings=settings,
+            checkpointer=checkpointer,
+            store=store,
+            memory_retriever=memory_retriever,
+            memory_policy=memory_policy,
+            memory_writer=memory_writer,
+            memory_extractor=memory_extractor,
+            skill_registry=skill_registry,
+            tool_registry=tool_registry,
+            chat_model_factory=chat_model_factory,
+        )
     )
     lifecycle = TurnLifecycle(
         harness_services=harness_services, system_agent_runner=system_agent_runner
