@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from ...config_parts.env import env_bool
+
 _REAL_EXECUTION_MODES = frozenset({"inline", "background", "worktree_sandbox", "real"})
 _REAL_DELEGATION_MODES = frozenset({"inline", "background"})
 
@@ -425,11 +427,12 @@ def _durable_worker_health(worker: object | None) -> dict[str, bool]:
 
 def _docker_evidence(environment: Mapping[str, str]) -> dict[str, object]:
     backend = environment.get("FOCUS_AGENT_SANDBOX_BACKEND")
-    fallback = environment.get("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK")
     return {
         "backend_configured": backend is not None,
         "docker_backend": backend == "docker",
-        "local_fallback_disabled": fallback == "0",
+        "local_fallback_disabled": not env_bool(
+            environment, "FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", default=False
+        ),
     }
 
 

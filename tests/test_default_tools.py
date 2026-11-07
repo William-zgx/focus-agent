@@ -2043,6 +2043,7 @@ def test_run_workspace_command_runs_allowlisted_commands_and_blocks_unsafe_ones(
     )
     pytest_script.chmod(0o755)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1")
     tools = _tool_map(
         Settings(
             workspace_root=str(project),
@@ -2167,7 +2168,8 @@ def test_run_workspace_command_uses_unified_sandbox_service(tmp_path, monkeypatc
     assert payload["stdout"] == "sandbox\n"
 
 
-def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_path):
+def test_run_workspace_command_allows_trusted_local_skill_python_scripts(tmp_path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1")
     project = tmp_path / "project"
     skill_dir = project / ".focus_agent" / "skills" / "stocks"
     scripts_dir = skill_dir / "scripts"
@@ -2253,7 +2255,8 @@ def test_run_workspace_command_rejects_unconfigured_workspace_skills_root_script
     assert not marker.exists()
 
 
-def test_run_workspace_command_allows_trusted_workspace_skills_root_scripts(tmp_path):
+def test_run_workspace_command_allows_trusted_workspace_skills_root_scripts(tmp_path, monkeypatch):
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1")
     project = tmp_path / "project"
     skill_dir = project / "skills" / "stocks"
     scripts_dir = skill_dir / "scripts"

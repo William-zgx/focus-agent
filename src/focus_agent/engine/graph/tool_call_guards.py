@@ -49,7 +49,6 @@ class InterceptionResult(NamedTuple):
 
     error: ToolMessage | None
     args: dict[str, Any]
-    permission_allowed: bool = False
 
 
 def _extract_command(tool_name: str, tool_args: Mapping[str, Any]) -> str | None:
@@ -261,8 +260,8 @@ def _intercept_tool_call(
                 exc_info=True,
             )
 
-    # Layer 3: Permission check
-    permission_allowed = False
+    # Layer 3: Permission check. ALLOW only lets the tool run; it never waives the
+    # human approval a tool declares with ``requires_approval``.
     if services is not None and services.permission_manager is not None:
         try:
             from ...harness.governance.permissions import (
@@ -283,10 +282,6 @@ def _intercept_tool_call(
                 return InterceptionResult(
                     _denied_tool_result(tool_call_id, tool_name, tool_args, reason), tool_args
                 )
-            if action == PermissionAction.ALLOW:
-                # Permission manager explicitly allowed this tool. This also implies
-                # tool approval is not needed — the permission system has vetted it.
-                permission_allowed = True
             if action == PermissionAction.ASK:
                 # If the tool already requires approval, let the existing approval
                 # interrupt handle it; otherwise surface an error.
@@ -301,7 +296,7 @@ def _intercept_tool_call(
                 tool_name,
                 exc_info=True,
             )
-    return InterceptionResult(None, tool_args, permission_allowed)
+    return InterceptionResult(None, tool_args)
 
 
 def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:

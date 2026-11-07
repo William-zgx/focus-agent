@@ -465,6 +465,7 @@ def test_admin_config_rejects_skill_paths_outside_workspace(
 def test_admin_config_updates_and_refreshes_skills(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK", "1")
     client, settings, service, _, _, local_env_path = _build_client(monkeypatch, tmp_path)
     service.create_user(user_id="admin-1", roles=["admin"])
     headers = _headers(settings, "admin-1")
