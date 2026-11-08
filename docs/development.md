@@ -138,7 +138,7 @@ large files, so every scanned file above 800 lines is a regression; a file that
 was split below the limit must not be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 81 items.
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 54 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an
@@ -474,7 +474,6 @@ make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
@@ -496,12 +495,11 @@ uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
 ```bash
 uv run pytest tests/test_agent_context_engineering.py tests/eval/test_agent_context_suite.py
 uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 The project-level eval policy is documented in `docs/agent-evaluation.md`.
-`smoke`, `golden_multi_agent`, and `harness_stability` are release-blocking
+`smoke`, `observability`, and `harness_stability` are release-blocking
 suites; `model_matrix` and `trajectory_failures` are nightly, non-blocking
 signal suites. When changing model selection/fallback or multi-agent behavior, also run:
 

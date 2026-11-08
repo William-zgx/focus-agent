@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from collections.abc import MutableMapping
 from pathlib import Path
-
-from ..delegation.execution_modes import normalize_delegation_execution_mode
 
 DEFAULT_LOCAL_ENV_FILE = ".focus_agent/local.env"
 _ENV_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
@@ -23,47 +20,6 @@ def _split_csv(value: str | None) -> tuple[str, ...]:
     if value is None:
         return ()
     return tuple(part.strip() for part in value.split(",") if part.strip())
-
-
-def _split_key_value_csv(value: str | None) -> dict[str, str]:
-    if value is None:
-        return {}
-    pairs: dict[str, str] = {}
-    for raw_part in value.split(","):
-        part = raw_part.strip()
-        if not part or "=" not in part:
-            continue
-        key, raw_value = part.split("=", 1)
-        key = key.strip()
-        resolved_value = raw_value.strip()
-        if key and resolved_value:
-            pairs[key] = resolved_value
-    return pairs
-
-
-def _parse_key_value_json_or_csv(value: str | None) -> dict[str, str]:
-    if value is None:
-        return {}
-    text = value.strip()
-    if not text:
-        return {}
-    if text.startswith("{"):
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(payload, dict):
-            return {}
-        return {
-            str(key).strip(): str(item).strip()
-            for key, item in payload.items()
-            if str(key).strip() and str(item).strip()
-        }
-    return _split_key_value_csv(text)
-
-
-def _normalize_agent_delegation_execution_mode(value: object) -> str:
-    return normalize_delegation_execution_mode(str(value or "observe"))
 
 
 def load_local_env_file(

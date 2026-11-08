@@ -98,7 +98,6 @@ def _reload_runtime_graph(runtime: Any) -> dict[str, Any]:
                     "approval_queue",
                     None,
                 ),
-                subagent_executor=getattr(harness, "subagent_executor", None),
             )
             runtime.harness = rebuilt_harness
             runtime.graph = rebuilt_harness.graph

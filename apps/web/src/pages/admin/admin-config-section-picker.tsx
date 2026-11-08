@@ -70,8 +70,8 @@ export function ConfigSectionPicker({
 			label: isChineseUi ? "Agent 行为" : "Agent Behavior",
 			metric: String(summary.policyCount),
 			description: isChineseUi
-				? "路由、委派、记忆与上下文策略"
-				: "Routing, delegation, memory, and context policies",
+				? "分支、协调、记忆与上下文策略"
+				: "Branch, coordination, memory, and context policies",
 			ariaLabel: isChineseUi ? "Agent 策略" : "Agent policies",
 		},
 		{

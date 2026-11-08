@@ -31,7 +31,6 @@ class RuntimeFeatures(BaseModel):
     guardrails: bool = False
     loop_detection: bool = True
     summarization: bool = True
-    subagents: bool = False
     streaming: RuntimeFeatureSpec = True
     observability: bool = True
 
@@ -54,10 +53,8 @@ class RuntimeFeatures(BaseModel):
     def from_settings(cls, settings: Any) -> RuntimeFeatures:
         """Build feature switches from a Focus Agent ``Settings``-like object."""
 
-        delegation = bool(getattr(settings, "agent_delegation_enabled", False))
         return cls(
             memory=bool(getattr(settings, "agent_memory_backend", "")),
-            subagents=delegation,
             branching=True,
             governance=True,
             streaming=True,
@@ -101,13 +98,6 @@ class StreamingConfig(BaseModel):
     cleanup_delay_seconds: float = Field(default=60.0, ge=0.0)
 
 
-class SubagentConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    max_concurrent_subagents: int = Field(default=3, ge=1)
-
-
 class HarnessConfig(BaseModel):
     """Top-level harness configuration.
 
@@ -135,7 +125,6 @@ class HarnessConfig(BaseModel):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     streaming: StreamingConfig = Field(default_factory=StreamingConfig)
-    subagents: SubagentConfig = Field(default_factory=SubagentConfig)
     middleware: tuple[object, ...] = ()
     # Extension / governance / agent-definition toggles
     enable_extensions: bool = True
@@ -201,5 +190,4 @@ __all__ = [
     "RuntimeFeatureSpec",
     "RuntimeFeatures",
     "StreamingConfig",
-    "SubagentConfig",
 ]

@@ -371,7 +371,7 @@ def test_v2_subtask_exception_becomes_error_tool_message(monkeypatch, tmp_path):
             _subtask_call(),
             RuntimeError("sub-agent boom"),
             RuntimeError("sub-agent boom"),
-            AIMessage(content="Parent handled the failed delegation."),
+            AIMessage(content="Parent handled the failed subtask."),
         ]
     )
     graph = _v2_graph(monkeypatch, model, tmp_path)
@@ -387,7 +387,7 @@ def test_v2_subtask_exception_becomes_error_tool_message(monkeypatch, tmp_path):
     payload = json.loads(message.content)
     assert payload["status"] == "error"
     assert "sub-agent boom" in payload["error"]
-    assert result.value["messages"][-1].content == "Parent handled the failed delegation."
+    assert result.value["messages"][-1].content == "Parent handled the failed subtask."
 
 
 def test_v2_subtask_empty_answer_becomes_error_tool_message(monkeypatch, tmp_path):

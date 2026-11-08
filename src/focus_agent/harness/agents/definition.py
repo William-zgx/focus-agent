@@ -6,10 +6,6 @@ describing agent personas -- their system prompts, tool access policies, model
 overrides, and UI metadata. Definitions can be authored inline in Python or
 loaded from Markdown files with YAML frontmatter, enabling users to drop new
 agent personas into a directory without writing code.
-
-The built-in definitions mirror the existing :class:`AgentRole` enum in
-:mod:`focus_agent.delegation.roles` so that role-routing and declarative
-definitions share a single source of truth for tool governance.
 """
 
 from __future__ import annotations
@@ -430,17 +426,15 @@ def _as_string_list(value: Any, *, default: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Built-in agent definitions
 # ---------------------------------------------------------------------------
-# These mirror the tool-governance allowlists in
-# ``focus_agent.delegation.roles._ROLE_GOVERNANCE`` and the default tool
-# metadata in :mod:`focus_agent.capabilities.tool_manifest` so that the
-# declarative and routing paths agree.
+# Built-in definitions use the default tool metadata in
+# :mod:`focus_agent.capabilities.tool_manifest` for declarative tool governance.
 
 
 def orchestrator_builtin() -> AgentDefinition:
-    """Built-in orchestrator agent -- coordinates delegated role runs."""
+    """Built-in orchestrator persona -- coordinates bounded subtasks."""
     return AgentDefinition(
         name="orchestrator",
-        description="Coordinates and dispatches work across specialist subagents.",
+        description="Coordinates work and synthesizes bounded subtask results.",
         mode="primary",
         tools_allowed=[
             "conversation_summary",
@@ -455,11 +449,10 @@ def orchestrator_builtin() -> AgentDefinition:
         color="#6B7280",
         metadata={"builtin": True, "role": "orchestrator"},
         system_prompt=(
-            "You are the orchestrator. Your job is to triage the user's request, "
-            "select which specialist agents should handle it, and synthesize their "
-            "results into a single coherent response. Do not perform implementation "
-            "work yourself; delegate to planner, executor, critic, memory_curator, "
-            "or skill_scout as appropriate."
+            "You are the orchestrator. Triage the user's request, use available "
+            "tools and bounded subtasks when they improve the answer, and "
+            "synthesize the results into one coherent response. Keep ownership "
+            "of the final answer and do not claim work that was not executed."
         ),
     )
 

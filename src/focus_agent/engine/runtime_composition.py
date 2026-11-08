@@ -170,10 +170,6 @@ def create_runtime_harness(
         name="focus-agent",
         model=settings.model,
         streaming={"heartbeat_seconds": settings.sse_heartbeat_seconds},
-        subagents={
-            "enabled": bool(settings.agent_delegation_enabled),
-            "max_concurrent_subagents": max(1, int(settings.agent_role_max_parallel_runs or 1)),
-        },
     )
     return focus_agent_factory(
         harness_config,

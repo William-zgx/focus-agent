@@ -61,11 +61,6 @@ def test_release_gate_plan_matches_release_checklist_order() -> None:
             "--report-json reports/release-gate/eval-observability.json",
         ),
         (
-            "eval-golden-multi-agent",
-            "uv run python -m tests.eval --suite golden_multi_agent --concurrency 1 "
-            "--report-json reports/release-gate/eval-golden-multi-agent.json",
-        ),
-        (
             "eval-harness-stability",
             "uv run python -m tests.eval --suite harness_stability --concurrency 1 "
             "--report-json reports/release-gate/eval-harness-stability.json",
@@ -84,7 +79,6 @@ def test_release_gate_plan_matches_release_checklist_order() -> None:
             "--allow-self-check-fallback "
             "--eval-report-json reports/release-gate/eval-smoke.json "
             "--eval-report-json reports/release-gate/eval-observability.json "
-            "--eval-report-json reports/release-gate/eval-golden-multi-agent.json "
             "--eval-report-json reports/release-gate/eval-harness-stability.json "
             "--eval-report-json reports/release-gate/memory-context-eval.json "
             "--report-json reports/release-gate/release-health.json",

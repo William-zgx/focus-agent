@@ -453,7 +453,6 @@ make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
@@ -475,12 +474,11 @@ uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
 ```bash
 uv run pytest tests/test_agent_context_engineering.py tests/eval/test_agent_context_suite.py
 uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
-项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、
-`golden_multi_agent` 和 `harness_stability` 是 release-blocking suite；
+项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、`observability` 和
+`harness_stability` 是 release-blocking suite；
 `model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型选择/fallback 或多 Agent 行为时，也建议跑：
 
 ```bash

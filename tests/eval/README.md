@@ -17,9 +17,9 @@ task, via `scripts/branch_ab/` (see `datasets/branch_ab/README.md`).
 # Run the smoke suite (11 cases, no external API keys required if using a fake model).
 uv run python -m tests.eval --suite smoke
 
-# Run the retained governance and multi-agent gates.
+# Run the retained governance and context evals.
 uv run python -m tests.eval --suite agent_governance --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite agent_context --concurrency 1
 
 # Full run with HTML + JSON reports.
 uv run python -m tests.eval --suite all \
@@ -34,11 +34,10 @@ uv run python -m tests.eval --suite model_matrix \
 uv run python -m tests.eval --suite smoke \
   --cost-per-1k-input 0.00015 --cost-per-1k-output 0.00060
 
-# Filter by taxonomy and emit failed cases as a follow-up dataset.
-uv run python -m tests.eval --suite golden_multi_agent \
-  --only-capability governance \
-  --risk-level medium \
-  --emit-failures-dataset reports/failed-golden.jsonl
+# Filter by risk and emit failed cases as a follow-up dataset.
+uv run python -m tests.eval --suite smoke \
+  --risk-level low \
+  --emit-failures-dataset reports/failed-smoke.jsonl
 
 # Compare against a stored baseline and fail CI on regression.
 uv run python -m tests.eval --suite smoke \
@@ -75,9 +74,9 @@ fake model via the `model_factory` field on `EvalRuntime` — no network, no
 provider keys. Add suite-specific pytest modules (e.g. `test_golden_suite.py`)
 that parametrize over `load_dataset(...)` and assert `run_case(...).passed`.
 
-The `golden_multi_agent` fixtures exercise environment and trajectory judge
-validation of role and handoff expectations. Offline self-tests use fake
-execution; this validates the assertions, not provider quality.
+Offline self-tests exercise environment and trajectory judge validation of role
+and handoff expectations. Fake execution validates the assertions, not provider
+quality.
 
 ## Dataset format
 
@@ -169,9 +168,9 @@ Agent governance cases live in `datasets/agent_governance.jsonl` and cover
 Memory Curator branch promotion boundaries, Skill Scout registry usage, and
 model-driven tool-use expectations.
 
-Golden multi-agent cases live in `datasets/golden_multi_agent.jsonl` and cover
-stable delegation, governance, memory/context, and model-routing contracts. The
-release gate runs this suite as a blocking check.
+Observability cases live in `datasets/observability.jsonl` and cover stable
+trajectory and stream contracts. The `harness_stability` dataset covers bounded
+v2 lifecycle and failure behavior; both are release-blocking suites.
 
 Model matrix cases live in `datasets/model_matrix.jsonl` and compare labeled
 model roles against the same task inputs. Nightly runs this suite and uploads
@@ -272,7 +271,8 @@ summaries keep the p95 regression gate.
 Use these layers for ownership and CI policy:
 
 - `smoke`: fast release gate for core regressions.
-- `golden_multi_agent`: blocking release gate for stable multi-agent contracts.
+- `observability`: blocking release gate for trajectory and stream contracts.
+- `harness_stability`: blocking release gate for bounded v2 lifecycle behavior.
 - `trajectory_failures`: non-blocking nightly replay hardening queue.
 - `stress`: reserved for retries, context pressure, and concurrency stress.
 - `model_matrix`: non-blocking nightly model stability/cost comparison.

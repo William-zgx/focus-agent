@@ -72,7 +72,7 @@ flowchart LR
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：本地初始化、`make` 托管 repo-local PostgreSQL、直接 API 启动时的 SQLite app-state/checkpoint/store、SQLite/legacy pickle 迁移、Vite 开发模式和本地鉴权。
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：日常开发命令、验证矩阵、真实 Chrome smoke、Android CI 和常见工作流。
 - [validation-runbook.md](validation-runbook.md)：跨运行时、沙箱、Skill、SDK、真实 Chrome、Android 模拟器/设备、Observability 和 release-health 的全面验证口径。
-- [agent-evaluation.md](agent-evaluation.md)：Agent / model eval 分层、case taxonomy、judges、reports、CI 策略和多 Agent 执行 ownership。
+- [agent-evaluation.md](agent-evaluation.md)：Agent / model eval 分层、case taxonomy、judges、reports、CI 策略和并行开发 ownership。
 - [android.md](android.md)：Capacitor Android 包、App 内本地 runtime、secure storage、有界可取消 HTTP、cold/hot deep link 单次投递、CI 和模拟器/设备 smoke。
 
 ## Understand The System / 理解系统
@@ -86,7 +86,7 @@ flowchart LR
 - [../frontend-sdk/README.md](../frontend-sdk/README.md)：TypeScript SDK 包结构、客户端 API、stream reducer、transport validation 和 SDK 验证方式。
 - [frontend-visual-system.md](frontend-visual-system.md)：Web App token、primitive、CSS module ownership、style governance、bundle budget、截图/a11y 验证口径。
 - [architecture-debt-baseline.json](architecture-debt-baseline.json)：architecture gate 的 800 行阈值；当前没有 grandfathered large-file debt。
-- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与逐类 exit criteria；当前总量为 **57**，1.x public facade 仍保留。
+- [compat-debt-baseline.json](compat-debt-baseline.json)：按稳定 item ID 管理的兼容库存与逐类 exit criteria；当前总量为 **54**，1.x public facade 仍保留。
 
 ## Core Topics / 核心专题
 
@@ -136,7 +136,6 @@ flowchart LR
 
 以下文档保留作历史实施记录，**不是**日常导航入口；新改动请更新对应 canonical 专题，而不是继续堆并行清单。
 
-- [multi_agent_refactor/](multi_agent_refactor/)：多 Agent 重构期 tickets、DAG 模板、risk levels、validation 记录
 
 ## Maintenance Principles / 维护原则
 
@@ -146,7 +145,7 @@ flowchart LR
 - 本地持久化说明必须区分两条路径：维护中的 `make` 启动命令会管理 repo-local PostgreSQL；直接 API 启动且无 `DATABASE_URI` 时使用持久 SQLite app-state/checkpoint/store。
 - App Postgres schema 以代码 `SCHEMA_VERSION` 为准（当前 **v19**）；文档中的 schema 说明必须与 `src/focus_agent/repositories/postgres_schema.py` 同步。
 - 1.x public import surfaces、保留路由和历史状态读取器仍受 item-ID baseline
-  管理；逐类迁移调用方后再删除。出现外部采用方时增加 telemetry 和兼容窗口，不能把 57 项库存宣称为已清零。
+  管理；逐类迁移调用方后再删除。出现外部采用方时增加 telemetry 和兼容窗口，不能把 54 项库存宣称为已清零。
 - 后端路由、Pydantic response model 或 SDK 类型变化时，必须同步 `docs/api/openapi.json`、`frontend-sdk/src/types/__generated__.ts` 和必要的 `tests/contracts/*.json` snapshot；本地运行 `make sdk-openapi-types-check` 与 `make contract-check`。
 - 非生成源码超过 800 行会触发 architecture gate；兼容库存新增、删除或 identity 漂移必须通过 `make compat-gate` 显式更新和审查，不允许只放宽总量。
 - `architecture.md` 讲整体结构和跨模块路径；专题细节分别放到 Branch Decisions、Auth / Access、Admin Console、Streaming Contract、Runtime Outcomes、Context Window、Memory、Zvec Retrieval、Tool / Skill、Sandbox Execution、Android、Docker、Observability 和 SDK 文档。
@@ -154,4 +153,4 @@ flowchart LR
 - `release-checklist.md` 讲人工发布检查项；CI provider 绑定细节只在 `ci/github-actions-release-gate.md` 维护。
 - 当前状态放 canonical 专题；待实施方案放有日期和状态的 `plans/` 子目录并从本索引链接；执行记录和历史草稿明确标注 historical，不作为当前能力证据。
 - `implemented`、默认启用、端到端已接通和已通过验收分别说明。声明验证通过必须有对应版本、环境、命令与结果，不能仅依据模块存在或旧报告。
-- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **57**）；README 与专题文档不得漂移。
+- 兼容债务数量以 `compat-debt-baseline.json` 的 `max_total` / `item_ids` 为准（当前 **54**）；README 与专题文档不得漂移。

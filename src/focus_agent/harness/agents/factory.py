@@ -18,7 +18,6 @@ from ..runtime import RunManager
 from ..runtime.rollback import rollback_handler_for_graph
 from ..schemas import HarnessConfig
 from ..streaming import InMemoryStreamBridge, canonical_event_payload
-from ..subagents import SubagentExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ class FocusAgentHarness:
     stream_bridge: InMemoryStreamBridge | JournaledStreamBridge
     middleware: MiddlewareStack
     event_store: RunJournal
-    subagent_executor: SubagentExecutor | None = None
     tool_registry: Any = None
     # Newly-integrated components (populated by ``create_focus_agent``)
     agent_definition_registry: Any | None = None  # AgentDefinitionRegistry
@@ -87,7 +85,6 @@ def create_focus_agent(
     skill_registry: Any | None = None,
     tool_registry: Any | None = None,
     approval_queue: Any | None = None,
-    subagent_executor: SubagentExecutor | None = None,
 ) -> FocusAgentHarness:
     """Create the reusable Focus Agent harness around the existing graph.
 
@@ -99,7 +96,6 @@ def create_focus_agent(
     del tool_provider
     from ...engine.graph_builder import build_graph
 
-    effective_subagent_executor = subagent_executor
     effective_tool_registry = tool_registry
 
     # Build middleware stack BEFORE the graph so we can pass the same
@@ -184,7 +180,6 @@ def create_focus_agent(
         stream_bridge=stream_bridge,
         middleware=middleware_stack,
         event_store=journal,
-        subagent_executor=effective_subagent_executor,
         tool_registry=effective_tool_registry,
         agent_definition_registry=agent_definition_registry,
         extension_registry=new_components.get("extension_registry"),

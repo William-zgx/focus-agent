@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from .common import _normalize_agent_delegation_execution_mode, _split_csv
+from .common import _split_csv
 from .env import env_bool, env_float, env_int
 
 
@@ -103,31 +103,6 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_core": _normalize_agent_core(env.get("AGENT_CORE", defaults.agent_core)),
         "agent_max_tool_rounds": max(
             1, env_int(env, "AGENT_MAX_TOOL_ROUNDS", defaults.agent_max_tool_rounds)
-        ),
-        "agent_role_routing_enabled": env_bool(
-            env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
-        ),
-        "agent_role_orchestrator_model": (
-            env.get("AGENT_ROLE_ORCHESTRATOR_MODEL") or defaults.agent_role_orchestrator_model
-        ),
-        "agent_role_planner_model": (
-            env.get("AGENT_ROLE_PLANNER_MODEL") or defaults.agent_role_planner_model
-        ),
-        "agent_role_executor_model": (
-            env.get("AGENT_ROLE_EXECUTOR_MODEL") or defaults.agent_role_executor_model
-        ),
-        "agent_role_critic_model": (
-            env.get("AGENT_ROLE_CRITIC_MODEL") or defaults.agent_role_critic_model
-        ),
-        "agent_role_memory_model": (
-            env.get("AGENT_ROLE_MEMORY_MODEL") or defaults.agent_role_memory_model
-        ),
-        "agent_role_skill_model": (
-            env.get("AGENT_ROLE_SKILL_MODEL") or defaults.agent_role_skill_model
-        ),
-        "agent_role_max_parallel_runs": max(
-            1,
-            env_int(env, "AGENT_ROLE_MAX_PARALLEL_RUNS", defaults.agent_role_max_parallel_runs),
         ),
         "agent_branch_decision_enabled": env_bool(
             env,
@@ -337,16 +312,4 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_zvec_data_dir": str(
             env.get("AGENT_ZVEC_DATA_DIR") or defaults.agent_zvec_data_dir
         ).strip(),
-        "agent_delegation_enabled": env_bool(
-            env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
-        ),
-        "agent_delegation_enforce": env_bool(
-            env, "AGENT_DELEGATION_ENFORCE", default=defaults.agent_delegation_enforce
-        ),
-        "agent_delegation_execution_mode": _normalize_agent_delegation_execution_mode(
-            env.get(
-                "AGENT_DELEGATION_EXECUTION_MODE",
-                defaults.agent_delegation_execution_mode,
-            )
-        ),
     }

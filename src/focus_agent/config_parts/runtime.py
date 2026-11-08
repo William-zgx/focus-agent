@@ -4,7 +4,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 from .catalogs import ModelCatalogConfig, ToolCatalogConfig
-from .common import _parse_key_value_json_or_csv, _split_csv
+from .common import _split_csv
 from .env import env_bool, env_float, env_int
 
 
@@ -171,11 +171,6 @@ def load_runtime_config(
             env,
             "MULTI_AGENT_APPROVAL_TIMEOUT_SECONDS",
             defaults.multi_agent_approval_timeout_seconds,
-        ),
-        "multi_agent_role_fallback_models": (
-            _parse_key_value_json_or_csv(env.get("MULTI_AGENT_ROLE_FALLBACK_MODELS"))
-            if env.get("MULTI_AGENT_ROLE_FALLBACK_MODELS") is not None
-            else defaults.multi_agent_role_fallback_models
         ),
         "feedback_capture_enabled": env_bool(
             env,

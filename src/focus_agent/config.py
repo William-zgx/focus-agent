@@ -199,19 +199,10 @@ class Settings:
     context_memory_evidence_enabled: bool = True
     agent_core: str = "v2"
     agent_max_tool_rounds: int = 16
-    agent_role_routing_enabled: bool = False
-    agent_role_orchestrator_model: str | None = None
-    agent_role_planner_model: str | None = None
-    agent_role_executor_model: str | None = None
-    agent_role_critic_model: str | None = None
-    agent_role_memory_model: str | None = None
-    agent_role_skill_model: str | None = None
-    agent_role_max_parallel_runs: int = 2
     multi_agent_v2_enabled: bool = False
     multi_agent_async_approval_enabled: bool = False
     multi_agent_message_ttl_seconds: float = 300.0
     multi_agent_approval_timeout_seconds: float = 60.0
-    multi_agent_role_fallback_models: dict[str, str] = field(default_factory=dict)
     agent_branch_decision_enabled: bool = False
     agent_branch_decision_mode: str = "shadow"
     agent_branch_decision_min_confidence: float = 0.70
@@ -253,9 +244,6 @@ class Settings:
     agent_retrieval_fallback_backend: str = "postgres"
     agent_zvec_enabled: bool = True
     agent_zvec_data_dir: str = ".focus_agent/zvec"
-    agent_delegation_enabled: bool = False
-    agent_delegation_enforce: bool = False
-    agent_delegation_execution_mode: str = "observe"
     agent_context_engineering_v2_enabled: bool = False
     agent_context_artifactize_long_observations: bool = False
     agent_context_role_views_enabled: bool = False

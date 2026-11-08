@@ -13,7 +13,7 @@
 
 Focus Agent 是一个 **自托管、branch-aware 的 Agent 工作台与平台参考实现**，面向长任务 AI 工作流。它的核心思想很简单：主线程保持专注，探索过程进入临时分支，结论成熟后再受控合并回主线。
 
-围绕这条分支工作流，仓库提供较完整的产品面：流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆与检索、Productivity 工具、Agent 治理与委派控制、沙箱执行、发布/eval 证据链，以及可选的 Android 壳。部分协作与治理能力仍是显式 flag-gated 或 preview-only；代码和页面存在不等于生产执行已开启。
+围绕这条分支工作流，仓库提供较完整的产品面：流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆与检索、Productivity 工具、Agent 审批与协调控制、沙箱执行、发布/eval 证据链，以及可选的 Android 壳。部分协作与治理能力仍是显式 flag-gated 或 preview-only；代码和页面存在不等于生产执行已开启。
 
 > 定位、体量、适用边界与运行主路径详见：
 > **[docs/project-overview.md](docs/project-overview.md)**
@@ -31,7 +31,7 @@ Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管
 - **发布/证据工具链：** schema v2 evidence pack 将报告绑定到 commit、deployment ID、deployment version、environment 和带时区的生成时间；production 模式会校验身份与新鲜度，不接受无关或过期报告。这些是发布门禁和证据格式，不代表仓库已经部署或达到 production ready。详见[发布检查清单](docs/release-checklist.md)和 [CI Release Gate](docs/ci/github-actions-release-gate.md)。
 - **仓库 UI 与移动端门禁：** 独立 workflow 在真实 Chrome 中验证聊天和 observability 交互；CI 同时构建、lint 并单测 Android debug 项目。Chrome workflow 只验证 Web UI 行为，不提供 Agent 原生浏览器/DOM/截图工具。Android 还具备有界可取消的原生 HTTP、cold/hot deep link 单次投递、原生安全存储和关闭 Capacitor bridge logging。详见[验证手册](docs/validation-runbook.md)和 [Android](docs/android.md)。
 - **流式韧性：** 已结束的内存 stream 会在 replay 窗口后回收；SDK reconnect 会跨连接按 event ID 去重，若 EOF 前没有 terminal event 则抛出 `FocusAgentIncompleteStreamError`。详见[流式事件契约](docs/streaming-contract.md)和[前端 SDK](frontend-sdk/README.md)。
-- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 **81** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
+- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 **54** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
 - **App Postgres schema：** 应用 schema 版本为 **v19**（含 productivity / branch-decision / embedding-status 等迁移）。详见[架构说明 §14](docs/architecture.md)。
 
 ### 适用与不适用
@@ -47,9 +47,9 @@ Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管
 
 ### 当前能力边界（2026-09-28）
 
-当前基线为 `718be87`。默认配置中 `AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`；角色路由、模型路由、工具路由和保留的 multi-agent coordination 控制均需独立显式启用。详见 [Agent Governance](docs/agent-role-routing.md)。
+v2 core 使用模型驱动的工具调用和有界、单层的 `run_subtask` 执行；保留的协调与审批控制仍需独立显式启用。详见[架构说明](docs/architecture.md)。
 
-Task budget 字段已经存在于规划/ledger 合同中，但 runtime 使用全局 subagent round 上限，而不是每任务的 LLM 调用数、tool 调用数、成本或 deadline budget。文本聊天请求不是附件/多模态请求；内置 Web 工具是文本 search/fetch，不提供原生浏览器/DOM/截图或图片输入闭环。文本 artifact 返回本地 path/id 引用，不是通用上传/下载交付通道。
+文本聊天请求不是附件/多模态请求；内置 Web 工具是文本 search/fetch，不提供原生浏览器/DOM/截图或图片输入闭环。文本 artifact 返回本地 path/id 引用，不是通用上传/下载交付通道。
 
 当前行为与未来能力工作的区分见[能力研究](docs/plans/2026-09-28-agent-capabilities/research.md)、[设计](docs/plans/2026-09-28-agent-capabilities/design.md)和[计划](docs/plans/2026-09-28-agent-capabilities/plan.md)。
 
@@ -67,7 +67,7 @@ Task budget 字段已经存在于规划/ledger 合同中，但 runtime 使用全
 - 支持 AI 辅助的分支决策与发送前分支推荐，并通过用户确认的 Branch Action 卡片执行
 - 提供流式聊天 API（默认 harness 路径：`/v2/threads/.../runs[/stream]`）和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
-- 提供面向多 Agent 工作流的角色路由、模型路由、工具路由和可选委派控制；自动委派默认保持 disabled/observe
+- 提供模型驱动的 v2 工具循环、有界单层 `run_subtask` 执行，以及可选的协调/审批控制
 - 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、管理员控制台、按能力收拢的设置中心、Zvec 检索/RAG、记忆链路、治理反馈趋势和类型完备的前端 SDK

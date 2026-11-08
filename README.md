@@ -13,7 +13,7 @@
 
 Focus Agent is a **self-hosted, branch-aware Agent workbench and platform reference** for long AI workflows. The core idea is simple: keep the main thread focused, explore in temporary branches, and merge conclusions back only when they are ready.
 
-Around that branching workflow, the repository ships a broad product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, agent governance and delegation controls, sandbox execution, release/eval evidence, and an optional Android shell. Several collaboration and governance surfaces are deliberately flag-gated or preview-only; their presence in the repository is not a claim that production execution is enabled.
+Around that branching workflow, the repository ships a broad product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, agent approval and coordination controls, sandbox execution, release/eval evidence, and an optional Android shell. Several collaboration and governance surfaces are deliberately flag-gated or preview-only; their presence in the repository is not a claim that production execution is enabled.
 
 > Positioning detail, scale snapshot, fit/non-fit, and runtime spines:
 > **[docs/project-overview.md](docs/project-overview.md)**
@@ -31,7 +31,7 @@ Treat it as a **medium-sized monorepo** (backend + typed SDK + React app + optio
 - **Release/evidence tooling:** schema-v2 evidence packs bind reports to commit, deployment ID, deployment version, environment, and timezone-aware generation time; production mode validates identity and freshness instead of accepting an unrelated or stale report. These are release gates and evidence formats, not proof that this repository is deployed or production-ready. See [Release Checklist](docs/release-checklist.md) and [CI Release Gate](docs/ci/github-actions-release-gate.md).
 - **Repository UI and mobile gates:** a dedicated workflow runs real Chrome chat and observability interactions, while CI builds, lints, and unit-tests the Android debug project. The Chrome workflow validates Web UI behavior only; it does not provide an Agent-native browser/DOM/screenshot tool. Android also has bounded/cancellable native HTTP, one-shot cold/hot deep-link delivery, secure key storage, and disabled Capacitor bridge logging. See [Validation](docs/validation-runbook.md) and [Android](docs/android.md).
 - **Resilient streams:** ended in-memory streams are reclaimed after a replay window; SDK reconnects deduplicate event IDs across connections and raise `FocusAgentIncompleteStreamError` if EOF arrives without a terminal event. See [Streaming Contract](docs/streaming-contract.md) and the [Frontend SDK](frontend-sdk/README.md).
-- **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains **81** intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
+- **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains **54** intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
 - **App Postgres schema:** application schema version is **v19** (including productivity / branch-decision / embedding-status migrations). See [Architecture §14](docs/architecture.md).
 
 ### Fit And Non-Fit
@@ -47,9 +47,9 @@ Honest boundary: **platform completeness is currently stronger than end-to-end a
 
 ### Current Capability Boundaries (2026-09-28)
 
-The repository baseline is `718be87`. The default configuration keeps `AGENT_DELEGATION_ENABLED=false` and `AGENT_DELEGATION_EXECUTION_MODE=observe`; role routing, model routing, tool routing, and retained multi-agent coordination controls are independently opt-in. See [Agent Governance](docs/agent-role-routing.md).
+The v2 core uses model-driven tool calls and bounded, single-level `run_subtask` execution. Retained coordination and approval controls are independently opt-in. See [Architecture](docs/architecture.md).
 
-Task budget fields are part of the planning/ledger contracts, but the runtime uses global subagent round limits rather than per-task LLM-call, tool-call, cost, or deadline budgets. The text chat request is not an attachment/multimodal request, and built-in Web tools are text search/fetch rather than a native browser/DOM/screenshot or image-input loop. Text artifacts return local path/id references rather than a general upload/download delivery channel.
+The text chat request is not an attachment/multimodal request, and built-in Web tools are text search/fetch rather than a native browser/DOM/screenshot or image-input loop. Text artifacts return local path/id references rather than a general upload/download delivery channel.
 
 For the distinction between current behavior and proposed capability work, see the [capability research](docs/plans/2026-09-28-agent-capabilities/research.md), [design](docs/plans/2026-09-28-agent-capabilities/design.md), and [plan](docs/plans/2026-09-28-agent-capabilities/plan.md).
 
@@ -67,7 +67,7 @@ The branch-workflow quality claim is under evaluation. In the frozen 32-task exp
 - AI-assisted branch decisions and pre-turn branch recommendations that produce user-confirmed Branch Action cards
 - Streaming chat APIs (default harness path: `/v2/threads/.../runs[/stream]`) and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
-- Role routing, model routing, tool routing, and opt-in delegation controls for multi-agent workflows; automatic delegation remains disabled/observe by default
+- Model-driven v2 tool loop with bounded, single-level `run_subtask` execution and opt-in coordination/approval controls
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, Admin Console, capability-centered settings, Zvec-backed retrieval/RAG, memory pipeline, governance feedback trends, and typed frontend SDK

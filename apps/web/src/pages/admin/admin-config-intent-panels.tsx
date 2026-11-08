@@ -128,8 +128,8 @@ export function AdminConfigOverviewPanel({
 		{
 			label: isChineseUi ? "调整 Agent 行为" : "Tune agent behavior",
 			description: isChineseUi
-				? "控制路由、委派、记忆与上下文策略。"
-				: "Control routing, delegation, memory, and context policies.",
+				? "控制分支、协调、记忆与上下文策略。"
+				: "Control branch, coordination, memory, and context policies.",
 			section: "agent",
 		},
 	];

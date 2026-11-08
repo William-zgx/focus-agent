@@ -89,9 +89,6 @@ const PREP_TASK_NAMES = new Set([
 	"bootstrap_turn",
 	"retrieve_memory",
 	"assemble_context",
-	"role_route_dry_run",
-	"delegation_governance",
-	"plan",
 ]);
 
 const WRAP_UP_TASK_NAMES = new Set([

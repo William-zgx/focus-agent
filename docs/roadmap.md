@@ -99,7 +99,7 @@ flowchart LR
 - architecture gate 对非生成文件执行 800 行上限，当前
   [baseline](architecture-debt-baseline.json) 没有 grandfathered large file。
 - compatibility gate 按稳定 item ID 而不是模糊计数管理库存。当前
-  [baseline](compat-debt-baseline.json) 为 **57** 项。项目当前没有外部采用方，
+  [baseline](compat-debt-baseline.json) 为 **54** 项。项目当前没有外部采用方，
   2026-10-30/31 已直接删除仓库内零调用的 shim、测试专用补丁传播和废弃路由别名
   （169 → 89）；剩余项仍有调用方，按逐类 exit criteria 迁移调用方后再删除。
 
@@ -120,7 +120,7 @@ flowchart LR
 | Runtime 一致性 | contract tests、stream quarantine、architecture gate | 收敛 Chat / Harness / Android local-runtime 的共享 stream 与 tool 语义，降低并行路径漂移 |
 | Web/stream 可靠性 | real Chrome workflow、reconnect dedupe、incomplete-stream error、bridge cleanup | 增加断网/恢复、代理超时、多实例 replay、长会话和轻量负载阈值 |
 | Android 发布 | debug CI、native HTTP/deep-link hardening、instrumentation coverage | 增加 release signing pipeline、真实设备/Android 版本矩阵、弱网/后台恢复和商店发布检查 |
-| 兼容债务 | 57 个 item-ID baseline 与逐类 exit criteria | 剩余项都有仓库内调用方：先迁移调用方，再删除对应 facade 并刷新 baseline；若出现外部采用方，改为 telemetry + 迁移窗口 |
+| 兼容债务 | 54 个 item-ID baseline 与逐类 exit criteria | 剩余项都有仓库内调用方：先迁移调用方，再删除对应 facade 并刷新 baseline；若出现外部采用方，改为 telemetry + 迁移窗口 |
 | 产品面裁剪 | monorepo 全量能力默认可见 | 提供更清晰的 thin-core / feature 剖面文档与构建开关，降低“只要分支能力”采用方的心智负担 |
 
 ## 3. 下一阶段优先级

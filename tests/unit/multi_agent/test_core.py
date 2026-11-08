@@ -10,16 +10,13 @@ from focus_agent.multi_agent.approval_queue import (
     InMemoryApprovalQueue,
     PostgresApprovalQueue,
 )
-from focus_agent.multi_agent.conflict_detector import MergeConflictDetector
 from focus_agent.multi_agent.contracts import (
     AgentMessageType,
     ApprovalStatus,
-    DAGTaskNode,
     LockMode,
     ResourceClaim,
 )
-from focus_agent.multi_agent.dag_scheduler import DAGScheduler
-from focus_agent.multi_agent.errors import DAGValidationError, DeadlockDetected
+from focus_agent.multi_agent.errors import DeadlockDetected
 from focus_agent.multi_agent.failure_handler import FailureHandler
 from focus_agent.multi_agent.message_bus import (
     InMemoryAgentMessageBus,
@@ -73,114 +70,6 @@ class _FakeConn:
 
     def cursor(self) -> _FakeCursor:
         return self._cursor
-
-
-def test_dag_scheduler_allows_parallel_ready_tasks_without_resource_conflicts() -> None:
-    nodes = [
-        DAGTaskNode("design", "architect", (), (), 1, 0.0, 1),
-        DAGTaskNode("backend", "backend", ("design",), ("file:src/api.py",), 2, 0.0, 1),
-        DAGTaskNode("frontend", "frontend", ("design",), ("file:apps/app.tsx",), 3, 0.0, 1),
-        DAGTaskNode("review", "reviewer", ("backend", "frontend"), (), 4, 0.0, 1),
-    ]
-
-    wave = DAGScheduler(nodes, max_parallel_runs=2).compute_next_wave(
-        completed={"design"},
-        failed=set(),
-        in_progress=set(),
-    )
-
-    assert [task.task_id for task in wave] == ["backend", "frontend"]
-
-
-def test_dag_scheduler_skips_resource_conflicts_in_same_wave() -> None:
-    nodes = [
-        DAGTaskNode("a", "backend", (), ("file:src/shared.py",), 1, 0.0, 1),
-        DAGTaskNode("b", "backend", (), ("file:src/shared.py",), 2, 0.0, 1),
-    ]
-
-    wave = DAGScheduler(nodes, max_parallel_runs=2).compute_next_wave(
-        completed=set(),
-        failed=set(),
-        in_progress=set(),
-    )
-
-    assert [task.task_id for task in wave] == ["a"]
-
-
-def test_dag_scheduler_rejects_cycles() -> None:
-    with pytest.raises(DAGValidationError):
-        DAGScheduler(
-            [
-                DAGTaskNode("a", "backend", ("b",), (), 1, 0.0, 1),
-                DAGTaskNode("b", "backend", ("a",), (), 2, 0.0, 1),
-            ]
-        )
-
-
-@pytest.mark.parametrize(
-    ("completed", "failed", "in_progress", "max_parallel", "expected"),
-    [
-        (set(), set(), set(), 1, ["design"]),
-        (set(), set(), set(), 3, ["design", "docs"]),
-        ({"design", "docs"}, set(), set(), 1, ["backend"]),
-        ({"design", "docs"}, set(), set(), 2, ["backend", "frontend"]),
-        ({"design", "docs"}, set(), {"backend"}, 2, ["frontend"]),
-        ({"design", "docs"}, {"backend"}, set(), 3, ["frontend"]),
-        ({"design", "docs", "backend"}, set(), set(), 3, ["frontend"]),
-        ({"design", "docs", "frontend"}, set(), set(), 3, ["backend"]),
-        ({"design", "docs", "backend", "frontend"}, set(), set(), 3, ["verify"]),
-        ({"design", "docs", "backend", "frontend", "verify"}, set(), set(), 3, ["review"]),
-        ({"design", "docs"}, set(), set(), 4, ["backend", "frontend"]),
-        ({"docs"}, set(), set(), 2, ["design"]),
-        ({"design", "docs"}, set(), set(), 2, ["backend", "frontend"]),
-        ({"design", "docs", "backend", "frontend"}, {"verify"}, set(), 3, []),
-        ({"design", "backend", "frontend", "verify", "review", "docs"}, set(), set(), 3, []),
-    ],
-)
-def test_dag_scheduler_wave_matrix(
-    completed: set[str],
-    failed: set[str],
-    in_progress: set[str],
-    max_parallel: int,
-    expected: list[str],
-) -> None:
-    nodes = [
-        DAGTaskNode("design", "architect", (), (), 1, 0.0, 1),
-        DAGTaskNode("docs", "writer", (), ("file:docs/plan.md",), 2, 0.0, 1),
-        DAGTaskNode("backend", "backend", ("design",), ("file:src/api.py",), 3, 0.0, 1),
-        DAGTaskNode("frontend", "frontend", ("design",), ("file:apps/app.tsx",), 4, 0.0, 1),
-        DAGTaskNode("verify", "verifier", ("backend", "frontend"), ("tool:pytest",), 5, 0.0, 1),
-        DAGTaskNode("review", "reviewer", ("verify",), (), 6, 0.0, 1),
-    ]
-
-    wave = DAGScheduler(nodes, max_parallel_runs=max_parallel).compute_next_wave(
-        completed=completed,
-        failed=failed,
-        in_progress=in_progress,
-    )
-
-    assert [task.task_id for task in wave] == expected
-
-
-@pytest.mark.parametrize(
-    "nodes",
-    [
-        [DAGTaskNode("a", "backend", ("missing",), (), 1, 0.0, 1)],
-        [
-            DAGTaskNode("a", "backend", ("b",), (), 1, 0.0, 1),
-            DAGTaskNode("b", "backend", ("c",), (), 2, 0.0, 1),
-            DAGTaskNode("c", "backend", ("a",), (), 3, 0.0, 1),
-        ],
-        [
-            DAGTaskNode("root", "planner", (), (), 1, 0.0, 1),
-            DAGTaskNode("a", "backend", ("b",), (), 2, 0.0, 1),
-            DAGTaskNode("b", "backend", ("a",), (), 3, 0.0, 1),
-        ],
-    ],
-)
-def test_dag_scheduler_rejects_invalid_graph_matrix(nodes: list[DAGTaskNode]) -> None:
-    with pytest.raises(DAGValidationError):
-        DAGScheduler(nodes)
 
 
 def test_resource_lock_shared_and_exclusive_modes() -> None:
@@ -939,87 +828,3 @@ def test_postgres_approval_queue_list_pending_uses_timeout_filter() -> None:
     pending = queue.list_pending()
 
     assert [request.request_id for request in pending] == ["r3"]
-
-
-def test_conflict_detector_reports_file_overlap_and_summary_warning() -> None:
-    reports = MergeConflictDetector().detect(
-        {
-            "a": {"summary": "The API should use retries.", "changed_files": ["src/api.py"]},
-            "b": {"summary": "The API should not use retries.", "changed_files": ["src/api.py"]},
-        }
-    )
-
-    assert {report.conflict_type for report in reports} == {
-        "changed_files_overlap",
-        "conclusion_contradiction",
-    }
-
-
-@pytest.mark.parametrize(
-    ("left", "right", "left_files", "right_files", "expected_types"),
-    [
-        ("Use retries.", "Use retries.", ["src/a.py"], ["src/b.py"], set()),
-        (
-            "The worker should use retries.",
-            "The worker should not use retries.",
-            ["src/a.py"],
-            ["src/b.py"],
-            {"conclusion_contradiction"},
-        ),
-        (
-            "The API should cache.",
-            "The API should not cache.",
-            [],
-            [],
-            {"conclusion_contradiction"},
-        ),
-        (
-            "The API must validate.",
-            "The API cannot validate.",
-            [],
-            [],
-            {"conclusion_contradiction"},
-        ),
-        ("The API can stream.", "The API can stream.", [], [], set()),
-        ("No shared conclusion.", "No shared conclusion.", [], [], set()),
-        (
-            "Patch backend.",
-            "Patch frontend.",
-            ["src/shared.py"],
-            ["src/shared.py"],
-            {"changed_files_overlap"},
-        ),
-        (
-            "The worker should retry.",
-            "The worker should not retry.",
-            ["src/shared.py"],
-            ["src/shared.py"],
-            {"changed_files_overlap", "conclusion_contradiction"},
-        ),
-        ("The report is ready.", "The report is not ready.", [], [], {"conclusion_contradiction"}),
-        ("Frontend uses tabs.", "Backend uses spaces.", [], [], set()),
-        (
-            "The API will call cache.",
-            "The API won't call cache.",
-            [],
-            [],
-            {"conclusion_contradiction"},
-        ),
-        ("The task is scoped.", "The task is scoped.", ["a"], ["b"], set()),
-    ],
-)
-def test_conflict_detector_matrix(
-    left: str,
-    right: str,
-    left_files: list[str],
-    right_files: list[str],
-    expected_types: set[str],
-) -> None:
-    reports = MergeConflictDetector().detect(
-        {
-            "a": {"summary": left, "changed_files": left_files},
-            "b": {"summary": right, "changed_files": right_files},
-        }
-    )
-
-    assert {report.conflict_type for report in reports} == expected_types

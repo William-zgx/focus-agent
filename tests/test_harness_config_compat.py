@@ -55,8 +55,6 @@ def test_harness_config_from_settings_preserves_legacy_runtime_fields():
         app_environment="test",
         deployment_name="local",
         agent_memory_backend="sqlite",
-        agent_role_routing_enabled=True,
-        agent_delegation_enabled=True,
         agent_context_engineering_v2_enabled=True,
     )
 
@@ -76,7 +74,6 @@ def test_harness_config_from_settings_preserves_legacy_runtime_fields():
         "deployment": "local",
     }
     assert config.features.memory is True
-    assert config.features.subagents is True
     assert config.features.context_engineering_v2 is True
 
 
@@ -85,12 +82,10 @@ def test_runtime_features_keep_enabled_and_implementation_compatibility():
     memory_impl = object()
     features = RuntimeModuleFeatures(
         memory=memory_impl,
-        subagents=False,
         custom={"x": implementation},
     )
 
     assert features.enabled("memory") is True
-    assert features.enabled("subagents") is False
     assert features.enabled("x") is True
     assert features.implementation("memory") is memory_impl
     assert features.implementation("x") is implementation

@@ -112,7 +112,7 @@ flowchart LR
 | `src/focus_agent/config_parts/` | Settings 子域加载、模型/工具 catalog TOML 解析、环境变量与安全校验 |
 | `src/focus_agent/defaults/` | 包内默认配置数据；当前内置模型 provider/model catalog 只维护在 `models.toml` |
 | `src/focus_agent/engine/` | `AppRuntime` 创建、v2 LangGraph 图（`loop/builder.py`；`graph_builder.py` 为统一入口）、`loop/` 与 `graph/` 下的共享 node/policy/tool execution helpers、模型工厂、本地 fallback persistence |
-| `src/focus_agent/harness/` | FocusAgentHarness、RunManager、stream bridge、middleware stack、subagents、run journal |
+| `src/focus_agent/harness/` | FocusAgentHarness、RunManager、stream bridge、middleware stack、run journal |
 | `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review；共享小工具 `message_utils.py`（消息类型判断、`clip_text`）、`time_utils.py`（`utc_now*`）、`coercion.py` |
 | `src/focus_agent/services/` | ChatService、BranchService、UserService、ProductivityService 等 API-facing 业务服务；实现优先在 `services/chat/`、`services/branches/` 等 package |
 | `src/focus_agent/branch_service.py`、`chat_service.py` 等顶层 shim | 兼容 re-export facade（计入 compat baseline）；**找实现时优先进入 `services/` 下的实现 package** |

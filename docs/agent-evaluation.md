@@ -15,7 +15,7 @@ project-level policy for when and how to run it.
 | Layer | Dataset | Release policy | Purpose |
 |-------|---------|----------------|---------|
 | Smoke | `smoke` | Blocking release gate | Fast coverage for core behavior and tool-policy regressions. |
-| Golden multi-agent | `golden_multi_agent` | Blocking release gate | Stable contracts for delegation, governance, memory/context, and model selection/fallback. |
+| Observability | `observability` | Blocking release gate | Stable trajectory, streaming, and observability contracts. |
 | Harness stability | `harness_stability` | Blocking release gate | Regression coverage for v2 harness run lifecycle, streaming, replay, and terminal-state behavior. |
 | Trajectory failures | `trajectory_failures` | Non-blocking nightly | Production failure skeletons that should be hardened or promoted. |
 | Model matrix | `model_matrix` | Non-blocking nightly | Compare labeled model roles on the same task inputs. |
@@ -59,7 +59,7 @@ uv run pytest tests/eval/test_framework_self.py
 
 # Blocking release-gate suites.
 uv run python -m tests.eval --suite smoke --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
+uv run python -m tests.eval --suite observability --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 
 # Retained governance and context suites.
@@ -71,11 +71,10 @@ uv run python -m tests.eval --suite model_matrix --concurrency 1
 uv run python -m tests.eval --suite trajectory_failures --concurrency 1
 
 # Filter, retry, and emit a follow-up dataset.
-uv run python -m tests.eval --suite golden_multi_agent \
-  --only-capability governance \
-  --risk-level medium \
+uv run python -m tests.eval --suite smoke \
+  --risk-level low \
   --retries 1 \
-  --emit-failures-dataset reports/eval/failed-golden.jsonl
+  --emit-failures-dataset reports/eval/failed-smoke.jsonl
 ```
 
 ## Reports
@@ -110,8 +109,8 @@ uv run python -m tests.eval replay \
 ```
 
 Promote stable, human-reviewed failures into `trajectory_failures` first. Move a
-case into `golden_multi_agent` only after the assertion is deterministic enough
-to block release.
+case into `smoke` or `observability` only after the assertion is deterministic
+enough to block release.
 
 ## Ownership
 

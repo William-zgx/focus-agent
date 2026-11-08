@@ -149,8 +149,7 @@ class AgentState(TypedDict, total=False):
     selected_model: str
     selected_thinking_mode: str
 
-    # Written when role routing v2 is enabled. By default this is observability
-    # data; Delegation Runtime can consume it when its feature flag is enabled.
+    # Legacy role-routing observability retained for old checkpoint/trajectory reads.
     role_route_plan: dict[str, Any] | None
 
     # Append-only governance/observability records. New governance capabilities
@@ -176,8 +175,8 @@ class AgentState(TypedDict, total=False):
     tool_outcomes: Annotated[list[dict[str, Any]], operator.add]
     task_outcome: dict[str, Any] | None
 
-    # Written by Delegation Runtime when multi-agent role runs are planned or
-    # enforced. It stays in plan_meta for observability and replay.
+    # Legacy multi-agent planning/run fields retained for old checkpoint,
+    # trajectory, artifact, and metrics reads; v2 does not produce them.
     agent_delegation_plan: dict[str, Any] | None
     agent_runs: list[dict[str, Any]]
     model_route_decision: dict[str, Any] | None

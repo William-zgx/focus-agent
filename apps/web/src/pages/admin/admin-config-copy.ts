@@ -263,22 +263,6 @@ const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 		label: "异步审批",
 		description: "允许多 Agent 审批等待异步运行。",
 	},
-	multi_agent_dag_scheduler_enabled: {
-		label: "DAG 调度器",
-		description: "启用具备依赖感知的多 Agent 任务调度。",
-	},
-	multi_agent_failure_handler_enabled: {
-		label: "失败恢复协调器",
-		description: "启用多 Agent 失败恢复协调能力。",
-	},
-	multi_agent_message_bus_enabled: {
-		label: "消息总线",
-		description: "启用结构化 Agent 间消息。",
-	},
-	multi_agent_resource_lock_enabled: {
-		label: "资源锁",
-		description: "通过资源锁协调 Agent 的写入归属。",
-	},
 	multi_agent_v2_enabled: {
 		label: "多 Agent v2",
 		description: "启用 v2 多 Agent 协同能力面。",

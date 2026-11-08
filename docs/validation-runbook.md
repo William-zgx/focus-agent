@@ -6,7 +6,7 @@ Historical validation baseline: `718be87`
 This runbook is the local evidence plan for broad Focus Agent changes across the
 self-hosted workbench platform. Use it when changes touch Agent runtime state,
 sandbox execution, Skill contracts, streaming, SDK types, Web UI routes, Agent
-governance or delegation, observability, auth, memory, Android local runtime,
+governance or coordination, observability, auth, memory, Android local runtime,
 or release-health behavior.
 
 Product layers and fit/non-fit: [project-overview.md](project-overview.md).
@@ -218,44 +218,46 @@ scope, add a real emulator or attached-device instrumentation run and record
 the API level, device image, test count, and result separately from the CI
 debug build/lint/unit result.
 
-### Delegation, Approval, And Merge-Review Validation
+### Subtask, Approval, And Merge-Review Validation
 
-When delegation governance, retained multi-agent coordination, async approvals,
-or generic merge review changed, run the retained focused checks:
+When bounded `run_subtask` execution, retained multi-agent coordination, async
+approvals, or generic merge review changed, run the retained focused checks:
 
 ```bash
 uv run pytest \
+  tests/test_agent_core_v2_subtask.py \
+  tests/test_coordination.py \
   tests/test_multi_agent_config.py \
-  tests/test_agent_delegation.py \
-  tests/test_agent_roles.py \
+  tests/unit/multi_agent/test_core.py \
   tests/test_merge_review.py \
   -q
 ```
 
-Before changing flags, capture the effective `MULTI_AGENT_*` and
-`AGENT_DELEGATION_*` settings. Confirm that an unmodified normal chat turn does
-not create delegated tasks, worktrees, resource claims, or agent-to-agent
-messages unless the corresponding controls explicitly enable that behavior.
+Before changing flags, capture the effective `MULTI_AGENT_*` settings and the
+`run_subtask` tool policy. Confirm that an unmodified normal chat turn does not
+create subtask runs, resource claims, or agent-to-agent messages unless the
+model invokes `run_subtask` or the corresponding coordination controls
+explicitly enable that behavior.
 
 For each enabled coordination stage, retain evidence for these boundaries:
 
 1. `/readyz` returns HTTP 200 and `ready=true` before and after the change.
    This is runtime readiness, not proof of provider health or task execution.
-2. Delegation/task records preserve their ordering, run/output state, progress
+2. Subtask/tool records preserve their ordering, run/output state, progress
    messages, and pending approvals with the expected owner/run scope.
 3. A required approval records a redacted pending request. Its approve/reject
    decision changes the queue record but does not automatically replay a graph
    invocation that already returned; perform an explicit, separately recorded
    task/run retry.
-4. If a real delegated execution path is under test, retain its execution mode,
-   real model id, run id, artifact ids, worktree metadata when applicable,
-   `git diff --check`, and actual test output. `fake`, `observe`, placeholder
-   output, or summary text alone is not real execution evidence.
+4. If real subtask execution is under test, retain its real model id, parent and
+   child run ids, artifact ids, actual tool output, and actual test output.
+   Fake-model, placeholder output, or summary text alone is not real execution
+   evidence.
 5. Preview each merge review and explicitly apply or reject it. Do not report
    that review as a commit, push, or merge to `main`.
 
-See [Agent Governance](agent-role-routing.md) for the current role, delegation,
-model-routing, tool-routing, and approval configuration contract.
+See [Architecture](architecture.md) for the retained coordination and approval
+configuration contract.
 
 Likewise, fixture/fake model tests do not validate a real provider. Real-model
 evidence must preserve provider/model identity, redacted request/run metadata,
@@ -280,9 +282,7 @@ FOCUS_AGENT_SANDBOX_ALLOW_LOCAL_FALLBACK=0
 
 `fallback_used=true`, `degraded_reason=local_host_execution`,
 `sandbox_backend=local_subprocess`, or `local_venv` is degraded local evidence,
-not Docker-isolation evidence. See the
-[Multi-Agent Runtime Runbook](multi_agent_refactor/runbook.md) for the retained
-coordination gray/rollback order.
+not Docker-isolation evidence.
 
 When Skill selection changed, verify all explicit paths:
 

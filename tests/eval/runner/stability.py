@@ -52,20 +52,12 @@ def harness_stability_response(messages: list[Any], *, allow_tools: bool) -> AIM
                 }
             ],
         )
-    if allow_tools and "并行拆" in latest_user and tool_names.count("task") < 1:
-        return AIMessage(
-            content="",
-            tool_calls=[{"id": "hs-task-1", "name": "task", "args": {"count": 3}}],
-        )
-
     if "lookup" in latest_user:
         return AIMessage(content="检测到重复 lookup 风险，已停止循环并给出当前可用结论。")
     if "坏 JSON" in latest_user:
         return AIMessage(content="计划下一步：坏 JSON 无法解析时先修复结构，失败则降级为文本计划。")
     if "超时" in latest_user:
         return AIMessage(content="web_search 超时失败，已去重 fallback，建议稍后重试。")
-    if "并行拆" in latest_user:
-        return AIMessage(content="并行任务已受限制，最多 3 个同时运行。")
     if "不要联网" in latest_user:
         return AIMessage(content="遵循不联网要求，web_search 无法调用，已拒绝该工具请求。")
     if "rollback" in latest_user:
@@ -84,12 +76,6 @@ def harness_stability_tools() -> tuple[Any, ...]:
         """Deterministic web search timeout fixture."""
         return json.dumps({"query": query, "error": "timeout"}, ensure_ascii=False)
 
-    @langchain_tool
-    def task(count: int = 1) -> str:
-        """Deterministic bounded subtask fixture."""
-        bounded = min(max(int(count or 1), 1), 3)
-        return json.dumps({"requested": count, "started": bounded}, ensure_ascii=False)
-
     lookup.metadata = {
         "toolset": "workspace",
         "intent_policies": ("workspace_lookup", "execution"),
@@ -104,14 +90,7 @@ def harness_stability_tools() -> tuple[Any, ...]:
         "timeout_seconds": 0.01,
         "max_calls_per_turn": 3,
     }
-    task.metadata = {
-        "toolset": "workspace",
-        "parallel_safe": True,
-        "intent_policies": ("workspace_lookup", "execution"),
-        "allowed_roles": ("executor", "critic"),
-        "max_calls_per_turn": 4,
-    }
-    return (lookup, web_search, task)
+    return (lookup, web_search)
 
 
 def _latest_human_text(messages: list[Any]) -> str:

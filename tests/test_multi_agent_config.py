@@ -10,7 +10,6 @@ def test_multi_agent_coordination_defaults() -> None:
     assert settings.multi_agent_async_approval_enabled is False
     assert settings.multi_agent_message_ttl_seconds == 300.0
     assert settings.multi_agent_approval_timeout_seconds == 60.0
-    assert settings.multi_agent_role_fallback_models == {}
 
 
 def test_multi_agent_coordination_env_overrides(monkeypatch) -> None:
@@ -18,7 +17,6 @@ def test_multi_agent_coordination_env_overrides(monkeypatch) -> None:
     monkeypatch.setenv("MULTI_AGENT_ASYNC_APPROVAL_ENABLED", "1")
     monkeypatch.setenv("MULTI_AGENT_MESSAGE_TTL_SECONDS", "120")
     monkeypatch.setenv("MULTI_AGENT_APPROVAL_TIMEOUT_SECONDS", "45")
-    monkeypatch.setenv("MULTI_AGENT_ROLE_FALLBACK_MODELS", "critic=openai:gpt-4.1")
 
     settings = Settings.from_env()
 
@@ -26,4 +24,3 @@ def test_multi_agent_coordination_env_overrides(monkeypatch) -> None:
     assert settings.multi_agent_async_approval_enabled is True
     assert settings.multi_agent_message_ttl_seconds == 120.0
     assert settings.multi_agent_approval_timeout_seconds == 45.0
-    assert settings.multi_agent_role_fallback_models == {"critic": "openai:gpt-4.1"}

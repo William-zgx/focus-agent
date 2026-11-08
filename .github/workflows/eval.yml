@@ -51,7 +51,6 @@ jobs:
           mapfile -t discovered_tests < <(
             find tests/eval -maxdepth 1 -type f \( \
               -name 'test_*framework*.py' -o \
-              -name 'test_golden_multi_agent*.py' -o \
               -name 'test_model_matrix*.py' -o \
               -name 'test_trajectory_failures*.py' \
             \) | sort

@@ -56,7 +56,7 @@ Set in `scripts/branch_ab/run_experiment.py::_isolated_env`:
   regardless of these switches, so planners in the earlier baseline and fix-1
   runs could see it (both arms alike). It is now registered only when skills are
   enabled.
-- Branch recommendation, branch decision, delegation, web search and memory
+- Branch recommendation, branch decision, web search and memory
   embeddings off; `MODEL_REQUEST_TIMEOUT_SECONDS=600` for slow relay endpoints.
 - Before each turn, before fork and before the merge proposal, the runner waits
   for background work (compaction, titles) to drain, as a pausing user would.
