@@ -178,7 +178,7 @@ def _usage(result: Any) -> dict[str, int] | None:
 
 
 def _install_capture(log: list[dict[str, Any]]) -> None:
-    import focus_agent.engine.graph.builder as graph_builder
+    import focus_agent.engine.graph_builder as graph_builder
     import focus_agent.engine.model_factory as model_factory
     import focus_agent.model_registry as model_registry
     import focus_agent.services.branches as branches_package
