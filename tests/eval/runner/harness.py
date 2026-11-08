@@ -637,9 +637,6 @@ def _result_case_id(
 
 def _topology_initial_state(topology: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {"agent_topology": dict(topology)}
-    roles = list(topology.get("roles") or [])
-    if roles:
-        payload["agent_team_tasks"] = [{"role": str(role), "status": "planned"} for role in roles]
     if topology.get("critic_required"):
         payload.setdefault("agent_governance_requirements", {})["critic_required"] = True
     if topology.get("handoff_required"):

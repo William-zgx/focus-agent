@@ -4,7 +4,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 from .catalogs import ModelCatalogConfig, ToolCatalogConfig
-from .common import _split_csv
+from .common import _parse_key_value_json_or_csv, _split_csv
 from .env import env_bool, env_float, env_int
 
 
@@ -154,15 +154,28 @@ def load_runtime_config(
             default=defaults.skill_selection_event_log_enabled,
         ),
         "workspace_root": env.get("WORKSPACE_ROOT", defaults.workspace_root),
-        "agent_team_merge_apply_enabled": env_bool(
+        "multi_agent_v2_enabled": env_bool(
             env,
-            "AGENT_TEAM_MERGE_APPLY_ENABLED",
-            default=defaults.agent_team_merge_apply_enabled,
+            "MULTI_AGENT_V2_ENABLED",
+            default=defaults.multi_agent_v2_enabled,
         ),
-        "agent_team_merge_review_max_diff_bytes": env_int(
+        "multi_agent_async_approval_enabled": env_bool(
             env,
-            "AGENT_TEAM_MERGE_REVIEW_MAX_DIFF_BYTES",
-            defaults.agent_team_merge_review_max_diff_bytes,
+            "MULTI_AGENT_ASYNC_APPROVAL_ENABLED",
+            default=defaults.multi_agent_async_approval_enabled,
+        ),
+        "multi_agent_message_ttl_seconds": env_float(
+            env, "MULTI_AGENT_MESSAGE_TTL_SECONDS", defaults.multi_agent_message_ttl_seconds
+        ),
+        "multi_agent_approval_timeout_seconds": env_float(
+            env,
+            "MULTI_AGENT_APPROVAL_TIMEOUT_SECONDS",
+            defaults.multi_agent_approval_timeout_seconds,
+        ),
+        "multi_agent_role_fallback_models": (
+            _parse_key_value_json_or_csv(env.get("MULTI_AGENT_ROLE_FALLBACK_MODELS"))
+            if env.get("MULTI_AGENT_ROLE_FALLBACK_MODELS") is not None
+            else defaults.multi_agent_role_fallback_models
         ),
         "feedback_capture_enabled": env_bool(
             env,

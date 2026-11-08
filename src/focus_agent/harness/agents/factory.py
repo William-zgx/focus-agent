@@ -20,7 +20,7 @@ from ..runtime import RunManager
 from ..runtime.rollback import rollback_handler_for_graph
 from ..schemas import HarnessConfig
 from ..streaming import InMemoryStreamBridge, canonical_event_payload
-from ..subagents import AgentTeamSubagentRunner, SubagentExecutor
+from ..subagents import SubagentExecutor
 from ..tools import create_subagent_task_tool
 
 logger = logging.getLogger(__name__)
@@ -346,18 +346,15 @@ def _subagent_executor_for_config(
         return subagent_executor
     if not (config.subagents.enabled or config.features.subagents):
         return None
-    # Select the runner based on config. Process isolation is opt-in
-    # (defaults to False) so existing deployments keep in-process behavior.
-    if config.subagents.use_process_isolation:
-        from ..subagents.process_runner import ProcessSubagentTaskRunner
+    if not config.subagents.use_process_isolation:
+        return None
+    from ..subagents.process_runner import ProcessSubagentTaskRunner
 
-        runner: Any = ProcessSubagentTaskRunner(
-            cli_entry_point=config.subagents.cli_entry_point,
-            default_timeout_seconds=config.subagents.process_timeout_seconds,
-            graceful_shutdown_seconds=config.subagents.graceful_shutdown_seconds,
-        )
-    else:
-        runner = AgentTeamSubagentRunner(settings=settings, model_factory=model_provider)
+    runner: Any = ProcessSubagentTaskRunner(
+        cli_entry_point=config.subagents.cli_entry_point,
+        default_timeout_seconds=config.subagents.process_timeout_seconds,
+        graceful_shutdown_seconds=config.subagents.graceful_shutdown_seconds,
+    )
     return SubagentExecutor(
         runner,
         max_parallel=config.subagents.max_concurrent_subagents,

@@ -26,11 +26,11 @@ def test_sqlite_productivity_repository_round_trips_notes_and_tasks(tmp_path):
         priority=2,
         source_thread_id="thread-1",
         source_note_id=note.note_id,
-        source_kind="agent_team_review",
+        source_kind="merge_review",
         source_id="review-1",
-        source_url="/app/agent-team/session-1",
+        source_url="/app/merge-review/review-1",
         pinned_context={"session_id": "session-1"},
-        captured_from="agent_team",
+        captured_from="merge_review",
         assignee_user_id="user-1",
     )
 
@@ -52,11 +52,11 @@ def test_sqlite_productivity_repository_round_trips_notes_and_tasks(tmp_path):
     assert completed is not None
     assert completed.status == FocusTaskStatus.COMPLETED
     assert completed.source_note_id == note.note_id
-    assert completed.source_kind == "agent_team_review"
+    assert completed.source_kind == "merge_review"
     assert completed.source_id == "review-1"
-    assert completed.source_url == "/app/agent-team/session-1"
+    assert completed.source_url == "/app/merge-review/review-1"
     assert completed.pinned_context == {"session_id": "session-1"}
-    assert completed.captured_from == "agent_team"
+    assert completed.captured_from == "merge_review"
     assert completed.assignee_user_id == "user-1"
     assert repository.get_task(task_id=task.task_id, user_id="user-2") is None
     assert (

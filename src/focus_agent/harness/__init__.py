@@ -96,10 +96,6 @@ _MODULE_EXPORTS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "StreamProxyConfig",
         ),
     ),
-    (
-        ".subagents",
-        ("AgentTeamSubagentRunner",),
-    ),
 )
 
 _EXPORTS = {
@@ -156,7 +152,6 @@ __all__ = [
     "AgentMiddleware",
     "AgentEventPublisher",
     "AgentStateSlices",
-    "AgentTeamSubagentRunner",
     "BaseAgentMiddleware",
     "BranchStateSlice",
     "CircuitBreaker",

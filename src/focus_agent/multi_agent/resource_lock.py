@@ -17,7 +17,7 @@ from .errors import DeadlockDetected
 
 
 class InMemoryResourceLockManager:
-    """TTL-based resource locks for local tests and default-off Agent Team opt-in."""
+    """TTL-based resource locks for local tests and coordinated execution."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

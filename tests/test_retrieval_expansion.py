@@ -4,14 +4,6 @@ import json
 from types import SimpleNamespace
 
 from focus_agent.cli.retrieval_index import build_parser
-from focus_agent.core.agent_team import (
-    AgentTeamArtifactKind,
-    AgentTeamSession,
-    AgentTeamTask,
-    AgentTeamTaskOutput,
-    AgentTeamTaskRole,
-    AgentTeamTaskStatus,
-)
 from focus_agent.core.governance import (
     BranchDecisionAction,
     BranchDecisionEvent,
@@ -21,10 +13,6 @@ from focus_agent.core.governance import (
     SkillSelectionEvent,
 )
 from focus_agent.retrieval import InMemoryRetrievalIndex
-from focus_agent.retrieval.agent_team import (
-    AgentTeamPlanRetrievalService,
-    index_agent_team_plan,
-)
 from focus_agent.retrieval.branch_context import (
     BranchContextRetrievalService,
     index_branch_decision_event,
@@ -62,43 +50,6 @@ class _FakeEmbeddingProvider:
         return vectors
 
 
-def _session() -> AgentTeamSession:
-    return AgentTeamSession(
-        session_id="session-1",
-        root_thread_id="root-1",
-        user_id="user-1",
-        title="Zvec migration",
-        goal="Plan Zvec retrieval migration",
-        created_at="2026-06-25T00:00:00+00:00",
-        updated_at="2026-06-25T00:00:00+00:00",
-    )
-
-
-def _task() -> AgentTeamTask:
-    return AgentTeamTask(
-        task_id="task-1",
-        session_id="session-1",
-        role=AgentTeamTaskRole.BACKEND_EXECUTOR,
-        title="Implement retrieval",
-        goal="Implement Zvec retrieval index",
-        status=AgentTeamTaskStatus.DONE,
-        acceptance_criteria=["retrieval tests pass"],
-        context_refs=[{"kind": "memory", "id": "memory-1"}],
-        created_at="2026-06-25T00:00:00+00:00",
-        updated_at="2026-06-25T00:00:00+00:00",
-    )
-
-
-def _output() -> AgentTeamTaskOutput:
-    return AgentTeamTaskOutput(
-        output_id="output-1",
-        task_id="task-1",
-        kind=AgentTeamArtifactKind.HANDOFF,
-        summary="Implemented retrieval with fallback.",
-        created_at="2026-06-25T00:00:00+00:00",
-    )
-
-
 def test_branch_context_indexes_and_hydrates_canonical_event():
     index = InMemoryRetrievalIndex()
     provider = _FakeEmbeddingProvider()
@@ -133,40 +84,6 @@ def test_branch_context_indexes_and_hydrates_canonical_event():
 
     assert [hit.source_id for hit in hits] == ["decision-1"]
     assert hits[0].fields["status"] == "shadowed"
-
-
-def test_agent_team_plan_search_returns_context_refs_from_same_user_root():
-    index = InMemoryRetrievalIndex()
-    provider = _FakeEmbeddingProvider()
-    session = _session()
-    task = _task()
-    output = _output()
-    repo = SimpleNamespace(
-        get_session=lambda session_id: session,
-        list_tasks=lambda session_id: [task],
-        list_task_outputs=lambda task_id: [output],
-    )
-
-    index_agent_team_plan(
-        retrieval_index=index,
-        embedding_provider=provider,
-        session=session,
-        tasks=[task],
-        outputs=[output],
-    )
-    hits = AgentTeamPlanRetrievalService(
-        retrieval_index=index,
-        embedding_provider=provider,
-        repository=repo,
-    ).search_similar_plans(
-        query="Zvec retrieval migration",
-        user_id="user-1",
-        root_thread_id="root-1",
-        limit=3,
-    )
-
-    assert hits[0].source_id == "session-1"
-    assert hits[0].context_refs == [{"kind": "memory", "id": "memory-1"}]
 
 
 def test_failure_case_retrieval_filters_by_workspace_and_root():

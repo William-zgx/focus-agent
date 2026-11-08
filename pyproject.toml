@@ -83,8 +83,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/focus_agent/services/agent_team.py" = ["F403"]
-"src/focus_agent/services/agent_team/run.py" = ["F403"]
 "src/focus_agent/services/branches.py" = ["F403"]
 
 [tool.ruff.format]

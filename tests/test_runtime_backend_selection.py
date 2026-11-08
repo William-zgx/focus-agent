@@ -89,7 +89,6 @@ def _install_postgres_modules(monkeypatch):
     memory_repo_cls = _make_postgres_component(with_factory=False)
     productivity_repo_cls = _make_postgres_component(with_factory=False)
     trajectory_repo_cls = _make_postgres_component(with_factory=False)
-    agent_team_repo_cls = _make_postgres_component(with_factory=False)
     user_repo_cls = _make_postgres_component(with_factory=False)
     run_journal_cls = _make_postgres_component(with_factory=False)
 
@@ -109,8 +108,6 @@ def _install_postgres_modules(monkeypatch):
     productivity_module.PostgresProductivityRepository = productivity_repo_cls
     trajectory_module = types.ModuleType("focus_agent.repositories.postgres_trajectory_repository")
     trajectory_module.PostgresTrajectoryRepository = trajectory_repo_cls
-    agent_team_module = types.ModuleType("focus_agent.repositories.postgres_agent_team_repository")
-    agent_team_module.PostgresAgentTeamRepository = agent_team_repo_cls
     user_module = types.ModuleType("focus_agent.repositories.postgres_user_repository")
     user_module.PostgresUserRepository = user_repo_cls
 
@@ -134,9 +131,6 @@ def _install_postgres_modules(monkeypatch):
         sys.modules, "focus_agent.repositories.postgres_trajectory_repository", trajectory_module
     )
     monkeypatch.setitem(
-        sys.modules, "focus_agent.repositories.postgres_agent_team_repository", agent_team_module
-    )
-    monkeypatch.setitem(
         sys.modules, "focus_agent.repositories.postgres_user_repository", user_module
     )
     monkeypatch.setattr(
@@ -154,7 +148,6 @@ def _install_postgres_modules(monkeypatch):
         "memory_repo": memory_repo_cls,
         "productivity_repo": productivity_repo_cls,
         "trajectory_repo": trajectory_repo_cls,
-        "agent_team_repo": agent_team_repo_cls,
         "user_repo": user_repo_cls,
         "run_journal": run_journal_cls,
     }
@@ -239,7 +232,6 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
         artifact_repo = fake_modules["artifact_repo"].instances[0]
         memory_repo = fake_modules["memory_repo"].instances[0]
         trajectory_repo = fake_modules["trajectory_repo"].instances[0]
-        agent_team_repo = fake_modules["agent_team_repo"].instances[0]
         user_repo = fake_modules["user_repo"].instances[0]
         run_journal = fake_modules["run_journal"].instances[0]
 
@@ -251,8 +243,6 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
         assert runtime.memory_repository is memory_repo
         assert runtime.artifact_metadata_repository is artifact_repo
         assert runtime.trajectory_recorder is trajectory_repo
-        assert runtime.agent_team_service.repository is agent_team_repo
-        assert runtime.agent_team_service._agent_team_runtime is runtime
         assert runtime.user_service.repository is user_repo
         assert isinstance(runtime.coordination_backend.thread_turns, PostgresThreadTurnLockBackend)
         assert isinstance(
@@ -264,7 +254,6 @@ def test_create_runtime_selects_postgres_primary_and_forwards_artifact_repo(
         assert artifact_repo.setup_calls == 1
         assert memory_repo.setup_calls == 1
         assert trajectory_repo.setup_calls == 1
-        assert agent_team_repo.setup_calls == 1
         assert user_repo.setup_calls == 1
         assert run_journal.setup_calls == 1
         assert captured["artifact_metadata_repository"] is artifact_repo
@@ -303,13 +292,6 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
             self.path = Path(path)
             self.__class__.instances.append(self)
 
-    class _FakeSQLiteAgentTeamRepository:
-        instances: list[_FakeSQLiteAgentTeamRepository] = []
-
-        def __init__(self, path: str):
-            self.path = Path(path)
-            self.__class__.instances.append(self)
-
     class _FakeSQLiteUserRepository:
         instances: list[_FakeSQLiteUserRepository] = []
 
@@ -339,10 +321,6 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
         "focus_agent.repositories.sqlite_productivity_repository.SQLiteProductivityRepository",
         _FakeSQLiteProductivityRepository,
     )
-    monkeypatch.setattr(
-        "focus_agent.repositories.sqlite_agent_team_repository.SQLiteAgentTeamRepository",
-        _FakeSQLiteAgentTeamRepository,
-    )
     caplog.set_level(logging.INFO, logger="focus_agent.runtime")
 
     settings = _make_settings(tmp_path, database_uri=None, trajectory_enabled=None)
@@ -362,8 +340,6 @@ def test_create_runtime_defaults_local_fallback_to_sqlite_when_database_uri_is_m
         assert isinstance(runtime.user_service.repository, _FakeSQLiteUserRepository)
         assert isinstance(runtime.productivity_repository, _FakeSQLiteProductivityRepository)
         assert runtime.productivity_repository.path == tmp_path / "branches.sqlite3"
-        assert isinstance(runtime.agent_team_service.repository, _FakeSQLiteAgentTeamRepository)
-        assert runtime.agent_team_service.repository.path == tmp_path / "branches.sqlite3"
         assert runtime.trajectory_recorder is None
         assert runtime.artifact_metadata_repository is None
         assert runtime.memory_repository is None

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 
@@ -22,10 +21,6 @@ from focus_agent.multi_agent.contracts import (
 from focus_agent.multi_agent.dag_scheduler import DAGScheduler
 from focus_agent.multi_agent.errors import DAGValidationError, DeadlockDetected
 from focus_agent.multi_agent.failure_handler import FailureHandler
-from focus_agent.multi_agent.maintenance import (
-    MultiAgentMaintenanceWorker,
-    run_multi_agent_maintenance,
-)
 from focus_agent.multi_agent.message_bus import (
     InMemoryAgentMessageBus,
     PostgresAgentMessageBus,
@@ -944,104 +939,6 @@ def test_postgres_approval_queue_list_pending_uses_timeout_filter() -> None:
     pending = queue.list_pending()
 
     assert [request.request_id for request in pending] == ["r3"]
-
-
-def test_multi_agent_maintenance_runs_optional_cleanup_hooks() -> None:
-    locks = InMemoryResourceLockManager()
-    bus = InMemoryAgentMessageBus(default_ttl_seconds=0.001)
-    approvals = InMemoryApprovalQueue()
-    locks.try_acquire(
-        resource_id="file:a",
-        agent_id="a",
-        session_id="s1",
-        mode=LockMode.EXCLUSIVE,
-        ttl_seconds=0.001,
-    )
-    bus.publish(
-        session_id="s1",
-        source_agent="a",
-        target_agent=None,
-        message_type=AgentMessageType.PROGRESS,
-        payload={},
-    )
-    approvals.submit_pending(
-        request_id="r1",
-        session_id="s1",
-        agent_id="a",
-        tool_name="write",
-        tool_args={},
-        risk_level="high",
-        timeout_seconds=0.001,
-    )
-    time.sleep(0.01)
-
-    report = run_multi_agent_maintenance(
-        SimpleNamespace(resource_locks=locks, message_bus=bus, approval_queue=approvals)
-    )
-
-    assert report == {
-        "expired_locks": 1,
-        "expired_messages": 1,
-        "timed_out_approvals": 1,
-        "deadlocks": [],
-    }
-
-
-def test_multi_agent_maintenance_worker_respects_intervals_and_force() -> None:
-    locks = InMemoryResourceLockManager()
-    bus = InMemoryAgentMessageBus(default_ttl_seconds=0.001)
-    approvals = InMemoryApprovalQueue()
-    worker = MultiAgentMaintenanceWorker(
-        SimpleNamespace(resource_locks=locks, message_bus=bus, approval_queue=approvals),
-        lock_cleanup_interval_seconds=60,
-        message_cleanup_interval_seconds=60,
-        approval_timeout_interval_seconds=60,
-        deadlock_detection_interval_seconds=60,
-    )
-    locks.try_acquire(
-        resource_id="file:a",
-        agent_id="a",
-        session_id="s1",
-        mode=LockMode.EXCLUSIVE,
-        ttl_seconds=0.001,
-    )
-    bus.publish(
-        session_id="s1",
-        source_agent="a",
-        target_agent=None,
-        message_type=AgentMessageType.PROGRESS,
-        payload={},
-    )
-    approvals.submit_pending(
-        request_id="r1",
-        session_id="s1",
-        agent_id="a",
-        tool_name="write",
-        tool_args={},
-        risk_level="high",
-        timeout_seconds=0.001,
-    )
-    time.sleep(0.01)
-
-    first = worker.run_once()
-    second = worker.run_once()
-    forced = worker.run_once(force=True)
-
-    assert first["expired_locks"] == 1
-    assert first["expired_messages"] == 1
-    assert first["timed_out_approvals"] == 1
-    assert second == {
-        "expired_locks": 0,
-        "expired_messages": 0,
-        "timed_out_approvals": 0,
-        "deadlocks": [],
-    }
-    assert forced == {
-        "expired_locks": 0,
-        "expired_messages": 0,
-        "timed_out_approvals": 0,
-        "deadlocks": [],
-    }
 
 
 def test_conflict_detector_reports_file_overlap_and_summary_warning() -> None:

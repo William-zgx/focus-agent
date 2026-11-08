@@ -282,30 +282,6 @@ def _create_governance_repository(
     return InMemoryGovernanceRepository()
 
 
-def _create_agent_team_repository(
-    settings: Settings,
-    *,
-    connection_provider: PostgresConnectionProvider | None = None,
-) -> object:
-    runtime_mod = _runtime_module()
-    if settings.database_uri:
-        from ..repositories.postgres_agent_team_repository import PostgresAgentTeamRepository
-
-        repository = runtime_mod._create_repository_with_provider(
-            PostgresAgentTeamRepository,
-            settings.database_uri,
-            connection_provider=connection_provider,
-        )
-    else:
-        # Local mode shares BRANCH_DB_PATH with the other app-state repositories so
-        # Agent Team sessions, tasks and v2 run records survive an API restart.
-        from ..repositories.sqlite_agent_team_repository import SQLiteAgentTeamRepository
-
-        repository = SQLiteAgentTeamRepository(str(Path(settings.branch_db_path).expanduser()))
-    runtime_mod._setup_component_if_available(repository)
-    return repository
-
-
 def _create_repository_with_provider(
     repository_cls: object,
     database_uri: str,

@@ -8,12 +8,12 @@
   },
   "max_by_kind": {
     "compatibility_shim": 60,
-    "deprecated_route": 4,
-    "legacy_template": 7,
+    "deprecated_route": 0,
+    "legacy_template": 3,
     "legacy_state_or_mirror": 3,
-    "legacy_override_or_monkeypatch": 7
+    "legacy_override_or_monkeypatch": 6
   },
-  "max_total": 81,
+  "max_total": 72,
   "schema_version": 2,
   "item_ids": [
     "structure:compatibility_shim:python_import_star_facade:src/focus_agent/core/context_assembly.py:.context.assembly",
@@ -61,7 +61,6 @@
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:scripts/release_health_check.py:_install_observability_import_stubs",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/capabilities/tool_events.py:_stream_writer",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/repositories/_postgres_base.py:PostgresMixin._connection",
-    "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/services/agent_team/planning/dag.py:_legacy_override",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/services/branches/service.py:create_chat_model",
     "structure:legacy_override_or_monkeypatch:python_module_patch_seam:src/focus_agent/services/chat/streaming.py:_stream_shutdown_timeout_seconds",
     "text:compatibility_shim:docs/agent-team-workbench.md:1",
@@ -83,20 +82,12 @@
     "text:compatibility_shim:src/focus_agent/schemas.py:1",
     "text:compatibility_shim:src/focus_agent/services/branches/__init__.py:1",
     "text:compatibility_shim:src/focus_agent/state.py:1",
-    "text:deprecated_route:src/focus_agent/api/route_utils/agent_team_responses.py:1",
-    "text:deprecated_route:src/focus_agent/api/route_utils/agent_team_responses.py:2",
-    "text:deprecated_route:src/focus_agent/api/routers/agent_team.py:1",
-    "text:deprecated_route:src/focus_agent/api/routers/agent_team.py:2",
     "text:legacy_state_or_mirror:src/focus_agent/core/state.py:1",
     "text:legacy_state_or_mirror:src/focus_agent/core/state.py:2",
     "text:legacy_state_or_mirror:src/focus_agent/core/state.py:3",
     "text:legacy_template:apps/web/src/features/agent-team/agent-team-workbench-utils.ts:1",
     "text:legacy_template:apps/web/src/features/agent-team/agent-team-workbench-utils.ts:2",
-    "text:legacy_template:docs/agent-team-workbench.md:1",
-    "text:legacy_template:src/focus_agent/services/agent_team/service.py:1",
-    "text:legacy_template:src/focus_agent/services/agent_team/service.py:2",
-    "text:legacy_template:src/focus_agent/services/agent_team/service.py:3",
-    "text:legacy_template:src/focus_agent/services/agent_team/service.py:4"
+    "text:legacy_template:docs/agent-team-workbench.md:1"
   ],
   "owners": {
     "compatibility_shim": "platform-api",

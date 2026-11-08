@@ -75,18 +75,6 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
-    class _AgentTeamRepository:
-        def __init__(self, path: str):
-            self.path = path
-            self.setup_calls = 0
-
-        def setup(self):
-            self.setup_calls += 1
-
-    class _AgentTeamService:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
     class _UserService:
         def __init__(self, repository, **kwargs):
             self.repository = repository
@@ -101,11 +89,6 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
             self.repository = repository
 
     monkeypatch.setattr(runtime, "BranchService", _BranchService)
-    monkeypatch.setattr(
-        "focus_agent.repositories.sqlite_agent_team_repository.SQLiteAgentTeamRepository",
-        _AgentTeamRepository,
-    )
-    monkeypatch.setattr(runtime, "AgentTeamService", _AgentTeamService)
     monkeypatch.setattr(runtime, "UserService", _UserService)
     monkeypatch.setattr(runtime, "BranchDecisionService", _BranchDecisionService)
     monkeypatch.setattr(runtime, "ProductivityService", _ProductivityService)
@@ -125,13 +108,10 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
         memory_embedding_provider="embedding-provider",
         retrieval_index="retrieval-index",
         coordination_backend=coordination_backend,
-        background_work="background-work",
     )
 
     assert services.branch_service.kwargs["repo"] == "branch-repository"
     assert services.branch_service._coordination_backend is coordination_backend
-    assert services.agent_team_service.kwargs["repository"].setup_calls == 1
-    assert services.agent_team_service.kwargs["branch_service"] is services.branch_service
     assert services.user_service.repository is user_repository
     assert (
         services.branch_decision_service.kwargs["governance_repository"] == "governance-repository"

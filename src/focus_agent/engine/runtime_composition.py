@@ -204,10 +204,7 @@ def create_runtime_services(
     memory_embedding_provider: object | None,
     retrieval_index: object | None,
     coordination_backend: object,
-    background_work: object,
-    agent_team_repository: object,
     branch_service_factory: Callable[..., Any],
-    agent_team_service_factory: Callable[..., Any],
     user_service_factory: Callable[..., Any],
     branch_decision_service_factory: Callable[..., Any],
     productivity_service_factory: Callable[..., Any],
@@ -220,15 +217,6 @@ def create_runtime_services(
         memory_writer=memory_writer,
     )
     branch_service._coordination_backend = coordination_backend
-    agent_team_service = agent_team_service_factory(
-        branch_service=branch_service,
-        repository=agent_team_repository,
-        settings=settings,
-        coordination_backend=coordination_backend,
-        background_work=background_work,
-        retrieval_index=retrieval_index,
-        memory_embedding_provider=memory_embedding_provider,
-    )
     user_service = user_service_factory(
         user_repository,
         auth_enabled=settings.auth_enabled,
@@ -245,7 +233,6 @@ def create_runtime_services(
     productivity_service = productivity_service_factory(productivity_repository)
     return RuntimeServices(
         branch_service=branch_service,
-        agent_team_service=agent_team_service,
         branch_decision_service=branch_decision_service,
         user_service=user_service,
         productivity_service=productivity_service,
@@ -278,7 +265,6 @@ def start_durable_background_worker(
         registry,
         chat_service=chat_service,
         branch_service=runtime.branch_service,
-        agent_team_service=runtime.agent_team_service,
         branch_decision_service=runtime.branch_decision_service,
         memory_embedding_service=runtime.memory_embedding_service,
         memory_repository=runtime.memory_repository,

@@ -121,7 +121,7 @@ One JSONL file per suite under `tests/eval/datasets/`. The CLI resolves
   },
   "environment": {
     "assertions": [
-      {"path": "agent_team_tasks", "min_len": 2},
+      {"path": "agent_topology.roles", "min_len": 2},
       {"path": "model_route_decision.effective_model", "equals": "openai:deepseek-chat"}
     ]
   },
@@ -229,7 +229,7 @@ model re-judges and its verdict wins.
 
 `EnvironmentJudge` supports `path`, `source`, `exists`, `equals`, `contains`,
 `not_contains`, `min_len`, and `max_len`. Paths use dot notation and list
-indexes, for example `agent_team_tasks.0.role`. The default source is
+indexes, for example `agent_topology.roles.0`. The default source is
 `final_state`; `input` and `trajectory` must be selected explicitly.
 
 ## Metrics

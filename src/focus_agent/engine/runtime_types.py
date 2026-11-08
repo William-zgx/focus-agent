@@ -10,7 +10,6 @@ from ..repositories.branch_repository import BranchRepository
 from ..repositories.productivity_repository import ProductivityRepository
 from ..repositories.user_repository import UserRepository
 from ..retrieval import RetrievalIndex
-from ..services.agent_team import AgentTeamService
 from ..services.branches import BranchService
 from ..services.productivity import ProductivityService
 from ..services.users import UserService
@@ -64,7 +63,6 @@ class RuntimeRegistries:
 @dataclass(slots=True)
 class RuntimeServices:
     branch_service: BranchService
-    agent_team_service: AgentTeamService
     branch_decision_service: BranchDecisionService
     user_service: UserService
     productivity_service: ProductivityService

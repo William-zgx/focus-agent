@@ -1588,10 +1588,10 @@ def test_productivity_tools_use_current_user_context():
                 "title": "Follow up",
                 "description": "Turn note into task.",
                 "source_note_id": note["note_id"],
-                "source_kind": "agent_team_review",
+                "source_kind": "merge_review",
                 "source_id": "review-1",
-                "source_url": "/app/agent-team/session-1",
-                "captured_from": "agent_team",
+                "source_url": "/app/merge-review/review-1",
+                "captured_from": "merge_review",
             },
             config=config,
         )
@@ -1626,9 +1626,9 @@ def test_productivity_tools_use_current_user_context():
     assert note["pinned_context"] == {"thread_id": "thread-1"}
     assert note["captured_from"] == "chat"
     assert task["source_note_id"] == note["note_id"]
-    assert task["source_kind"] == "agent_team_review"
+    assert task["source_kind"] == "merge_review"
     assert task["source_id"] == "review-1"
-    assert task["captured_from"] == "agent_team"
+    assert task["captured_from"] == "merge_review"
     assert captured["title"] == "Ship capture tool"
     assert captured["source_kind"] == "chat_answer"
     assert captured["source_id"] == "turn-2"

@@ -64,7 +64,6 @@ from .config_parts.common import (
     load_local_env_file,
 )
 from .config_parts.context import load_context_config
-from .config_parts.multi_agent import load_multi_agent_config
 from .config_parts.observability import load_observability_config
 from .config_parts.runtime import load_runtime_config
 from .config_parts.server import load_server_config
@@ -196,20 +195,6 @@ class Settings:
     skill_semantic_match_threshold: float = 0.22
     skill_selection_event_log_enabled: bool = True
     workspace_root: str = "."
-    agent_team_merge_apply_enabled: bool = True
-    agent_team_merge_review_max_diff_bytes: int = 1_048_576
-    agent_team_v2_enabled: bool = False
-    agent_team_rollout_phase: str = "off"
-    agent_team_execution_mode: str = "disabled"
-    agent_team_real_provider_enabled: bool = False
-    agent_team_durable_required: bool = False
-    agent_team_fencing_enabled: bool = False
-    agent_team_approval_resume_enabled: bool = False
-    agent_team_cross_session_locks_enabled: bool = False
-    agent_team_kill_switch_enabled: bool = True
-    agent_team_legacy_write_enabled: bool = False
-    agent_team_global_tab_enabled: bool = False
-    agent_team_adoption_enabled: bool = False
     feedback_capture_enabled: bool = True
     context_memory_evidence_enabled: bool = True
     agent_core: str = "v1"
@@ -227,19 +212,10 @@ class Settings:
     agent_role_skill_model: str | None = None
     agent_role_max_parallel_runs: int = 2
     multi_agent_v2_enabled: bool = False
-    multi_agent_dag_scheduler_enabled: bool = False
-    multi_agent_resource_lock_enabled: bool = False
-    multi_agent_message_bus_enabled: bool = False
     multi_agent_async_approval_enabled: bool = False
-    multi_agent_failure_handler_enabled: bool = False
-    multi_agent_resource_lock_ttl_seconds: float = 60.0
-    multi_agent_resource_lock_heartbeat_seconds: float = 15.0
     multi_agent_message_ttl_seconds: float = 300.0
     multi_agent_approval_timeout_seconds: float = 60.0
-    multi_agent_deadlock_check_interval_seconds: float = 30.0
     multi_agent_role_fallback_models: dict[str, str] = field(default_factory=dict)
-    agent_team_skill_scout_enabled: bool = True
-    agent_team_automation_level: str = "assisted"
     agent_branch_decision_enabled: bool = False
     agent_branch_decision_mode: str = "shadow"
     agent_branch_decision_min_confidence: float = 0.70
@@ -343,7 +319,6 @@ class Settings:
         values.update(load_server_config(env, defaults))
         values.update(load_auth_config(env, defaults))
         values.update(load_agent_config(env, defaults))
-        values.update(load_multi_agent_config(env, defaults))
         values.update(load_context_config(env, defaults))
         values.update(
             load_trajectory_config(

@@ -8,7 +8,6 @@ from typing import Any
 
 from focus_agent.config import Settings
 from focus_agent.engine.runtime import create_runtime
-from focus_agent.retrieval.agent_team import index_agent_team_plan
 from focus_agent.retrieval.artifacts import index_artifact_content
 from focus_agent.retrieval.branch_context import index_branch_decision_event
 from focus_agent.retrieval.factory import create_retrieval_index
@@ -39,7 +38,6 @@ def build_parser() -> argparse.ArgumentParser:
             "skill",
             "trajectory",
             "branch-context",
-            "agent-team-plans",
             "failure-cases",
             "governance-feedback",
             "workspace",
@@ -104,7 +102,6 @@ def _run_backfill(runtime: Any, *, settings: Settings, args: argparse.Namespace)
             "skill",
             "trajectory",
             "branch-context",
-            "agent-team-plans",
             "failure-cases",
             "governance-feedback",
             "workspace",
@@ -129,8 +126,6 @@ def _run_backfill(runtime: Any, *, settings: Settings, args: argparse.Namespace)
         results["trajectory"] = _backfill_trajectory(runtime, limit=limit)
     if "branch-context" in selected:
         results["branch-context"] = _backfill_branch_context(runtime, limit=limit)
-    if "agent-team-plans" in selected:
-        results["agent-team-plans"] = _backfill_agent_team_plans(runtime, limit=limit)
     if "failure-cases" in selected:
         results["failure-cases"] = _backfill_failure_cases(runtime, limit=limit)
     if "governance-feedback" in selected:
@@ -247,40 +242,6 @@ def _backfill_branch_context(runtime: Any, *, limit: int) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             errors += 1
     return {"backfilled": True, "events": indexed, "errors": errors}
-
-
-def _backfill_agent_team_plans(runtime: Any, *, limit: int) -> dict[str, Any]:
-    service = getattr(runtime, "agent_team_service", None)
-    index = getattr(runtime, "retrieval_index", None)
-    provider = getattr(runtime, "memory_embedding_provider", None)
-    repository = getattr(service, "repository", None)
-    if repository is None or index is None or provider is None:
-        return {"backfilled": False, "reason": "agent-team repository or retrieval unavailable"}
-    list_sessions = getattr(repository, "list_sessions", None)
-    if not callable(list_sessions):
-        return {"backfilled": False, "reason": "agent-team repository cannot list sessions"}
-    indexed = 0
-    errors = 0
-    for session in list_sessions(user_id=None)[:limit]:
-        try:
-            tasks = repository.list_tasks(session_id=session.session_id)
-            outputs = [
-                output
-                for task in tasks
-                for output in repository.list_task_outputs(task_id=task.task_id)
-            ]
-            indexed += int(
-                index_agent_team_plan(
-                    retrieval_index=index,
-                    embedding_provider=provider,
-                    session=session,
-                    tasks=tasks,
-                    outputs=outputs,
-                )
-            )
-        except Exception:  # noqa: BLE001
-            errors += 1
-    return {"backfilled": True, "sessions": indexed, "errors": errors}
 
 
 def _backfill_failure_cases(runtime: Any, *, limit: int) -> dict[str, Any]:

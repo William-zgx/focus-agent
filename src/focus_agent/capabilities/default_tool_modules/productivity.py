@@ -268,7 +268,7 @@ def build_productivity_capture_tool(scope: _ProductivityScope) -> Any:
         source_note_id: str | None = None,
         captured_from: str | None = None,
     ) -> str:
-        """Capture a chat or Agent Team payload as an explicit note or task."""
+        """Capture a chat or review payload as an explicit note or task."""
 
         def action() -> dict[str, Any]:
             payload = _payload_from_json(payload_json)

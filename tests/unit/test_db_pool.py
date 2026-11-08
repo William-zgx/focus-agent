@@ -157,9 +157,6 @@ def test_readyz_exposes_active_connections_from_provider_snapshot() -> None:
 
 
 def test_app_repositories_route_connections_through_shared_provider() -> None:
-    from focus_agent.repositories.postgres_agent_team_repository import (
-        PostgresAgentTeamRepository,
-    )
     from focus_agent.repositories.postgres_governance_repository import (
         PostgresGovernanceRepository,
     )
@@ -180,7 +177,6 @@ def test_app_repositories_route_connections_through_shared_provider() -> None:
             yield connection
 
     for repository_cls in (
-        PostgresAgentTeamRepository,
         PostgresGovernanceRepository,
         PostgresProductivityRepository,
         PostgresUserRepository,

@@ -1,4 +1,4 @@
-"""DAG wave scheduling for feature-flagged Agent Team execution."""
+"""DAG wave scheduling for coordinated execution."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .errors import DAGValidationError
 
 
 class DAGScheduler:
-    """Compute bounded, resource-safe execution waves for Agent Team tasks."""
+    """Compute bounded, resource-safe execution waves for DAG tasks."""
 
     def __init__(self, tasks: Iterable[DAGTaskNode], *, max_parallel_runs: int = 2) -> None:
         self._tasks = {task.task_id: task for task in tasks}

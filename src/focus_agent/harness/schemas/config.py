@@ -126,9 +126,7 @@ class SubagentConfig(BaseModel):
 
     enabled: bool = False
     max_concurrent_subagents: int = Field(default=3, ge=1)
-    # When True, subagent tasks execute in isolated OS processes via the
-    # focus-agent CLI (ProcessSubagentRunner) instead of in-process via
-    # AgentTeamSubagentRunner. Defaults to False for backward compatibility.
+    # Process isolation is opt-in; in-process execution requires an injected executor.
     use_process_isolation: bool = False
     cli_entry_point: str = "focus-agent"
     process_timeout_seconds: float = Field(default=300.0, ge=1.0)

@@ -18,11 +18,11 @@ def test_compat_report_classifies_core_legacy_inventory(tmp_path: Path) -> None:
         "# New records should write here and mirror legacy keys for current consumers.\n",
     )
     _write(
-        tmp_path / "src/focus_agent/api/routers/agent_team.py",
-        '_mark_deprecated_route(response, canonical_path="/v1/agent-team/tasks/1")\n',
+        tmp_path / "src/focus_agent/api/routers/legacy.py",
+        '_mark_deprecated_route(response, canonical_path="/v1/legacy/tasks/1")\n',
     )
     _write(
-        tmp_path / "src/focus_agent/services/agent_team/service.py",
+        tmp_path / "src/focus_agent/services/legacy/service.py",
         'plan_source="legacy_template"\n',
     )
     _write(

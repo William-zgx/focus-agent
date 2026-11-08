@@ -316,7 +316,7 @@ class ToolCatalogConfig:
     productivity_capture: ProductivityToolConfig = field(
         default_factory=lambda: ProductivityToolConfig(
             label="Capture Productivity Item",
-            description="Capture a chat or Agent Team payload as an explicit note or task.",
+            description="Capture a chat or review payload as an explicit note or task.",
         )
     )
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)

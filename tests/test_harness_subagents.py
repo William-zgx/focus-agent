@@ -4,7 +4,6 @@ from focus_agent.capabilities import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.harness import HarnessConfig, create_focus_agent
 from focus_agent.harness.subagents import (
-    AgentTeamSubagentRunner,
     FakeSubagentRunner,
     SubagentExecutor,
     SubagentTaskRequest,
@@ -114,32 +113,6 @@ def test_task_tool_factory_returns_envelope_payload_with_runtime_metadata():
     asyncio.run(scenario())
 
 
-def test_agent_team_subagent_runner_bridges_to_existing_fake_delegated_executor():
-    async def scenario():
-        run_manager = SubagentExecutor(
-            AgentTeamSubagentRunner(settings=Settings(agent_delegation_execution_mode="fake"))
-        )
-        envelope = await run_manager.execute(
-            SubagentTaskRequest(
-                "review harness",
-                metadata={
-                    "role": "critic",
-                    "allowed_tools": ["read_file"],
-                    "acceptance_criteria": ["stable result"],
-                },
-            ),
-            tool_call_id="call-agent-team",
-        )
-
-        assert envelope.status == "success"
-        assert envelope.tool_call_id == "call-agent-team"
-        assert envelope.runtime["execution_mode"] == "fake"
-        assert envelope.runtime["role"] == "critic"
-        assert envelope.artifact["artifacts"][0]["payload"]["allowed_tools"] == ["read_file"]
-
-    asyncio.run(scenario())
-
-
 def test_create_focus_agent_injects_task_tool_when_subagents_enabled(monkeypatch):
     captured = {}
 
@@ -150,8 +123,9 @@ def test_create_focus_agent_injects_task_tool_when_subagents_enabled(monkeypatch
     monkeypatch.setattr("focus_agent.engine.graph_builder.build_graph", fake_build_graph)
     harness = create_focus_agent(
         HarnessConfig(subagents={"enabled": True, "max_concurrent_subagents": 2}),
-        settings=Settings(agent_delegation_execution_mode="observe"),
+        settings=Settings(),
         tool_registry=ToolRegistry(tools=()),
+        subagent_executor=SubagentExecutor(FakeSubagentRunner(), max_parallel=2),
     )
 
     assert harness.subagent_executor is not None

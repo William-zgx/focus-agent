@@ -19,8 +19,6 @@ logger = logging.getLogger("focus_agent.background")
 
 REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
     {
-        "agent_team_run_session",
-        "agent_team_run_task",
         "memory_embedding",
         "context_compaction",
         "conversation_title",
@@ -94,7 +92,6 @@ def register_default_background_job_handlers(
     *,
     chat_service: Any | None = None,
     branch_service: Any | None = None,
-    agent_team_service: Any | None = None,
     branch_decision_service: Any | None = None,
     memory_embedding_service: Any | None = None,
     memory_repository: Any | None = None,
@@ -109,23 +106,6 @@ def register_default_background_job_handlers(
             lambda payload, handler=handler: handler(**payload_factory(payload)),
         )
 
-    if agent_team_service is not None:
-        _register(
-            "agent_team_run_session",
-            getattr(agent_team_service, "run_ready_tasks_once", None),
-            lambda payload: {
-                "session_id": _required_payload_string(payload, "session_id"),
-                "user_id": _required_payload_string(payload, "user_id"),
-            },
-        )
-        _register(
-            "agent_team_run_task",
-            getattr(agent_team_service, "run_task_claimed", None),
-            lambda payload: {
-                "task_id": _required_payload_string(payload, "task_id"),
-                "user_id": _required_payload_string(payload, "user_id"),
-            },
-        )
     if chat_service is not None:
         _register(
             "context_compaction",
