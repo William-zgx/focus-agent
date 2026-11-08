@@ -173,6 +173,19 @@ def _render_tool_catalog_toml(
         _append_toml_key(lines, "overrides", provider.overrides)
         lines.append("")
 
+    for rule in current.permissions.rules:
+        lines.append("[[permissions.rules]]")
+        for key, value in _dataclass_values(rule).items():
+            _append_toml_key(lines, key, value)
+        lines.append("")
+
+    for section in ("pre_tool_use", "post_tool_use"):
+        for hook in getattr(current.hooks, section):
+            lines.append(f"[[hooks.{section}]]")
+            for key, value in _dataclass_values(hook).items():
+                _append_toml_key(lines, key, value)
+            lines.append("")
+
     return "\n".join(lines).rstrip() + "\n"
 
 

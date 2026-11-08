@@ -246,6 +246,8 @@ def branch_memory_tool_findings(
 
 def make_extract_memories_node(
     memory_extractor: MemoryExtractor,
+    *,
+    infer_durable_memories: bool = True,
 ) -> Any:
     def extract_memories(
         state: AgentState,
@@ -280,7 +282,11 @@ def make_extract_memories_node(
                     "failed": [],
                 },
             }
-        extraction = memory_extractor.extract_from_turn(context=runtime.context, state=dict(state))
+        extraction = memory_extractor.extract_from_turn(
+            context=runtime.context,
+            state=dict(state),
+            infer_durable_memories=infer_durable_memories,
+        )
         return {
             **branch_updates,
             "memory_write_requests": [

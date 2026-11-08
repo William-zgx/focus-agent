@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run a headless Claude Code agent backed by DeepSeek.
 # Usage: ds_agent.sh <workdir> <prompt-file> <log-file> [extra claude args...]
-# DS_BACKEND=gateway (default): devbox gateway, Anthropic /v1/messages, DeepSeek V4.1 Flash.
+# DS_BACKEND=gateway (default): devbox gateway, Anthropic /v1/messages, DeepSeek V4.1 Flash (1M, auto-routed).
 # DS_BACKEND=official: api.deepseek.com/anthropic with DEEPSEEK_API_KEY from local.env.
 set -euo pipefail
 workdir=$1; prompt_file=$2; log_file=$3; shift 3
@@ -14,7 +14,7 @@ if [[ "${DS_BACKEND:-gateway}" == official ]]; then
 else
   base_url="${DS_GATEWAY_URL:-https://10.251.247.136:18446}"
   token=$(/home/zouguoxue/.local/bin/codex-sg-api-key)
-  model="${DS_MODEL:-traex-sg/DeepSeek-V4.1-Flash[1m]}"
+  model="${DS_MODEL:-deepseek-v4.1-flash-1m}"
   headers="x-claude-model-scope: cli"
   export NODE_EXTRA_CA_CERTS=/home/zouguoxue/.config/sg-model-gateway/claude-ca-bundle.pem
   export NO_PROXY="10.251.247.136,${NO_PROXY:-}" no_proxy="10.251.247.136,${no_proxy:-}"

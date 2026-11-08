@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-11-05；按 `simplify/repo-cleanup` 后的源码布局校正路径、图节点和计数，历史验收范围保持原报告口径。
+更新时间：2026-11-07；新增 `AGENT_CORE=v2` 模型驱动主路径（默认仍为 v1）。2026-11-05 已按 `simplify/repo-cleanup` 后的源码布局校正路径、图节点和计数，历史验收范围保持原报告口径。
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径。
 
@@ -249,7 +249,7 @@ flowchart LR
     Registry --> API["GET /v1/models"]
     Registry --> Factory["create_chat_model"]
     API --> Web["Web model selector"]
-    Factory --> Adapter["LangChain model / reasoning-aware OpenAI-compatible adapter"]
+    Factory --> Adapter["Native Anthropic / LangChain / reasoning-aware OpenAI-compatible adapter"]
 ```
 
 边界：
@@ -258,6 +258,7 @@ flowchart LR
 - 本地部署通过 `.focus_agent/models.toml` 覆盖；容器部署通过 `/data/models.toml` 覆盖。
 - `Settings` 加载本地 catalog 后由 `model_registry` 合并包内默认与本地配置，并校验 provider id、alias 冲突、重复 model、未知 provider 引用等错误。
 - `/v1/models` 暴露 model id、provider label、thinking capability 和可选 logo metadata；Web model selector 优先使用后端返回的 metadata，不再按 provider 写死文案。
+- `backend_provider = "anthropic"` 的 Claude 模型走原生 Anthropic Messages 通道；v2 请求在 tools、system 和最新消息尾部设置至多四个 prompt cache breakpoint，并保留 signed thinking blocks。缓存命中以实际 prompt 前缀稳定性为准，OpenAI-compatible 模型不添加 Anthropic cache marker。
 - OpenAI-compatible 且需要 `reasoning_content` 透传的模型走 `ReasoningAwareChatOpenAI`；`MoonshotChatOpenAI` 仍作为旧导入别名保留。
 - 新增单部署模型时优先改 `.focus_agent/models.toml` 和 `.focus_agent/local.env`；只有要成为所有新环境的内置默认支持时，才改包内 `defaults/models.toml`。
 
@@ -413,6 +414,9 @@ POST /v2/threads/{thread_id}/runs/stream
 流式入口会把 LangGraph chunk 映射成 canonical SSE events，但 `message.delta` 有额外强约束：它只能承载确认可见的 assistant answer text。
 
 - graph 内部模型调用会标记内部 `stream_phase`，工具绑定调用和 repair 调用默认 `quarantine`，最终 tool-free answer 才能标为 `visible`。
+- `AGENT_CORE=v2` 的主模型调用一律标为 `visible`（无法预知是否会调用工具），repair 调用仍为 `quarantine`。
+  因此 `replay_streaming.py` 按 `message_id` 分段缓冲可见文本（`visible_text_stream.VisibleTextStream`）：
+  每条模型消息单独过滤，后一条消息以空行分隔；带 tool call 的消息（工具前的开场白）不会被兜底成 `message.completed`。
 - `src/focus_agent/api/routers/harness_runs/replay_streaming.py` 在发布
   `message.delta` 前做 phase gate；缺省 phase 也按 `quarantine` 处理。
 - `tool.call.delta`、`tool.requested/result/error`、`reasoning.delta`、`task.update` 和 `state.update` 不受 visible gate 阻断，工具处理卡仍能正常展示。
@@ -462,10 +466,25 @@ flowchart LR
 - `assemble_context` 组装 recent messages、rolling summary、memory block、skill block 和 prompt budget。
 - `agent_loop` 根据 tool policy 与 Tool Router 绑定工具；模型创建和 bind-tools 缓存由 `engine/model_factory.py` 承担。
 - message/tool-call repair helpers 保持在 graph builder/message helper 边界内，避免 provider stream chunk 泄漏到 prompt。
-- `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。
+- `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。调用前依次经过 preflight、extension `on_tool_call`、middleware 与 `PermissionManager`：DENY 返回结构化拒绝；ASK 与 `requires_approval` 共用 approval payload / `approval_queue` / LangGraph interrupt / approve/reject resume 路径，ALLOW 不会跳过工具自身审批。`run_subtask` 子图显式关闭 approval interrupt，ASK 在子代理内变成 blocked ToolMessage，不会从父工具调用中抛出 interrupt。
+- 执行后通过 middleware 与 extension `on_tool_result` 处理结果；工具 catalog 中的 `[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 由同一个内置 command-hook Extension 执行，不新增 tool execution 拦截层。pre hook 可阻断，post hook 可通过 `additional_context` 追加模型可见结果。
 - `reflect` 只在 Plan-Act-Reflect 开启并产生 plan 时参与。
 - `extract_memories` / `write_memories` 是 turn 后记忆写入路径。
 - `maybe_interrupt_for_merge` 对 merge proposal 触发 human review interrupt。
+
+### 8.1 模型驱动主路径（`AGENT_CORE=v2`）
+
+`AGENT_CORE=v2` 时 `build_graph` 改由 `src/focus_agent/engine/loop/` 构图；默认 `v1` 仍走上面的路由图。两条路径共用 `engine/graph/components.py`（registry、memory、model factory、tool executor）与 `engine/graph/turn_hooks.py`（`bootstrap_turn`、`summarize_turn`、`maybe_interrupt_for_merge` 及 middleware / extension / system agent 钩子），服务层按节点名调用的 `update_state(as_node=...)` 与 interrupt payload 保持不变。
+
+```text
+bootstrap_turn -> retrieve_memory -> assemble_context
+  -> agent_loop <-> tool_executor
+  -> summarize_turn -> extract_memories -> write_memories -> maybe_interrupt_for_merge
+```
+
+- `agent_loop` 把 agent definition 允许的全部工具绑定给模型，由模型决定是否调用、调用哪些；没有 regex tool policy、强制首个工具调用、plan/reflect 或答案改写。
+- 代码只负责预算与安全：每轮工具调用回合达到 `AGENT_MAX_TOOL_ROUNDS`（默认 16）或同一失败调用重复时撤掉工具并要求基于已有证据作答；审批、ask_user_question、缓存和重试仍由 `tool_executor` 负责。
+- 文本形式的工具调用（DSML 等）只在检测到时修复；最终答案写入 `evidence_bundle`、`citations` 和 `task_outcome`（`policy=model_driven`）。
 
 ## 9. Agent State
 
@@ -769,6 +788,7 @@ Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。
 - rate limit：无 `DATABASE_URI` 时使用进程内 backend；Postgres-backed runtime 使用 `focus_rate_limit_buckets` 共享固定窗口计数。
 - 统一错误信封。
 - Tool Router 对 network、workspace write、memory write 做 role-level 收紧。
+- `[[permissions.rules]]` 提供声明式 allow / ask / deny；`[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 提供管理员命令钩子。两者只能来自服务端工具 catalog，不接受请求级覆盖；hook command 使用 argv + `shell=False`，stdin/stdout 不在 info 日志中输出。
 
 生产部署必须显式设置 `AUTH_JWT_SECRET` 或 active JWT key set，签名 secret 不得使用开发默认值且至少 32 字符，关闭 demo token，并显式配置管理员。管理员高风险操作需要 reason 并写入审计事件；token scope 不能单独授予 admin 权限。
 

@@ -131,19 +131,19 @@ allowed_domains = []
 [memory_save]
 enabled = true
 label = "Memory Save"
-description = "Save an explicit durable memory such as a user preference or project fact."
+description = "Save a durable memory the user stated about themselves, their preferences, or the project, so future conversations can recall it."
 
 [memory_search]
 enabled = true
 label = "Memory Search"
-description = "Search durable memories by query across the default memory namespaces."
+description = "Search saved memories by query when earlier context would materially help the answer."
 default_limit = 5
 max_limit = 20
 
 [memory_forget]
 enabled = true
 label = "Memory Forget"
-description = "Delete a saved memory by id from an explicit or default memory namespace."
+description = "Delete a saved memory by memory_id when the user asks you to forget it."
 
 [conversation_summary]
 enabled = true
@@ -190,7 +190,7 @@ label = "Skills Refresh Index"
 description = "Refresh the runtime skill index after project or source changes."
 
 # Optional controlled provider registry entries. Provider ids here can only
-# configure builtin, skill, or provider factories registered by application code.
+# configure builtin, skill, mcp, or provider factories registered by application code.
 [[providers]]
 id = "builtin"
 enabled = true
@@ -200,6 +200,44 @@ order = 0
 id = "skill"
 enabled = true
 order = 100
+
+# Optional MCP client (requires `make install-mcp`). Uncomment to enable.
+# [[mcp_servers]]
+# name = "demo"
+# transport = "stdio"
+# command = "python"
+# args = ["/absolute/path/to/mcp_server.py"]
+# env_from = {API_KEY = "DEMO_MCP_API_KEY"}
+# allowed_tools = ["add"]
+# requires_approval = true
+# timeout_seconds = 60
+
+# Optional server-only permission rules. The last matching rule wins; calls that
+# match no rule are allowed. ALLOW never waives a tool's own requires_approval
+# metadata, and ASK pauses for the same human approval as requires_approval tools.
+# [[permissions.rules]]
+# action = "deny"
+# tool = "run_workspace_command"
+# command = "rm -rf *"
+# reason = "Destructive workspace commands are disabled."
+
+# [[permissions.rules]]
+# action = "ask"
+# tool = "web_fetch"
+# reason = "Confirm this fetch with the user."
+
+# Optional server-only command hooks. Commands are argv arrays (shell=False).
+# pre_tool_use blocks on exit 2 or a JSON {"decision":"block"} response.
+# post_tool_use can return JSON {"additional_context":"..."}.
+# [[hooks.pre_tool_use]]
+# matcher = "run_workspace_command"
+# command = ["/absolute/path/to/python", "/absolute/path/to/pre_hook.py"]
+# timeout_seconds = 10
+
+# [[hooks.post_tool_use]]
+# matcher = "web_*"
+# command = ["/absolute/path/to/python", "/absolute/path/to/post_hook.py"]
+# timeout_seconds = 10
 
 [web_search]
 enabled = true

@@ -2685,6 +2685,73 @@ def test_produce_run_stream_drops_split_tool_protocol_reasoning(monkeypatch):
     asyncio.run(scenario())
 
 
+def _visible_message_chunk(content, message_id):
+    return {
+        "type": "messages",
+        "data": (
+            SimpleNamespace(content=content, type="ai", id=message_id),
+            {"langgraph_node": "agent_loop", "stream_phase": "visible"},
+        ),
+        "ns": [],
+    }
+
+
+def _visible_tool_call_chunk(message_id):
+    return {
+        "type": "messages",
+        "data": (
+            AIMessageChunk(
+                content=[
+                    {"type": "tool_call_chunk", "id": "call-1", "name": "web_search", "args": "{}"}
+                ],
+                id=message_id,
+            ),
+            {"langgraph_node": "agent_loop", "stream_phase": "visible"},
+        ),
+        "ns": [],
+    }
+
+
+def test_produce_run_stream_separates_tool_preamble_from_next_message(monkeypatch):
+    chunks = [
+        _visible_message_chunk("I'll check the release notes.", "msg-1"),
+        _visible_tool_call_chunk("msg-1"),
+        _visible_message_chunk("Version 2 ships ", "msg-2"),
+        _visible_message_chunk("next week.", "msg-2"),
+    ]
+
+    async def scenario():
+        events, _statuses, _ended = await _collect_produced_events(
+            monkeypatch,
+            chunks,
+            final_messages=[AIMessage(content="Version 2 ships next week.")],
+        )
+        assert _message_deltas(events) == [
+            "I'll check the release notes.",
+            "\n\nVersion 2 ships ",
+            "next week.",
+        ]
+        assert _completed_messages(events) == ["Version 2 ships next week."]
+
+    asyncio.run(scenario())
+
+
+def test_produce_run_stream_never_completes_with_a_tool_calling_preamble(monkeypatch):
+    chunks = [
+        _visible_message_chunk("I'll run the command once you approve it.", "msg-1"),
+        _visible_tool_call_chunk("msg-1"),
+    ]
+
+    async def scenario():
+        events, _statuses, _ended = await _collect_produced_events(
+            monkeypatch, chunks, final_messages=[]
+        )
+        assert _message_deltas(events) == ["I'll run the command once you approve it."]
+        assert _completed_messages(events) == []
+
+    asyncio.run(scenario())
+
+
 def test_produce_run_stream_emits_tool_call_delta_without_legacy_alias(monkeypatch):
     chunks = [_tool_call_chunk(name="search_web")]
 

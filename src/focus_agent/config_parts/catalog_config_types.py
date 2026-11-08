@@ -38,6 +38,49 @@ class ConfiguredModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PermissionRuleConfig:
+    action: str
+    tool: str = "*"
+    command: str | None = None
+    agent: str = "*"
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionsConfig:
+    rules: tuple[PermissionRuleConfig, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CommandHookConfig:
+    command: tuple[str, ...]
+    matcher: str = "*"
+    timeout_seconds: float = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class HooksConfig:
+    pre_tool_use: tuple[CommandHookConfig, ...] = ()
+    post_tool_use: tuple[CommandHookConfig, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MCPServerConfig:
+    name: str
+    transport: str
+    command: str | None = None
+    args: tuple[str, ...] = ()
+    env: dict[str, str] = field(default_factory=dict)
+    env_from: dict[str, str] = field(default_factory=dict)
+    url: str | None = None
+    headers_from_env: dict[str, str] = field(default_factory=dict)
+    enabled: bool = True
+    allowed_tools: tuple[str, ...] = ()
+    requires_approval: bool = True
+    timeout_seconds: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
 class WebSearchConfig:
     enabled: bool = True
     label: str = "Web Search"
@@ -233,14 +276,16 @@ class WebFetchToolConfig:
 class MemorySaveToolConfig:
     enabled: bool = True
     label: str = "Memory Save"
-    description: str = "Save an explicit durable memory such as a user preference or project fact."
+    description: str = "Save a durable memory the user stated about themselves, their preferences, or the project, so future conversations can recall it."
 
 
 @dataclass(frozen=True, slots=True)
 class MemorySearchToolConfig:
     enabled: bool = True
     label: str = "Memory Search"
-    description: str = "Search durable memories by query across the default memory namespaces."
+    description: str = (
+        "Search saved memories by query when earlier context would materially help the answer."
+    )
     default_limit: int = 5
     max_limit: int = 20
 
@@ -249,7 +294,7 @@ class MemorySearchToolConfig:
 class MemoryForgetToolConfig:
     enabled: bool = True
     label: str = "Memory Forget"
-    description: str = "Delete a saved memory by id from an explicit or default memory namespace."
+    description: str = "Delete a saved memory by memory_id when the user asks you to forget it."
 
 
 @dataclass(frozen=True, slots=True)

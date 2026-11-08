@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from langchain.messages import ToolMessage
@@ -126,6 +127,7 @@ def _apply_result_hooks(
     thread_id: str,
     run_id: str | None,
     active_agent_name: str,
+    execution_inputs_by_index: Mapping[int, Any] | None = None,
 ) -> list[Any]:
     """Apply middleware and extension result hooks without mutating cached results."""
 
@@ -174,9 +176,20 @@ def _apply_result_hooks(
             if have_ext:
                 from ...harness.extensions import ToolResultInterception as ExtResultInterception
 
+                hook_ctx = ext_ctx
+                if execution_inputs_by_index is not None:
+                    execution_input = execution_inputs_by_index.get(result.index)
+                    if execution_input is not None:
+                        hook_ctx = replace(
+                            ext_ctx,
+                            extra={
+                                **ext_ctx.extra,
+                                "tool_input": dict(execution_input.args),
+                            },
+                        )
                 ext_hooks = services.extension_registry.fire_hook(
                     "on_tool_result",
-                    ext_ctx,
+                    hook_ctx,
                     tool_name=tool_name,
                     result=message,
                 )

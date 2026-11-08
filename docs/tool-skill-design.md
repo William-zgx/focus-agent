@@ -225,6 +225,28 @@ Borrowings from LLM Space / DeerFlow-style harness practice that stay inside Foc
 - Progressive skill loading is reinforced in the skill-system prompt: the available-skills catalog stays short; `skill_view` loads full instructions when a skill matches.
 - Artifact delivery guidance (present path/id after `write_text_artifact`) mirrors `present_files`-style "user must see the deliverable" without unrestricted host shell.
 
+### MCP servers
+
+External MCP tools are available to both agent cores when the optional MCP extra is installed (`make install-mcp`) and servers are declared in the tool catalog. No configured servers means no client connections and no registry changes.
+
+```toml
+[[mcp_servers]]
+name = "demo"
+transport = "stdio"
+command = "python"
+args = ["/absolute/path/to/mcp_server.py"]
+env = {MODE = "production"}
+env_from = {API_KEY = "DEMO_MCP_API_KEY"}
+enabled = true
+allowed_tools = ["add"]
+requires_approval = true
+timeout_seconds = 60
+```
+
+Server names use `[a-z0-9_]+`; exposed tools are named `mcp__<server>__<tool>`. `streamable_http` servers use `url` and optional `headers_from_env = {Authorization = "MCP_TOKEN"}` instead of `command`, `args`, and `env_from`. Environment mappings resolve secrets at connection time and their values are not logged. Keep `requires_approval` enabled unless the external server is trusted; read-only annotations only change side-effect and parallel-safety metadata.
+
+Discovery and each tool call open a fresh session, so calls pay process/connection and initialization overhead. A server that fails discovery is skipped with a warning without blocking other providers.
+
 ### Admin configuration surface
 
 Skill availability is intentionally managed through Admin settings rather than by deleting files:
@@ -236,7 +258,7 @@ Skill availability is intentionally managed through Admin settings rather than b
 
 Disabled skills remain visible in the catalog for auditing and re-enablement, but they are skipped by search, prefix activation, semantic matching, available-skill prompt rendering, and active-skill prompt injection.
 
-MCP-related workflows are represented as skills and tools today, for example FastMCP or mcporter workflows when installed. These entries describe an installed Skill/host-control workflow, not a builtin MCP client or connection session. MCP Server lifecycle management is a reserved Admin connection surface until a first-class backend configuration contract exists.
+MCP-related workflows can also be represented as skills, for example FastMCP or mcporter workflows when installed. These entries describe an installed Skill/host-control workflow rather than a catalog-configured MCP client. MCP server processes are not managed through Admin connection lifecycle APIs; direct MCP connections use the `[[mcp_servers]]` tool-catalog contract above.
 
 ### Current limitations
 
@@ -247,11 +269,12 @@ MCP-related workflows are represented as skills and tools today, for example Fas
 - General Skill execution is declared-entrypoint only. The runtime does not expose arbitrary shell or host socket access through the Skill system.
 
 The current connector boundary is therefore partial: public `web_search` and
-policy-checked `web_fetch` are builtin tools, while browser/computer control,
-account-backed connector sessions, and first-class MCP transport/lifecycle are
-not builtin runtime capabilities. A Skill mentioning one of those integrations
-still requires its declared entrypoint, dependency, network policy, and any
-separate broker/approval path.
+policy-checked `web_fetch` are builtin tools, while browser/computer control
+and account-backed connector sessions are not builtin runtime capabilities.
+Catalog-configured MCP tools use per-call sessions rather than persistent
+Admin-managed connections. A Skill mentioning another integration still
+requires its declared entrypoint, dependency, network policy, and any separate
+broker/approval path.
 
 ## Connector Boundary
 
@@ -490,6 +513,18 @@ flowchart LR
 - Timeout and upstream cancellation bypass fallback and cache, and runtime metadata records `timeout_seconds` or `cancelled`.
 - Runtime observations are trimmed by per-tool limits before being returned to the model.
 
+### Configured command hooks
+
+Administrators can declare `[[hooks.pre_tool_use]]` and `[[hooks.post_tool_use]]` tables in the server tool catalog. Each entry has a `command` argv array, an optional fnmatch `matcher` on the exposed tool name (default `"*"`), and `timeout_seconds` (default `10`). Commands run synchronously with `shell=False`; they are built-in extension hooks, not model-provided commands or a new tool-execution interception layer.
+
+Every hook receives one JSON object on stdin. Common fields are `event`, `tool_name`, `tool_input`, `thread_id`, and `run_id`. Post hooks also receive `tool_result` (text clipped to 4000 characters) and `status`. Hook stdin/stdout content is not logged at info level because it can contain sensitive tool arguments or results.
+
+- A pre-hook exit code of `2` blocks the call and uses stderr as the reason. Exit `0` with stdout JSON such as `{"decision":"block","reason":"..."}` also blocks it. Other exit codes, timeouts, spawn failures, and exit `0` without a block decision do not block; errors and timeouts produce warnings.
+- Post hooks are observational. Exit `0` with stdout JSON such as `{"additional_context":"..."}` appends that text to the ToolMessage content through the existing result-interception path. Hook errors never fail the underlying tool.
+- Post hooks run for executed results, including cache hits and retries. They do not run for preflight failures, pre-hook/permission denials, approval-pending/rejected results, or the special `ask_user_question` path.
+
+These sections come only from server configuration files and are loaded when the harness is constructed. They are not Admin request fields; unrelated Admin tool-config rewrites preserve the already-loaded sections.
+
 Cache scopes are intentionally conservative:
 
 - `turn` is for values that should only survive within one user turn. The namespace includes the root thread and turn id, so parallel conversations do not clear each other.
@@ -658,6 +693,35 @@ flowchart LR
 - Connector tools should default off and require user configuration.
 - Tools should emit structured tool events so the frontend can show clear activity cards.
 - Sensitive configuration should report presence or absence, never raw secrets.
+
+### Declarative permission rules
+
+The same server tool catalog accepts ordered `[[permissions.rules]]` entries:
+
+```toml
+[[permissions.rules]]
+action = "allow"
+tool = "*"
+
+[[permissions.rules]]
+action = "deny"
+tool = "bash"
+command = "rm -rf *"
+reason = "Destructive commands are disabled."
+
+[[permissions.rules]]
+action = "ask"
+tool = "web_fetch"
+reason = "Confirm this fetch with the user."
+```
+
+`action` is `allow`, `ask`, or `deny`. `tool` and optional `agent` are fnmatch patterns; `command` adds a `tool:command` candidate for bash-like tools, including `run_workspace_command`. MCP rules target the exposed `mcp__<server>__<tool>` name. The last matching rule wins. Configured rules sit on top of a lowest-priority allow-all rule, so a call that no configured rule matches still runs (subject to its own `requires_approval`).
+
+DENY returns the structured denied ToolMessage without executing the tool. ASK uses the same approval payload, approval queue when configured, LangGraph interrupt, and approve/reject resume contract as a tool whose metadata declares `requires_approval`; it is not a dead-end tool error. Approval approves only that invocation, while rejection returns the existing structured rejected-tool result. ALLOW never waives metadata-driven human approval, including the MCP default.
+
+Both agent cores share this behavior. A `run_subtask` child cannot pause its parent's tool call, so its executor explicitly disables approval interrupts: an ASK becomes a clear blocked ToolMessage and never escapes as an interrupt. Approval-required tools and `ask_user_question` remain excluded from the child registry.
+
+Permission rules and command hooks are file-based administration policy, not per-request overrides. Keep them in deployment-controlled catalog files and rebuild/restart the harness after direct file edits.
 
 ## Design Checklist for New Tools
 

@@ -161,7 +161,10 @@ def create_focus_agent(
     )
 
     # Build optional components up front so they can be wired into the graph.
-    new_components = _build_new_components(config=config)
+    new_components = _build_new_components(
+        config=config,
+        tool_catalog=getattr(settings, "tool_catalog", None),
+    )
     agent_definition_registry = new_components.get("agent_definition_registry")
     system_agent_runner = new_components.get("system_agent_runner")
 
@@ -206,7 +209,9 @@ def create_focus_agent(
     return harness
 
 
-def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
+def _build_new_components(
+    config: HarnessConfig, *, tool_catalog: Any | None = None
+) -> dict[str, Any]:
     """Construct optional components before the graph.
 
     Returns a dict of successfully-constructed components; missing entries
@@ -224,31 +229,44 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         logger.debug("Agent definition registry unavailable", exc_info=True)
 
-    # b) Extension registry + loader.
-    if config.enable_extensions:
+    # b) Extension registry + loader + configured command hooks.
+    hooks_config = getattr(tool_catalog, "hooks", None)
+    pre_tool_use = tuple(getattr(hooks_config, "pre_tool_use", ()) or ())
+    post_tool_use = tuple(getattr(hooks_config, "post_tool_use", ()) or ())
+    if config.enable_extensions or pre_tool_use or post_tool_use:
         try:
             from ..extensions import ExtensionRegistry
+            from ..extensions.command_hooks import CommandHooksExtension
             from ..extensions.loader import ExtensionLoader
 
             ext_registry: Any = ExtensionRegistry()
-            loader: Any = ExtensionLoader(extension_dirs=config.extension_dirs)
-            try:
-                for ext in loader.discover():
-                    try:
-                        ext_registry.register(ext)
-                    except Exception:  # noqa: BLE001
-                        logger.debug(
-                            "Failed to register extension %r",
-                            getattr(ext, "name", "?"),
-                            exc_info=True,
-                        )
-            except Exception:  # noqa: BLE001
-                logger.debug("Extension discovery failed", exc_info=True)
+            if config.enable_extensions:
+                loader: Any = ExtensionLoader(extension_dirs=config.extension_dirs)
+                try:
+                    for ext in loader.discover():
+                        try:
+                            ext_registry.register(ext)
+                        except Exception:  # noqa: BLE001
+                            logger.debug(
+                                "Failed to register extension %r",
+                                getattr(ext, "name", "?"),
+                                exc_info=True,
+                            )
+                except Exception:  # noqa: BLE001
+                    logger.debug("Extension discovery failed", exc_info=True)
+            if pre_tool_use or post_tool_use:
+                ext_registry.register(
+                    CommandHooksExtension(
+                        pre_tool_use=pre_tool_use,
+                        post_tool_use=post_tool_use,
+                    )
+                )
             components["extension_registry"] = ext_registry
         except Exception:  # noqa: BLE001
             logger.debug("Extension subsystem unavailable", exc_info=True)
 
-    # c) Permission manager — default to an allow-all rule for development.
+    # c) Permission manager: configured rules (last match wins) layered over a
+    # lowest-priority allow-all, so calls no rule mentions keep running.
     if config.enable_permission_system:
         try:
             from ..governance.permissions import (
@@ -257,17 +275,26 @@ def _build_new_components(config: HarnessConfig) -> dict[str, Any]:
                 PermissionRule,
             )
 
-            default_rules = [
+            base_rule = PermissionRule(
+                action=PermissionAction.ALLOW,
+                tool_pattern="*",
+                agent_pattern="*",
+                priority=-1,
+                reason="default: allow calls no configured rule matches",
+            )
+            configured_rules = [
                 PermissionRule(
-                    action=PermissionAction.ALLOW,
-                    tool_pattern="*",
-                    agent_pattern="*",
-                    priority=100,
-                    reason="dev default: allow all",
-                ),
+                    action=PermissionAction(rule.action),
+                    tool_pattern=(
+                        f"{rule.tool}:{rule.command}" if rule.command is not None else rule.tool
+                    ),
+                    agent_pattern=rule.agent,
+                    reason=rule.reason,
+                )
+                for rule in getattr(getattr(tool_catalog, "permissions", None), "rules", ())
             ]
             components["permission_manager"] = PermissionManager(
-                rules=default_rules,
+                rules=[base_rule, *configured_rules],
                 doom_loop_threshold=config.doom_loop_threshold,
             )
         except Exception:  # noqa: BLE001

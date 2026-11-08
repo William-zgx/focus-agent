@@ -179,6 +179,8 @@ def _run_case_inner(
                 scene=case.scene,
                 skill_hints=tuple(case.skill_hints),
             )
+            # Tool observation reads/writes require the trusted LangGraph thread scope.
+            invoke_config = {"configurable": {"thread_id": context.root_thread_id}}
             if case.setup:
                 for turn in case.setup:
                     graph.invoke(
@@ -187,6 +189,7 @@ def _run_case_inner(
                             "task_brief": (turn.get("user") or "")[:200],
                             "selected_model": runtime.settings.model,
                         },
+                        config=invoke_config,
                         context=context,
                         version="v2",
                     )
@@ -212,7 +215,7 @@ def _run_case_inner(
                 )
             before_state = dict(payload)
 
-            result = graph.invoke(payload, context=context, version="v2")
+            result = graph.invoke(payload, config=invoke_config, context=context, version="v2")
         state = _state_from_result(result)
         answer = _last_ai_text(state.get("messages", []))
         trajectory = _extract_trajectory(state.get("messages", []))

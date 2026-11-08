@@ -96,9 +96,9 @@ flowchart TD
 
 | kind | 语义 | 当前写入来源 |
 | --- | --- | --- |
-| `user_preference` | 用户输出偏好、语言、称呼、回答风格。 | 启发式抽取、`memory_save`。 |
-| `user_profile` | 用户稳定自我描述，例如身份、习惯、熟悉程度。 | 启发式抽取、`memory_save`。 |
-| `project_fact` | 项目规则、约定、默认配置、架构事实。 | `active_goal` 启发式抽取、`memory_save`。 |
+| `user_preference` | 用户输出偏好、语言、称呼、回答风格。 | v1 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
+| `user_profile` | 用户稳定自我描述，例如身份、习惯、熟悉程度。 | v1 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
+| `project_fact` | 项目规则、约定、默认配置、架构事实。 | v1 `active_goal` 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
 | `turn_summary` | 最近 turn 的 episodic 摘要。 | 稳定 turn 后自动抽取。 |
 | `branch_finding` | 分支内验证出的结论。 | `branch_local_findings`、branch promotion。 |
 | `imported_conclusion` | merge/import 后写入主线的结论。 | Branch merge/import workflow。 |
@@ -415,7 +415,7 @@ flowchart TD
 | --- | --- | --- |
 | `AGENT_MEMORY_BACKEND` | `postgres` | 已解析，但 runtime 选择目前仍主要由 `DATABASE_URI` 决定。 |
 | `AGENT_MEMORY_READ_SOURCE` | `postgres` | 已解析，当前 retriever 是 repository 优先、无 repository 时 legacy fallback。 |
-| `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。 |
+| `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。设置后对 v1/v2 同时生效；v2 无论如何都不做 user/project 启发式抽取，只保留 turn summary 与 branch finding。 |
 | `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` | `false` | 预留/可选增强配置位。 |
 | `AGENT_RETRIEVAL_BACKEND` | `zvec` | 默认 retrieval backend；`postgres` 可作为 fallback/兼容路径。 |
 | `AGENT_RETRIEVAL_FALLBACK_BACKEND` | `postgres` | Zvec 不可用时的在线回退后端。 |

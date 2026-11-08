@@ -16,7 +16,7 @@ from tests.eval.trajectory_replay import build_replay_comparison, convert_trajec
 
 
 class _FakeGraph:
-    def invoke(self, payload, context=None, version=None):  # noqa: ARG002
+    def invoke(self, payload, config=None, context=None, version=None):  # noqa: ARG002
         user_message = payload["messages"][-1].content
         if "README" in user_message:
             return {
@@ -78,9 +78,40 @@ def test_run_case_extracts_trajectory_and_passes_rule_judge(monkeypatch):
     assert result.metrics["tool_calls"] == 1
 
 
+def test_run_case_provides_thread_scope_for_tool_observations(monkeypatch):
+    invocations = []
+
+    class _ThreadScopeGraph:
+        def invoke(self, payload, config=None, context=None, version=None):  # noqa: ARG002
+            invocations.append((config, context))
+            return {
+                "messages": [
+                    HumanMessage(content=payload["messages"][-1].content),
+                    AIMessage(content="done"),
+                ]
+            }
+
+    monkeypatch.setattr(
+        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _ThreadScopeGraph()
+    )
+    case = EvalCase(
+        id="observation-scope",
+        setup=[{"user": "earlier turn"}],
+        input={"user_message": "current turn"},
+        expected={},
+    )
+
+    result = run_case(case, runtime=EvalRuntime(settings=Settings(), tool_registry=None))
+
+    assert result.passed is True
+    assert len(invocations) == 2
+    for config, context in invocations:
+        assert config == {"configurable": {"thread_id": context.root_thread_id}}
+
+
 def test_run_case_extracts_runtime_metadata_into_trajectory_and_metrics(monkeypatch):
     class _RuntimeGraph:
-        def invoke(self, payload, context=None, version=None):  # noqa: ARG002
+        def invoke(self, payload, config=None, context=None, version=None):  # noqa: ARG002
             user_message = payload["messages"][-1].content
             return {
                 "messages": [

@@ -27,13 +27,19 @@ class MemoryExtractor:
         self.mode = str(mode or "heuristic").strip().lower()
 
     def extract_from_turn(
-        self, *, context: RequestContext, state: dict[str, Any]
+        self,
+        *,
+        context: RequestContext,
+        state: dict[str, Any],
+        infer_durable_memories: bool = True,
     ) -> MemoryExtractionResult:
+        """``infer_durable_memories=False`` leaves user/project facts to explicit memory tools."""
         if self.mode == "off":
             return MemoryExtractionResult(records=[], summary="memory extraction disabled")
         records: list[MemoryWriteRequest] = []
-        records.extend(self._extract_user_preferences(state=state, context=context))
-        records.extend(self._extract_project_facts(context=context, state=state))
+        if infer_durable_memories:
+            records.extend(self._extract_user_preferences(state=state, context=context))
+            records.extend(self._extract_project_facts(context=context, state=state))
         records.extend(self._extract_branch_findings(context=context, state=state))
         episodic = self._extract_episodic_summary(context=context, state=state)
         if episodic is not None:

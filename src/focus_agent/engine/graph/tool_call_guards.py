@@ -15,7 +15,7 @@ from ...capabilities.default_tool_modules.memory import authorize_memory_tool_ar
 from ...capabilities.tool_runtime import build_tool_error_message
 from ...core.repo_call import has_repo_method
 from .retrieval_ledger import RetrievalLedgerEntry, retrieval_key
-from .tool_result_hooks import _ask_permission_result, _blocked_tool_error, _denied_tool_result
+from .tool_result_hooks import _blocked_tool_error, _denied_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,8 @@ class InterceptionResult(NamedTuple):
 
     error: ToolMessage | None
     args: dict[str, Any]
+    requires_approval: bool = False
+    approval_reason: str | None = None
 
 
 def _extract_command(tool_name: str, tool_args: Mapping[str, Any]) -> str | None:
@@ -283,13 +285,7 @@ def _intercept_tool_call(
                     _denied_tool_result(tool_call_id, tool_name, tool_args, reason), tool_args
                 )
             if action == PermissionAction.ASK:
-                # If the tool already requires approval, let the existing approval
-                # interrupt handle it; otherwise surface an error.
-                if not getattr(runtime_meta, "requires_approval", False):
-                    return InterceptionResult(
-                        _ask_permission_result(tool_call_id, tool_name, tool_args, reason),
-                        tool_args,
-                    )
+                return InterceptionResult(None, tool_args, True, reason)
         except Exception:  # noqa: BLE001
             logger.warning(
                 "Permission check failed for tool=%s",

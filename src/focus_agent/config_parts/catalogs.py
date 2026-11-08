@@ -23,10 +23,13 @@ from .catalog_config_types import (
     GitDiffToolConfig,
     GitLogToolConfig,
     GitStatusToolConfig,
+    HooksConfig,
     ListFilesToolConfig,
+    MCPServerConfig,
     MemoryForgetToolConfig,
     MemorySaveToolConfig,
     MemorySearchToolConfig,
+    PermissionsConfig,
     ProductivityToolConfig,
     ProviderConfig,
     ReadFileToolConfig,
@@ -45,6 +48,7 @@ from .catalog_config_types import (
     WorkspaceTreeToolConfig,
     WriteTextArtifactToolConfig,
 )
+from .catalog_toml_helpers import _load_string_mapping, load_tool_governance_configs
 from .common import _split_csv
 from .env import parse_bool
 
@@ -74,6 +78,13 @@ _TOOL_METADATA_OVERLAY_KEYS = frozenset(
     }
 )
 _TOOL_PROVIDER_CONFIG_KEYS = frozenset({"id", "enabled", "order", "metadata", "overrides"})
+_MCP_SERVER_NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
+_MCP_TRANSPORTS = frozenset({"stdio", "streamable_http"})
+_MCP_SERVER_CONFIG_KEYS = frozenset(
+    "name transport command args env env_from url headers_from_env enabled "
+    "allowed_tools requires_approval timeout_seconds".split()
+)
+_TOOL_CATALOG_RESERVED_KEYS = frozenset({"providers", "mcp_servers", "permissions", "hooks"})
 
 
 class ModelCatalogValidationError(ValueError):
@@ -313,6 +324,9 @@ class ToolCatalogConfig:
     metadata_section_order: tuple[str, ...] = ()
     generic_metadata_overlays: dict[str, dict[str, object]] = field(default_factory=dict)
     providers: tuple[ToolProviderConfig, ...] = ()
+    mcp_servers: tuple[MCPServerConfig, ...] = ()
+    permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
+    hooks: HooksConfig = field(default_factory=HooksConfig)
 
     @property
     def section_names(self) -> tuple[str, ...]:
@@ -592,7 +606,7 @@ def load_tool_catalog_document(
 
     raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
     raw_section_names = tuple(
-        str(section_name) for section_name in raw if section_name != "providers"
+        str(section_name) for section_name in raw if section_name not in _TOOL_CATALOG_RESERVED_KEYS
     )
     ordered_section_names = tuple(
         dict.fromkeys(
@@ -617,6 +631,8 @@ def load_tool_catalog_document(
         metadata_section_order=raw_section_names,
         generic_metadata_overlays=_load_tool_metadata_overlays(raw),
         providers=_load_tool_provider_configs(raw, source=str(resolved)),
+        mcp_servers=_load_mcp_server_configs(raw, source=str(resolved)),
+        **load_tool_governance_configs(raw, source=str(resolved), error=_catalog_error),
         **loaded_sections,
     )
 
@@ -624,7 +640,7 @@ def load_tool_catalog_document(
 def _load_tool_metadata_overlays(raw: dict[str, object]) -> dict[str, dict[str, object]]:
     overlays: dict[str, dict[str, object]] = {}
     for section_name, raw_section in raw.items():
-        if section_name == "providers":
+        if section_name in _TOOL_CATALOG_RESERVED_KEYS:
             continue
         if not isinstance(raw_section, dict):
             continue
@@ -690,3 +706,90 @@ def _load_tool_provider_configs(
             )
         )
     return tuple(providers)
+
+
+def _load_mcp_server_configs(
+    raw: dict[str, object],
+    *,
+    source: str,
+) -> tuple[MCPServerConfig, ...]:
+    raw_servers = raw.get("mcp_servers")
+    if raw_servers is None:
+        return ()
+    if not isinstance(raw_servers, list):
+        raise _catalog_error(source, "mcp_servers must be an array of TOML tables.")
+    servers: list[MCPServerConfig] = []
+    seen_names: set[str] = set()
+    for index, item in enumerate(raw_servers):
+        location = f"mcp_servers[{index}]"
+        if not isinstance(item, dict):
+            raise _catalog_error(source, f"{location} must be a TOML table.")
+        unknown_keys = set(item) - _MCP_SERVER_CONFIG_KEYS
+        if unknown_keys:
+            unknown = ", ".join(sorted(str(key) for key in unknown_keys))
+            raise _catalog_error(source, f"{location} has unsupported keys: {unknown}.")
+        name = optional_str(item.get("name"))
+        if name is None:
+            raise _catalog_error(source, f"{location}.name is required.")
+        if not _MCP_SERVER_NAME_PATTERN.fullmatch(name):
+            raise _catalog_error(
+                source,
+                f"{location}.name must match {_MCP_SERVER_NAME_PATTERN.pattern!r}; got {name!r}.",
+            )
+        if name in seen_names:
+            raise _catalog_error(source, f"{location}.name duplicates {name!r}.")
+        seen_names.add(name)
+        transport = optional_str(item.get("transport"))
+        if transport not in _MCP_TRANSPORTS:
+            allowed = ", ".join(sorted(_MCP_TRANSPORTS))
+            raise _catalog_error(source, f"{location}.transport must be one of: {allowed}.")
+        command = optional_str(item.get("command"))
+        url = optional_str(item.get("url"))
+        if transport == "stdio" and command is None:
+            raise _catalog_error(source, f"{location}.command is required for stdio transport.")
+        if transport == "streamable_http" and url is None:
+            raise _catalog_error(
+                source, f"{location}.url is required for streamable_http transport."
+            )
+        timeout_raw = item.get("timeout_seconds", 60.0)
+        try:
+            timeout_seconds = float(timeout_raw)
+        except (TypeError, ValueError) as exc:
+            raise _catalog_error(source, f"{location}.timeout_seconds must be a number.") from exc
+        if not timeout_seconds > 0 or timeout_seconds == float("inf"):
+            raise _catalog_error(source, f"{location}.timeout_seconds must be finite and positive.")
+        raw_allowed_tools = item.get("allowed_tools")
+        if raw_allowed_tools is not None and (
+            not isinstance(raw_allowed_tools, list)
+            or not all(isinstance(tool, str) for tool in raw_allowed_tools)
+        ):
+            raise _catalog_error(source, f"{location}.allowed_tools must be an array of strings.")
+        servers.append(
+            MCPServerConfig(
+                name=name,
+                transport=transport,
+                command=command,
+                args=_split_listish(item.get("args")),
+                env=_load_string_mapping(
+                    item.get("env"), source=source, location=location, error=_catalog_error
+                ),
+                env_from=_load_string_mapping(
+                    item.get("env_from"),
+                    source=source,
+                    location=location,
+                    error=_catalog_error,
+                ),
+                url=url,
+                headers_from_env=_load_string_mapping(
+                    item.get("headers_from_env"),
+                    source=source,
+                    location=location,
+                    error=_catalog_error,
+                ),
+                enabled=_tool_enabled(item.get("enabled"), True),
+                allowed_tools=tuple(dict.fromkeys(_split_listish(item.get("allowed_tools")))),
+                requires_approval=_tool_enabled(item.get("requires_approval"), True),
+                timeout_seconds=timeout_seconds,
+            )
+        )
+    return tuple(servers)

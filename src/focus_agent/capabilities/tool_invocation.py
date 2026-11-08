@@ -60,10 +60,16 @@ def tool_invocation_runtime_snapshot() -> dict[str, int]:
         }
 
 
+def _invoke_item_tool(item: ToolExecutionInput) -> Any:
+    if item.invocation_config is None:
+        return item.tool.invoke(item.args)
+    return item.tool.invoke(item.args, config=item.invocation_config)
+
+
 def invoke_tool(item: ToolExecutionInput) -> Any:
     timeout_seconds = effective_timeout_seconds(item.runtime)
     if timeout_seconds is None:
-        return item.tool.invoke(item.args)
+        return _invoke_item_tool(item)
     return invoke_tool_with_timeout(item=item, timeout_seconds=timeout_seconds)
 
 
@@ -72,7 +78,7 @@ def invoke_tool_with_timeout(*, item: ToolExecutionInput, timeout_seconds: float
 
     def _runner() -> Any:
         try:
-            return ctx.run(item.tool.invoke, item.args)
+            return ctx.run(_invoke_item_tool, item)
         except BaseException as exc:  # noqa: BLE001
             if isinstance(exc, Exception):
                 raise

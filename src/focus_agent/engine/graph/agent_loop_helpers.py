@@ -154,6 +154,16 @@ def _message_content_text(message: Any) -> str:
     content = getattr(message, "content", "")
     if isinstance(content, str):
         return content.strip()
+    if isinstance(content, list):
+        parts = [
+            block.strip() if isinstance(block, str) else str(block.get("text") or "").strip()
+            for block in content
+            if isinstance(block, (str, Mapping))
+            and (isinstance(block, str) or block.get("type") in {None, "text", "output_text"})
+        ]
+        return "\n".join(part for part in parts if part).strip()
+    if isinstance(content, Mapping) and content.get("type") in {None, "text", "output_text"}:
+        return str(content.get("text") or "").strip()
     return str(content or "").strip()
 
 

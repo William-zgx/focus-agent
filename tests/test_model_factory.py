@@ -167,3 +167,39 @@ def test_graph_stream_still_times_out_for_single_unresponsive_model(monkeypatch)
     with pytest.raises(ModelInvocationTimeoutError, match="exceeded 0.05 seconds"):
         asyncio.run(consume())
     assert time.perf_counter() - started < 0.15
+
+
+def test_timeout_bound_model_keeps_langgraph_stream_context():
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+    from langgraph.graph import MessagesState
+
+    from focus_agent.engine.graph.agent_loop_support import _with_stream_phase
+    from focus_agent.transport.stream_events import (
+        STREAM_VISIBILITY_VISIBLE,
+        stream_visibility_phase_from_metadata,
+    )
+
+    model = GenericFakeChatModel(messages=iter([AIMessage(content="hello world")]))
+    factory = GraphModelFactory(
+        settings=Settings(model_request_timeout_seconds=5),
+        chat_model_factory=lambda *_args, **_kwargs: model,
+    )
+    visible_model = _with_stream_phase(
+        factory.model_for("openai:fake", ""), STREAM_VISIBILITY_VISIBLE
+    )
+
+    def node(state):
+        return {"messages": [visible_model.invoke(state["messages"])]}
+
+    builder = StateGraph(MessagesState)
+    builder.add_node("agent", node)
+    builder.add_edge(START, "agent")
+    builder.add_edge("agent", END)
+
+    chunks = list(builder.compile().stream({"messages": [("user", "hi")]}, stream_mode="messages"))
+
+    # Token chunks reach the messages stream with the visible phase, not one untagged message.
+    assert len(chunks) > 1
+    assert {stream_visibility_phase_from_metadata(metadata) for _message, metadata in chunks} == {
+        STREAM_VISIBILITY_VISIBLE
+    }

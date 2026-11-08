@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-import logging
 from typing import Any, Literal
 
-from langchain.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from focus_agent.engine.graph.governance_nodes import (
@@ -16,10 +13,6 @@ from focus_agent.engine.graph.memory_nodes import (
     make_extract_memories_node,
     make_retrieve_memory_node,
     make_write_memories_node,
-    maybe_interrupt_for_merge,
-)
-from focus_agent.engine.graph.memory_nodes import (
-    summarize_turn as _summarize_turn_impl,
 )
 from focus_agent.engine.graph.plan_nodes import (
     _format_plan_block,
@@ -46,8 +39,7 @@ from focus_agent.engine.graph.tool_history_repair import (
 )
 from focus_agent.engine.graph.tool_result_fallback import _fallback_answer_from_tool_results
 
-from ...capabilities import ToolRegistry, build_tool_registry
-from ...capabilities.tool_runtime import ToolResultCacheStore
+from ...capabilities import ToolRegistry
 from ...config import Settings
 from ...core.request_context import RequestContext
 from ...core.state import AgentState
@@ -60,8 +52,8 @@ from ...memory import (
 )
 from ...model_registry import create_chat_model
 from ...skills import SkillRegistry
-from ..model_factory import GraphModelFactory
 from .agent_loop import make_agent_loop_node
+from .components import make_graph_tool_executor, resolve_graph_components
 from .policy import (
     TurnToolExposure,
     _classify_turn_tool_exposure,
@@ -70,56 +62,8 @@ from .policy import (
 )
 from .policy_notes import _tool_policy_note
 from .policy_tools import _live_web_research_should_start_with_search, _tools_for_policy
-from .tool_execution import HarnessToolServices, make_tool_executor_node
-
-logger = logging.getLogger(__name__)
-
-_TURN_SCOPED_PLAN_META_KEYS = frozenset(
-    {"replan_requested", "live_web_answer_repair_count", "skill_execution_answer_repair_count"}
-)
-
-
-# ------------------------------------------------------------------
-# System agent trigger helper (fire-and-forget from sync nodes)
-# ------------------------------------------------------------------
-def _fire_system_agent(
-    runner: Any | None,
-    trigger_name: str,
-    ctx: dict[str, Any],
-) -> None:
-    """Fire system agents for ``trigger_name`` as fire-and-forget background tasks.
-
-    Safe to call from a sync node. Never raises; if no running event loop is
-    available (e.g. tests invoking the graph synchronously) the trigger is
-    silently skipped.
-    """
-
-    if runner is None:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    try:
-        loop.create_task(runner.trigger(trigger_name, ctx))
-    except Exception:  # noqa: BLE001
-        logger.debug(
-            "Failed to fire system agent trigger '%s'",
-            trigger_name,
-            exc_info=True,
-        )
-
-
-def _build_system_agent_ctx(state: AgentState, runtime: Any) -> dict[str, Any]:
-    """Build a minimal context dict for system agent handlers."""
-
-    ctx = getattr(runtime, "context", None)
-    return {
-        "state": dict(state),
-        "context": ctx,
-        "user_id": getattr(ctx, "user_id", None),
-        "root_thread_id": getattr(ctx, "root_thread_id", None),
-    }
+from .tool_execution import HarnessToolServices
+from .turn_hooks import TurnLifecycle
 
 
 def build_graph(
@@ -139,115 +83,47 @@ def build_graph(
     system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ):
-    effective_skill_registry = skill_registry or SkillRegistry.from_settings(settings)
-    effective_tool_registry = tool_registry or build_tool_registry(
-        settings=settings,
-        skill_registry=effective_skill_registry,
-        store=store,
-        checkpointer=checkpointer,
-    )
-    tools = list(effective_tool_registry.tools)
-    tools_by_name = effective_tool_registry.by_name
-    tool_runtime_by_name = effective_tool_registry.runtime_by_name
-    effective_memory_policy = (
-        memory_policy or getattr(memory_retriever, "policy", None) or MemoryPolicy()
-    )
-    effective_memory_retriever = memory_retriever or MemoryRetriever(
-        store=store, policy=effective_memory_policy
-    )
-    effective_memory_writer = memory_writer or MemoryWriter(
-        store=store, policy=effective_memory_policy
-    )
-    effective_memory_extractor = memory_extractor or MemoryExtractor()
-    model_factory = GraphModelFactory(settings=settings, chat_model_factory=create_chat_model)
-    tool_result_cache = ToolResultCacheStore()
+    if settings.agent_core == "v2":
+        from ..loop import build_loop_graph
 
-    def model_for(model_id: str, thinking_mode: str):
-        return model_factory.model_for(model_id, thinking_mode)
-
-    def model_with_tools_for(
-        model_id: str, thinking_mode: str, available_tools: list[Any] | None = None
-    ):
-        return model_factory.model_with_tools_for(
-            model_id,
-            thinking_mode,
-            default_tools=tools,
-            available_tools=available_tools,
+        return build_loop_graph(
+            settings=settings,
+            checkpointer=checkpointer,
+            store=store,
+            memory_retriever=memory_retriever,
+            memory_policy=memory_policy,
+            memory_writer=memory_writer,
+            memory_extractor=memory_extractor,
+            skill_registry=skill_registry,
+            tool_registry=tool_registry,
+            approval_queue=approval_queue,
+            harness_services=harness_services,
+            run_manager=run_manager,
+            system_agent_runner=system_agent_runner,
+            agent_definition_registry=agent_definition_registry,
+            chat_model_factory=create_chat_model,
         )
+    components = resolve_graph_components(
+        settings=settings,
+        checkpointer=checkpointer,
+        store=store,
+        memory_retriever=memory_retriever,
+        memory_policy=memory_policy,
+        memory_writer=memory_writer,
+        memory_extractor=memory_extractor,
+        skill_registry=skill_registry,
+        tool_registry=tool_registry,
+        chat_model_factory=create_chat_model,
+    )
+    tools = components.tools
+    effective_skill_registry = components.skill_registry
+    model_for = components.model_for
+    model_with_tools_for = components.model_with_tools_for
+    lifecycle = TurnLifecycle(
+        harness_services=harness_services, system_agent_runner=system_agent_runner
+    )
 
-    # ------------------------------------------------------------------
-    # Turn-lifecycle hook helpers (on_turn_start / on_turn_end)
-    # ------------------------------------------------------------------
-    _agent_start_fired_threads: set[str] = set()
-
-    def _turn_ctx(state: AgentState) -> dict[str, Any]:
-        thread_id = state.get("thread_id") if isinstance(state, dict) else None
-        return {
-            "thread_id": thread_id,
-            "run_id": harness_services.run_id if harness_services else None,
-            "agent_name": (harness_services.active_agent_name if harness_services else None)
-            or "focus_agent",
-            "state": state,
-        }
-
-    def _fire_on_turn_start(state: AgentState) -> None:
-        nonlocal _agent_start_fired_threads
-        if harness_services is not None and harness_services.extension_registry is not None:
-            thread_id = str(state.get("thread_id", "") or "")
-            if thread_id not in _agent_start_fired_threads:
-                try:
-                    from ...harness.extensions import ExtensionContext
-
-                    ctx = ExtensionContext(
-                        thread_id=thread_id,
-                        run_id=harness_services.run_id,
-                        agent_name=harness_services.active_agent_name or "focus_agent",
-                    )
-                    harness_services.extension_registry.fire_hook("on_agent_start", ctx)
-                    _agent_start_fired_threads.add(thread_id)
-                except Exception:  # noqa: BLE001
-                    logger.warning("extension on_agent_start failed", exc_info=True)
-        if harness_services is None or harness_services.middleware_stack is None:
-            return
-        try:
-            harness_services.middleware_stack.on_turn_start(_turn_ctx(state))
-        except Exception:  # noqa: BLE001
-            logger.warning("middleware.on_turn_start failed", exc_info=True)
-
-    def _fire_on_turn_end(state: AgentState) -> None:
-        if harness_services is None or harness_services.middleware_stack is None:
-            return
-        try:
-            harness_services.middleware_stack.on_turn_end(_turn_ctx(state))
-        except Exception:  # noqa: BLE001
-            logger.warning("middleware.on_turn_end failed", exc_info=True)
-
-    def bootstrap_turn(state: AgentState, runtime) -> dict[str, Any]:
-        _fire_on_turn_start(state)
-        # Fire first_user_message trigger when this is the first human turn.
-        human_count = sum(1 for m in state.get("messages", []) or [] if isinstance(m, HumanMessage))
-        if human_count <= 1:
-            _fire_system_agent(
-                system_agent_runner,
-                "first_user_message",
-                _build_system_agent_ctx(state, runtime),
-            )
-        # Plan/reflect state and answer-repair budgets are scoped to one turn;
-        # bootstrap runs only at START, so interrupt resumes keep them.
-        plan_meta = {
-            key: value
-            for key, value in (state.get("plan_meta") or {}).items()
-            if key not in _TURN_SCOPED_PLAN_META_KEYS
-        }
-        return {
-            "llm_calls": state.get("llm_calls", 0),
-            "plan": None,
-            "current_step_id": "",
-            "reflection": None,
-            "plan_meta": plan_meta,
-        }
-
-    retrieve_memory = make_retrieve_memory_node(effective_memory_retriever)
+    retrieve_memory = make_retrieve_memory_node(components.memory_retriever)
     assemble_context = make_assemble_context_node(
         settings=settings,
         skill_registry=effective_skill_registry,
@@ -263,28 +139,22 @@ def build_graph(
     agent_loop = make_agent_loop_node(
         settings=settings,
         tools=tools,
-        tool_registry=effective_tool_registry,
+        tool_registry=components.tool_registry,
         skill_registry=effective_skill_registry,
         model_for=model_for,
         model_with_tools_for=model_with_tools_for,
         run_manager=run_manager,
         agent_definition_registry=agent_definition_registry,
     )
-    tool_executor = make_tool_executor_node(
-        tools_by_name=tools_by_name,
-        tool_runtime_by_name=tool_runtime_by_name,
-        tool_result_cache=tool_result_cache,
-        max_parallel_workers=settings.tool_max_parallel_workers,
-        multi_agent_async_approval_enabled=bool(
-            settings.multi_agent_v2_enabled and settings.multi_agent_async_approval_enabled
-        ),
-        multi_agent_approval_timeout_seconds=settings.multi_agent_approval_timeout_seconds,
+    tool_executor = make_graph_tool_executor(
+        settings=settings,
+        components=components,
         approval_queue=approval_queue,
         harness_services=harness_services,
     )
 
-    extract_memories = make_extract_memories_node(effective_memory_extractor)
-    write_memories = make_write_memories_node(effective_memory_writer)
+    extract_memories = make_extract_memories_node(components.memory_extractor)
+    write_memories = make_write_memories_node(components.memory_writer)
 
     def should_continue_after_act(
         state: AgentState,
@@ -296,26 +166,8 @@ def build_graph(
             return "reflect"
         return "summarize_turn"
 
-    def summarize_turn(state: AgentState, runtime) -> dict[str, Any]:
-        result = _summarize_turn_impl(state)
-        # Fire turn_end system agents (fire-and-forget); best-effort.
-        _fire_system_agent(
-            system_agent_runner,
-            "turn_end",
-            {
-                **_build_system_agent_ctx(state, runtime),
-                "rolling_summary": result.get("rolling_summary", ""),
-            },
-        )
-        return result
-
-    # Wrap the tail node to fire on_turn_end right before the graph exits.
-    def _merge_node_with_turn_end(state: AgentState) -> dict[str, Any]:
-        _fire_on_turn_end(state)
-        return maybe_interrupt_for_merge(state)
-
     builder = StateGraph(AgentState, context_schema=RequestContext)
-    builder.add_node("bootstrap_turn", bootstrap_turn)
+    builder.add_node("bootstrap_turn", lifecycle.bootstrap_turn)
     builder.add_node("retrieve_memory", retrieve_memory)
     builder.add_node("assemble_context", assemble_context)
     builder.add_node("role_route_dry_run", role_route_dry_run)
@@ -324,10 +176,10 @@ def build_graph(
     builder.add_node("agent_loop", agent_loop)
     builder.add_node("tool_executor", tool_executor)
     builder.add_node("reflect", reflect_node)
-    builder.add_node("summarize_turn", summarize_turn)
+    builder.add_node("summarize_turn", lifecycle.summarize_turn)
     builder.add_node("extract_memories", extract_memories)
     builder.add_node("write_memories", write_memories)
-    builder.add_node("maybe_interrupt_for_merge", _merge_node_with_turn_end)
+    builder.add_node("maybe_interrupt_for_merge", lifecycle.maybe_interrupt_for_merge)
 
     builder.add_edge(START, "bootstrap_turn")
     builder.add_edge("bootstrap_turn", "retrieve_memory")

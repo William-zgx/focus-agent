@@ -12,6 +12,7 @@ from .config_parts.auth import (
     _validate_non_development_security,
 )
 from .config_parts.auth_settings import load_auth_config
+from .config_parts.catalog_config_types import CommandHookConfig, PermissionRuleConfig
 from .config_parts.catalogs import (
     DEFAULT_MODEL_CATALOG_DOC,
     DEFAULT_TOOL_CATALOG_DOC,
@@ -28,12 +29,15 @@ from .config_parts.catalogs import (
     GitDiffToolConfig,
     GitLogToolConfig,
     GitStatusToolConfig,
+    HooksConfig,
     ListFilesToolConfig,
+    MCPServerConfig,
     MemoryForgetToolConfig,
     MemorySaveToolConfig,
     MemorySearchToolConfig,
     ModelCatalogConfig,
     ModelCatalogValidationError,
+    PermissionsConfig,
     ProviderConfig,
     ReadFileToolConfig,
     RunWorkspaceCommandToolConfig,
@@ -208,6 +212,8 @@ class Settings:
     agent_team_adoption_enabled: bool = False
     feedback_capture_enabled: bool = True
     context_memory_evidence_enabled: bool = True
+    agent_core: str = "v1"
+    agent_max_tool_rounds: int = 16
     plan_act_reflect_enabled: bool = True
     plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
     plan_task_brief_min_chars: int = 120
@@ -366,6 +372,11 @@ __all__ = [
     "ArtifactSearchToolConfig",
     "ArtifactUpdateToolConfig",
     "ListFilesToolConfig",
+    "MCPServerConfig",
+    "PermissionRuleConfig",
+    "PermissionsConfig",
+    "CommandHookConfig",
+    "HooksConfig",
     "WorkspaceTreeToolConfig",
     "ReadFileToolConfig",
     "SearchCodeToolConfig",

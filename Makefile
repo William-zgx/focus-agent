@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption agent-team-evidence clean
+.PHONY: help venv install install-openai install-anthropic install-mcp setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity ui-smoke-agent-team-adoption agent-team-evidence clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -24,6 +24,7 @@ help:
 		'  make install           Install OpenAI + dev dependencies into .venv' \
 		'  make install-openai    Same as install' \
 		'  make install-anthropic Install Anthropic + dev dependencies into .venv' \
+		'  make install-mcp       Install MCP + dev dependencies into .venv' \
 		'  make setup-local       Create local config files if missing' \
 		'  make serve             Alias for make serve-dev' \
 		'  make serve-dev         Start backend + frontend dev servers with hot reload' \
@@ -94,6 +95,9 @@ install-openai: .venv/bin/python
 
 install-anthropic: .venv/bin/python
 	$(UV) sync --frozen --inexact --extra anthropic --extra dev
+
+install-mcp: .venv/bin/python
+	$(UV) sync --frozen --inexact --extra mcp --extra dev
 
 setup-local:
 	@test -f .env || cp .env.example .env

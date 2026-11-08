@@ -247,11 +247,25 @@ def _stringify_message_block(value: Any) -> str:
     return str(value)
 
 
+def _has_native_anthropic_content(message: AIMessage) -> bool:
+    metadata = getattr(message, "response_metadata", {}) or {}
+    if metadata.get("model_provider") == "anthropic":
+        return True
+    content = getattr(message, "content", None)
+    return isinstance(content, list) and any(
+        isinstance(block, dict)
+        and block.get("type") in {"thinking", "redacted_thinking", "tool_use"}
+        for block in content
+    )
+
+
 def _sanitize_assistant_tool_call_message(message: Any) -> Any:
     if not isinstance(message, AIMessage) or not getattr(message, "tool_calls", None):
         return message
     content = getattr(message, "content", None)
     if not isinstance(content, list):
+        return message
+    if _has_native_anthropic_content(message):
         return message
 
     visible_parts: list[str] = []
