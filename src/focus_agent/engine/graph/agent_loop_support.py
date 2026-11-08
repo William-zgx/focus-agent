@@ -1,21 +1,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from langchain.messages import AIMessage
 
 from ...core.repo_call import has_repo_method
 from ...core.state import AgentState
-from .lexicon import HTTP_URL_RE
 
 _logger = logging.getLogger(__name__)
-
-_PRIMARY_OUTCOME_ROLES = frozenset({"primary"})
-_ALTERNATIVE_OUTCOME_ROLES = frozenset({"alternative"})
-_FAILED_OUTCOME_STATUSES = frozenset({"failed", "blocked"})
-_SUCCESS_OUTCOME_STATUSES = frozenset({"succeeded", "recovered"})
 
 
 def _with_stream_phase(
@@ -32,66 +26,6 @@ def _with_stream_phase(
             "tags": [f"stream_phase:{phase}"],
         }
     )
-
-
-def _web_fetch_args(preferred_args: dict[str, Any] | None, fallback_text: str) -> dict[str, Any]:
-    args = dict(preferred_args or {})
-    if str(args.get("url") or "").strip():
-        return args
-    match = HTTP_URL_RE.search(str(fallback_text or ""))
-    if not match:
-        return args
-    return {"url": match.group(0).rstrip(".,!?;:，。！？；：")}
-
-
-def _should_force_degraded_skill_recovery_answer(
-    state: AgentState,
-    *,
-    primary_tool_names: Sequence[str] = (),
-) -> bool:
-    """Stop tool storms after a Skill primary path is exhausted and fallback evidence exists."""
-
-    outcomes = [
-        dict(item) for item in state.get("tool_outcomes") or [] if isinstance(item, Mapping)
-    ]
-    if not outcomes:
-        return False
-    primary_tools = {str(name).strip() for name in primary_tool_names if str(name).strip()}
-    if not primary_tools:
-        primary_tools = {"run_skill_entrypoint", "run_workspace_command"}
-    blocked_recovery_boundary = any(str(item.get("status") or "") == "blocked" for item in outcomes)
-    primary_exhausted = any(
-        (
-            str(item.get("tool_name") or "") in primary_tools
-            or str(item.get("evidence_role") or "") in _PRIMARY_OUTCOME_ROLES
-        )
-        and str(item.get("status") or "") in _FAILED_OUTCOME_STATUSES
-        and (
-            _outcome_attempt_index(item) >= _outcome_max_attempts(item) or blocked_recovery_boundary
-        )
-        for item in outcomes
-    )
-    if not primary_exhausted:
-        return False
-    return any(
-        str(item.get("evidence_role") or "") in _ALTERNATIVE_OUTCOME_ROLES
-        and str(item.get("status") or "") in _SUCCESS_OUTCOME_STATUSES
-        for item in outcomes
-    )
-
-
-def _outcome_attempt_index(outcome: Mapping[str, Any]) -> int:
-    try:
-        return max(1, int(outcome.get("attempt_index") or 1))
-    except (TypeError, ValueError):
-        return 1
-
-
-def _outcome_max_attempts(outcome: Mapping[str, Any]) -> int:
-    try:
-        return max(1, int(outcome.get("max_attempts") or 1))
-    except (TypeError, ValueError):
-        return 1
 
 
 def _model_for_stream_phase(
@@ -208,11 +142,7 @@ __all__ = [
     "_filter_tools_by_agent_def",
     "_model_for_stream_phase",
     "_model_with_tools_for_stream_phase",
-    "_outcome_attempt_index",
-    "_outcome_max_attempts",
     "_resolve_agent_definition",
-    "_should_force_degraded_skill_recovery_answer",
-    "_web_fetch_args",
     "_with_focus_agent_turn_metadata",
     "_with_stream_phase",
 ]

@@ -10,18 +10,13 @@ from focus_agent.api.route_utils.agent_governance_trajectory_responses import (
     _agent_governance_metrics_from_turns,
     _plan_meta_governance_payload,
 )
+from focus_agent.capabilities.catalog import build_capability_registry, build_toolset_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
-from focus_agent.capabilities.tool_router import (
-    build_capability_registry,
-    build_tool_route_plan,
-    build_toolset_registry,
-)
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.governance import ContextMemoryEvidence, FeedbackEvent, SkillSelectionEvent
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
-from focus_agent.engine.graph.policy_tools import _tools_for_policy
 from focus_agent.memory.curator import MemoryCurator
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.skills.registry import SkillRegistry, bundled_skills_dir
@@ -454,41 +449,6 @@ def test_context_explain_persists_evidence_for_listing() -> None:
     assert listed.json()["items"][0]["risk_flags"] == ["high_drift"]
 
 
-def test_tool_router_builds_capability_registry_and_denies_critic_writes():
-    registry = ToolRegistry(tools=(search_code, write_text_artifact, web_search))
-
-    capabilities = {item.name: item for item in build_capability_registry(registry)}
-    plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="critic",
-        tool_policy="execution",
-        available_tool_names=["search_code", "write_text_artifact", "web_search"],
-    )
-
-    assert capabilities["write_text_artifact"].requires_workspace_write is True
-    assert "search_code" in plan.allowed_tools
-    assert "write_text_artifact" in plan.denied_tools
-    assert "web_search" in plan.denied_tools
-
-
-def test_tool_router_respects_exposed_tool_names_for_turn_policy():
-    registry = ToolRegistry(tools=(search_code, read_file, web_search))
-
-    plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="executor",
-        tool_policy="workspace_lookup",
-        available_tool_names=["search_code", "read_file", "web_search"],
-        exposed_tool_names=["search_code"],
-    )
-
-    read_file_decision = next(item for item in plan.decisions if item.name == "read_file")
-    web_search_decision = next(item for item in plan.decisions if item.name == "web_search")
-    assert plan.allowed_tools == ["search_code"]
-    assert read_file_decision.reason == "not_exposed_by_turn_policy"
-    assert web_search_decision.reason == "policy_not_allowed:workspace_lookup"
-
-
 def test_capability_registry_exposes_tool_quality_metadata():
     @tool
     def tuned_lookup(query: str) -> str:
@@ -537,92 +497,6 @@ def test_toolset_registry_summarizes_capability_groups():
     assert toolsets["artifact"].requires_workspace_write is True
     assert toolsets["artifact"].side_effect is True
     assert toolsets["artifact"].risk_levels == ["medium"]
-
-
-def test_tool_router_matches_graph_policy_filtering_for_core_policies():
-    @tool
-    def approval_lookup(name: str) -> str:
-        """Lookup that requires approval."""
-        return name
-
-    approval_lookup.metadata = {
-        "requires_approval": True,
-        "risk_level": "high",
-        "intent_policies": ("execution",),
-        "allowed_roles": ("executor",),
-    }
-
-    tools = [
-        search_code,
-        read_file,
-        write_text_artifact,
-        web_search,
-        web_fetch,
-        current_utc_time,
-        approval_lookup,
-    ]
-    registry = ToolRegistry(tools=tuple(tools))
-
-    for policy, role in (
-        ("direct_answer", "executor"),
-        ("workspace_lookup", "executor"),
-        ("live_web_research", "planner"),
-        ("execution", "executor"),
-    ):
-        graph_allowed = [item.name for item in _tools_for_policy(policy, tools, role=role)]
-        route_plan = build_tool_route_plan(
-            tool_registry=registry,
-            role=role,
-            tool_policy=policy,
-            available_tool_names=[item.name for item in tools],
-        )
-        assert route_plan.allowed_tools == graph_allowed
-
-    live_web_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="planner",
-        tool_policy="live_web_research",
-        available_tool_names=[item.name for item in tools],
-    )
-    assert live_web_plan.allowed_tools == ["web_search", "web_fetch", "current_utc_time"]
-
-    mixed_readonly_names = [
-        "search_code",
-        "read_file",
-        "web_search",
-        "web_fetch",
-        "current_utc_time",
-        "write_text_artifact",
-    ]
-    mixed_graph_allowed = [
-        item.name
-        for item in _tools_for_policy("execution", tools, role="planner")
-        if item.name in mixed_readonly_names
-    ]
-    mixed_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="planner",
-        tool_policy="execution",
-        available_tool_names=mixed_readonly_names,
-    )
-    assert mixed_plan.allowed_tools == mixed_graph_allowed
-    assert {"search_code", "read_file", "web_search", "web_fetch", "current_utc_time"} <= set(
-        mixed_plan.allowed_tools
-    )
-    assert "write_text_artifact" in mixed_plan.denied_tools
-
-    execution_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="executor",
-        tool_policy="execution",
-        available_tool_names=[item.name for item in tools],
-    )
-    approval_decision = next(
-        item for item in execution_plan.decisions if item.name == "approval_lookup"
-    )
-    assert approval_decision.allowed is True
-    assert approval_decision.reason == "approval_required"
-    assert "approval_lookup" in execution_plan.allowed_tools
 
 
 def test_memory_curator_promotes_clean_branch_findings_and_blocks_discarded_branch():
@@ -766,14 +640,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             "available_tools": ["skills_list", "skill_view", "search_code", "write_text_artifact"],
         },
     )
-    route = client.post(
-        "/v1/agent/tool-router/route",
-        json={
-            "role": "critic",
-            "tool_policy": "execution",
-            "available_tools": ["search_code", "write_text_artifact"],
-        },
-    )
     memory_policy = client.get("/v1/agent/memory/curator/policy")
     memory_eval = client.post(
         "/v1/agent/memory/curator/evaluate",
@@ -860,8 +726,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     )
     assert skill_decision["run_isolation_key"] == "role:skill_scout"
     assert skill_decision["tool_governance"]["allowed_tools"] == ["skills_list", "skill_view"]
-    assert route.json()["plan"]["role"] == "critic"
-    assert "write_text_artifact" in route.json()["plan"]["denied_tools"]
     assert memory_policy.json()["enabled"] is True
     assert memory_eval.json()["decision"]["status"] == "ready"
     assert tool_decisions.json()["count"] == 1

@@ -23,35 +23,6 @@ _IMPORT_DECISIONS_FRAMING_ZH = "我在旁支问题「{branch_name}」里已经�
 _IMPORT_ACK_EN = "Noted."
 _IMPORT_ACK_ZH = "收到。"
 
-_LIVE_WEB_TOOL_LIMIT_NOTE = (
-    "\nResearch has reached its tool limit. No more tools are available. "
-    "Now answer the original question using the evidence already collected across ALL "
-    "searches and page reads. Do not output tool calls or internal processing notices. "
-    "Cite the sources actually supporting your statements. If evidence is incomplete, "
-    "give the supported findings and clearly identify the unresolved parts; do not "
-    "pretend the research is complete."
-)
-
-# Efficiency guidance for multi-part questions: minimize tool calls by
-# reusing one tool result to answer multiple sub-questions.
-_MULTIPART_TOOL_NOTE = (
-    "For multi-part questions (e.g. asking about status, history, and "
-    "branches at once), minimize tool calls:\n"
-    "- If one tool result can answer multiple sub-questions, use it once.\n"
-    "- Prefer the most specific tool (e.g. git_status covers both status and branches).\n"
-    "- If you have already called a tool whose output can answer a sub-question, "
-    "do not call another tool for that sub-question.\n"
-    "- If the user asks a simple question that one tool call can answer, "
-    "just call that tool directly -- do not follow the full multi-step workflow."
-)
-
-_LIVE_WEB_SEARCH_START_NOTE = (
-    "Start the research now with concise, topic-specific search queries. "
-    "Rephrase the user's conversational wording into searchable concepts. "
-    "Use the verified current date and supported time_range filter for recency. "
-    "If results are irrelevant, reformulate the query before giving up."
-)
-
 
 def _apply_agent_definition(
     agent_def: Any,
@@ -92,19 +63,6 @@ def _steer_block(steer_messages: Sequence[Any]) -> str:
     if not joined:
         return ""
     return f"[User guidance]\n{joined}"
-
-
-def _compose_policy_note(policy_note: str, *sections: str) -> str:
-    for section in sections:
-        if section:
-            policy_note = f"{policy_note}\n\n{section}".strip()
-    if _MULTIPART_TOOL_NOTE not in (policy_note or ""):
-        policy_note = (
-            f"{policy_note}\n\n{_MULTIPART_TOOL_NOTE}".strip()
-            if policy_note
-            else _MULTIPART_TOOL_NOTE
-        )
-    return policy_note
 
 
 def _message_text(message: Any) -> str:
@@ -261,12 +219,8 @@ def _context_overflow_execution_contract(execution_contract: dict[str, Any]) -> 
 
 
 __all__ = [
-    "_LIVE_WEB_SEARCH_START_NOTE",
-    "_LIVE_WEB_TOOL_LIMIT_NOTE",
-    "_MULTIPART_TOOL_NOTE",
     "_apply_agent_definition",
     "_build_prompt_messages",
-    "_compose_policy_note",
     "_context_overflow_execution_contract",
     "_context_overflow_response",
     "_import_notices_as_user_turns",

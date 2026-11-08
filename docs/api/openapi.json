@@ -3774,51 +3774,6 @@
         "title": "AgentToolRouteDecisionListResponse",
         "type": "object"
       },
-      "AgentToolRouteRequest": {
-        "properties": {
-          "available_tools": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Available Tools",
-            "type": "array"
-          },
-          "enforce": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enforce"
-          },
-          "role": {
-            "default": "executor",
-            "title": "Role",
-            "type": "string"
-          },
-          "tool_policy": {
-            "default": "execution",
-            "title": "Tool Policy",
-            "type": "string"
-          }
-        },
-        "title": "AgentToolRouteRequest",
-        "type": "object"
-      },
-      "AgentToolRouteResponse": {
-        "properties": {
-          "plan": {
-            "additionalProperties": true,
-            "title": "Plan",
-            "type": "object"
-          }
-        },
-        "title": "AgentToolRouteResponse",
-        "type": "object"
-      },
       "AgentToolsetListResponse": {
         "properties": {
           "count": {
@@ -15316,49 +15271,6 @@
           }
         ],
         "summary": "List Agent Tool Route Decisions"
-      }
-    },
-    "/v1/agent/tool-router/route": {
-      "post": {
-        "operationId": "route_agent_tools_v1_agent_tool_router_route_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentToolRouteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentToolRouteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Route Agent Tools"
       }
     },
     "/v1/agent/toolsets": {

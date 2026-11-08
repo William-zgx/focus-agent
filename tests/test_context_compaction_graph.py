@@ -10,7 +10,6 @@ from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import AgentState
-from focus_agent.engine.graph.policy import build_tool_intent_plan
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.repositories.sqlite_branch_repository import SQLiteBranchRepository
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
@@ -25,16 +24,6 @@ class StaticModel:
 
     def invoke(self, _messages, **_kwargs):
         return AIMessage(content="Confirmed E-930")
-
-
-@pytest.mark.parametrize("instruction", ["不调用工具", "不调用任何工具"])
-def test_context_recall_with_explicit_no_tools_does_not_route_to_workspace(instruction):
-    plan = build_tool_intent_plan(
-        f"现在仅复述主支预算、敏感数据限制和证据编号，{instruction}，60字以内。"
-    )
-    assert plan.policy == "direct_answer"
-    assert "explicit_no_tool" in plan.reason_codes
-    assert plan.preferred_first_tool is None
 
 
 def chat_for_graph(graph, tmp_path):

@@ -36,7 +36,6 @@ from .agent_governance_role_tool_responses import (
     _agent_role_dry_run_response,
     _agent_role_policy_response,
     _agent_tool_route_decisions_response,
-    _agent_tool_route_response,
     _agent_toolsets_response,
     _available_tool_names,
 )
@@ -53,7 +52,6 @@ __all__ = [
     "_agent_role_decisions_response",
     "_agent_capabilities_response",
     "_agent_toolsets_response",
-    "_agent_tool_route_response",
     "_agent_tool_route_decisions_response",
     "_agent_memory_curator_policy_response",
     "_agent_memory_curator_evaluate_response",

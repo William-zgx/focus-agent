@@ -1641,23 +1641,6 @@
       }
     },
     {
-      "method": "POST",
-      "operation_id": "route_agent_tools_v1_agent_tool_router_route_post",
-      "parameters": [],
-      "path": "/v1/agent/tool-router/route",
-      "request": {
-        "$ref": "#/components/schemas/AgentToolRouteRequest"
-      },
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/AgentToolRouteResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
       "method": "GET",
       "operation_id": "list_agent_toolsets_v1_agent_toolsets_get",
       "parameters": [],
@@ -8528,44 +8511,6 @@
               "type": "null"
             }
           ]
-        }
-      },
-      "type": "object"
-    },
-    "AgentToolRouteRequest": {
-      "properties": {
-        "available_tools": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "enforce": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "role": {
-          "default": "executor",
-          "type": "string"
-        },
-        "tool_policy": {
-          "default": "execution",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "AgentToolRouteResponse": {
-      "properties": {
-        "plan": {
-          "additionalProperties": true,
-          "type": "object"
         }
       },
       "type": "object"

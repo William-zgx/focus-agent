@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException
-
-from focus_agent.capabilities.tool_router import (
-    build_capability_registry,
-    build_tool_route_plan,
-    build_toolset_registry,
-)
+from focus_agent.capabilities.catalog import build_capability_registry, build_toolset_registry
 from focus_agent.config import Settings
 from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
 from focus_agent.engine.runtime import AppRuntime
@@ -21,8 +15,6 @@ from ..contracts import (
     AgentRoleDryRunResponse,
     AgentRolePolicyResponse,
     AgentToolRouteDecisionListResponse,
-    AgentToolRouteRequest,
-    AgentToolRouteResponse,
     AgentToolsetListResponse,
 )
 from .agent_governance_trajectory_responses import _list_response_fields, _role_route_decision_items
@@ -121,28 +113,6 @@ def _agent_toolsets_response(runtime: AppRuntime | Any) -> AgentToolsetListRespo
     )
 
 
-def _agent_tool_route_response(
-    *,
-    payload: AgentToolRouteRequest,
-    runtime: AppRuntime | Any,
-) -> AgentToolRouteResponse:
-    registry = getattr(runtime, "tool_registry", None)
-    if registry is None:
-        raise HTTPException(status_code=503, detail="Tool registry is unavailable.")
-    plan = build_tool_route_plan(
-        tool_registry=registry,
-        role=payload.role,
-        tool_policy=payload.tool_policy,
-        available_tool_names=payload.available_tools or _available_tool_names(runtime),
-        enforce=(
-            bool(getattr(runtime.settings, "agent_tool_router_enforce", True))
-            if payload.enforce is None
-            else bool(payload.enforce)
-        ),
-    )
-    return AgentToolRouteResponse(plan=plan.model_dump(mode="json"))
-
-
 def _agent_tool_route_decisions_response(
     *,
     runtime: AppRuntime | Any,
@@ -160,6 +130,5 @@ __all__ = [
     "_agent_role_dry_run_response",
     "_agent_role_policy_response",
     "_agent_tool_route_decisions_response",
-    "_agent_tool_route_response",
     "_available_tool_names",
 ]

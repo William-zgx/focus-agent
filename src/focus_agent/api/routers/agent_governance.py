@@ -59,8 +59,6 @@ from ..contracts import (
     AgentTaskLedgerPolicyResponse,
     AgentTaskLedgerRunListResponse,
     AgentToolRouteDecisionListResponse,
-    AgentToolRouteRequest,
-    AgentToolRouteResponse,
     AgentToolsetListResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
@@ -94,7 +92,6 @@ from ..route_utils.agent_governance import (
     _agent_task_ledger_policy_response,
     _agent_task_ledger_runs_response,
     _agent_tool_route_decisions_response,
-    _agent_tool_route_response,
     _agent_toolsets_response,
 )
 from ..route_utils.agent_governance_operations import (
@@ -344,16 +341,6 @@ def list_agent_toolsets(
 ) -> AgentToolsetListResponse:
     del principal
     return _agent_toolsets_response(runtime)
-
-
-@router.post("/v1/agent/tool-router/route", response_model=AgentToolRouteResponse)
-def route_agent_tools(
-    payload: AgentToolRouteRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentToolRouteResponse:
-    del principal
-    return _agent_tool_route_response(payload=payload, runtime=runtime)
 
 
 @router.get("/v1/agent/tool-router/decisions", response_model=AgentToolRouteDecisionListResponse)

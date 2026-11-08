@@ -6,10 +6,6 @@ from langchain.tools import tool
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
-from focus_agent.engine.graph.policy_temporal import (
-    _temporal_live_web_search_args,
-    search_time_range,
-)
 from focus_agent.engine.graph_builder import build_graph
 
 
@@ -165,28 +161,6 @@ def test_budget_synthesis_cannot_restart_tools_or_leak_internal_summary(monkeypa
     assert final.additional_kwargs["tool_result_fallback_reason"] == "model_synthesis_failed"
 
 
-def test_recent_weeks_query_is_anchored_without_losing_search_filters():
-    args = _temporal_live_web_search_args(
-        {
-            "query": "最近几周Agent的发展有什么最新进展？",
-            "time_range": "month",
-            "include_domains": ["example.com"],
-        },
-        fallback_query="",
-        current_utc_time="2026-10-03T12:53:01Z",
-    )
-    assert "2026-09-04" in args["query"] and "2026-10-03" in args["query"]
-    assert args["time_range"] == "month"
-    assert args["include_domains"] == ["example.com"]
-
-
-def test_search_time_range_keeps_explicit_years_unfiltered():
-    assert search_time_range("2024年最新政策") is None
-    assert search_time_range("latest 2024 policy") is None
-    assert search_time_range("最新政策") == "month"
-    assert search_time_range("最新政策 编号 120241") == "month"
-
-
 def test_repeated_identical_search_is_not_rerun_across_rounds(monkeypatch):
     result, invocations, calls = _research_graph(
         monkeypatch, keep_searching=True, repeat_query=True
@@ -202,37 +176,3 @@ def test_repeated_identical_search_is_not_rerun_across_rounds(monkeypatch):
     assert suppressed
     assert "Already retrieved earlier in this turn" in suppressed[0].content
     assert "正文读取" in result["messages"][-1].content
-
-
-def test_explicit_year_is_not_rewritten_to_last_month():
-    args = _temporal_live_web_search_args(
-        {"query": "LangGraph 2026 年的最新进展"},
-        fallback_query="",
-        current_utc_time="2026-10-07T00:00:00Z",
-    )
-    assert "2026-09-08" not in args["query"]
-    assert "2026" in args["query"]
-
-
-def test_explicit_relative_windows_drive_search_and_freshness():
-    from datetime import date
-
-    from focus_agent.engine.graph.execution_contract import _fresh_evidence_min_date
-    from focus_agent.engine.graph.policy_temporal import explicit_window_days
-
-    assert explicit_window_days("最近两个月Agent领域的进展") == 60
-    assert explicit_window_days("过去3周的新闻") == 21
-    assert explicit_window_days("last 2 months of agent research") == 60
-    assert explicit_window_days("最新进展") is None
-    # A one-month filter would drop the first half of a two-month window.
-    assert search_time_range("最近两个月Agent领域的进展") == "year"
-    assert search_time_range("过去3周的新闻") == "month"
-    args = _temporal_live_web_search_args(
-        {"query": "最近两个月Agent领域的进展"},
-        fallback_query="",
-        current_utc_time="2026-10-08T03:00:00Z",
-    )
-    assert "2026-08-10" in args["query"]
-    assert _fresh_evidence_min_date("最近两个月agent领域的进展", date(2026, 10, 8)) == date(
-        2026, 8, 10
-    )

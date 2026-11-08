@@ -39,7 +39,7 @@ from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_tool_outcomes_from_messages
 from ...core.state import AgentState, append_agent_state_record
 from .retrieval_ledger import collect_retrieval_ledger
-from .tool_call_guards import _intercept_tool_call, _preflight_tool_call, _route_plan_mapping
+from .tool_call_guards import _intercept_tool_call, _preflight_tool_call
 from .tool_result_hooks import (
     _apply_result_hooks,
     _ask_permission_result,
@@ -162,7 +162,6 @@ def make_tool_executor_node(
         messages_by_index: dict[int, ToolMessage] = {}
         seen_tool_call_signatures: set[str] = set()
         updates: dict[str, Any] = {}
-        route_plan = _route_plan_mapping(state.get("tool_route_plan"))
         tool_call_counts: dict[str, int] = _tool_call_counts_since_latest_human(
             state.get("messages", [])[:-1]
         )
@@ -193,7 +192,6 @@ def make_tool_executor_node(
                 request_context=runtime.context,
                 tools_by_name=tools_by_name,
                 tool_runtime_by_name=tool_runtime_by_name,
-                route_plan=route_plan,
                 retrieval_ledger=retrieval_ledger,
                 seen_signatures=seen_tool_call_signatures,
                 tool_call_counts=tool_call_counts,
