@@ -901,7 +901,6 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/agent/delegation/plan" in route_paths
     assert "/v1/agent/delegation/runs" in route_paths
     assert "/v1/agent/model-router/policy" in route_paths
-    assert "/v1/agent/model-router/route" in route_paths
     assert "/v1/agent/model-router/decisions" in route_paths
     assert "/v1/agent/self-repair/failures" in route_paths
     assert "/v1/agent/self-repair/promote-preview" in route_paths

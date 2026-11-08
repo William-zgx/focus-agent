@@ -33,8 +33,6 @@ from ..contracts import (
     AgentMemoryCuratorEvaluateResponse,
     AgentMemoryCuratorPolicyResponse,
     AgentModelRouterDecisionListResponse,
-    AgentModelRouteRequest,
-    AgentModelRouteResponse,
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,
@@ -78,7 +76,6 @@ from ..route_utils.agent_governance import (
     _agent_memory_curator_decisions_response,
     _agent_memory_curator_evaluate_response,
     _agent_memory_curator_policy_response,
-    _agent_model_route_response,
     _agent_model_router_decisions_response,
     _agent_model_router_policy_response,
     _agent_review_queue_decision_response,
@@ -432,16 +429,6 @@ def get_agent_model_router_policy(
 ) -> AgentModelRouterPolicyResponse:
     del principal
     return _agent_model_router_policy_response(runtime.settings)
-
-
-@router.post("/v1/agent/model-router/route", response_model=AgentModelRouteResponse)
-def route_agent_model(
-    payload: AgentModelRouteRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentModelRouteResponse:
-    del principal
-    return _agent_model_route_response(payload=payload, runtime=runtime)
 
 
 @router.get("/v1/agent/model-router/decisions", response_model=AgentModelRouterDecisionListResponse)

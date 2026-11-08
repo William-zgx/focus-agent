@@ -737,23 +737,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/agent/model-router/route": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Route Agent Model */
-        post: operations["route_agent_model_v1_agent_model_router_route_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/agent/review-queue": {
         parameters: {
             query?: never;
@@ -3295,38 +3278,6 @@ export interface components {
              * @default false
              */
             enabled: boolean;
-        };
-        /** AgentModelRouteRequest */
-        AgentModelRouteRequest: {
-            /**
-             * Context Size
-             * @default 0
-             */
-            context_size: number;
-            /**
-             * Role
-             * @default executor
-             */
-            role: string;
-            /** Selected Model */
-            selected_model?: string | null;
-            /**
-             * Task Text
-             * @default
-             */
-            task_text: string;
-            /**
-             * Tool Risk
-             * @default low
-             */
-            tool_risk: string;
-        };
-        /** AgentModelRouteResponse */
-        AgentModelRouteResponse: {
-            /** Decision */
-            decision?: {
-                [key: string]: unknown;
-            };
         };
         /** AgentModelRouterDecisionListResponse */
         AgentModelRouterDecisionListResponse: {
@@ -8385,39 +8336,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentModelRouterPolicyResponse"];
-                };
-            };
-        };
-    };
-    route_agent_model_v1_agent_model_router_route_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentModelRouteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentModelRouteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

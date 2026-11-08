@@ -657,7 +657,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     )
     delegation_runs = client.get("/v1/agent/delegation/runs")
     model_policy = client.get("/v1/agent/model-router/policy")
-    model_route = client.post("/v1/agent/model-router/route", json={"role": "critic"})
     model_decisions = client.get("/v1/agent/model-router/decisions")
     failures = client.get("/v1/agent/self-repair/failures")
     promote_preview = client.post(
@@ -736,7 +735,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     assert delegation_plan.json()["plan"]["enabled"] is True
     assert delegation_runs.json()["items"][0]["run_id"] == "run-1"
     assert model_policy.json()["enabled"] is True
-    assert model_route.json()["decision"]["role"] == "critic"
     assert model_decisions.json()["count"] == 1
     assert failures.json()["items"][0]["failure_type"] == "tool_denied"
     assert promote_preview.json()["preview"]["candidates"][0]["tags"][0] == "agent_delegation"

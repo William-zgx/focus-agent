@@ -119,8 +119,6 @@ def make_loop_agent_node(
             prompt = _build_prompt_messages(
                 assembled,
                 history,
-                plan=None,
-                current_step_id="",
                 steer_block=steer_block,
                 policy_note="\n\n".join(
                     part

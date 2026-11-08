@@ -11,7 +11,6 @@ from focus_agent.delegation.delegation import (
     apply_review_decision,
     build_agent_delegation_plan,
     build_failure_records,
-    build_model_route_decision,
     build_review_queue,
     build_self_repair_preview,
 )
@@ -285,35 +284,6 @@ def test_background_executor_runs_all_tasks_with_bounded_workers_and_preserves_o
     assert 1 < model.max_active_calls <= 2
 
 
-def test_model_router_observe_and_enforce_modes():
-    observe = build_model_route_decision(
-        settings=Settings(
-            model="openai:gpt-4.1-mini",
-            helper_model="openai:deepseek-chat",
-            agent_model_router_enabled=True,
-            agent_model_router_mode="observe",
-            agent_role_planner_model="openai:gpt-4.1",
-        ),
-        role="planner",
-        selected_model="openai:gpt-4.1-mini",
-        task_text="Design the architecture.",
-    )
-    enforce = build_model_route_decision(
-        settings=Settings(
-            model="openai:gpt-4.1-mini",
-            agent_model_router_enabled=True,
-            agent_model_router_mode="enforce",
-            agent_role_critic_model="openai:deepseek-chat",
-        ),
-        role="critic",
-        selected_model="openai:gpt-4.1-mini",
-    )
-
-    assert observe.effective_model == "openai:gpt-4.1-mini"
-    assert observe.recommended_model == "openai:gpt-4.1"
-    assert enforce.effective_model == "openai:deepseek-chat"
-
-
 def test_self_repair_preview_and_review_queue_from_failures():
     failure_records = build_failure_records(
         delegation_plan={"tasks": [{"task_id": "task-1-executor"}]},
@@ -373,12 +343,6 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
         ],
         tool_policy="execution",
     )
-    model_route = build_model_route_decision(
-        settings=settings,
-        role="executor",
-        selected_model="openai:gpt-4.1-mini",
-        tool_risk="high",
-    )
     failures = build_failure_records(
         delegation_plan=delegation.model_dump(mode="json"),
         tool_route_plan={
@@ -392,7 +356,7 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
                 }
             ],
         },
-        model_route_decision=model_route.model_dump(mode="json"),
+        model_route_decision={"effective_model": "openai:gpt-4.1-mini"},
     )
     review_queue = build_review_queue(
         settings=settings,
@@ -422,8 +386,5 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
     assert skill_task.allowed_tools == ["skills_list", "skill_view"]
     assert skill_task.memory_scope == "thread"
     assert skill_decision.payload["run_isolation_key"] == "role:skill_scout"
-    assert model_route.mode == "observe"
-    assert model_route.effective_model == "openai:gpt-4.1-mini"
-    assert "High-risk tool usage" in model_route.route_reason
     assert failures[0].failure_type == "tool_denied"
     assert review_queue[0].item_type == "workspace_write_with_high_risk_tool"

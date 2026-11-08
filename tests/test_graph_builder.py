@@ -26,8 +26,8 @@ from focus_agent.engine.graph.tool_history_repair import (
     _should_force_tool_free_answer,
 )
 from focus_agent.engine.graph.tool_result_fallback import (
-    _fallback_answer_from_tool_results,
     _invoke_with_tool_result_fallback,
+    _tool_result_fallback_message,
 )
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
@@ -607,7 +607,7 @@ def test_fallback_answer_from_tool_results_preserves_workspace_findings():
         ),
     ]
 
-    answer = _fallback_answer_from_tool_results(prompt_messages)
+    answer = _tool_result_fallback_message(prompt_messages).content
 
     assert "graph_builder.py:512" in answer
     assert "context_policy.py:43" in answer
@@ -638,7 +638,7 @@ def test_fallback_answer_from_tool_results_includes_search_code_context():
         ),
     ]
 
-    answer = _fallback_answer_from_tool_results(prompt_messages)
+    answer = _tool_result_fallback_message(prompt_messages).content
 
     assert "tool_manifest.py:188" in answer
     assert "allowed_roles" in answer
@@ -893,7 +893,7 @@ def test_tool_result_fallback_returns_evidence_without_retrying_model_after_time
 
 
 def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
-    answer = _fallback_answer_from_tool_results(
+    answer = _tool_result_fallback_message(
         [
             HumanMessage(content="帮我查一下上个周比亚迪在A股股价的波动情况。"),
             AIMessage(
@@ -915,7 +915,7 @@ def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
                 tool_call_id="call-1",
             ),
         ]
-    )
+    ).content
 
     assert "根据搜索结果" in answer
     assert "工具 web_search" not in answer
@@ -925,7 +925,7 @@ def test_fallback_answer_from_tool_results_summarizes_web_search_payload():
 
 
 def test_fallback_answer_from_tool_results_excludes_unrelated_same_turn_web_search():
-    answer = _fallback_answer_from_tool_results(
+    answer = _tool_result_fallback_message(
         [
             HumanMessage(content="今天北京天气怎么样？"),
             AIMessage(
@@ -958,7 +958,7 @@ def test_fallback_answer_from_tool_results_excludes_unrelated_same_turn_web_sear
                 tool_call_id="sports-search",
             ),
         ]
-    )
+    ).content
 
     assert "Beijing weather" in answer
     assert "NBA finals" not in answer
@@ -966,7 +966,7 @@ def test_fallback_answer_from_tool_results_excludes_unrelated_same_turn_web_sear
 
 
 def test_fallback_answer_from_tool_results_formats_weather_as_final_answer():
-    answer = _fallback_answer_from_tool_results(
+    answer = _tool_result_fallback_message(
         [
             HumanMessage(content="今天北京天气怎么样？"),
             AIMessage(
@@ -991,7 +991,7 @@ def test_fallback_answer_from_tool_results_formats_weather_as_final_answer():
                 tool_call_id="weather-search",
             ),
         ]
-    )
+    ).content
 
     assert answer.startswith("根据搜索结果，今天白天：晴转多云")
     assert "最高气温28℃" in answer
@@ -1002,7 +1002,7 @@ def test_fallback_answer_from_tool_results_formats_weather_as_final_answer():
 
 
 def test_fallback_answer_from_tool_results_uses_latest_turn_and_compacted_refs():
-    answer = _fallback_answer_from_tool_results(
+    answer = _tool_result_fallback_message(
         [
             ToolMessage(
                 content='{"answer":"旧一轮比特币结果","results":[{"title":"BTC"}]}',
@@ -1020,7 +1020,7 @@ def test_fallback_answer_from_tool_results_uses_latest_turn_and_compacted_refs()
                 tool_call_id="new-call",
             ),
         ]
-    )
+    ).content
 
     assert "比亚迪 002594" in answer
     assert "https://xueqiu.com/S/SZ002594" in answer

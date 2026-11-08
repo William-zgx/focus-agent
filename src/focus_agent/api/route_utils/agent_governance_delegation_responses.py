@@ -6,7 +6,6 @@ from focus_agent.config import Settings
 from focus_agent.delegation.delegation import (
     apply_review_decision,
     build_agent_delegation_plan,
-    build_model_route_decision,
     build_self_repair_preview,
 )
 from focus_agent.delegation.roles import AgentRole, RoleModelResolver, build_role_route_plan
@@ -18,8 +17,6 @@ from ..contracts import (
     AgentDelegationPolicyResponse,
     AgentDelegationRunListResponse,
     AgentModelRouterDecisionListResponse,
-    AgentModelRouteRequest,
-    AgentModelRouteResponse,
     AgentModelRouterPolicyResponse,
     AgentReviewQueueDecisionResponse,
     AgentReviewQueueListResponse,
@@ -88,22 +85,6 @@ def _agent_delegation_runs_response(
     return AgentDelegationRunListResponse(**fields)
 
 
-def _agent_model_route_response(
-    *,
-    payload: AgentModelRouteRequest,
-    runtime: AppRuntime | Any,
-) -> AgentModelRouteResponse:
-    decision = build_model_route_decision(
-        settings=runtime.settings,
-        role=payload.role,
-        selected_model=payload.selected_model,
-        task_text=payload.task_text,
-        tool_risk=payload.tool_risk,
-        context_size=payload.context_size,
-    )
-    return AgentModelRouteResponse(decision=decision.model_dump(mode="json"))
-
-
 def _agent_model_router_decisions_response(
     *,
     runtime: AppRuntime | Any,
@@ -162,7 +143,6 @@ __all__ = [
     "_agent_delegation_plan_response",
     "_agent_delegation_policy_response",
     "_agent_delegation_runs_response",
-    "_agent_model_route_response",
     "_agent_model_router_decisions_response",
     "_agent_model_router_policy_response",
     "_agent_review_queue_decision_response",

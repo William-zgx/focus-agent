@@ -8,9 +8,6 @@ from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from focus_agent.engine.graph.plan_nodes import _format_plan_block
-
-from ...core.types import Plan
 from .lexicon import contains_cjk
 
 _logger = logging.getLogger(__name__)
@@ -162,15 +159,9 @@ def _build_prompt_messages(
     assembled: str,
     messages: Sequence[Any],
     *,
-    plan: Any,
-    current_step_id: str,
     steer_block: str,
     policy_note: str,
 ) -> list[Any]:
-    if isinstance(plan, Plan) and plan.steps:
-        plan_block = _format_plan_block(plan, current_step_id)
-        if plan_block and plan_block not in assembled:
-            assembled = f"{assembled}\n\n{plan_block}".strip()
     # Imported branch conclusions are restated as a user turn plus a short
     # acknowledgement: the same text presented as a system notice is ignored by
     # the model when it resumes on the main thread.

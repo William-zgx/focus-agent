@@ -2651,54 +2651,6 @@
         "title": "AgentMemoryCuratorPolicyResponse",
         "type": "object"
       },
-      "AgentModelRouteRequest": {
-        "properties": {
-          "context_size": {
-            "default": 0,
-            "title": "Context Size",
-            "type": "integer"
-          },
-          "role": {
-            "default": "executor",
-            "title": "Role",
-            "type": "string"
-          },
-          "selected_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Model"
-          },
-          "task_text": {
-            "default": "",
-            "title": "Task Text",
-            "type": "string"
-          },
-          "tool_risk": {
-            "default": "low",
-            "title": "Tool Risk",
-            "type": "string"
-          }
-        },
-        "title": "AgentModelRouteRequest",
-        "type": "object"
-      },
-      "AgentModelRouteResponse": {
-        "properties": {
-          "decision": {
-            "additionalProperties": true,
-            "title": "Decision",
-            "type": "object"
-          }
-        },
-        "title": "AgentModelRouteResponse",
-        "type": "object"
-      },
       "AgentModelRouterDecisionListResponse": {
         "properties": {
           "count": {
@@ -14493,49 +14445,6 @@
           }
         ],
         "summary": "Get Agent Model Router Policy"
-      }
-    },
-    "/v1/agent/model-router/route": {
-      "post": {
-        "operationId": "route_agent_model_v1_agent_model_router_route_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentModelRouteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentModelRouteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Route Agent Model"
       }
     },
     "/v1/agent/review-queue": {

@@ -31,8 +31,6 @@ def _messages(messages: list[object]) -> list[object]:
     return _build_prompt_messages(
         "system prompt",
         messages,
-        plan=None,
-        current_step_id="",
         steer_block="",
         policy_note="",
     )

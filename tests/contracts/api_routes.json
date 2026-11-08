@@ -1199,23 +1199,6 @@
       }
     },
     {
-      "method": "POST",
-      "operation_id": "route_agent_model_v1_agent_model_router_route_post",
-      "parameters": [],
-      "path": "/v1/agent/model-router/route",
-      "request": {
-        "$ref": "#/components/schemas/AgentModelRouteRequest"
-      },
-      "responses": {
-        "200": {
-          "$ref": "#/components/schemas/AgentModelRouteResponse"
-        },
-        "422": {
-          "$ref": "#/components/schemas/HTTPValidationError"
-        }
-      }
-    },
-    {
       "method": "GET",
       "operation_id": "list_agent_review_queue_v1_agent_review_queue_get",
       "parameters": [
@@ -7547,46 +7530,6 @@
         "enabled": {
           "default": false,
           "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
-    "AgentModelRouteRequest": {
-      "properties": {
-        "context_size": {
-          "default": 0,
-          "type": "integer"
-        },
-        "role": {
-          "default": "executor",
-          "type": "string"
-        },
-        "selected_model": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "task_text": {
-          "default": "",
-          "type": "string"
-        },
-        "tool_risk": {
-          "default": "low",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "AgentModelRouteResponse": {
-      "properties": {
-        "decision": {
-          "additionalProperties": true,
-          "type": "object"
         }
       },
       "type": "object"

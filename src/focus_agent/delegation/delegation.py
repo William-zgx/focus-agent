@@ -20,7 +20,6 @@ from .delegation_repair import (
     build_review_queue,
     build_self_repair_preview,
 )
-from .delegation_routing import build_model_route_decision
 
 __all__ = [
     "AgentArtifact",
@@ -37,7 +36,6 @@ __all__ = [
     "apply_review_decision",
     "build_agent_delegation_plan",
     "build_failure_records",
-    "build_model_route_decision",
     "build_review_queue",
     "build_self_repair_preview",
 ]
