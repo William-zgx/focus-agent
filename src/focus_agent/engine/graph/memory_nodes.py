@@ -10,12 +10,12 @@ from langgraph.types import interrupt
 
 from focus_agent.config import Settings
 from focus_agent.core.branch_brief import fork_brief_goal_update
+from focus_agent.core.context.engineering import build_context_engineering_decision
 from focus_agent.core.context.policy import assemble_context as build_context_slice
 from focus_agent.core.merge_review_inputs import finding_text
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import AgentState
 from focus_agent.core.types import FindingItem, PromptMode
-from focus_agent.delegation.context_engineering import build_context_engineering_decision
 from focus_agent.engine.graph.tool_history_repair import _latest_human_message_text
 from focus_agent.engine.graph.tool_result_fallback import (
     _context_budget_from_state,

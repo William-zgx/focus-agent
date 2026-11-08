@@ -1,15 +1,22 @@
 import asyncio
+import inspect
 
-from focus_agent.capabilities import ToolRegistry
-from focus_agent.config import Settings
-from focus_agent.harness import HarnessConfig, create_focus_agent
 from focus_agent.harness.subagents import (
-    FakeSubagentRunner,
     SubagentExecutor,
     SubagentTaskRequest,
     SubagentTaskResult,
 )
-from focus_agent.harness.tools import create_subagent_task_tool
+
+
+class _FakeRunner:
+    def __init__(self, handler):
+        self._handler = handler
+
+    async def run(self, request, *, run_record):
+        result = self._handler(request, run_record)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 
 def test_subagent_executor_rejects_when_parallel_limit_is_reached():
@@ -22,7 +29,7 @@ def test_subagent_executor_rejects_when_parallel_limit_is_reached():
             await release.wait()
             return SubagentTaskResult(content="done")
 
-        executor = SubagentExecutor(FakeSubagentRunner(handler), max_parallel=1)
+        executor = SubagentExecutor(_FakeRunner(handler), max_parallel=1)
         first = asyncio.create_task(executor.execute(SubagentTaskRequest("hold")))
         await started.wait()
 
@@ -47,7 +54,7 @@ def test_subagent_executor_returns_success_artifact_and_run_metadata():
                 artifact={"output": {"path": "artifact://task-1"}},
             )
 
-        executor = SubagentExecutor(FakeSubagentRunner(handler))
+        executor = SubagentExecutor(_FakeRunner(handler))
         envelope = await executor.execute(
             SubagentTaskRequest(
                 "write report",
@@ -75,7 +82,7 @@ def test_subagent_executor_converts_runner_error_to_envelope():
         def handler(request, run_record):
             raise RuntimeError("boom")
 
-        executor = SubagentExecutor(FakeSubagentRunner(handler))
+        executor = SubagentExecutor(_FakeRunner(handler))
         envelope = await executor.execute(
             SubagentTaskRequest("explode"),
             tool_call_id="call-error",
@@ -88,47 +95,3 @@ def test_subagent_executor_converts_runner_error_to_envelope():
         assert envelope.artifact["run"]["status"] == "error"
 
     asyncio.run(scenario())
-
-
-def test_task_tool_factory_returns_envelope_payload_with_runtime_metadata():
-    async def scenario():
-        executor = SubagentExecutor(FakeSubagentRunner())
-        task_tool = create_subagent_task_tool(executor)
-
-        payload = await task_tool.ainvoke(
-            {
-                "instruction": "summarize",
-                "thread_id": "thread-tool",
-                "metadata": {"parent": "root"},
-            }
-        )
-
-        assert payload["tool_name"] == "task"
-        assert payload["status"] == "success"
-        assert payload["runtime"]["executor"] == "subagent"
-        assert payload["runtime"]["thread_id"] == "thread-tool"
-        assert payload["artifact"]["run"]["metadata"]["parent"] == "root"
-        assert task_tool.metadata["toolset"] == "subagent"
-
-    asyncio.run(scenario())
-
-
-def test_create_focus_agent_injects_task_tool_when_subagents_enabled(monkeypatch):
-    captured = {}
-
-    def fake_build_graph(**kwargs):
-        captured["tool_registry"] = kwargs["tool_registry"]
-        return object()
-
-    monkeypatch.setattr("focus_agent.engine.graph_builder.build_graph", fake_build_graph)
-    harness = create_focus_agent(
-        HarnessConfig(subagents={"enabled": True, "max_concurrent_subagents": 2}),
-        settings=Settings(),
-        tool_registry=ToolRegistry(tools=()),
-        subagent_executor=SubagentExecutor(FakeSubagentRunner(), max_parallel=2),
-    )
-
-    assert harness.subagent_executor is not None
-    assert harness.subagent_executor.max_parallel == 2
-    assert "task" in captured["tool_registry"].by_name
-    assert captured["tool_registry"].runtime_by_name["task"].toolset == "subagent"

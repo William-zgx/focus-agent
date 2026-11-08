@@ -3,8 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { appEnv } from "@/shared/config/env";
 
 type AppShellWorkspaceSidebarProps = {
-	activeAgentWorkbenchModule:
-		"diagnostics" | "governance" | "memory" | "productivity";
+	activeAgentWorkbenchModule: "diagnostics" | "memory" | "productivity";
 	isAgentWorkbenchShell: boolean;
 	isChineseUi: boolean;
 	pathname: string;
@@ -32,8 +31,8 @@ export function AppShellWorkspaceSidebar({
 				<p>
 					{isAgentWorkbenchShell
 						? isChineseUi
-							? "统一进入协作、诊断和治理，不再切到全屏孤岛。"
-							: "One shell for collaboration, diagnostics, and governance."
+							? "统一进入协作和诊断，不再切到全屏孤岛。"
+							: "One shell for collaboration and diagnostics."
 						: isChineseUi
 							? "管理账号、权限与审计记录。"
 							: "Manage accounts, permissions, and audit records."}
@@ -57,21 +56,6 @@ export function AppShellWorkspaceSidebar({
 								<span>{isChineseUi ? "诊断" : "Diagnostics"}</span>
 								<strong>
 									{isChineseUi ? "Trajectory 健康与复盘" : "Health and review"}
-								</strong>
-							</Link>
-						) : null}
-						{appEnv.features.agentGovernance ? (
-							<Link
-								className={`fa-workspace-sidebar-item ${
-									activeAgentWorkbenchModule === "governance" ? "is-active" : ""
-								}`.trim()}
-								to="/agent/governance"
-							>
-								<span>{isChineseUi ? "治理" : "Governance"}</span>
-								<strong>
-									{isChineseUi
-										? "记忆 / 工具 / 路由"
-										: "Memory / tools / routing"}
 								</strong>
 							</Link>
 						) : null}

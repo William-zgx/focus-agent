@@ -68,16 +68,12 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert "FocusAgentTrajectoryReplayRequest" in types_text
     assert "FocusAgentTrajectoryReplayResponse" in types_text
     assert "FocusAgentTrajectoryPromotionResponse" in types_text
-    assert "FocusAgentDelegationPlanResponse" in types_text
-    assert "FocusAgentModelRouterPolicyResponse" in types_text
-    assert "FocusAgentSelfRepairPromotePreviewResponse" in types_text
-    assert "FocusAgentReviewQueueListResponse" in types_text
     assert "FocusAgentContextPolicyResponse" in types_text
     assert "FocusAgentContextPreviewResponse" in types_text
     assert "FocusAgentContextArtifactListResponse" in types_text
-    assert "FocusAgentTaskLedgerPlanResponse" in types_text
-    assert "FocusAgentArtifactSynthesisResponse" in types_text
-    assert "FocusAgentCriticEvaluateResponse" in types_text
+    assert "FocusAgentCapabilityListResponse" in types_text
+    assert "FocusAgentToolsetListResponse" in types_text
+    assert "FocusAgentArtifactListResponse" in types_text
     assert "FocusAgentBranchActionProposal" in types_text
     assert "FocusAgentBranchActionExecuteResponse" in types_text
     assert "FocusAgentToolApprovalInterrupt" in types_text
@@ -137,15 +133,11 @@ def test_frontend_sdk_files_exist_and_export_core_surfaces():
     assert "getTrajectoryStats" in client_text
     assert "replayTrajectoryTurn" in client_text
     assert "promoteTrajectoryTurn" in client_text
-    assert "planAgentDelegation" in client_text
-    assert "routeAgentModel" in client_text
-    assert "previewAgentSelfRepairPromotion" in client_text
-    assert "listAgentReviewQueue" in client_text
     assert "getAgentContextPolicy" in client_text
     assert "previewAgentContext" in client_text
     assert "listAgentContextArtifacts" in client_text
-    assert "planAgentTaskLedger" in client_text
-    assert "synthesizeAgentArtifacts" in client_text
-    assert "evaluateAgentCriticGate" in client_text
+    assert "listAgentCapabilities" in client_text
+    assert "listAgentToolsets" in client_text
+    assert "listAgentArtifacts" in client_text
     assert "buildTrajectoryQueryString" in client_text
     assert "this.transport.requestJson" in client_text

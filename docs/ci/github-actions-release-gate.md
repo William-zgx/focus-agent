@@ -14,7 +14,7 @@ Every production release job should retain:
 - Deployment-binding validation from `scripts/release_gate.py deployment-binding`
 - `latest.json` from `make release-gate`
 - `reports/release-gate/<release-id>/manifest.json`, `summary.json`, and `release-health.json` from `make release-evidence`
-- Raw deployment signals: `readyz.json`, `trajectory-stats.json`, `replay-comparisons.json`, current eval reports, baseline eval reports, alert report, Postgres migration report, production smoke report, Postgres ops report, OTel smoke report, and Agent governance report
+- Raw deployment signals: `readyz.json`, `trajectory-stats.json`, `replay-comparisons.json`, current eval reports, baseline eval reports, alert report, Postgres migration report, production smoke report, Postgres ops report, and OTel smoke report
 
 The dry-run job retains the corresponding planning report, deterministic sample
 pack, deployment-binding report, and archive under
@@ -24,8 +24,8 @@ deployment signals.
 The production manifest uses `meta.schema_version: 2`. Production evidence is
 fail-closed. It requires approved deployment-platform approval metadata, a
 verified retained copy of the pack, readyz, trajectory stats, replay comparison,
-current eval, baseline eval, release-health, production smoke, Postgres ops,
-OTel smoke, and Agent governance report artifacts. Alert and migration reports
+current eval, baseline eval, release-health, production smoke, Postgres ops, and
+OTel smoke artifacts. Alert and migration reports
 are also release-blocking when supplied by the deployment pipeline.
 
 Every JSON passed to a production `--*-json` option must contain:
@@ -57,10 +57,10 @@ The production binding itself must pass all of these checks:
 - `RELEASE_ENVIRONMENT` is `production` (`prod` canonicalizes to
   `production` in the evidence validator).
 
-Six locally generated report classes attach the timestamp and release binding
+Five locally generated report classes attach the timestamp and release binding
 from this four-variable environment: `production_smoke.py`, `postgres_ops.py`,
-`otel_smoke.py`, `agent_governance_report.py`, eval JSON written by
-`tests.eval.reporting`, and `memory_context_eval.py`. A partial tuple fails
+`otel_smoke.py`, eval JSON written by `tests.eval.reporting`, and
+`memory_context_eval.py`. A partial tuple fails
 before report write. With all four variables absent, ordinary local and generic
 CI report generation remains compatible, but those reports cannot pass
 production evidence validation.
@@ -203,7 +203,6 @@ export POSTGRES_RETENTION_CLEANUP_QUERY="${FOCUS_AGENT_POSTGRES_RETENTION_CLEANU
 export OTEL_ENDPOINT="${FOCUS_AGENT_OTEL_ENDPOINT:?}"
 export OTEL_COLLECTOR_HEALTH_URL="${FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL:?}"
 export OTEL_TRACE_QUERY_URL="${FOCUS_AGENT_OTEL_TRACE_QUERY_URL:?}"
-export GOVERNANCE_REPORT_JSON=reports/agent-governance/latest.json
 
 mkdir -p reports/release-gate
 python scripts/release_gate.py deployment-binding --output "$DEPLOYMENT_BINDING_JSON"
@@ -245,12 +244,12 @@ make production-smoke PRODUCTION_SMOKE_ARGS="--base-url $BASE_URL --web-base-url
 make postgres-ops POSTGRES_OPS_ARGS="--database-uri $DATABASE_URI --backup-command '$POSTGRES_BACKUP_COMMAND' --restore-command '$POSTGRES_RESTORE_COMMAND' --restore-verification-query '$POSTGRES_RESTORE_VERIFICATION_QUERY' --retention-cleanup-query '$POSTGRES_RETENTION_CLEANUP_QUERY' --report-json reports/release-gate/postgres-ops.json"
 make otel-smoke OTEL_SMOKE_ARGS="--endpoint $OTEL_ENDPOINT --collector-health-url $OTEL_COLLECTOR_HEALTH_URL --trace-query-url '$OTEL_TRACE_QUERY_URL' --service-name focus-agent --report-json reports/release-gate/otel-smoke.json"
 
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json ${GOVERNANCE_REPORT_JSON} --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 Only the two live snapshots use `--captured-now`. The static replay, alert,
 migration, baseline, and stream reports must already contain a timezone-aware
-timestamp. Generate standard eval, governance, and memory/context reports after
+timestamp. Generate standard eval and memory/context reports after
 exporting `RELEASE_*` so their writers bind the tuple.
 
 Artifact upload is handled by `actions/upload-artifact@v7`:
@@ -289,7 +288,7 @@ steps:
       - "export DRY_RUN=false ENVIRONMENT_NAME=production APPROVAL_ID=$BUILDKITE_BUILD_ID APPROVAL_STATUS=approved APPROVAL_URL=$BUILDKITE_BUILD_URL RETENTION_DAYS=90 ARTIFACT_STORAGE_DIR=reports/release-gate/archive DEPLOYMENT_BINDING_JSON=reports/release-gate/deployment-binding.json"
       - "export BASE_URL=\"${FOCUS_AGENT_BASE_URL:?}\" READY_URL=\"${FOCUS_AGENT_READY_URL:?}\" TRAJECTORY_STATS_URL=\"${FOCUS_AGENT_TRAJECTORY_STATS_URL:?}\" REPLAY_COMPARISONS_URL=\"${FOCUS_AGENT_REPLAY_COMPARISONS_URL:?}\" ALERT_REPORT_URL=\"${FOCUS_AGENT_ALERT_REPORT_URL:?}\" POSTGRES_MIGRATION_REPORT_URL=\"${FOCUS_AGENT_POSTGRES_MIGRATION_REPORT_URL:?}\" BASELINE_EVAL_REPORT_URL=\"${FOCUS_AGENT_BASELINE_EVAL_REPORT_URL:?}\""
       - "export AUTH_TOKEN=\"${FOCUS_AGENT_SMOKE_AUTH_TOKEN:?}\" STREAM_EVENTS_REPORT_URL=\"${FOCUS_AGENT_STREAM_EVENTS_REPORT_URL:?}\" DATABASE_URI=\"${FOCUS_AGENT_DATABASE_URI:?}\" POSTGRES_BACKUP_COMMAND=\"${FOCUS_AGENT_POSTGRES_BACKUP_COMMAND:?}\" POSTGRES_RESTORE_COMMAND=\"${FOCUS_AGENT_POSTGRES_RESTORE_COMMAND:?}\" POSTGRES_RESTORE_VERIFICATION_QUERY=\"${FOCUS_AGENT_POSTGRES_RESTORE_VERIFICATION_QUERY:?}\" POSTGRES_RETENTION_CLEANUP_QUERY=\"${FOCUS_AGENT_POSTGRES_RETENTION_CLEANUP_QUERY:?}\""
-      - "export OTEL_ENDPOINT=\"${FOCUS_AGENT_OTEL_ENDPOINT:?}\" OTEL_COLLECTOR_HEALTH_URL=\"${FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL:?}\" OTEL_TRACE_QUERY_URL=\"${FOCUS_AGENT_OTEL_TRACE_QUERY_URL:?}\" GOVERNANCE_REPORT_JSON=reports/agent-governance/latest.json"
+      - "export OTEL_ENDPOINT=\"${FOCUS_AGENT_OTEL_ENDPOINT:?}\" OTEL_COLLECTOR_HEALTH_URL=\"${FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL:?}\" OTEL_TRACE_QUERY_URL=\"${FOCUS_AGENT_OTEL_TRACE_QUERY_URL:?}\""
       - "corepack enable"
       - "make install-openai"
       - "make sdk-install"
@@ -315,7 +314,7 @@ steps:
       - "make production-smoke PRODUCTION_SMOKE_ARGS=\"--base-url $BASE_URL --web-base-url $BASE_URL --auth-token $AUTH_TOKEN --stream-events-json reports/release-gate/stream-events.json --report-json reports/release-gate/production-smoke.json\""
       - "make postgres-ops POSTGRES_OPS_ARGS=\"--database-uri $DATABASE_URI --backup-command '$POSTGRES_BACKUP_COMMAND' --restore-command '$POSTGRES_RESTORE_COMMAND' --restore-verification-query '$POSTGRES_RESTORE_VERIFICATION_QUERY' --retention-cleanup-query '$POSTGRES_RETENTION_CLEANUP_QUERY' --report-json reports/release-gate/postgres-ops.json\""
       - "make otel-smoke OTEL_SMOKE_ARGS=\"--endpoint $OTEL_ENDPOINT --collector-health-url $OTEL_COLLECTOR_HEALTH_URL --trace-query-url '$OTEL_TRACE_QUERY_URL' --report-json reports/release-gate/otel-smoke.json\""
-      - "make release-evidence RELEASE_EVIDENCE_ARGS=\"--release-id $RELEASE_ID --commit-sha $RELEASE_COMMIT_SHA --deployment-id $RELEASE_DEPLOYMENT_ID --deployment-version $RELEASE_DEPLOYMENT_VERSION --environment $RELEASE_ENVIRONMENT --max-evidence-age-seconds 21600 --approval-id $APPROVAL_ID --approval-status $APPROVAL_STATUS --approval-url $APPROVAL_URL --retention-days $RETENTION_DAYS --storage-dir $ARTIFACT_STORAGE_DIR --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json $GOVERNANCE_REPORT_JSON --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json\""
+      - "make release-evidence RELEASE_EVIDENCE_ARGS=\"--release-id $RELEASE_ID --commit-sha $RELEASE_COMMIT_SHA --deployment-id $RELEASE_DEPLOYMENT_ID --deployment-version $RELEASE_DEPLOYMENT_VERSION --environment $RELEASE_ENVIRONMENT --max-evidence-age-seconds 21600 --approval-id $APPROVAL_ID --approval-status $APPROVAL_STATUS --approval-url $APPROVAL_URL --retention-days $RETENTION_DAYS --storage-dir $ARTIFACT_STORAGE_DIR --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json\""
     artifact_paths:
       - "reports/release-gate/**/*"
 ```
@@ -368,7 +367,6 @@ export POSTGRES_RETENTION_CLEANUP_QUERY="${FOCUS_AGENT_POSTGRES_RETENTION_CLEANU
 export OTEL_ENDPOINT="${FOCUS_AGENT_OTEL_ENDPOINT:?}"
 export OTEL_COLLECTOR_HEALTH_URL="${FOCUS_AGENT_OTEL_COLLECTOR_HEALTH_URL:?}"
 export OTEL_TRACE_QUERY_URL="${FOCUS_AGENT_OTEL_TRACE_QUERY_URL:?}"
-export GOVERNANCE_REPORT_JSON=reports/agent-governance/latest.json
 
 mkdir -p reports/release-gate
 python scripts/release_gate.py deployment-binding --output "$DEPLOYMENT_BINDING_JSON"
@@ -412,13 +410,13 @@ make production-smoke PRODUCTION_SMOKE_ARGS="--base-url ${BASE_URL} --web-base-u
 make postgres-ops POSTGRES_OPS_ARGS="--database-uri ${DATABASE_URI} --backup-command '${POSTGRES_BACKUP_COMMAND}' --restore-command '${POSTGRES_RESTORE_COMMAND}' --restore-verification-query '${POSTGRES_RESTORE_VERIFICATION_QUERY}' --retention-cleanup-query '${POSTGRES_RETENTION_CLEANUP_QUERY}' --report-json reports/release-gate/postgres-ops.json"
 make otel-smoke OTEL_SMOKE_ARGS="--endpoint ${OTEL_ENDPOINT} --collector-health-url ${OTEL_COLLECTOR_HEALTH_URL} --trace-query-url '${OTEL_TRACE_QUERY_URL}' --report-json reports/release-gate/otel-smoke.json"
 
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id ${RELEASE_ID} --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json ${GOVERNANCE_REPORT_JSON} --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id ${RELEASE_ID} --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id ${APPROVAL_ID} --approval-status ${APPROVAL_STATUS} --approval-url ${APPROVAL_URL} --retention-days ${RETENTION_DAYS} --storage-dir ${ARTIFACT_STORAGE_DIR} --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 Set the four release variables before `make release-gate` so locally generated
-eval and governance reports attest the same identity as smoke/ops/OTel reports.
-Downloaded inputs must pass the trusted capture helper; locally generated eval,
-governance, and memory/context reports attest through their writers. The
+eval reports attest the same identity as smoke/ops/OTel reports.
+Downloaded inputs must pass the trusted capture helper; locally generated eval
+and memory/context reports attest through their writers. The
 evidence builder will not add missing identity or timestamps. Upload
 `reports/release-gate/**/*` with the provider's artifact feature and keep it for
 at least the manifest `retention.days` value. If the provider cannot expose a

@@ -56,7 +56,7 @@ jobs:
               -name 'test_trajectory_failures*.py' \
             \) | sort
           )
-          uv run pytest tests/test_eval_framework.py tests/eval/test_plan_act_reflect.py "${discovered_tests[@]}"
+          uv run pytest tests/test_eval_framework.py "${discovered_tests[@]}"
 
       - name: Run baseline-gated release eval
         run: |

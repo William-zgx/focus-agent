@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import agent_governance_report, otel_smoke, postgres_ops, production_smoke
+from scripts import otel_smoke, postgres_ops, production_smoke
 from tests.eval import reporting as eval_reporting
 from tests.eval.metrics import MetricSummary
 
@@ -62,10 +62,6 @@ def _write_otel_smoke(path: Path) -> None:
     )
 
 
-def _write_agent_governance(path: Path) -> None:
-    agent_governance_report.write_governance_report(path, eval_reports=[])
-
-
 def _write_eval_report(path: Path) -> None:
     eval_reporting.write_json_report(
         path,
@@ -83,7 +79,6 @@ REPORT_WRITERS: tuple[tuple[str, ReportWriter], ...] = (
     ("production_smoke", _write_production_smoke),
     ("postgres_ops", _write_postgres_ops),
     ("otel_smoke", _write_otel_smoke),
-    ("agent_governance", _write_agent_governance),
     ("eval", _write_eval_report),
 )
 

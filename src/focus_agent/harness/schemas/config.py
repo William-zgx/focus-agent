@@ -27,9 +27,7 @@ class RuntimeFeatures(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    planning: bool = True
     memory: RuntimeFeatureSpec = True
-    tool_router: bool = True
     guardrails: bool = False
     loop_detection: bool = True
     summarization: bool = True
@@ -38,17 +36,9 @@ class RuntimeFeatures(BaseModel):
     observability: bool = True
 
     branching: RuntimeFeatureSpec = True
-    plan_act_reflect: RuntimeFeatureSpec = True
     governance: RuntimeFeatureSpec = True
     background_work: RuntimeFeatureSpec = True
-    role_routing: RuntimeFeatureSpec = False
-    tool_routing: RuntimeFeatureSpec = False
-    delegation: RuntimeFeatureSpec = False
-    model_routing: RuntimeFeatureSpec = False
     context_engineering_v2: RuntimeFeatureSpec = False
-    task_ledger: RuntimeFeatureSpec = False
-    artifact_synthesis: RuntimeFeatureSpec = False
-    critic_gate: RuntimeFeatureSpec = False
     custom: dict[str, RuntimeFeatureSpec] = Field(default_factory=dict)
 
     @field_validator("memory", "streaming", mode="before")
@@ -65,26 +55,16 @@ class RuntimeFeatures(BaseModel):
         """Build feature switches from a Focus Agent ``Settings``-like object."""
 
         delegation = bool(getattr(settings, "agent_delegation_enabled", False))
-        tool_routing = bool(getattr(settings, "agent_tool_router_enabled", False))
         return cls(
             memory=bool(getattr(settings, "agent_memory_backend", "")),
-            tool_router=tool_routing,
             subagents=delegation,
             branching=True,
-            plan_act_reflect=bool(getattr(settings, "plan_act_reflect_enabled", True)),
             governance=True,
             streaming=True,
             background_work=True,
-            role_routing=bool(getattr(settings, "agent_role_routing_enabled", False)),
-            tool_routing=tool_routing,
-            delegation=delegation,
-            model_routing=bool(getattr(settings, "agent_model_router_enabled", False)),
             context_engineering_v2=bool(
                 getattr(settings, "agent_context_engineering_v2_enabled", False)
             ),
-            task_ledger=bool(getattr(settings, "agent_task_ledger_enabled", False)),
-            artifact_synthesis=bool(getattr(settings, "agent_artifact_synthesis_enabled", False)),
-            critic_gate=bool(getattr(settings, "agent_critic_gate_enabled", False)),
         )
 
     def enabled(self, name: str) -> bool:
@@ -126,11 +106,6 @@ class SubagentConfig(BaseModel):
 
     enabled: bool = False
     max_concurrent_subagents: int = Field(default=3, ge=1)
-    # Process isolation is opt-in; in-process execution requires an injected executor.
-    use_process_isolation: bool = False
-    cli_entry_point: str = "focus-agent"
-    process_timeout_seconds: float = Field(default=300.0, ge=1.0)
-    graceful_shutdown_seconds: float = Field(default=5.0, ge=0.0)
 
 
 class HarnessConfig(BaseModel):
@@ -167,7 +142,6 @@ class HarnessConfig(BaseModel):
     extension_dirs: list[str] = Field(default_factory=list)
     enable_permission_system: bool = True
     doom_loop_threshold: int = Field(default=3, ge=1)
-    enable_system_agents: bool = True
     agent_definition_dirs: list[str] = Field(default_factory=list)
 
     @classmethod

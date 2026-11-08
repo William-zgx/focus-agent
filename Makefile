@@ -1,4 +1,4 @@
-.PHONY: help venv install install-openai install-anthropic install-mcp setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke agent-governance-report sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity clean
+.PHONY: help venv install install-openai install-anthropic install-mcp setup-local serve serve-dev serve-prod api dev test test-graph-builder test-chat-service test-thread-stream-frontend-regressions lint lint-strict import-sort-check format format-check check ci ci-test contract-check openapi-export sdk-generate-types sdk-openapi-types-check architecture-report architecture-gate compat-report compat-gate release-gate release-evidence ci-release-gate ci-release-evidence nightly-regression feedback-regression production-smoke postgres-ops otel-smoke sdk-install sdk-check sdk-build sdk-validate-transport web-install web-dev web-check web-build web-lint web-lint-full web-format web-format-check web-format-check-full frontend-check frontend-check-full frontend-style-check frontend-android-runtime-smoke frontend-bundle-check frontend-qa frontend-visual-qa frontend-build docker-up docker-rebuild docker-restart docker-logs sandbox-image ui-smoke ui-smoke-observability ui-smoke-productivity clean
 
 UV ?= uv
 PYTHON ?= .venv/bin/python
@@ -210,9 +210,6 @@ postgres-ops: .venv/bin/python
 
 otel-smoke: .venv/bin/python
 	$(PYTHON) scripts/otel_smoke.py $(OTEL_SMOKE_ARGS)
-
-agent-governance-report: .venv/bin/python
-	$(PYTHON) scripts/agent_governance_report.py $(AGENT_GOVERNANCE_REPORT_ARGS)
 
 sdk-install: node_modules
 

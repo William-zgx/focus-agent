@@ -19,9 +19,8 @@ Status meanings:
 
 | Capability | Runtime status | Tool coverage | Prompt coverage | Eval coverage | Notes |
 | --- | --- | --- | --- | --- | --- |
-| planning | partial / flag-gated | delegation planner | registry introduced | agent architecture and delegation checks | Delegation planning and role/model/tool routing exist; retained multi-agent coordination remains flag-gated (`MULTI_AGENT_V2_ENABLED` default false). |
 | execution | implemented core / partial durable | workspace commands and declared Skill entrypoints | registry introduced | sandbox/tool/skill contract checks | `SandboxExecutionService` routes Docker or explicit local fallback. Generic active harness execution is still process-local; durable background worker is conditional. |
-| critic | partial / flag-gated | governance/review tools | registry introduced | governance/review checks | Versioned merge-review prompt and governance records exist; automatic critic execution is not the default turn path. |
+| review | partial / flag-gated | branch merge review | registry introduced | merge review tests | Versioned merge-review prompt and branch merge review remain. |
 | memory | implemented canonical / partial semantic index | memory save/search/forget | registry introduced | memory, memory_context, retrieval, and embedding-path tests | PostgreSQL `focus_memories` is canonical. Embedding and Zvec are best-effort/conditional; async embedding defaults on and falls back to FTS/ILIKE when provider or index is unavailable. |
 | retrieval_rag | implemented fallback / conditional Zvec | memory, artifact, workspace search | retrieval expansion | retrieval expansion and tool tests | Zvec is rebuildable and must hydrate canonical data; its adapter/provider can be unavailable, in which case PostgreSQL/filesystem fallback remains authoritative. |
 | skill_scout | partial | Skill registry, search, refresh, install | registry introduced | skill hints in eval schema | Registry and Admin controls are wired; semantic matching is optional and does not imply that a listed Skill's external dependencies are installed. |
@@ -32,10 +31,9 @@ Status meanings:
 | approval_resume | partial / flag-gated | synchronous graph interrupt and v2 approval queue | N/A | approval queue/governance checks | In-memory and Postgres approval records exist. Queue decisions do not automatically replay a returned graph; public async resume executor wiring is not complete. |
 | external_connections | partial public web / planned connectors | `web_search` and guarded public `web_fetch` | N/A | web policy/transport checks | Builtin web retrieval is implemented. MCP client/lifecycle, browser/computer control, and account-backed connector sessions remain reserved boundaries; Skill inventory alone does not provide them. |
 | result_verification | partial / policy-specific | execution contract and evidence ledger | live-web/Skill policies | execution-contract checks | General implementation tasks do not yet have a common environment verifier; policies other than `live_web_research` and `skill_execution` return `not_required`. |
-| task_budget | declared / partial enforcement | AgentBudget and delegation task planning | task planning fields | runner/round-limit checks | Delegation and task planning can declare budgets, but the retained generic runtime does not fully enforce declared per-task LLM/tool/cost/deadline budgets. This is separate from context-window limits. |
 | context_budget | implemented guard / partial exactness | context preview/compact endpoints and prompt guard | budget metadata in prompt assembly | context-window and context-quality checks | 128k default budget, usage meter and manual compaction are wired. Automatic compaction runs before non-streaming ChatService turns and after completed turns; the V2 streaming path has no pre-send compaction. Default `chars_fallback` is an estimate, not provider-exact token accounting. |
 | memory_revision | partial | memory audit/forget/evidence refs | memory retrieval plan | memory service/repository checks | Canonical memory merge updates the same record; audit events are append-only and current records retain/union evidence refs, but there is no immutable `MemoryRecord` revision chain. |
-| feedback_loop | partial | governance feedback capture/trend APIs | feedback is evidence, not automatic prompt/model mutation | feedback and retrieval indexing checks | Feedback events and governance-feedback indexing exist. Closing the loop into policy, prompt, model routing, or retrieval weights remains explicit/manual rather than automatic. |
+| feedback_loop | partial | governance feedback capture/trend APIs | feedback is evidence, not automatic prompt/model mutation | feedback and retrieval indexing checks | Feedback events and governance-feedback indexing exist. Closing the loop into policy, prompt, model selection, or retrieval weights remains explicit/manual rather than automatic. |
 
 Code anchors for the status above:
 
@@ -43,7 +41,6 @@ Code anchors for the status above:
 - Approval queue: [`approval_queue.py`](../../src/focus_agent/multi_agent/approval_queue.py).
 - Canonical memory merge and embedding shadow: [`models.py`](../../src/focus_agent/memory/models.py), [`service.py`](../../src/focus_agent/memory/service.py), and [`postgres_memory_repository.py`](../../src/focus_agent/repositories/postgres_memory_repository.py).
 - Context budget and feedback surfaces: [`context_usage.py`](../../src/focus_agent/context_usage.py), [`agent_governance.py`](../../src/focus_agent/api/routers/agent_governance.py), and [`governance_feedback.py`](../../src/focus_agent/retrieval/governance_feedback.py).
-- Result verification and task budgets: [`graph/execution_contract.py`](../../src/focus_agent/engine/graph/execution_contract.py) and [`delegation_models.py`](../../src/focus_agent/delegation/delegation_models.py).
 
 Frozen contracts:
 

@@ -11,8 +11,6 @@ const defaultRoutes = [
 	"/c/demo-conversation/t/demo-thread/review",
 	"/observability/overview",
 	"/observability/trajectory",
-	"/agent/roles",
-	"/agent/governance",
 	"/agent/memory",
 	"/productivity/notes",
 	"/productivity/tasks",

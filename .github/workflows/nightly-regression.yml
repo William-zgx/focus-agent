@@ -167,9 +167,6 @@ jobs:
             --report-jsonl reports/nightly/eval-trajectory-failures.jsonl \
             --report-html reports/nightly/eval-trajectory-failures.html
 
-      - name: Build Agent governance quality report
-        run: make agent-governance-report
-
       - name: Ensure nightly trend history directory
         if: always()
         run: mkdir -p reports/nightly/history
@@ -188,7 +185,6 @@ jobs:
           name: nightly-regression-${{ github.run_id }}
           path: |
             reports/nightly/
-            reports/agent-governance/
             reports/release-gate/memory-context-*.json
             reports/nightly/memory-context-*.jsonl
             reports/nightly/trajectory-replay*.json*

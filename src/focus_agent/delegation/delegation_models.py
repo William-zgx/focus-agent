@@ -10,16 +10,6 @@ from .roles import AgentRole
 
 AgentRunStatus = Literal["planned", "running", "completed", "failed", "skipped", "needs_review"]
 AgentDecisionKind = Literal["route", "delegate", "retry", "deny", "approve", "reject"]
-AgentFailureType = Literal[
-    "planning_gap",
-    "tool_denied",
-    "forbidden_tool_attempt",
-    "memory_scope_violation",
-    "critic_rejected",
-    "model_protocol_error",
-    "budget_exceeded",
-]
-ReviewItemStatus = Literal["pending", "approved", "rejected"]
 
 
 class AgentBudget(StateModel):
@@ -97,60 +87,14 @@ class AgentDelegationPlan(StateModel):
     skipped_reason: str = ""
 
 
-class ModelRouteDecision(StateModel):
-    enabled: bool = False
-    mode: Literal["observe", "enforce"] = "observe"
-    role: AgentRole = AgentRole.EXECUTOR
-    selected_model: str
-    recommended_model: str
-    effective_model: str
-    route_reason: str = ""
-    fallback_used: bool = False
-    candidates: list[str] = Field(default_factory=list)
-
-
-class AgentFailureRecord(StateModel):
-    failure_id: str
-    failure_type: AgentFailureType
-    failed_role: AgentRole
-    failed_task_id: str | None = None
-    tool_route_plan: dict[str, Any] = Field(default_factory=dict)
-    memory_scope: str = "thread"
-    model_id: str | None = None
-    trajectory_id: str | None = None
-    message: str = ""
-
-
-class AgentReviewItem(StateModel):
-    item_id: str
-    item_type: str
-    status: ReviewItemStatus = "pending"
-    role: AgentRole | None = None
-    task_id: str | None = None
-    summary: str = ""
-    payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentSelfRepairPreview(StateModel):
-    enabled: bool = False
-    candidates: list[dict[str, Any]] = Field(default_factory=list)
-    failures: list[AgentFailureRecord] = Field(default_factory=list)
-
-
 __all__ = [
     "AgentArtifact",
     "AgentBudget",
     "AgentDecision",
     "AgentDecisionKind",
     "AgentDelegationPlan",
-    "AgentFailureRecord",
-    "AgentFailureType",
-    "AgentReviewItem",
     "AgentRun",
     "AgentRunStatus",
-    "AgentSelfRepairPreview",
     "AgentTask",
     "DelegationExecutionMode",
-    "ModelRouteDecision",
-    "ReviewItemStatus",
 ]

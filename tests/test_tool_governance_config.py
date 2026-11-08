@@ -51,7 +51,7 @@ timeout_seconds = 2.5
     assert "hooks" not in catalog.generic_metadata_overlays
 
     components = _build_new_components(
-        HarnessConfig(enable_extensions=False, enable_system_agents=False),
+        HarnessConfig(enable_extensions=False),
         tool_catalog=catalog,
     )
     manager = components["permission_manager"]
@@ -74,7 +74,7 @@ def test_empty_catalog_keeps_default_allow_all(tmp_path) -> None:
     catalog = load_tool_catalog_document(path)
 
     manager = _build_new_components(
-        HarnessConfig(enable_extensions=False, enable_system_agents=False),
+        HarnessConfig(enable_extensions=False),
         tool_catalog=catalog,
     )["permission_manager"]
     action, _ = manager.check_permission(PermissionRequest(id="request", tool_name="any_tool"))
@@ -87,7 +87,7 @@ def test_empty_catalog_keeps_default_allow_all(tmp_path) -> None:
 
 def test_default_components_without_catalog_keep_default_allow_all() -> None:
     manager = _build_new_components(
-        HarnessConfig(enable_extensions=False, enable_system_agents=False),
+        HarnessConfig(enable_extensions=False),
         tool_catalog=ToolCatalogConfig(),
     )["permission_manager"]
 

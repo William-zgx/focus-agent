@@ -68,12 +68,6 @@ export function isAgentWorkbenchPath(pathname: string) {
 	) {
 		return true;
 	}
-	if (
-		appEnv.features.agentGovernance &&
-		(pathname === "/agent/governance" || pathname === "/agent/roles")
-	) {
-		return true;
-	}
 	return appEnv.features.agentMemory && pathname === "/agent/memory";
 }
 

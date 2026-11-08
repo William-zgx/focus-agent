@@ -5,8 +5,7 @@
 This document is the canonical guide for Focus Agent branch decision records,
 pre-turn branch recommendations, and user-confirmed Branch Actions. Branch
 lifecycle, tree rendering, and merge-back details stay in
-[architecture.md](architecture.md); broader governance flags stay in
-[agent-role-routing.md](agent-role-routing.md); streaming event rules stay in
+[architecture.md](architecture.md); streaming event rules stay in
 [streaming-contract.md](streaming-contract.md).
 
 ## 1. Purpose

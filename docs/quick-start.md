@@ -78,8 +78,6 @@ Open:
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent/memory`
-- `http://127.0.0.1:8000/app/agent/roles`
-- `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
@@ -456,7 +454,6 @@ end-to-end pass. For the complete local evidence path, see
 
 - [Memory System v2](memory-system-v2.md)
 - [Branch Decisions](branch-decisions.md)
-- [Agent Governance](agent-role-routing.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)

@@ -49,7 +49,6 @@ export function AppShell({ children }: PropsWithChildren) {
 		conversationId,
 		threadId,
 		isAdminShell,
-		isAgentGovernanceRoute,
 		isAgentMemoryRoute,
 		isAgentWorkbenchShell,
 		isChatRoute,
@@ -63,7 +62,6 @@ export function AppShell({ children }: PropsWithChildren) {
 	} = useShellRouteState();
 	const { activeAgentWorkbenchModule, chatNavTarget } = useShellNavTargets({
 		conversationId,
-		isAgentGovernanceRoute,
 		isAgentMemoryRoute,
 		isObservabilityRoute,
 		isProductivityRoute,

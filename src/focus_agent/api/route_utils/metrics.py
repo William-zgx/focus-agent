@@ -148,16 +148,6 @@ def _agent_governance_metric_lines(metrics: dict[str, int]) -> list[str]:
         _prometheus_metric_line(
             "focus_agent_memory_conflict_count", int(metrics.get("memory_conflicts") or 0)
         ),
-        "# HELP focus_agent_tool_router_denied_count Total denied tools observed in tool_route_plan records.",
-        "# TYPE focus_agent_tool_router_denied_count gauge",
-        _prometheus_metric_line(
-            "focus_agent_tool_router_denied_count", int(metrics.get("tool_router_denied") or 0)
-        ),
-        "# HELP focus_agent_tool_router_enforced_count Total enforced tool_route_plan records.",
-        "# TYPE focus_agent_tool_router_enforced_count gauge",
-        _prometheus_metric_line(
-            "focus_agent_tool_router_enforced_count", int(metrics.get("tool_router_enforced") or 0)
-        ),
         "# HELP focus_agent_tool_intent_direct_answer_count Tool intent plans classified as direct_answer.",
         "# TYPE focus_agent_tool_intent_direct_answer_count gauge",
         _prometheus_metric_line(

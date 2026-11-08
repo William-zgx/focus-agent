@@ -47,10 +47,8 @@ flowchart LR
 - Confirm alert guidance uses the existing `/metrics` endpoint and current metric names
 - Confirm Memory v2 and Zvec retrieval docs match the live PostgreSQL canonical store, `retrieval_zvec` readiness, pgvector fallback readiness, memory API authorization, forget tombstone/erasure behavior, and Memory Console fields
 - Confirm runtime coordination docs match thread turn lease behavior, durable background job claim heartbeat, and first-turn branch title/metadata refresh after lease release
-- Confirm Agent governance expectations still match `docs/agent-role-routing.md`, `/v1/agent/*`, and `/app/agent/governance`
-- If Agent governance changed, confirm `/v1/agent/capabilities`, `/v1/agent/tool-router/*`, `/v1/agent/memory/curator/*`, and `/app/agent/governance`
-- If Context Engineering changed, confirm `/v1/agent/context/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_context.jsonl`
-- If Task Ledger changed, confirm `/v1/agent/task-ledger/*`, `/v1/agent/artifacts`, `/v1/agent/critic/*`, `/app/agent/governance`, and `tests/eval/datasets/agent_task_ledger.jsonl`
+- Confirm retained Agent API expectations match `/v1/agent/capabilities`, `/v1/agent/toolsets`, Skill catalog/selection/preference routes, `/v1/agent/memory/curator/*`, `/v1/agent/context/*`, `GET /v1/agent/artifacts`, and `GET /v1/agent/feedback/trend`
+- If Context Engineering changed, confirm `/v1/agent/context/*` and `tests/eval/datasets/agent_context.jsonl`
 
 ## Configuration Review
 
@@ -115,8 +113,7 @@ uv run python -m tests.eval --suite observability --concurrency 1 --report-json 
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1 --report-json reports/release-gate/eval-golden-multi-agent.json
 uv run python -m tests.eval --suite harness_stability --concurrency 1 --report-json reports/release-gate/eval-harness-stability.json
 uv run python scripts/memory_context_eval.py --report-json reports/release-gate/memory-context-eval.json
-uv run python scripts/agent_governance_report.py --report-json reports/agent-governance/latest.json
-uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --governance-report-json reports/agent-governance/latest.json --report-json reports/release-gate/release-health.json
+uv run python scripts/release_health_check.py --mode local --ready-url http://127.0.0.1:8000/readyz --trajectory-stats-url http://127.0.0.1:8000/v1/observability/trajectory/stats --allow-self-check-fallback --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --report-json reports/release-gate/release-health.json
 ```
 
 Additional manual preflights:
@@ -138,7 +135,7 @@ focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 - `scripts/feedback_regression.py` summarizes online feedback and adoption/governance signals into `reports/nightly/feedback-regression.json`. It is non-blocking when no production feedback artifact exists, but nightly reports must include its `feedback_pipeline` when events are provided.
 - `focus-agent-retrieval-index doctor` is the Zvec release preflight. Include its output as release evidence when Zvec is enabled; it should show backend, data dir, collection/readiness status, and fallback backend without exposing vectors.
 - `focus-agent-memory-embedding doctor` is the memory embedding/pgvector fallback preflight. Include its JSON output as release evidence when PostgreSQL memory embedding or pgvector fallback is enabled; it should show provider readiness, table dimension compatibility, extension status, and vector index state without exposing API keys or vector values.
-- `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, Agent governance quality, baseline eval reports, and current eval JSON reports into release-blocking health signals. Current release-blocking eval reports include smoke, observability, golden multi-agent, harness stability, and memory/context. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real production inputs. Missing required inputs fail closed with exit code 1. `--allow-dry-run-reports` is only a deliberate diagnostic escape hatch for direct health-check runs; it is not part of the canonical production evidence workflow.
+- `scripts/release_health_check.py` converts readiness, trajectory stats, replay comparison rows, alert-rule reports, Postgres migration reports, production smoke, Postgres ops, OTel smoke, baseline eval reports, and current eval JSON reports into release-blocking health signals. Current release-blocking eval reports include smoke, observability, golden multi-agent, harness stability, and memory/context. `make release-gate` intentionally runs `--mode local` with `--allow-self-check-fallback` so local dry runs can complete when the API is down. Production release jobs must use `--mode production`, remove the fallback, and pass real production inputs. Missing required inputs fail closed with exit code 1. `--allow-dry-run-reports` is only a deliberate diagnostic escape hatch for direct health-check runs; it is not part of the canonical production evidence workflow.
 - Without `--dry-run`, `make release-evidence` builds a production manifest whose `meta.schema_version` is `2`. Run it only after collecting the production deployment signals. The pack is written to `reports/release-gate/<release-id>/` and includes artifact hashes, artifact/failure summaries, release health, approval metadata, retention metadata, release identity validation, freshness validation, and storage verification.
 - CI provider binding lives in `docs/ci/github-actions-release-gate.md` and `.github/workflows/release-gate.yml`. Keep provider-specific approval metadata, artifact upload, retention, and generic CI command skeletons in that CI document; this checklist only records the release-blocking evidence that must be present before tagging.
 
@@ -159,10 +156,10 @@ Production evidence is fail-closed and is separate from `--dry-run` planning:
   when their response has no timestamp. Replay comparison, alert, Postgres
   migration, baseline eval, and static stream-event reports must supply their
   own timestamp.
-- Six locally generated report classes attest from the four `RELEASE_*`
+- Five locally generated report classes attest from the four `RELEASE_*`
   variables: `production_smoke.py`, `postgres_ops.py`, `otel_smoke.py`,
-  `agent_governance_report.py`, eval reports written through
-  `tests.eval.reporting`, and `memory_context_eval.py`. These writers add a
+  eval reports written through `tests.eval.reporting`, and
+  `memory_context_eval.py`. These writers add a
   timezone-aware `generated_at` and complete `release_binding`; if only part of
   the tuple is set, a non-dry-run writer refuses to write the report. With all
   four variables absent, ordinary local and generic CI reports remain valid but
@@ -181,7 +178,7 @@ the workflow before production smoke or evidence assembly.
 After the production reports have been generated under the bound environment, build the pack with explicit identity arguments:
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id <approval-id> --approval-status approved --approval-url <approval-url> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --commit-sha ${RELEASE_COMMIT_SHA} --deployment-id ${RELEASE_DEPLOYMENT_ID} --deployment-version ${RELEASE_DEPLOYMENT_VERSION} --environment ${RELEASE_ENVIRONMENT} --max-evidence-age-seconds 21600 --approval-id <approval-id> --approval-status approved --approval-url <approval-url> --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 Nightly and production smoke entrypoints:
@@ -194,7 +191,6 @@ uv run python -m tests.eval --suite trajectory_failures --concurrency 1 --report
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-make agent-governance-report
 ```
 
 Schema v19 migration evidence:
@@ -217,7 +213,6 @@ export RELEASE_ENVIRONMENT="production"
 make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --web-base-url https://focus-agent.example.com --auth-token <token> --stream-events-json reports/release-gate/stream-events.json --rate-limit-min-limit 1 --report-json reports/release-gate/production-smoke.json"
 make postgres-ops POSTGRES_OPS_ARGS="--database-uri postgresql://user:pass@host:5432/focus_agent --backup-command 'pg_dump --format=custom --file=/tmp/focus-agent.dump postgresql://user:pass@host:5432/focus_agent' --restore-command 'pg_restore --dbname=postgresql://user:pass@restore-host:5432/focus_agent_verify /tmp/focus-agent.dump' --restore-verification-query 'SELECT 1' --retention-cleanup-query 'SELECT 1' --report-json reports/release-gate/postgres-ops.json"
 make otel-smoke OTEL_SMOKE_ARGS="--endpoint http://otel-collector:4318 --collector-health-url http://otel-collector:13133/healthz --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' --report-json reports/release-gate/otel-smoke.json"
-make agent-governance-report AGENT_GOVERNANCE_REPORT_ARGS="--report-json reports/agent-governance/latest.json --max-review-queue-backlog 10 --max-avg-cost-usd 0.05"
 ```
 
 Set the tuple before generating any production report, including eval reports.

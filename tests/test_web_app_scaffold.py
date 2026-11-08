@@ -96,9 +96,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
 
     router_text = (web_root / "src" / "app" / "router.tsx").read_text()
     assert "ThreadPage" in router_text
-    assert "AgentRoleConsolePage" in router_text
-    assert 'path: "/agent/roles"' in router_text
-    assert 'path: "/agent/governance"' in router_text
     assert 'path: "/auth"' in router_text
     assert 'path: "/auth/login"' in router_text
     assert 'path: "/auth/register"' in router_text
@@ -171,8 +168,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "lastAdminTarget" not in app_shell_text
     assert 'pathname === "/observability/overview"' in app_shell_text
     assert 'pathname === "/observability/trajectory"' in app_shell_text
-    assert 'pathname === "/agent/governance"' in app_shell_text
-    assert 'pathname === "/agent/roles"' in app_shell_text
     assert "isDiagnosticsRoute" not in app_shell_text
     assert "const chatNavLabel" in app_shell_text
     assert "const productivityNavLabel" in app_shell_text
@@ -194,7 +189,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert '"fa-workspace-sidebar"' in app_shell_text
     assert "isChatShell ? (" in app_shell_text
     assert 'to="/observability/overview"' in app_shell_text
-    assert 'to="/agent/governance"' in app_shell_text
     assert 'to="/admin/config"' in app_shell_text
     assert 'to="/admin/users"' in app_shell_text
     assert 'to="/admin/audit-events"' in app_shell_text
@@ -255,35 +249,9 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "fa-admin-page-bar" in admin_heading_text
     assert "系统管理 / 治理" in admin_heading_text
 
-    agent_console_text = _join_text(
-        web_root / "src" / "pages" / "agents" / "agent-role-console-page.tsx",
-        web_root / "src" / "pages" / "agents" / "agent-role-console-hooks.ts",
-        web_root / "src" / "pages" / "agents" / "agent-role-console-policy-panels.tsx",
-        web_root / "src" / "pages" / "agents" / "agent-role-console-preview-panels.tsx",
-        web_root / "src" / "pages" / "agents" / "agent-role-console-trajectory-panels.tsx",
-        web_root / "src" / "pages" / "agents" / "agent-role-console-view-model.ts",
-    )
-    assert "Delegation Runs" in agent_console_text
-    assert 'to="/observability/overview"' not in agent_console_text
-    assert 'to="/agent/governance"' not in agent_console_text
-    assert "Model Router" in agent_console_text
-    assert "Self Repair" in agent_console_text
-    assert "Review Queue" in agent_console_text
-    assert "Context Engineering v2" in agent_console_text
-    assert "Task Ledger" in agent_console_text
-    assert "Delegated Artifacts" in agent_console_text
-    assert "Critic Gate" in agent_console_text
-    assert "listAgentDelegationRuns" in agent_console_text
-    assert "previewAgentContext" in agent_console_text
-    assert "listAgentContextArtifacts" in agent_console_text
-    assert "planAgentTaskLedger" in agent_console_text
-    assert "listAgentArtifacts" in agent_console_text
-
     query_keys_text = (web_root / "src" / "shared" / "query" / "query-keys.ts").read_text()
-    assert "agentContextPolicy" in query_keys_text
-    assert "agentContextArtifacts" in query_keys_text
-    assert "agentTaskLedgerPolicy" in query_keys_text
-    assert "agentCriticVerdicts" in query_keys_text
+    assert "agentContextPolicy" not in query_keys_text
+    assert "agentContextArtifacts" not in query_keys_text
 
     stream_hook_text = (
         web_root / "src" / "features" / "thread-stream" / "use-thread-stream.ts"

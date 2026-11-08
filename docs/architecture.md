@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-11-07；新增 `AGENT_CORE=v2` 模型驱动主路径（默认仍为 v1）。2026-11-05 已按 `simplify/repo-cleanup` 后的源码布局校正路径、图节点和计数，历史验收范围保持原报告口径。
+更新时间：2026-11-08；默认聊天仅使用 `AGENT_CORE=v2` 模型驱动 tool loop。2026-11-05 已按 `simplify/repo-cleanup` 后的源码布局校正路径、图节点和计数，历史验收范围保持原报告口径。
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径。
 
@@ -8,7 +8,6 @@
 [project-overview.md](project-overview.md)。深入专题请跳转到对应 canonical 文档：
 
 - Project positioning / scale：[project-overview.md](project-overview.md)
-- Agent governance：[agent-role-routing.md](agent-role-routing.md)
 - Branch decisions / recommendations：[branch-decisions.md](branch-decisions.md)
 - Auth / Access：[auth-access.md](auth-access.md)
 - Admin Console：[admin-console.md](admin-console.md)
@@ -28,7 +27,7 @@
 
 Focus Agent 是一个 **自托管、Web-first 的 branch-aware Agent 工作台与平台参考实现**。
 它已经超过单一 agent demo 或最小 starter 的范围，当前覆盖分支式会话、流式响应、
-受控 merge-back、记忆治理、工具调用、可观测复盘、多 Agent 治理与委派、Admin 运维、
+受控 merge-back、记忆治理、工具调用、可观测复盘、Admin 运维、
 发布/eval 证据链、TypeScript SDK，以及可选的 Android 本地 runtime。
 
 按代码体量，应按 **中型 monorepo 平台** 维护（约 499 个 Python 模块 / ~11.3 万行后端、
@@ -43,7 +42,7 @@ OpenAPI 129 paths、compat baseline 68 项），而不是“轻量脚手架”�
 | Controlled merge-back | 分支结论通过 proposal / merge review 回到主线 | merge review、imported findings、memory promotion |
 | Long-context governance | 对话、记忆、工具观察和 artifact 需要预算与引用 | context policy、Context Engineering |
 | Retrieval / RAG | 记忆、artifact、Skill、trajectory、branch context 和 workspace code/docs 需要统一候选检索 | `RetrievalIndex`、Zvec adapter、Postgres/filesystem canonical hydrate |
-| Tool and skill governance | 工具能力按任务意图和角色收紧 | tool registry、tool runtime、tool router、skill registry |
+| Tool and skill governance | 模型在配置暴露的工具集合中选择调用；声明式权限与审批边界约束执行 | tool registry、tool runtime、permission manager、skill registry |
 | Traceable execution | 不只保存最终回答，还保存工具、模型、缓存、fallback 和治理元数据 | trajectory repository、observability API、Web workbench |
 | Release confidence | 发布前把 readiness、trajectory、eval、feedback、alert、Postgres migration 和 evidence pack 汇总为阻断信号 | release gate、release-health、nightly regression、release evidence |
 | Access and admin governance | 登录、注册、refresh session、持久化用户、角色、状态、密码重置和审计事件统一治理 | auth service、user repository、Auth / Admin API、Auth / Account / Admin Web |
@@ -71,7 +70,7 @@ flowchart LR
     API --> HarnessRoutes["Harness Runs APIs"]
     API --> ChatRoutes["Conversation / Context APIs"]
     API --> Branch["BranchService"]
-    API --> Governance["Agent Governance APIs"]
+    API --> AgentAPIs["Retained Agent APIs"]
     API --> Decision["Branch Decision APIs"]
     API --> Admin["Admin APIs"]
     API --> Obs["Observability APIs"]
@@ -108,11 +107,11 @@ flowchart LR
 | 路径 | 责任 |
 |------|------|
 | `src/focus_agent/api/` | FastAPI app、contracts、contract models、route utils、deps、middleware、errors |
-| `src/focus_agent/api/routers/` | 按域拆分的路由：harness runs、branches、branch decisions、agent governance、admin、auth、memory、productivity、observability 等 |
+| `src/focus_agent/api/routers/` | 按域拆分的路由：harness runs、branches、branch decisions、retained agent APIs、admin、auth、memory、productivity、observability 等 |
 | `src/focus_agent/api/streaming/` | SSE response helper 和公共 streaming response headers |
 | `src/focus_agent/config_parts/` | Settings 子域加载、模型/工具 catalog TOML 解析、环境变量与安全校验 |
 | `src/focus_agent/defaults/` | 包内默认配置数据；当前内置模型 provider/model catalog 只维护在 `models.toml` |
-| `src/focus_agent/engine/` | `AppRuntime` 创建、LangGraph 图（`graph/builder.py`；`graph_builder.py` 仅为兼容 shim）、`graph/` 下的 node/policy/tool execution helpers、模型工厂、本地 fallback persistence |
+| `src/focus_agent/engine/` | `AppRuntime` 创建、v2 LangGraph 图（`loop/builder.py`；`graph_builder.py` 为统一入口）、`loop/` 与 `graph/` 下的共享 node/policy/tool execution helpers、模型工厂、本地 fallback persistence |
 | `src/focus_agent/harness/` | FocusAgentHarness、RunManager、stream bridge、middleware stack、subagents、run journal |
 | `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review；共享小工具 `message_utils.py`（消息类型判断、`clip_text`）、`time_utils.py`（`utc_now*`）、`coercion.py` |
 | `src/focus_agent/services/` | ChatService、BranchService、UserService、ProductivityService 等 API-facing 业务服务；实现优先在 `services/chat/`、`services/branches/` 等 package |
@@ -120,12 +119,11 @@ flowchart LR
 | `src/focus_agent/branch_decision/` | branch decision / pre-turn recommendation 的 signal collection、scoring 和 service |
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema（`SCHEMA_VERSION`）、trajectory、artifact metadata；Postgres 仓储共用 `_postgres_base.py` 的 `PostgresMixin`（构造、连接池/直连、`decode_json_payload`） |
 | `src/focus_agent/runtime/` | 运行时共享工具：进程级共享线程池、关闭钩子（`lifecycle.py`）、HTTP client、`ModelRouter`、secret provider |
-| `src/focus_agent/cli/` | 命令行入口：`task.py`、`demo.py`、`memory_embedding.py`、`retrieval_index.py`、`trajectory.py`、`migrate_local_state.py`（`pyproject.toml` `[project.scripts]` 指向这里；API 入口是 `api/cli.py`） |
+| `src/focus_agent/cli/` | 命令行入口：`demo.py`、`memory_embedding.py`、`retrieval_index.py`、`trajectory.py`、`migrate_local_state.py`（`pyproject.toml` `[project.scripts]` 指向这里；API 入口是 `api/cli.py`） |
 | `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe、embedding provider/service/policy |
 | `src/focus_agent/retrieval/` | `RetrievalIndex` protocol、Zvec adapter、memory/artifact/skill/trajectory/branch/failure/governance/workspace indexing helpers |
-| `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime facade、tool execution/cache/messages/parallel helpers、tool router；default tools 按 workspace、git、web、artifact、memory、conversation、productivity 模块拆分 |
+| `src/focus_agent/capabilities/` | default tools、tool registry、tool runtime facade、tool execution/cache/messages/parallel helpers；default tools 按 workspace、git、web、artifact、memory、conversation、productivity 模块拆分 |
 | `src/focus_agent/skills/` | skill registry、skill metadata、skill view rendering、bundled skills |
-| `src/focus_agent/delegation/` | role/tool/model routing、delegation planning、task ledger、execution registry（治理与委派逻辑） |
 | `src/focus_agent/multi_agent/` | retained multi-agent coordination、message 与 approval runtime primitives |
 | `src/focus_agent/observability/` | trajectory record、actions、tracing facade、OTel runtime |
 | `src/focus_agent/storage/` | namespace helpers、import helpers、`ArtifactStore` protocol 和 local filesystem implementation |
@@ -271,7 +269,7 @@ API 路由集中在 `src/focus_agent/api/main.py`：
 | Threads | `GET /v1/threads/{thread_id}`、`GET /v1/threads/{thread_id}/resolution`、`POST /v1/threads/{thread_id}/context/preview`、`POST /v1/threads/{thread_id}/context/compact` | 线程状态读取、root/child 线程引用解析、当前上下文窗口预览和非破坏式压缩 |
 | Branches | fork、archive、activate、rename、proposal、merge、tree、branch action execute/dismiss | 分支生命周期、root/child-aware branch tree 和用户确认的分支动作 |
 | Branch Decisions | `GET /v1/branch-decisions/config`、`GET /v1/threads/{thread_id}/branch-decisions`、decision promote / dismiss | post-turn 决策记录和 pre-turn recommendation 证据 |
-| Agent | `/v1/agent/*`、`GET /v1/agent/feedback/trend` | governance preview、policy、records、evaluate APIs 和反馈趋势聚合 |
+| Agent | `/v1/agent/capabilities`、`/v1/agent/toolsets`、`/v1/agent/skills/*`、`/v1/agent/memory/curator/*`、`/v1/agent/context/*`、`GET /v1/agent/artifacts`、`GET /v1/agent/feedback/trend` | capability/toolset catalogs、Skill catalog/selection/preference、Memory Curator、Context Engineering、artifact list 和反馈趋势 |
 | Memory | `GET /v1/memory`、`/audit`、`/candidates`、`POST /v1/memory/{memory_id}/forget` | memory list/detail/audit/candidate/forget surface |
 | Productivity | `GET/POST /v1/notes`、`GET/PATCH /v1/notes/{note_id}`、`GET/POST /v1/tasks`、`PATCH /v1/tasks/{task_id}`、`POST /v1/tasks/{task_id}/complete`、`POST /v1/tasks/{task_id}/archive`、`GET /v1/tasks/{task_id}/events`、`POST /v1/productivity/capture/note`、`POST /v1/productivity/capture/task` | owner-scoped notes/tasks workbench，包含 capture 与事件追踪 |
 | Admin | `/v1/admin/config`、`/v1/admin/config/{models,tools,policies,skills}`、`/v1/admin/config/skills/refresh`、`/v1/admin/users/*`、`/v1/admin/audit-events` | 设置中心、模型/工具/策略/Skill 配置、用户目录、详情、会话撤销、密码重置、状态、角色和审计事件管理 |
@@ -420,19 +418,14 @@ POST /v2/threads/{thread_id}/runs/stream
 
 ## 8. LangGraph 主路径
 
-核心图入口是 `src/focus_agent/engine/graph/builder.py`（`src/focus_agent/engine/graph_builder.py` 只是兼容 re-export shim）。该文件负责节点/边注册；节点实现、tool policy、message repair、plan/reflect、memory 与 tool executor 逻辑都在 `engine/graph/` 下的模块中（如 `memory_nodes.py`、`tool_execution.py`、`tool_result_fallback.py`、`execution_contract.py`）。主路径保留 legacy single-run，同时可插入 governance 记录：
+核心图由 `src/focus_agent/engine/loop/builder.py` 的 `build_loop_graph` 构建，`src/focus_agent/engine/graph_builder.py` 是统一入口。`engine/loop/` 实现模型驱动的 agent/tool loop；共享的 registry、memory、model factory、tool executor 与 turn hooks 仍由 `engine/graph/` 下的组件提供。服务层按节点名调用的 `update_state(as_node=...)` 与 interrupt payload 保持不变。
 
 ```text
 bootstrap_turn
   -> retrieve_memory
   -> assemble_context
-  -> role_route_dry_run
-  -> delegation_governance
-  -> plan
-  -> agent_loop
-       -> tool_executor -> agent_loop
-       -> reflect
-       -> summarize_turn
+  -> agent_loop <-> tool_executor
+  -> summarize_turn
   -> extract_memories
   -> write_memories
   -> maybe_interrupt_for_merge
@@ -442,13 +435,11 @@ bootstrap_turn
 flowchart LR
     Bootstrap["bootstrap_turn"] --> Retrieve["retrieve_memory"]
     Retrieve --> Assemble["assemble_context"]
-    Assemble --> Govern["role / tool / model governance"]
-    Govern --> Plan["plan"]
-    Plan --> Loop["agent_loop"]
+    Assemble --> Loop["agent_loop"]
     Loop --> Tools["tool_executor"]
     Tools --> Loop
-    Loop --> Reflect["reflect / summarize_turn"]
-    Reflect --> Extract["extract_memories"]
+    Loop --> Summarize["summarize_turn"]
+    Summarize --> Extract["extract_memories"]
     Extract --> Write["write_memories"]
     Write --> Merge["maybe_interrupt_for_merge"]
 ```
@@ -457,25 +448,15 @@ flowchart LR
 
 - `retrieve_memory` 从可读 namespace 检索 durable memory。
 - `assemble_context` 组装 recent messages、rolling summary、memory block、skill block 和 prompt budget。
-- `agent_loop` 根据 tool policy 与 Tool Router 绑定工具；模型创建和 bind-tools 缓存由 `engine/model_factory.py` 承担。
+- `agent_loop` 把 agent definition 允许的工具绑定给模型，由模型决定是否调用、调用哪些；模型创建和 bind-tools 缓存由 `engine/model_factory.py` 承担。
 - message/tool-call repair helpers 保持在 graph builder/message helper 边界内，避免 provider stream chunk 泄漏到 prompt。
 - `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。调用前依次经过 preflight、extension `on_tool_call`、middleware 与 `PermissionManager`：DENY 返回结构化拒绝；ASK 与 `requires_approval` 共用 approval payload / `approval_queue` / LangGraph interrupt / approve/reject resume 路径，ALLOW 不会跳过工具自身审批。`run_subtask` 子图显式关闭 approval interrupt，ASK 在子代理内变成 blocked ToolMessage，不会从父工具调用中抛出 interrupt。
 - 执行后通过 middleware 与 extension `on_tool_result` 处理结果；工具 catalog 中的 `[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 由同一个内置 command-hook Extension 执行，不新增 tool execution 拦截层。pre hook 可阻断，post hook 可通过 `additional_context` 追加模型可见结果。
-- `reflect` 只在 Plan-Act-Reflect 开启并产生 plan 时参与。
 - `extract_memories` / `write_memories` 是 turn 后记忆写入路径。
 - `maybe_interrupt_for_merge` 对 merge proposal 触发 human review interrupt。
 
-### 8.1 模型驱动主路径（`AGENT_CORE=v2`）
+### 8.1 模型决策与代码边界
 
-`AGENT_CORE=v2` 时 `build_graph` 改由 `src/focus_agent/engine/loop/` 构图；默认 `v1` 仍走上面的路由图。两条路径共用 `engine/graph/components.py`（registry、memory、model factory、tool executor）与 `engine/graph/turn_hooks.py`（`bootstrap_turn`、`summarize_turn`、`maybe_interrupt_for_merge` 及 middleware / extension / system agent 钩子），服务层按节点名调用的 `update_state(as_node=...)` 与 interrupt payload 保持不变。
-
-```text
-bootstrap_turn -> retrieve_memory -> assemble_context
-  -> agent_loop <-> tool_executor
-  -> summarize_turn -> extract_memories -> write_memories -> maybe_interrupt_for_merge
-```
-
-- `agent_loop` 把 agent definition 允许的全部工具绑定给模型，由模型决定是否调用、调用哪些；没有 regex tool policy、强制首个工具调用、plan/reflect 或答案改写。
 - 代码只负责预算与安全：每轮工具调用回合达到 `AGENT_MAX_TOOL_ROUNDS`（默认 16）或同一失败调用重复时撤掉工具并要求基于已有证据作答；审批、ask_user_question、缓存和重试仍由 `tool_executor` 负责。
 - 文本形式的工具调用（DSML 等）只在检测到时修复；最终答案写入 `evidence_bundle`、`citations` 和 `task_outcome`（`policy=model_driven`）。
 
@@ -489,11 +470,9 @@ bootstrap_turn -> retrieve_memory -> assemble_context
 - Prompt surface：`assembled_context`、`memory_prompt_block`、`available_skills_block`
 - Context window：`context_budget`、`context_compaction`；`context_usage` 是响应层派生估算，不作为持久化 state 字段写入
 - Runtime choice：`selected_model`、`selected_thinking_mode`
-- Governance：`role_route_plan`、`tool_route_plan`、`model_route_decision`、`agent_delegation_plan`
 - Context Engineering：`context_budget_decision`、`context_compression_plan`、`context_artifact_refs`、`role_context_views`
-- Ledger and critic：`agent_task_ledger`、`delegated_artifacts`、`artifact_synthesis_result`、`critic_gate_result`
+- Turn evidence：`evidence_bundle`、`evidence_ledger`、`citations`、`task_outcome`、`plan_meta`
 - Memory write：`memory_write_requests`、`memory_write_result`
-- Planning：`plan`、`current_step_id`、`reflection`、`plan_meta`
 
 内容型状态可以通过 review 后显式 merge；执行策略、prompt surface 和 runtime choice 属于当前 turn，不应自动回流。
 
@@ -562,23 +541,16 @@ Tool / Skill 的 canonical 文档是 [tool-skill-design.md](tool-skill-design.md
 - default tools：workspace/repo、git、web、artifact、memory、conversation 等工具，分别位于 `capabilities/default_tool_modules/` 下的独立模块。
 - tool registry：把工具和 `ToolRuntimeMeta` 组合成 runtime registry。
 - tool runtime：处理并行安全、缓存、fallback、观察裁剪；工具 timeout、并行工具调用和 delegated background execution 复用 `focus_agent.runtime.thread_pool.shared_thread_pool()`，并由调用点保留 batch / role 级并发限流。
-- tool router：按 role、tool policy、risk、side effect 过滤工具。
+- tool exposure and execution boundaries：agent definition 决定暴露给模型的工具；声明式权限、审批与 sandbox policy 约束实际执行。
 - skill registry：暴露 prompt-first 技能说明，不把 skill 当成副作用工具；管理员可全局关闭 Skill 系统或禁用单个 Skill，禁用项仍可见但不会参与搜索、触发或 prompt 注入。
 - artifact tools：通过 `ArtifactStore` protocol 读写正文，默认 `LocalArtifactStore` 仍写入 `ARTIFACT_DIR` 下的文件系统；Postgres 只保存 artifact metadata。
 - retrieval tools：`memory_search`、`artifact_search` 和 `workspace_search` 默认使用共享 `RetrievalIndex`，Zvec 命中必须回查 canonical memory、artifact metadata/body 或当前 workspace 文件 hash 后才返回。
 - 线程级沙箱执行：`run_workspace_command` 和声明式 `run_skill_entrypoint` 会构造 `SandboxExecutionRequest`，由 `SandboxExecutionService` 路由到 Docker backend 或显式 local fallback。同一 thread / branch 使用稳定 `sandbox_id` 和 `.focus_agent/sandboxes/threads/<sandbox_id>/workspace`；单次命令仍用 `run_id` 记录审计和输出。
 - live web research：`live_web_research` policy 会要求 web evidence；相对时间问题先用 `current_utc_time` 锚定为绝对 UTC 日期/范围，再检索。证据 ledger 会过滤同 turn 中与当前 query 无关的 web result；缺失或过期证据会触发一次 `web_search` 修复，仍不可靠时返回明确不确定答案。内置外部访问是受策略约束的公共 Web 搜索/抓取，不代表 MCP、浏览器/电脑控制或账号连接器已经具备生命周期管理。
 
-## 13. Agent Governance 概览
+## 13. Agent APIs 与协作证据
 
-Agent governance 的 canonical 文档是 [agent-role-routing.md](agent-role-routing.md)。
-
-架构层需要记住两点：
-
-- 默认 off，legacy single-run path 不变。
-- observe-first，enforce 能力逐步打开。
-
-当前治理记录包括 role route、branch decision、tool route、memory curator、delegation、model router、self repair、review queue、context engineering、task ledger、artifact synthesis 和 critic gate。这些记录写入 AgentState、governance repository 与 trajectory `plan_meta`，供 Web console、eval 和 replay 使用。
+默认聊天只经过 v2 模型驱动 tool loop。保留的 `/v1/agent` API surface 提供 capability/toolset catalogs、Skill catalog/selection/preference、Memory Curator、Context Engineering、`GET /v1/agent/artifacts` 和 feedback trend；owner-scoped trajectory 与 eval/replay 继续提供运行证据。
 
 ## 14. 持久化
 
@@ -703,7 +675,6 @@ Web App 位于 `apps/web/src/`：
 ```text
 app/                      router, shell, providers
 pages/thread/             chat, branch tree, merge review
-pages/agents/             governance console
 pages/auth/               login and registration
 pages/account/            profile, password, and session self-service
 pages/admin/              user and audit administration
@@ -720,10 +691,8 @@ shared/                   config, query keys, SDK provider, UI, styles
 - `/app/c/{conversationId}/t/{threadId}`
 - `/app/c/{conversationId}/t/{threadId}/review`
 - `/app/agent/memory`
-- `/app/agent/roles`
 - `/app/observability/overview`
 - `/app/observability/trajectory`
-- `/app/agent/governance`
 - `/app/admin/users`
 - `/app/admin/users/{userId}`
 - `/app/admin/audit-events`
@@ -759,7 +728,7 @@ CSS 入口 `shared/styles/app.css` 只组织 imports，页面/功能样式按 sh
 - 全量源码门禁：`make web-lint-full` / `make web-format-check-full` / `make web-check` / `make web-build`。
 - 产品级前端门禁：`make frontend-qa`，额外覆盖 style governance、Android local runtime smoke、bundle budget、architecture report 和 compatibility inventory。
 
-Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。`local-focus-agent-runtime.ts` 是 facade；auth/conversation、thread/branch、admin、agent governance、memory/observability、model provider、stream SSE、web search 和 workspace runtime 已拆成独立模块。Android 使用 SDK local transport 和 App 内数据，不连接 Focus Agent HTTP 后端；Web target 仍默认使用 `/v1` / `/v2` HTTP transport。
+Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。`local-focus-agent-runtime.ts` 是 facade；auth/conversation、thread/branch、admin、agent capability/context/memory/feedback、observability、model provider、stream SSE、web search 和 workspace runtime 已拆成独立模块。Android 使用 SDK local transport 和 App 内数据，不连接 Focus Agent HTTP 后端；Web target 仍默认使用 `/v1` / `/v2` HTTP transport。
 
 ## 16. 安全边界
 
@@ -772,7 +741,7 @@ Android target 的本地 runtime 位于 `apps/web/src/android-local-runtime/`。
 - CORS。
 - rate limit：无 `DATABASE_URI` 时使用进程内 backend；Postgres-backed runtime 使用 `focus_rate_limit_buckets` 共享固定窗口计数。
 - 统一错误信封。
-- Tool Router 对 network、workspace write、memory write 做 role-level 收紧。
+- Agent definition 只暴露配置允许的工具；声明式权限与工具审批策略约束 network、workspace write 和 memory write 等副作用。
 - `[[permissions.rules]]` 提供声明式 allow / ask / deny；`[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 提供管理员命令钩子。两者只能来自服务端工具 catalog，不接受请求级覆盖；hook command 使用 argv + `shell=False`，stdin/stdout 不在 info 日志中输出。
 
 生产部署必须显式设置 `AUTH_JWT_SECRET` 或 active JWT key set，签名 secret 不得使用开发默认值且至少 32 字符，关闭 demo token，并显式配置管理员。管理员高风险操作需要 reason 并写入审计事件；token scope 不能单独授予 admin 权限。
@@ -826,7 +795,6 @@ make web-dev
 
 - rate limit 已支持 Postgres-backed 多副本共享计数，但它仍是应用层固定窗口保护，不替代 API gateway / WAF 层面的全局限流。
 - Artifact 正文通过 `ArtifactStore` protocol 访问，默认 local implementation 仍在文件系统；生产多节点需要共享文件系统或对象存储实现。
-- Agent governance 多数能力默认 observe/off，enforce 面需要基于 trajectory 逐步扩大。
 - Context window 已有发送栏用量、手动/自动压缩、工具观察 artifactization 和 128k 默认预算，但 token 估算当前仍以确定性裁剪和近似预算为主。
 - Local fallback persistence 只适合本地，不适合生产多副本；裸跑 API 且无 `DATABASE_URI` 时 trajectory/artifact metadata 不具备 Postgres durability。
 - Android local runtime 与 server-backed Web 是并行集成模型，能力集合有意裁剪（例如部分 workbench/productivity 在 Android build flag 下关闭），不能假设与 Web 全量对等。
@@ -930,10 +898,10 @@ uv run pytest \
   tests/test_trajectory_cli.py
 ```
 
-影响 Agent governance：
+影响保留的 Agent APIs：
 
 ```bash
-uv run pytest tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
+uv run pytest tests/eval/test_agent_governance_suite.py tests/eval/test_agent_context_suite.py
 ```
 
 影响 Zvec retrieval / RAG：
@@ -966,12 +934,12 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Shared thread pool：`src/focus_agent/runtime/thread_pool.py`
 - Coordination backend：`src/focus_agent/services/coordination.py`
 - Background jobs：`src/focus_agent/services/background_work.py`
-- Graph builder：`src/focus_agent/engine/graph/builder.py`（`src/focus_agent/engine/graph_builder.py` 为兼容 shim）
-- Graph package (nodes/policy/tool execution/memory nodes)：`src/focus_agent/engine/graph/`
+- Graph builder：`src/focus_agent/engine/loop/builder.py`（`src/focus_agent/engine/graph_builder.py` 为统一入口）
+- Agent loop package：`src/focus_agent/engine/loop/`
+- Shared graph components (turn hooks/tool execution/memory nodes)：`src/focus_agent/engine/graph/`
 - Graph model factory：`src/focus_agent/engine/model_factory.py`
 - Harness：`src/focus_agent/harness/`（`agents/factory.py` 中的 `FocusAgentHarness`）
 - CLI 入口：`src/focus_agent/cli/`、`src/focus_agent/api/cli.py`、`src/focus_agent/prompts/cli.py`
-- Delegation / governance：`src/focus_agent/delegation/`、`src/focus_agent/capabilities/tool_router.py`
 - Model registry：`src/focus_agent/model_registry.py`
 - Built-in model catalog：`src/focus_agent/defaults/models.toml`
 - OpenAI-compatible reasoning adapter：`src/focus_agent/providers/reasoning_openai.py`

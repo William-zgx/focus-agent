@@ -756,11 +756,6 @@ function assertLocalRuntimeExposeContract(runtime) {
 		runtime.localCapabilities().some((tool) => tool.name === "web_search"),
 		"localCapabilities should expose app-local tool behavior",
 	);
-	assert.equal(runtime.localRolePolicy().enabled, true);
-	assert.equal(
-		runtime.localRoleDecision("Plan an Android local task.").model_id,
-		adminConfig.models.default_model,
-	);
 	const androidWebSelection = runtime.localSelectedSkills(
 		"Need Android web search",
 	);
@@ -996,7 +991,6 @@ try {
 		"env.mjs",
 	);
 	assert.equal(appEnv.useLocalRuntime, true);
-	assert.equal(appEnv.features.agentGovernance, true);
 	assert.equal(appEnv.features.agentMemory, true);
 	assert.equal(appEnv.features.observability, true);
 	assert.equal(appEnv.features.productivity, false);
@@ -1254,21 +1248,6 @@ try {
 	);
 	assert.ok((await sdkClient.listAgentCapabilities()).items.length > 0);
 	assert.ok((await sdkClient.listAgentToolsets()).items.length > 0);
-	assert.equal((await sdkClient.getAgentRolePolicy()).enabled, true);
-	assert.ok(
-		(await sdkClient.dryRunAgentRoleRoute({ message: "Android SDK route" }))
-			.plan.decisions[0].model_id,
-	);
-	assert.ok((await sdkClient.listAgentRoleDecisions(5)).items);
-	assert.deepEqual(
-		(
-			await sdkClient.routeAgentTools({
-				available_tools: ["web_fetch", "notes_create"],
-			})
-		).plan.denied_tools,
-		["notes_create"],
-	);
-	assert.ok((await sdkClient.listAgentToolRouteDecisions(5)).items);
 	assert.equal((await sdkClient.getAgentMemoryCuratorPolicy()).enabled, true);
 	assert.equal(
 		(
@@ -1309,34 +1288,6 @@ try {
 		(await sdkClient.getAgentFeedbackTrend()).notes_tasks_capture_count,
 		0,
 	);
-	assert.equal((await sdkClient.getAgentDelegationPolicy()).enabled, false);
-	assert.equal(
-		(await sdkClient.planAgentDelegation({ message: "Android SDK delegation" }))
-			.plan.tasks.length,
-		0,
-	);
-	assert.ok((await sdkClient.listAgentDelegationRuns(5)).items);
-	assert.equal((await sdkClient.getAgentModelRouterPolicy()).enabled, true);
-	assert.ok(
-		(await sdkClient.routeAgentModel({ role: "planner" })).decision.model,
-	);
-	assert.ok((await sdkClient.listAgentModelRouterDecisions(5)).items);
-	assert.ok((await sdkClient.listAgentSelfRepairFailures(5)).items);
-	assert.ok(
-		(await sdkClient.previewAgentSelfRepairPromotion({ failure_ids: ["sdk"] }))
-			.preview,
-	);
-	assert.ok((await sdkClient.listAgentReviewQueue(5)).items);
-	assert.equal(
-		(await sdkClient.approveAgentReviewQueueItem("android-sdk-review")).item
-			.status,
-		"approve",
-	);
-	assert.equal(
-		(await sdkClient.rejectAgentReviewQueueItem("android-sdk-review")).item
-			.status,
-		"reject",
-	);
 	assert.equal((await sdkClient.getAgentContextPolicy()).enabled, true);
 	assert.ok(
 		(
@@ -1356,27 +1307,7 @@ try {
 			.backend,
 		"android-local",
 	);
-	assert.equal((await sdkClient.getAgentTaskLedgerPolicy()).enabled, true);
-	assert.equal(
-		(await sdkClient.planAgentTaskLedger({ message: "Android SDK task" }))
-			.ledger.tasks.length,
-		1,
-	);
-	assert.ok((await sdkClient.listAgentTaskLedgerRuns(5)).items);
 	assert.ok((await sdkClient.listAgentArtifacts(5)).items);
-	assert.ok(
-		(
-			await sdkClient.synthesizeAgentArtifacts({
-				message: "Android SDK artifact",
-			})
-		).result,
-	);
-	assert.ok((await sdkClient.listAgentCriticVerdicts(5)).items);
-	assert.equal(
-		(await sdkClient.evaluateAgentCriticGate({ message: "Android SDK critic" }))
-			.result.verdict,
-		"pass",
-	);
 	assert.equal(
 		(await sdkClient.getObservabilityOverview()).trajectory_available,
 		true,
@@ -1894,40 +1825,6 @@ try {
 		await focusFetch("http://focus-agent.local/v1/agent/toolsets"),
 	);
 	assert.ok(toolsets.count > 0);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/tool-router/decisions?limit=5",
-				),
-			)
-		).items,
-	);
-
-	const rolePolicy = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/agent/roles/policy"),
-	);
-	assert.equal(rolePolicy.enabled, true);
-	const roleDryRun = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/agent/roles/dry-run",
-			jsonBody({ message: "Plan an Android local web lookup." }),
-		),
-	);
-	assert.ok(
-		roleDryRun.plan.decisions[0].model_id,
-		"role dry-run should expose preview decisions for the Web panel",
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/roles/decisions?limit=5",
-				),
-			)
-		).items,
-	);
-
 	const memoryPolicy = await expectJson(
 		await focusFetch("http://focus-agent.local/v1/agent/memory/curator/policy"),
 	);
@@ -1960,7 +1857,7 @@ try {
 		skillCatalog.items.some(
 			(skill) => skill.skill_id === "android-local-runtime",
 		),
-		"Android governance should expose local built-in skills",
+		"Android runtime should expose local built-in skills",
 	);
 	const skillSelection = await expectJson(
 		await focusFetch(
@@ -2017,113 +1914,6 @@ try {
 			)
 		).notes_tasks_capture_count,
 		0,
-	);
-
-	const delegationPolicy = await expectJson(
-		await focusFetch("http://focus-agent.local/v1/agent/delegation/policy"),
-	);
-	assert.equal(delegationPolicy.enabled, false);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/delegation/plan",
-					jsonBody({ message: "Keep Android delegation disabled." }),
-				),
-			)
-		).plan.tasks.length,
-		0,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/delegation/runs?limit=5",
-				),
-			)
-		).items,
-	);
-
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/model-router/policy",
-				),
-			)
-		).enabled,
-		true,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/model-router/route",
-					jsonBody({ role: "planner" }),
-				),
-			)
-		).decision.model,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/model-router/decisions?limit=5",
-				),
-			)
-		).items,
-	);
-
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/self-repair/failures?limit=5",
-				),
-			)
-		).items,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/self-repair/promote-preview",
-					jsonBody({ failure_ids: ["android-failure"] }),
-				),
-			)
-		).preview,
-	);
-
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/review-queue?limit=5",
-				),
-			)
-		).items,
-	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/review-queue/android-review/approve",
-					jsonBody({}),
-				),
-			)
-		).item.status,
-		"approve",
-	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/review-queue/android-review/reject",
-					jsonBody({}),
-				),
-			)
-		).item.status,
-		"reject",
 	);
 
 	assert.equal(
@@ -2188,69 +1978,12 @@ try {
 		contextExplain.evidence.evidence_id,
 	);
 
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/task-ledger/policy",
-				),
-			)
-		).enabled,
-		true,
-	);
-	const taskLedgerPreview = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/agent/task-ledger/plan",
-			jsonBody({ message: "Check Android local parity." }),
-		),
-	);
-	assert.equal(taskLedgerPreview.ledger.tasks.length, 1);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/task-ledger/runs?limit=5",
-				),
-			)
-		).items,
-	);
-
 	assert.ok(
 		(
 			await expectJson(
 				await focusFetch("http://focus-agent.local/v1/agent/artifacts?limit=5"),
 			)
 		).items,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/artifacts/synthesize",
-					jsonBody({ message: "Android artifact synthesis preview" }),
-				),
-			)
-		).result,
-	);
-	assert.ok(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/critic/verdicts?limit=5",
-				),
-			)
-		).items,
-	);
-	assert.equal(
-		(
-			await expectJson(
-				await focusFetch(
-					"http://focus-agent.local/v1/agent/critic/evaluate",
-					jsonBody({ message: "Android critic smoke" }),
-				),
-			)
-		).result.verdict,
-		"pass",
 	);
 
 	const memoryList = await expectJson(
@@ -2967,20 +2700,6 @@ try {
 	assert.equal(
 		disabledCapabilities.items.some((tool) => tool.name === "web_search"),
 		false,
-	);
-	const toolRoute = await expectJson(
-		await focusFetch(
-			"http://focus-agent.local/v1/agent/tool-router/route",
-			jsonBody({
-				available_tools: ["web_search", "current_utc_time", "notes_create"],
-			}),
-		),
-	);
-	assert.deepEqual(toolRoute.plan.allowed_tools, ["current_utc_time"]);
-	assert.deepEqual(toolRoute.plan.denied_tools, ["web_search", "notes_create"]);
-	assert.deepEqual(
-		toolRoute.plan.decisions.map((decision) => decision.name),
-		["current_utc_time", "web_search", "notes_create"],
 	);
 	const disabledSearchEvents = await collectSse(
 		await focusFetch(

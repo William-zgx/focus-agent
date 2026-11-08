@@ -15,41 +15,6 @@ export const queryKeys = {
 	trajectoryDetail: (turnId: string) => ["trajectory-detail", turnId] as const,
 	observabilityOverview: (filtersKey: string) =>
 		["observability-overview", filtersKey] as const,
-	agentRolePolicy: ["agent-role-policy"] as const,
-	agentRoleDecisions: (limit: number) =>
-		["agent-role-decisions", limit] as const,
-	agentCapabilities: ["agent-capabilities"] as const,
-	agentToolRouteDecisions: (limit: number) =>
-		["agent-tool-route-decisions", limit] as const,
-	agentMemoryCuratorPolicy: ["agent-memory-curator-policy"] as const,
-	agentMemoryCuratorDecisions: (limit: number) =>
-		["agent-memory-curator-decisions", limit] as const,
-	agentDelegationPolicy: ["agent-delegation-policy"] as const,
-	agentDelegationRuns: (limit: number) =>
-		["agent-delegation-runs", limit] as const,
-	agentModelRouterPolicy: ["agent-model-router-policy"] as const,
-	agentModelRouterDecisions: (limit: number) =>
-		["agent-model-router-decisions", limit] as const,
-	agentSelfRepairFailures: (limit: number) =>
-		["agent-self-repair-failures", limit] as const,
-	agentReviewQueue: (limit: number) => ["agent-review-queue", limit] as const,
-	agentContextPolicy: ["agent-context-policy"] as const,
-	agentContextDecisions: (limit: number) =>
-		["agent-context-decisions", limit] as const,
-	agentContextArtifacts: (limit: number) =>
-		["agent-context-artifacts", limit] as const,
-	agentContextEvidence: (filtersKey: string) =>
-		["agent-context-evidence", filtersKey] as const,
-	agentSkillCatalog: ["agent-skill-catalog"] as const,
-	agentSkillSelections: (limit: number) =>
-		["agent-skill-selections", limit] as const,
-	agentFeedbackTrend: ["agent-feedback-trend"] as const,
-	agentTaskLedgerPolicy: ["agent-task-ledger-policy"] as const,
-	agentTaskLedgerRuns: (limit: number) =>
-		["agent-task-ledger-runs", limit] as const,
-	agentArtifacts: (limit: number) => ["agent-artifacts", limit] as const,
-	agentCriticVerdicts: (limit: number) =>
-		["agent-critic-verdicts", limit] as const,
 	memoryRecordsRoot: ["memory-records"] as const,
 	memoryRecords: (filtersKey: string) =>
 		["memory-records", filtersKey] as const,

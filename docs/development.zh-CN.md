@@ -6,7 +6,7 @@
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
 
 Focus Agent 是平台级 monorepo。优先按触达面收敛验证（API/contract、Web、SDK、
-Agent 治理、Android、release），只在大范围改动时跑完整 `make ci`。
+Agent v2 core、Android、release），只在大范围改动时跑完整 `make ci`。
 产品定位与运行主路径见 [project-overview.md](project-overview.md)；
 架构边界见 [architecture.md](architecture.md)；全面验收见
 [validation-runbook.md](validation-runbook.md)。
@@ -18,14 +18,14 @@ flowchart TD
     Scope --> Web["Web App"]
     Scope --> SDK["Frontend SDK"]
     Scope --> Admin["Admin / Auth"]
-    Scope --> Agent["Agent Governance"]
+    Scope --> Agent["Agent v2 core"]
     Scope --> Branch["Branch decisions"]
     Scope --> Mobile["Android"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
     Admin --> AdminChecks["admin API tests + web scaffold"]
-    Agent --> Eval["agent eval suites + governance tests"]
+    Agent --> Eval["agent eval suites + context tests"]
     Branch --> BranchChecks["branch decision + chat/harness tests"]
     Mobile --> AndroidChecks["android sync/build + runtime smoke"]
     CI --> Done["进入 review"]
@@ -181,7 +181,7 @@ SDK types drift guard，所以 API route 或 response model 改动即使本地 `
 make format-check
 ```
 
-如果是 runtime、sandbox、Skill、SDK、Web、Agent 治理或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
+如果是 runtime、sandbox、Skill、SDK、Web、Agent v2 core 或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
 
 2. 如果改动影响后端路由、stream 事件或 Web App 对 frontend SDK 的使用：
 
@@ -273,13 +273,11 @@ pnpm web:check
 公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
 如果改动 live-web 行为，请用包含 "today"、"tomorrow" 或 "本周" 的相对时间问题验证 `current_utc_time` 会先锚定时间再 `web_search`；过期证据最多触发一次修复检索，最终应给出有证据的回答或明确的不确定说明。
 
-6. 如果改动影响 delegation governance、保留的 multi-agent coordination 或 async approval：
+6. 如果改动影响保留的 multi-agent coordination：
 
 ```bash
-uv run pytest tests/test_multi_agent_config.py tests/test_agent_delegation.py tests/test_agent_roles.py -q
+uv run pytest tests/test_multi_agent_config.py -q
 ```
-
-fake delegated run 只能作为流程证据。async approval 决定只更新队列记录，不会自动重放已经返回的 graph invocation；必须显式记录并审计重试。
 
 7. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
@@ -450,12 +448,11 @@ make frontend-android-runtime-smoke
 16. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
 
 ```bash
-uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py
 make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-make agent-governance-report
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
@@ -473,22 +470,18 @@ uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
 
 `alembic upgrade head` 需要 `DATABASE_URI`；Docker entrypoint 会在 `DATABASE_URI` 存在时自动执行。当前 Alembic baseline 会委托 app schema migrations，并应保持 `focus_schema_migrations` 与 `postgres_schema.py` 对齐。
 
-18. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+18. 如果改动影响 capability API、Context Engineering 或 helper-model fallback：
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
-uv run python -m tests.eval --suite agent_arch --concurrency 1
-uv run python -m tests.eval --suite agent_governance --concurrency 1
-uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run pytest tests/test_agent_context_engineering.py tests/eval/test_agent_context_suite.py
 uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、
 `golden_multi_agent` 和 `harness_stability` 是 release-blocking suite；
-`model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型路由或多 Agent 行为时，也建议跑：
+`model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型选择/fallback 或多 Agent 行为时，也建议跑：
 
 ```bash
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
@@ -501,7 +494,6 @@ local-first 工具路径：
 ```bash
 make test-graph-builder
 uv run pytest tests/test_default_tools.py -k "search_code or apply_patch or run_workspace_command"
-uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
 如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：
@@ -545,6 +537,5 @@ pnpm --dir apps/web smoke:productivity
 - [架构说明](architecture.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
-- [Agent Governance](agent-role-routing.md)
 - [分支决策与推荐](branch-decisions.md)
 - [路线图](roadmap.md)

@@ -92,10 +92,6 @@ export const appEnv = {
 	demoTenantId:
 		import.meta.env.VITE_FOCUS_AGENT_DEMO_TENANT_ID || "demo-tenant",
 	features: {
-		agentGovernance: envFlag(
-			import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_GOVERNANCE,
-			true,
-		),
 		agentMemory: envFlag(
 			import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_MEMORY,
 			true,

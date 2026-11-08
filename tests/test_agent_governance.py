@@ -65,20 +65,6 @@ class _DecisionRepo:
                             actor="agent_f",
                         ),
                         make_agent_state_record(
-                            "tool_route_plan",
-                            {
-                                "enabled": True,
-                                "role": "critic",
-                                "tool_policy": "execution",
-                                "allowed_tools": ["search_code"],
-                                "denied_tools": ["write_text_artifact"],
-                                "decisions": [],
-                            },
-                            source="test",
-                            request_id="req-1",
-                            actor="agent_f",
-                        ),
-                        make_agent_state_record(
                             "memory_curator_decision",
                             {
                                 "enabled": True,
@@ -90,14 +76,6 @@ class _DecisionRepo:
                             source="test",
                         ),
                     ],
-                    "tool_route_plan": {
-                        "enabled": True,
-                        "role": "critic",
-                        "tool_policy": "execution",
-                        "allowed_tools": ["search_code"],
-                        "denied_tools": ["legacy_tool"],
-                        "decisions": [],
-                    },
                     "tool_intent_plan": {
                         "policy": "workspace_lookup",
                         "preferred_first_tool": "search_code",
@@ -110,51 +88,6 @@ class _DecisionRepo:
                         "promoted_memory_ids": [],
                         "conflicts": [],
                     },
-                    "agent_delegation_plan": {
-                        "enabled": True,
-                        "runs": [
-                            {
-                                "run_id": "run-1",
-                                "task_id": "task-1",
-                                "role": "executor",
-                                "status": "completed",
-                            }
-                        ],
-                    },
-                    "model_route_decision": {
-                        "enabled": True,
-                        "mode": "observe",
-                        "role": "executor",
-                        "effective_model": "openai:gpt-4.1-mini",
-                    },
-                    "agent_failure_records": [
-                        {
-                            "failure_id": "failure-1",
-                            "failure_type": "tool_denied",
-                            "failed_role": "critic",
-                        }
-                    ],
-                    "agent_review_queue": [
-                        {
-                            "item_id": "review-1",
-                            "item_type": "workspace_write_with_high_risk_tool",
-                            "status": "pending",
-                        }
-                    ],
-                    "agent_task_ledger": {
-                        "enabled": True,
-                        "status": "planned",
-                        "tasks": [
-                            {
-                                "task_id": "task-1",
-                                "role": "executor",
-                                "goal": "Produce evidence.",
-                                "status": "completed",
-                                "artifact_ids": ["artifact-1"],
-                                "retry_count": 0,
-                            }
-                        ],
-                    },
                     "delegated_artifacts": [
                         {
                             "artifact_id": "artifact-1",
@@ -165,13 +98,6 @@ class _DecisionRepo:
                             "status": "accepted",
                         }
                     ],
-                    "critic_gate_result": {
-                        "enabled": True,
-                        "enforce": False,
-                        "verdict": "pass",
-                        "accepted_artifact_ids": ["artifact-1"],
-                        "rejected_artifact_ids": [],
-                    },
                 },
             }
         ]
@@ -565,12 +491,15 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
             "plan_meta": {
                 "governance_records": [
                     make_agent_state_record(
-                        "tool_route_plan",
-                        {"denied_tools": ["record_tool"], "enforce": True},
+                        "memory_curator_decision",
+                        {"promoted_memory_ids": ["record-memory"], "conflicts": []},
                         source="test",
                     )
                 ],
-                "tool_route_plan": {"denied_tools": ["legacy_tool"], "enforce": False},
+                "memory_curator_decision": {
+                    "promoted_memory_ids": ["legacy-memory"],
+                    "conflicts": [{"candidate_id": "legacy-conflict"}],
+                },
                 "tool_intent_plan": {
                     "policy": "live_web_research",
                     "preferred_first_tool": "web_search",
@@ -589,14 +518,12 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
 
     metrics = _agent_governance_metrics_from_turns(rows)
 
-    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")[
-        "denied_tools"
-    ] == ["record_tool"]
-    assert metrics["tool_router_denied"] == 1
-    assert metrics["tool_router_enforced"] == 1
+    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "memory_curator_decision")[
+        "promoted_memory_ids"
+    ] == ["record-memory"]
     assert metrics["tool_intent_live_web_research"] == 1
     assert metrics["tool_intent_first_tool"] == 1
-    assert metrics["memory_promotions"] == 1
+    assert metrics["memory_promotions"] == 2
     assert metrics["memory_conflicts"] == 1
 
 
@@ -606,17 +533,7 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     app.state.runtime = SimpleNamespace(
         settings=Settings(
             auth_enabled=False,
-            agent_role_routing_enabled=True,
-            agent_role_max_parallel_runs=5,
             agent_memory_curator_enabled=True,
-            agent_tool_router_enabled=True,
-            agent_delegation_enabled=True,
-            agent_model_router_enabled=True,
-            agent_self_repair_enabled=True,
-            agent_review_queue_enabled=True,
-            agent_task_ledger_enabled=True,
-            agent_artifact_synthesis_enabled=True,
-            agent_critic_gate_enabled=True,
         ),
         tool_registry=ToolRegistry(
             tools=(search_code, write_text_artifact, web_search, skills_list, skill_view)
@@ -632,14 +549,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
 
     capabilities = client.get("/v1/agent/capabilities")
     toolsets = client.get("/v1/agent/toolsets")
-    role_route = client.post(
-        "/v1/agent/roles/dry-run",
-        json={
-            "message": "Plan skill selection and branch suggestion before implementation.",
-            "scene": "execution",
-            "available_tools": ["skills_list", "skill_view", "search_code", "write_text_artifact"],
-        },
-    )
     memory_policy = client.get("/v1/agent/memory/curator/policy")
     memory_eval = client.post(
         "/v1/agent/memory/curator/evaluate",
@@ -649,110 +558,25 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             "findings": [{"finding": "Promote this branch finding."}],
         },
     )
-    tool_decisions = client.get("/v1/agent/tool-router/decisions")
     memory_decisions = client.get("/v1/agent/memory/curator/decisions")
-    delegation_policy = client.get("/v1/agent/delegation/policy")
-    delegation_plan = client.post(
-        "/v1/agent/delegation/plan", json={"message": "Plan and implement delegation."}
-    )
-    delegation_runs = client.get("/v1/agent/delegation/runs")
-    model_policy = client.get("/v1/agent/model-router/policy")
-    model_decisions = client.get("/v1/agent/model-router/decisions")
-    failures = client.get("/v1/agent/self-repair/failures")
-    promote_preview = client.post(
-        "/v1/agent/self-repair/promote-preview",
-        json={
-            "failures": [
-                {"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}
-            ]
-        },
-    )
-    review_queue = client.get("/v1/agent/review-queue")
-    review_approve = client.post("/v1/agent/review-queue/review-1/approve")
-    review_reject = client.post("/v1/agent/review-queue/review-1/reject")
-    task_ledger_policy = client.get("/v1/agent/task-ledger/policy")
-    task_ledger_plan = client.post(
-        "/v1/agent/task-ledger/plan", json={"message": "Plan task ledger handoff."}
-    )
-    task_ledger_runs = client.get("/v1/agent/task-ledger/runs")
     artifacts = client.get("/v1/agent/artifacts")
-    synthesis = client.post(
-        "/v1/agent/artifacts/synthesize",
-        json={
-            "artifacts": [
-                {
-                    "artifact_id": "artifact-1",
-                    "task_id": "task-1",
-                    "role": "executor",
-                    "kind": "evidence",
-                    "title": "Evidence",
-                    "status": "accepted",
-                }
-            ]
-        },
-    )
-    critic_verdicts = client.get("/v1/agent/critic/verdicts")
-    critic_eval = client.post(
-        "/v1/agent/critic/evaluate",
-        json={
-            "ledger": {
-                "enabled": True,
-                "tasks": [{"task_id": "task-1", "role": "executor", "goal": "Produce evidence."}],
-            },
-            "artifacts": [
-                {
-                    "artifact_id": "artifact-1",
-                    "task_id": "task-1",
-                    "role": "executor",
-                    "kind": "evidence",
-                    "title": "Evidence",
-                    "status": "accepted",
-                }
-            ],
-        },
-    )
     metrics = client.get("/metrics")
 
     assert capabilities.status_code == 200
     assert capabilities.json()["count"] >= 3
     assert toolsets.status_code == 200
     assert any(item["name"] == "workspace" for item in toolsets.json()["items"])
-    role_plan = role_route.json()["plan"]
-    assert role_plan["legacy_execution_unchanged"] is True
-    assert any(decision["role"] == "skill_scout" for decision in role_plan["decisions"])
-    skill_decision = next(
-        decision for decision in role_plan["decisions"] if decision["role"] == "skill_scout"
-    )
-    assert skill_decision["run_isolation_key"] == "role:skill_scout"
-    assert skill_decision["tool_governance"]["allowed_tools"] == ["skills_list", "skill_view"]
+    assert memory_policy.status_code == 200
     assert memory_policy.json()["enabled"] is True
+    assert memory_eval.status_code == 200
     assert memory_eval.json()["decision"]["status"] == "ready"
-    assert tool_decisions.json()["count"] == 1
-    assert tool_decisions.json()["items"][0]["denied_tools"] == ["write_text_artifact"]
+    assert memory_decisions.status_code == 200
     assert memory_decisions.json()["count"] == 1
     assert memory_decisions.json()["items"][0]["conflicts"] == [{"candidate_id": "branch-1:0"}]
-    assert delegation_policy.json()["enabled"] is True
-    assert delegation_plan.json()["plan"]["enabled"] is True
-    assert delegation_runs.json()["items"][0]["run_id"] == "run-1"
-    assert model_policy.json()["enabled"] is True
-    assert model_decisions.json()["count"] == 1
-    assert failures.json()["items"][0]["failure_type"] == "tool_denied"
-    assert promote_preview.json()["preview"]["candidates"][0]["tags"][0] == "agent_delegation"
-    assert review_queue.json()["items"][0]["item_id"] == "review-1"
-    assert review_approve.json()["item"]["status"] == "approved"
-    assert review_reject.json()["item"]["status"] == "rejected"
-    assert task_ledger_policy.json()["enabled"] is True
-    assert task_ledger_plan.json()["ledger"]["enabled"] is True
-    assert task_ledger_runs.json()["items"][0]["task_id"] == "task-1"
+    assert artifacts.status_code == 200
     assert artifacts.json()["items"][0]["artifact_id"] == "artifact-1"
-    assert synthesis.json()["result"]["accepted_artifact_ids"] == ["artifact-1"]
-    assert critic_verdicts.json()["items"][0]["verdict"] == "pass"
-    assert critic_eval.json()["result"]["verdict"] == "pass"
-    assert "focus_agent_tool_router_denied_count 1" in metrics.text
+    assert metrics.status_code == 200
     assert "focus_agent_tool_intent_live_web_research_count 1" in metrics.text
     assert "focus_agent_tool_intent_first_tool_count 1" in metrics.text
     assert "focus_agent_memory_conflict_count 1" in metrics.text
-    assert "focus_agent_delegation_run_count 1" in metrics.text
-    assert "focus_agent_review_pending_count 1" in metrics.text
-    assert "focus_agent_task_ledger_task_count 1" in metrics.text
     assert "focus_agent_delegated_artifact_count 1" in metrics.text

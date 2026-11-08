@@ -2,7 +2,6 @@ import { appEnv } from "@/shared/config/env";
 
 function isEnabledDestination(path: string) {
 	if (path.startsWith("/agent/memory")) return appEnv.features.agentMemory;
-	if (path.startsWith("/agent/")) return appEnv.features.agentGovernance;
 	if (path.startsWith("/observability/")) return appEnv.features.observability;
 	if (path.startsWith("/productivity/")) return appEnv.features.productivity;
 	return true;
@@ -24,11 +23,6 @@ export const ACCOUNT_ACTIONS = [
 
 const QUICK_START_ACTIONS_BASE = [
 	{ description: "继续长上下文、分支探索与结论回填", label: "主对话", to: "/" },
-	{
-		description: "管理角色、工具路由、记忆候选与策略变更",
-		label: "治理台",
-		to: "/agent/governance",
-	},
 	{
 		description: "查看运行轨迹、健康信号与复盘证据",
 		label: "复盘诊断",

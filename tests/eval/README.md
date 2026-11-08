@@ -17,10 +17,8 @@ task, via `scripts/branch_ab/` (see `datasets/branch_ab/README.md`).
 # Run the smoke suite (11 cases, no external API keys required if using a fake model).
 uv run python -m tests.eval --suite smoke
 
-# Run the Agent architecture / role-routing gate.
-uv run python -m tests.eval --suite agent_arch --concurrency 1
-uv run python -m tests.eval --suite agent_delegation --concurrency 1
-uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
+# Run the retained governance and multi-agent gates.
+uv run python -m tests.eval --suite agent_governance --concurrency 1
 uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 
 # Full run with HTML + JSON reports.
@@ -77,11 +75,9 @@ fake model via the `model_factory` field on `EvalRuntime` — no network, no
 provider keys. Add suite-specific pytest modules (e.g. `test_golden_suite.py`)
 that parametrize over `load_dataset(...)` and assert `run_case(...).passed`.
 
-The delegation and critic cases in `golden_multi_agent` require role routing,
-delegation execution, task ledger, and critic gate to be enabled, with at least
-three delegated roles allowed. `observe` mode only plans work and cannot pass
-their completed-run assertions. The offline self-test runs the actual governance
-node with fake execution; this validates the assertions, not provider quality.
+The `golden_multi_agent` fixtures exercise environment and trajectory judge
+validation of role and handoff expectations. Offline self-tests use fake
+execution; this validates the assertions, not provider quality.
 
 ## Dataset format
 
@@ -169,21 +165,9 @@ Smoke cases should include regression coverage for tool selection policy:
 direct writing/no-tools requests, explicit no-web requests, and workspace
 lookup requests that must not expose web tools.
 
-Agent architecture cases live in `datasets/agent_arch.jsonl` and cover the
-role-routing contract: default off behavior, no-web workspace lookup, memory
-preview isolation, and helper-model fallback expectations.
-
 Agent governance cases live in `datasets/agent_governance.jsonl` and cover
-Memory Curator branch promotion boundaries plus Skill Scout / Tool Router
-allow/deny expectations.
-
-Agent delegation cases live in `datasets/agent_delegation.jsonl` and cover
-default-off behavior, role run paths, Model Router decisions, self-repair
-preview, and Review Queue expectations.
-
-Agent task ledger cases live in `datasets/agent_task_ledger.jsonl` and cover
-default-off behavior, delegated task paths, artifact synthesis, critic gate
-blocking, and governance artifacts.
+Memory Curator branch promotion boundaries, Skill Scout registry usage, and
+model-driven tool-use expectations.
 
 Golden multi-agent cases live in `datasets/golden_multi_agent.jsonl` and cover
 stable delegation, governance, memory/context, and model-routing contracts. The

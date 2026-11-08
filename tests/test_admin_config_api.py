@@ -237,20 +237,17 @@ def test_admin_config_updates_models_tools_and_policies(
         "/v1/admin/config/policies",
         headers=headers,
         json={
-            "reason": "enable delegation",
+            "reason": "enable coordination",
             "values": {
-                "agent_delegation_enabled": True,
-                "agent_delegation_execution_mode": "inline",
+                "multi_agent_v2_enabled": True,
                 "agent_branch_decision_rate_limit_per_hour": 5,
             },
         },
     )
     assert policy_response.status_code == 200
-    assert settings.agent_delegation_enabled is True
-    assert settings.agent_delegation_execution_mode == "inline"
+    assert settings.multi_agent_v2_enabled is True
     local_env = local_env_path.read_text(encoding="utf-8")
-    assert "AGENT_DELEGATION_ENABLED=true" in local_env
-    assert "AGENT_DELEGATION_EXECUTION_MODE=inline" in local_env
+    assert "MULTI_AGENT_V2_ENABLED=true" in local_env
     assert "AGENT_BRANCH_DECISION_RATE_LIMIT_PER_HOUR=5" in local_env
 
     audit = client.get("/v1/admin/audit-events", headers=headers)

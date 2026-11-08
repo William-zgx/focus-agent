@@ -7,11 +7,9 @@ from .executor import (
     SubagentTaskResult,
     SubagentTaskRunner,
 )
-from .fake import FakeSubagentRunner
 
 __all__ = [
     "DEFAULT_SUBAGENT_MAX_PARALLEL",
-    "FakeSubagentRunner",
     "SubagentExecutor",
     "SubagentTaskRequest",
     "SubagentTaskResult",

@@ -25,7 +25,6 @@ def build_graph(
     approval_queue: Any | None = None,
     harness_services: HarnessToolServices | None = None,
     run_manager: Any | None = None,
-    system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ):
     return build_loop_graph(
@@ -41,7 +40,6 @@ def build_graph(
         approval_queue=approval_queue,
         harness_services=harness_services,
         run_manager=run_manager,
-        system_agent_runner=system_agent_runner,
         agent_definition_registry=agent_definition_registry,
         chat_model_factory=create_chat_model,
     )

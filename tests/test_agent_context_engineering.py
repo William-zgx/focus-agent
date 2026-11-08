@@ -1,11 +1,11 @@
 from langchain.messages import ToolMessage
 
 from focus_agent.config import Settings
-from focus_agent.core.types import ContextBudget
-from focus_agent.delegation.context_engineering import (
+from focus_agent.core.context.engineering import (
     build_context_engineering_decision,
     build_context_policy,
 )
+from focus_agent.core.types import ContextBudget
 
 
 def test_context_engineering_policy_defaults_are_legacy_safe():

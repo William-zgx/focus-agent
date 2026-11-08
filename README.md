@@ -144,7 +144,6 @@ Memory embedding is enabled by default when PostgreSQL memory is available. Loca
 Then open:
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/readyz` and `http://127.0.0.1:8000/metrics`

@@ -6,14 +6,7 @@ from threading import Lock
 from langchain.messages import AIMessage
 
 from focus_agent.config import Settings
-from focus_agent.delegation.delegation import (
-    AgentTask,
-    apply_review_decision,
-    build_agent_delegation_plan,
-    build_failure_records,
-    build_review_queue,
-    build_self_repair_preview,
-)
+from focus_agent.delegation.delegation import AgentTask, build_agent_delegation_plan
 from focus_agent.delegation.execution import (
     FakeDelegatedRunExecutor,
     SubagentRegistry,
@@ -284,37 +277,11 @@ def test_background_executor_runs_all_tasks_with_bounded_workers_and_preserves_o
     assert 1 < model.max_active_calls <= 2
 
 
-def test_self_repair_preview_and_review_queue_from_failures():
-    failure_records = build_failure_records(
-        delegation_plan={"tasks": [{"task_id": "task-1-executor"}]},
-        tool_route_plan={
-            "role": "critic",
-            "denied_tools": ["write_text_artifact"],
-            "enforce": True,
-        },
-        model_route_decision={"effective_model": "openai:deepseek-chat"},
-    )
-    preview = build_self_repair_preview(failures=failure_records)
-    queue = build_review_queue(
-        settings=Settings(agent_review_queue_enabled=True),
-        tool_route_plan={"role": "critic", "denied_tools": ["write_text_artifact"]},
-        agent_failure_records=[item.model_dump(mode="json") for item in failure_records],
-    )
-    approved = apply_review_decision(queue[0].model_dump(mode="json"), approved=True)
-
-    assert failure_records[0].failure_type == "tool_denied"
-    assert preview.candidates[0]["tags"] == ["agent_delegation", "self_repair", "tool_denied"]
-    assert queue[0].item_type == "workspace_write_with_high_risk_tool"
-    assert approved.status == "approved"
-
-
-def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy():
+def test_autonomy_role_routing_observes_skill_branch_and_delegation():
     settings = Settings(
         agent_role_routing_enabled=True,
         agent_role_max_parallel_runs=5,
         agent_delegation_enabled=True,
-        agent_model_router_enabled=True,
-        agent_review_queue_enabled=True,
         model="openai:gpt-4.1-mini",
         helper_model="openai:gpt-4.1",
     )
@@ -343,36 +310,6 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
         ],
         tool_policy="execution",
     )
-    failures = build_failure_records(
-        delegation_plan=delegation.model_dump(mode="json"),
-        tool_route_plan={
-            "role": "critic",
-            "denied_tools": ["write_text_artifact"],
-            "decisions": [
-                {
-                    "name": "write_text_artifact",
-                    "allowed": False,
-                    "reason": "critic_no_workspace_write",
-                }
-            ],
-        },
-        model_route_decision={"effective_model": "openai:gpt-4.1-mini"},
-    )
-    review_queue = build_review_queue(
-        settings=settings,
-        tool_route_plan={
-            "role": "critic",
-            "denied_tools": ["write_text_artifact"],
-            "decisions": [
-                {
-                    "name": "write_text_artifact",
-                    "allowed": False,
-                    "reason": "critic_no_workspace_write",
-                }
-            ],
-        },
-        agent_failure_records=[item.model_dump(mode="json") for item in failures],
-    )
 
     skill_task = next(task for task in delegation.tasks if task.role.value == "skill_scout")
     skill_decision = next(
@@ -386,5 +323,3 @@ def test_autonomy_governance_observe_first_reports_skill_branch_and_risk_policy(
     assert skill_task.allowed_tools == ["skills_list", "skill_view"]
     assert skill_task.memory_scope == "thread"
     assert skill_decision.payload["run_isolation_key"] == "role:skill_scout"
-    assert failures[0].failure_type == "tool_denied"
-    assert review_queue[0].item_type == "workspace_write_with_high_risk_tool"

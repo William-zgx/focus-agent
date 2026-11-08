@@ -187,7 +187,7 @@ modules so Web transport code and Android-only local behavior stay separated.
 | `local-v1-runtime.ts` | Local route dispatcher for `/v1` and `/v2` compatible endpoints |
 | `auth-conversation-runtime.ts` | Device-local principal, conversations, and thread state; rejects account and session operations |
 | `thread-branch-routes.ts` / `branch-logic.ts` | Branch tree, branch actions, merge review, thread resolution, and branch decisions |
-| `agent-runtime.ts` | Governance policies, skill catalog/selection/preference compatibility data, delegation/model-router/task-ledger compatibility data, and feedback trend route |
+| `agent-runtime.ts` | Capability/toolset catalogs, Skill catalog/selection/preference compatibility data, memory curator and context routes, artifact listing, and feedback trend route |
 | `memory-observability-runtime.ts` | Local memory, context, trajectory, overview, replay, and promote compatibility routes |
 | `admin-runtime.ts` | Device-local model, tool, Skill, and policy configuration; user and audit governance is unavailable |
 | `model-provider.ts` / `model-runtime.ts` | Provider metadata, secure API key lookup, direct OpenAI-compatible model calls, and native request cancellation |
@@ -211,7 +211,7 @@ device configuration while preserving the local runtime surfaces:
 
 - Chat, conversations, threads, Focus Score, branch actions, and merge review.
 - Device-local model, tool, Skill, and policy configuration.
-- Agent governance, memory, and observability routes backed by local app data.
+- Agent capability/context/memory/feedback routes and observability routes backed by local app data.
 - Local `web_search` tool-call streaming for current web lookups.
 
 The Android-local `web_search`/fetch helpers are text request helpers, not a native

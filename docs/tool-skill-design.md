@@ -32,8 +32,8 @@ The intended flow is:
 ```mermaid
 flowchart LR
     User["User request"] --> Skill["Skill selects workflow"]
-    Skill --> Router["Tool Router narrows tools"]
-    Router --> Tool["Tool performs operation"]
+    Skill --> Registry["Configured tool registry"]
+    Registry --> Tool["Model calls an allowed tool"]
     Tool --> Result["Observation / artifact / memory"]
     Result --> Agent["Agent response"]
     Result --> Persist["Store, artifact, or conversation state"]
@@ -227,7 +227,7 @@ Borrowings from LLM Space / DeerFlow-style harness practice that stay inside Foc
 
 ### MCP servers
 
-External MCP tools are available to both agent cores when the optional MCP extra is installed (`make install-mcp`) and servers are declared in the tool catalog. No configured servers means no client connections and no registry changes.
+External MCP tools are available to the v2 agent core when the optional MCP extra is installed (`make install-mcp`) and servers are declared in the tool catalog. No configured servers means no client connections and no registry changes.
 
 ```toml
 [[mcp_servers]]
@@ -673,8 +673,8 @@ Tool safety is enforced at multiple boundaries: configuration controls whether a
 ```mermaid
 flowchart LR
     Config["Installation config"] --> Available["available tool set"]
-    Available --> Router["Tool Router"]
-    Router --> Allowed{"allowed for role?"}
+    Available --> Permission["Declarative permissions and approval policy"]
+    Permission --> Allowed{"allowed by policy?"}
     Allowed -- "no" --> Denied["structured denial"]
     Allowed -- "yes" --> Execute["execute primitive"]
     Execute --> Output["structured output"]
@@ -719,7 +719,7 @@ reason = "Confirm this fetch with the user."
 
 DENY returns the structured denied ToolMessage without executing the tool. ASK uses the same approval payload, approval queue when configured, LangGraph interrupt, and approve/reject resume contract as a tool whose metadata declares `requires_approval`; it is not a dead-end tool error. Approval approves only that invocation, while rejection returns the existing structured rejected-tool result. ALLOW never waives metadata-driven human approval, including the MCP default.
 
-Both agent cores share this behavior. A `run_subtask` child cannot pause its parent's tool call, so its executor explicitly disables approval interrupts: an ASK becomes a clear blocked ToolMessage and never escapes as an interrupt. Approval-required tools and `ask_user_question` remain excluded from the child registry.
+The v2 agent core shares this behavior with its subagents. A `run_subtask` child cannot pause its parent's tool call, so its executor explicitly disables approval interrupts: an ASK becomes a clear blocked ToolMessage and never escapes as an interrupt. Approval-required tools and `ask_user_question` remain excluded from the child registry.
 
 Permission rules and command hooks are file-based administration policy, not per-request overrides. Keep them in deployment-controlled catalog files and rebuild/restart the harness after direct file edits.
 

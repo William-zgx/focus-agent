@@ -18,7 +18,6 @@ import { Suspense, type ReactNode, lazy, useEffect, useMemo } from "react";
 import { ShellUiProvider } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { androidAppUrlToInternalRoute } from "@/android-local-runtime/helpers";
-import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
 import { AdminConfigPage } from "@/pages/admin/admin-config-page";
 import { AdminUserDetailPage } from "@/pages/admin/admin-user-detail-page";
@@ -295,18 +294,6 @@ const observabilityOverviewRoute = createRoute({
 	component: () => <TrajectoryPage />,
 });
 
-const agentRoleConsoleRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent/roles",
-	component: () => <AgentRoleConsolePage />,
-});
-
-const agentGovernanceConsoleRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent/governance",
-	component: () => <AgentRoleConsolePage />,
-});
-
 const agentMemoryRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/agent/memory",
@@ -377,10 +364,6 @@ const observabilityRoutes = appEnv.features.observability
 	? [trajectoryRoute, observabilityOverviewRoute]
 	: [];
 
-const agentGovernanceRoutes = appEnv.features.agentGovernance
-	? [agentRoleConsoleRoute, agentGovernanceConsoleRoute]
-	: [];
-
 const agentMemoryRoutes = appEnv.features.agentMemory ? [agentMemoryRoute] : [];
 
 const productivityRoutes =
@@ -411,7 +394,6 @@ const routeTree = rootRoute.addChildren([
 	threadRoute,
 	reviewRoute,
 	...observabilityRoutes,
-	...agentGovernanceRoutes,
 	...agentMemoryRoutes,
 	...productivityRoutes,
 	adminUsersRoute,

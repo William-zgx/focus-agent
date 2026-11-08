@@ -37,7 +37,7 @@ def test_manual_compaction_writes_to_completed_production_graph(monkeypatch, tmp
         "focus_agent.engine.graph_builder.create_chat_model", lambda *a, **k: StaticModel()
     )
     graph = build_graph(
-        settings=Settings(plan_act_reflect_enabled=False),
+        settings=Settings(),
         tool_registry=ToolRegistry(tools=()),
         checkpointer=InMemorySaver(),
     )

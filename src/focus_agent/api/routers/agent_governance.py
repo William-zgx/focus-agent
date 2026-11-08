@@ -9,8 +9,6 @@ from focus_agent.security.tokens import Principal
 
 from ..contracts import (
     AgentArtifactListResponse,
-    AgentArtifactSynthesisRequest,
-    AgentArtifactSynthesisResponse,
     AgentCapabilityListResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
@@ -20,29 +18,11 @@ from ..contracts import (
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
-    AgentCriticEvaluateRequest,
-    AgentCriticEvaluateResponse,
-    AgentCriticVerdictListResponse,
-    AgentDelegationPlanRequest,
-    AgentDelegationPlanResponse,
-    AgentDelegationPolicyResponse,
-    AgentDelegationRunListResponse,
     AgentFeedbackTrendResponse,
     AgentMemoryCuratorDecisionListResponse,
     AgentMemoryCuratorEvaluateRequest,
     AgentMemoryCuratorEvaluateResponse,
     AgentMemoryCuratorPolicyResponse,
-    AgentModelRouterDecisionListResponse,
-    AgentModelRouterPolicyResponse,
-    AgentReviewQueueDecisionResponse,
-    AgentReviewQueueListResponse,
-    AgentRoleDecisionListResponse,
-    AgentRoleDryRunRequest,
-    AgentRoleDryRunResponse,
-    AgentRolePolicyResponse,
-    AgentSelfRepairFailureListResponse,
-    AgentSelfRepairPromotePreviewRequest,
-    AgentSelfRepairPromotePreviewResponse,
     AgentSkillCatalogResponse,
     AgentSkillPreferenceRequest,
     AgentSkillPreferenceResponse,
@@ -52,43 +32,19 @@ from ..contracts import (
     AgentSkillSelectionResponse,
     AgentSkillSelectRequest,
     AgentSkillSemanticCandidateResponse,
-    AgentTaskLedgerPlanRequest,
-    AgentTaskLedgerPlanResponse,
-    AgentTaskLedgerPolicyResponse,
-    AgentTaskLedgerRunListResponse,
-    AgentToolRouteDecisionListResponse,
     AgentToolsetListResponse,
 )
 from ..deps import get_app_runtime, get_current_principal
 from ..route_utils.agent_governance import (
-    _agent_artifact_synthesis_response_with_runtime,
     _agent_artifacts_response,
     _agent_capabilities_response,
     _agent_context_artifacts_response,
     _agent_context_decisions_response,
     _agent_context_policy_response,
     _agent_context_preview_response,
-    _agent_critic_evaluate_response,
-    _agent_critic_verdicts_response,
-    _agent_delegation_plan_response,
-    _agent_delegation_policy_response,
-    _agent_delegation_runs_response,
     _agent_memory_curator_decisions_response,
     _agent_memory_curator_evaluate_response,
     _agent_memory_curator_policy_response,
-    _agent_model_router_decisions_response,
-    _agent_model_router_policy_response,
-    _agent_review_queue_decision_response,
-    _agent_review_queue_response,
-    _agent_role_decisions_response,
-    _agent_role_dry_run_response,
-    _agent_role_policy_response,
-    _agent_self_repair_failures_response,
-    _agent_self_repair_preview_response,
-    _agent_task_ledger_plan_response,
-    _agent_task_ledger_policy_response,
-    _agent_task_ledger_runs_response,
-    _agent_tool_route_decisions_response,
     _agent_toolsets_response,
 )
 from ..route_utils.agent_governance_operations import (
@@ -207,15 +163,6 @@ def _skill_selection_response(
     )
 
 
-@router.get("/v1/agent/roles/policy", response_model=AgentRolePolicyResponse)
-def get_agent_role_policy(
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentRolePolicyResponse:
-    del principal
-    return _agent_role_policy_response(runtime.settings)
-
-
 @router.post("/v1/agent/skills/select", response_model=AgentSkillSelectionResponse)
 def select_agent_skills(
     payload: AgentSkillSelectRequest,
@@ -299,29 +246,6 @@ def update_agent_skill_preference(
     )
 
 
-@router.post("/v1/agent/roles/dry-run", response_model=AgentRoleDryRunResponse)
-def dry_run_agent_role_route(
-    payload: AgentRoleDryRunRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentRoleDryRunResponse:
-    del principal
-    return _agent_role_dry_run_response(payload=payload, runtime=runtime)
-
-
-@router.get("/v1/agent/roles/decisions", response_model=AgentRoleDecisionListResponse)
-def list_agent_role_decisions(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentRoleDecisionListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_role_decisions_response(runtime=scoped_runtime, limit=limit)
-
-
 @router.get("/v1/agent/capabilities", response_model=AgentCapabilityListResponse)
 def list_agent_capabilities(
     principal: Principal = Depends(get_current_principal),
@@ -338,19 +262,6 @@ def list_agent_toolsets(
 ) -> AgentToolsetListResponse:
     del principal
     return _agent_toolsets_response(runtime)
-
-
-@router.get("/v1/agent/tool-router/decisions", response_model=AgentToolRouteDecisionListResponse)
-def list_agent_tool_route_decisions(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentToolRouteDecisionListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_tool_route_decisions_response(runtime=scoped_runtime, limit=limit)
 
 
 @router.get("/v1/agent/memory/curator/policy", response_model=AgentMemoryCuratorPolicyResponse)
@@ -388,120 +299,6 @@ def list_agent_memory_curator_decisions(
         principal=principal,
     )
     return _agent_memory_curator_decisions_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.get("/v1/agent/delegation/policy", response_model=AgentDelegationPolicyResponse)
-def get_agent_delegation_policy(
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentDelegationPolicyResponse:
-    del principal
-    return _agent_delegation_policy_response(runtime.settings)
-
-
-@router.post("/v1/agent/delegation/plan", response_model=AgentDelegationPlanResponse)
-def plan_agent_delegation(
-    payload: AgentDelegationPlanRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentDelegationPlanResponse:
-    del principal
-    return _agent_delegation_plan_response(payload=payload, runtime=runtime)
-
-
-@router.get("/v1/agent/delegation/runs", response_model=AgentDelegationRunListResponse)
-def list_agent_delegation_runs(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentDelegationRunListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_delegation_runs_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.get("/v1/agent/model-router/policy", response_model=AgentModelRouterPolicyResponse)
-def get_agent_model_router_policy(
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentModelRouterPolicyResponse:
-    del principal
-    return _agent_model_router_policy_response(runtime.settings)
-
-
-@router.get("/v1/agent/model-router/decisions", response_model=AgentModelRouterDecisionListResponse)
-def list_agent_model_router_decisions(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentModelRouterDecisionListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_model_router_decisions_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.get("/v1/agent/self-repair/failures", response_model=AgentSelfRepairFailureListResponse)
-def list_agent_self_repair_failures(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentSelfRepairFailureListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_self_repair_failures_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.post(
-    "/v1/agent/self-repair/promote-preview", response_model=AgentSelfRepairPromotePreviewResponse
-)
-def preview_agent_self_repair_promotion(
-    payload: AgentSelfRepairPromotePreviewRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentSelfRepairPromotePreviewResponse:
-    del principal, runtime
-    return _agent_self_repair_preview_response(payload)
-
-
-@router.get("/v1/agent/review-queue", response_model=AgentReviewQueueListResponse)
-def list_agent_review_queue(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentReviewQueueListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_review_queue_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.post(
-    "/v1/agent/review-queue/{item_id}/approve", response_model=AgentReviewQueueDecisionResponse
-)
-def approve_agent_review_queue_item(
-    item_id: str,
-    principal: Principal = Depends(get_current_principal),
-) -> AgentReviewQueueDecisionResponse:
-    del principal
-    return _agent_review_queue_decision_response(item_id=item_id, approved=True)
-
-
-@router.post(
-    "/v1/agent/review-queue/{item_id}/reject", response_model=AgentReviewQueueDecisionResponse
-)
-def reject_agent_review_queue_item(
-    item_id: str,
-    principal: Principal = Depends(get_current_principal),
-) -> AgentReviewQueueDecisionResponse:
-    del principal
-    return _agent_review_queue_decision_response(item_id=item_id, approved=False)
 
 
 @router.get("/v1/agent/context/policy", response_model=AgentContextPolicyResponse)
@@ -579,38 +376,6 @@ def explain_agent_context(
     )
 
 
-@router.get("/v1/agent/task-ledger/policy", response_model=AgentTaskLedgerPolicyResponse)
-def get_agent_task_ledger_policy(
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentTaskLedgerPolicyResponse:
-    del principal
-    return _agent_task_ledger_policy_response(runtime.settings)
-
-
-@router.post("/v1/agent/task-ledger/plan", response_model=AgentTaskLedgerPlanResponse)
-def plan_agent_task_ledger(
-    payload: AgentTaskLedgerPlanRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentTaskLedgerPlanResponse:
-    del principal
-    return _agent_task_ledger_plan_response(payload=payload, runtime=runtime)
-
-
-@router.get("/v1/agent/task-ledger/runs", response_model=AgentTaskLedgerRunListResponse)
-def list_agent_task_ledger_runs(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentTaskLedgerRunListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_task_ledger_runs_response(runtime=scoped_runtime, limit=limit)
-
-
 @router.get("/v1/agent/artifacts", response_model=AgentArtifactListResponse)
 def list_agent_artifacts(
     limit: PageLimit = 50,
@@ -622,36 +387,3 @@ def list_agent_artifacts(
         principal=principal,
     )
     return _agent_artifacts_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.post("/v1/agent/artifacts/synthesize", response_model=AgentArtifactSynthesisResponse)
-def synthesize_agent_artifacts(
-    payload: AgentArtifactSynthesisRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentArtifactSynthesisResponse:
-    del principal
-    return _agent_artifact_synthesis_response_with_runtime(payload=payload, runtime=runtime)
-
-
-@router.get("/v1/agent/critic/verdicts", response_model=AgentCriticVerdictListResponse)
-def list_agent_critic_verdicts(
-    limit: PageLimit = 50,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentCriticVerdictListResponse:
-    scoped_runtime = _governance_list_runtime(
-        runtime=runtime,
-        principal=principal,
-    )
-    return _agent_critic_verdicts_response(runtime=scoped_runtime, limit=limit)
-
-
-@router.post("/v1/agent/critic/evaluate", response_model=AgentCriticEvaluateResponse)
-def evaluate_agent_critic_gate(
-    payload: AgentCriticEvaluateRequest,
-    principal: Principal = Depends(get_current_principal),
-    runtime: AppRuntime = Depends(get_app_runtime),
-) -> AgentCriticEvaluateResponse:
-    del principal
-    return _agent_critic_evaluate_response(payload=payload, runtime=runtime)

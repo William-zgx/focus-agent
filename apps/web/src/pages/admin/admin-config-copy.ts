@@ -143,10 +143,6 @@ const TOOL_CONFIG_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 };
 
 const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
-	agent_artifact_synthesis_enabled: {
-		label: "Artifact 合成",
-		description: "启用从委托工作中合成 Artifact。",
-	},
 	agent_branch_decision_conclude_threshold: {
 		label: "结论阈值",
 		description: "触发 conclude 决策所需的置信度阈值。",
@@ -223,26 +219,6 @@ const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 		label: "上下文 tokenizer 模式",
 		description: "用于上下文预算的 tokenizer 策略。",
 	},
-	agent_critic_gate_enabled: {
-		label: "Critic Gate",
-		description: "启用 critic gate 评估。",
-	},
-	agent_critic_gate_enforce: {
-		label: "强制 Critic Gate",
-		description: "最终输出前必须通过 critic gate 审批。",
-	},
-	agent_delegation_enabled: {
-		label: "任务委派",
-		description: "启用 Agent 委派规划。",
-	},
-	agent_delegation_enforce: {
-		label: "强制委派策略",
-		description: "要求委派策略给出决策，而不是仅观测。",
-	},
-	agent_delegation_execution_mode: {
-		label: "委派执行模式",
-		description: "委派任务使用的执行模式。",
-	},
 	agent_memory_auto_promote_on_merge: {
 		label: "合并后自动提升记忆",
 		description: "接受合并后自动提升记忆候选。",
@@ -250,34 +226,6 @@ const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 	agent_memory_curator_enabled: {
 		label: "记忆整理器",
 		description: "启用记忆整理策略。",
-	},
-	agent_model_router_enabled: {
-		label: "模型路由器",
-		description: "启用策略辅助的模型选择。",
-	},
-	agent_model_router_mode: {
-		label: "模型路由模式",
-		description: "观测或强制执行模型路由决策。",
-	},
-	agent_role_max_parallel_runs: {
-		label: "角色最大并发",
-		description: "角色专属模型调用的最大并发数量。",
-	},
-	agent_role_routing_enabled: {
-		label: "角色路由",
-		description: "按 planner、executor、critic、memory、skill 等角色路由工作。",
-	},
-	agent_task_ledger_enabled: {
-		label: "任务账本",
-		description: "启用任务账本规划与运行追踪。",
-	},
-	agent_tool_router_enabled: {
-		label: "工具路由器",
-		description: "启用策略辅助的工具调用路由。",
-	},
-	agent_tool_router_enforce: {
-		label: "强制工具路由",
-		description: "阻止被路由器拒绝的工具调用，而不是仅观测。",
 	},
 	api_host: {
 		label: "API 监听地址",

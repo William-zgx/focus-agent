@@ -104,18 +104,6 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_max_tool_rounds": max(
             1, env_int(env, "AGENT_MAX_TOOL_ROUNDS", defaults.agent_max_tool_rounds)
         ),
-        "plan_act_reflect_enabled": env_bool(
-            env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
-        ),
-        "plan_scenes": (
-            _split_csv(env.get("PLAN_SCENES"))
-            if env.get("PLAN_SCENES") is not None
-            else defaults.plan_scenes
-        ),
-        "plan_task_brief_min_chars": env_int(
-            env, "PLAN_TASK_BRIEF_MIN_CHARS", defaults.plan_task_brief_min_chars
-        ),
-        "plan_max_replans": env_int(env, "PLAN_MAX_REPLANS", defaults.plan_max_replans),
         "agent_role_routing_enabled": env_bool(
             env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
         ),
@@ -349,12 +337,6 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_zvec_data_dir": str(
             env.get("AGENT_ZVEC_DATA_DIR") or defaults.agent_zvec_data_dir
         ).strip(),
-        "agent_tool_router_enabled": env_bool(
-            env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
-        ),
-        "agent_tool_router_enforce": env_bool(
-            env, "AGENT_TOOL_ROUTER_ENFORCE", default=defaults.agent_tool_router_enforce
-        ),
         "agent_delegation_enabled": env_bool(
             env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
         ),
@@ -366,34 +348,5 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
                 "AGENT_DELEGATION_EXECUTION_MODE",
                 defaults.agent_delegation_execution_mode,
             )
-        ),
-        "agent_model_router_enabled": env_bool(
-            env, "AGENT_MODEL_ROUTER_ENABLED", default=defaults.agent_model_router_enabled
-        ),
-        "agent_model_router_mode": (
-            "enforce"
-            if str(env.get("AGENT_MODEL_ROUTER_MODE", defaults.agent_model_router_mode)).lower()
-            == "enforce"
-            else "observe"
-        ),
-        "agent_self_repair_enabled": env_bool(
-            env, "AGENT_SELF_REPAIR_ENABLED", default=defaults.agent_self_repair_enabled
-        ),
-        "agent_review_queue_enabled": env_bool(
-            env, "AGENT_REVIEW_QUEUE_ENABLED", default=defaults.agent_review_queue_enabled
-        ),
-        "agent_task_ledger_enabled": env_bool(
-            env, "AGENT_TASK_LEDGER_ENABLED", default=defaults.agent_task_ledger_enabled
-        ),
-        "agent_artifact_synthesis_enabled": env_bool(
-            env,
-            "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
-            default=defaults.agent_artifact_synthesis_enabled,
-        ),
-        "agent_critic_gate_enabled": env_bool(
-            env, "AGENT_CRITIC_GATE_ENABLED", default=defaults.agent_critic_gate_enabled
-        ),
-        "agent_critic_gate_enforce": env_bool(
-            env, "AGENT_CRITIC_GATE_ENFORCE", default=defaults.agent_critic_gate_enforce
         ),
     }

@@ -6,8 +6,6 @@ from typing import Any
 GOVERNANCE_METRIC_KEYS: tuple[str, ...] = (
     "memory_promotions",
     "memory_conflicts",
-    "tool_router_denied",
-    "tool_router_enforced",
     "agent_delegation_runs",
     "critic_rejects",
     "agent_review_pending",
@@ -48,15 +46,6 @@ def memory_curator_metrics(payload: Any) -> Mapping[str, int]:
     return {
         "memory_promotions": len(payload.get("promoted_memory_ids") or []),
         "memory_conflicts": len(payload.get("conflicts") or []),
-    }
-
-
-def tool_route_metrics(payload: Any) -> Mapping[str, int]:
-    if not isinstance(payload, Mapping):
-        return {}
-    return {
-        "tool_router_denied": len(payload.get("denied_tools") or []),
-        "tool_router_enforced": 1 if payload.get("enforce") else 0,
     }
 
 
@@ -250,5 +239,4 @@ __all__ = [
     "task_outcome_metrics",
     "tool_outcome_metrics",
     "tool_intent_metrics",
-    "tool_route_metrics",
 ]

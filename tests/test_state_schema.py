@@ -357,8 +357,6 @@ def test_governance_descriptor_projection_and_metrics_prefer_records():
     assert projection["memory_curator_decision"]["promoted_memory_ids"] == ["mem-1", "mem-2"]
     assert metrics["tool_intent_live_web_research"] == 1
     assert metrics["tool_intent_first_tool"] == 1
-    assert metrics["tool_router_denied"] == 1
-    assert metrics["tool_router_enforced"] == 1
     assert metrics["memory_promotions"] == 2
     assert metrics["memory_conflicts"] == 1
 

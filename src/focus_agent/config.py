@@ -199,10 +199,6 @@ class Settings:
     context_memory_evidence_enabled: bool = True
     agent_core: str = "v2"
     agent_max_tool_rounds: int = 16
-    plan_act_reflect_enabled: bool = True
-    plan_scenes: tuple[str, ...] = ("long_dialog_research", "technical_deep_dive")
-    plan_task_brief_min_chars: int = 120
-    plan_max_replans: int = 1
     agent_role_routing_enabled: bool = False
     agent_role_orchestrator_model: str | None = None
     agent_role_planner_model: str | None = None
@@ -257,15 +253,9 @@ class Settings:
     agent_retrieval_fallback_backend: str = "postgres"
     agent_zvec_enabled: bool = True
     agent_zvec_data_dir: str = ".focus_agent/zvec"
-    agent_tool_router_enabled: bool = False
-    agent_tool_router_enforce: bool = True
     agent_delegation_enabled: bool = False
     agent_delegation_enforce: bool = False
     agent_delegation_execution_mode: str = "observe"
-    agent_model_router_enabled: bool = False
-    agent_model_router_mode: str = "observe"
-    agent_self_repair_enabled: bool = False
-    agent_review_queue_enabled: bool = False
     agent_context_engineering_v2_enabled: bool = False
     agent_context_artifactize_long_observations: bool = False
     agent_context_role_views_enabled: bool = False
@@ -274,10 +264,6 @@ class Settings:
     context_auto_compaction_enabled: bool = True
     context_auto_compaction_pre_send_ratio: float = 0.92
     context_auto_compaction_post_turn_ratio: float = 0.85
-    agent_task_ledger_enabled: bool = False
-    agent_artifact_synthesis_enabled: bool = False
-    agent_critic_gate_enabled: bool = False
-    agent_critic_gate_enforce: bool = False
     trajectory_enabled: bool | None = None
     trajectory_observation_max_chars: int = 4000
     trajectory_answer_max_chars: int = 4000

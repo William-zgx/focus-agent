@@ -101,7 +101,7 @@ def test_production_smoke_dry_run_writes_report(tmp_path: Path) -> None:
     assert report["report_type"] == "production_smoke"
     assert report["status"] == "dry-run"
     assert report["passed"] is True
-    assert report["summary"]["total"] == 13
+    assert report["summary"]["total"] == 12
     assert set(report["summary"]["by_category"]) == {
         "api",
         "sdk",

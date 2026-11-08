@@ -2035,8 +2035,6 @@ def test_graph_tool_executor_async_approval_records_pending_without_interrupt(mo
         settings=Settings(
             multi_agent_v2_enabled=True,
             multi_agent_async_approval_enabled=True,
-            agent_tool_router_enabled=True,
-            agent_tool_router_enforce=True,
         ),
         tool_registry=ToolRegistry(tools=(approval_lookup,)),
         approval_queue=approval_queue,
@@ -2118,8 +2116,6 @@ def test_graph_tool_executor_async_approval_does_not_block_other_tools(monkeypat
         settings=Settings(
             multi_agent_v2_enabled=True,
             multi_agent_async_approval_enabled=True,
-            agent_tool_router_enabled=True,
-            agent_tool_router_enforce=True,
         ),
         tool_registry=ToolRegistry(tools=(approval_lookup, safe_lookup)),
         approval_queue=InMemoryApprovalQueue(),

@@ -281,7 +281,6 @@ def test_android_target_uses_local_runtime_and_feature_flags():
     assert 'isAndroidTarget ? "/" : "/app/"' in env_text
     assert 'isAndroidTarget ? "/" : "/app"' in env_text
     assert "!isAndroidTarget" in env_text
-    assert "agentGovernance" in env_text
     assert "agentMemory" in env_text
     assert "observability" in env_text
     assert "productivity" in env_text
@@ -359,12 +358,10 @@ def test_android_target_uses_local_runtime_and_feature_flags():
 
     login_intro_text = (web_root / "src" / "pages" / "auth" / "login-intro.tsx").read_text()
     assert "hasWorkspace" in login_intro_text
-    assert "appEnv.features.agentGovernance" in login_intro_text
     assert "appEnv.features.observability" in login_intro_text
     assert "对话与管理优先的 Focus Agent" in login_intro_text
 
     account_portal_text = (web_root / "src" / "pages" / "auth" / "account-portal.tsx").read_text()
-    assert "appEnv.features.agentGovernance" in account_portal_text
     assert "appEnv.features.agentMemory" in account_portal_text
     assert "appEnv.features.observability" in account_portal_text
     assert "appEnv.features.productivity" in account_portal_text
@@ -384,11 +381,9 @@ def test_android_target_uses_local_runtime_and_feature_flags():
     assert router_text.index('addListener("appUrlOpen", openInternalRoute)') < router_text.index(
         ".getLaunchUrl()"
     )
-    assert "appEnv.features.agentGovernance" in router_text
     assert "appEnv.features.agentMemory" in router_text
     assert "appEnv.features.observability" in router_text
     assert "appEnv.features.productivity" in router_text
-    assert "...agentGovernanceRoutes" in router_text
     assert "...agentMemoryRoutes" in router_text
     assert "...observabilityRoutes" in router_text
     assert "...productivityRoutes" in router_text
@@ -403,7 +398,6 @@ def test_android_target_uses_local_runtime_and_feature_flags():
 
     shell_config_text = (web_root / "src" / "app" / "shell" / "app-shell-config.ts").read_text()
     assert "if (!appEnv.features.productivity) return false" in shell_config_text
-    assert "appEnv.features.agentGovernance" in shell_config_text
     assert "appEnv.features.agentMemory" in shell_config_text
     assert "appEnv.features.observability" in shell_config_text
 
@@ -419,13 +413,6 @@ def test_android_feature_flags_hide_productivity():
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in android_build_script
 
     env_text = (web_root / "src" / "shared" / "config" / "env.ts").read_text()
-    assert re.search(
-        r"agentGovernance:\s*envFlag\(\s*"
-        r"import\.meta\.env\.VITE_FOCUS_AGENT_ENABLE_AGENT_GOVERNANCE,\s*"
-        r"true,\s*\)",
-        env_text,
-        re.S,
-    )
     assert re.search(
         r"agentMemory:\s*envFlag\(\s*"
         r"import\.meta\.env\.VITE_FOCUS_AGENT_ENABLE_AGENT_MEMORY,\s*"
@@ -455,7 +442,6 @@ def test_android_feature_flags_hide_productivity():
     assert 'VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false"' in router_text
     assert "LazyProductivityPage" in router_text
     assert "import { ProductivityPage }" not in router_text
-    assert "const agentGovernanceRoutes = appEnv.features.agentGovernance" in router_text
     assert "const agentMemoryRoutes = appEnv.features.agentMemory" in router_text
     assert "const observabilityRoutes = appEnv.features.observability" in router_text
     assert "[productivityNotesRoute, productivityTasksRoute]" in router_text
@@ -463,10 +449,6 @@ def test_android_feature_flags_hide_productivity():
     auth_page_data_text = (web_root / "src" / "pages" / "auth" / "auth-page-data.tsx").read_text()
     assert (
         'if (path.startsWith("/agent/memory")) return appEnv.features.agentMemory'
-        in auth_page_data_text
-    )
-    assert (
-        'if (path.startsWith("/agent/")) return appEnv.features.agentGovernance'
         in auth_page_data_text
     )
     assert (
@@ -550,7 +532,6 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'resource === "memory"' in local_runtime_text
     assert 'resource === "observability"' in local_runtime_text
     assert "Productivity is disabled in the Android local runtime." in local_runtime_text
-    assert "appEnv.features.agentGovernance, true" in android_smoke_text
     assert "appEnv.features.agentMemory, true" in android_smoke_text
     assert "appEnv.features.observability, true" in android_smoke_text
     assert "appEnv.features.productivity, false" in android_smoke_text
@@ -566,7 +547,6 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert "sdkClient.updateAdminModelConfig" in android_smoke_text
     assert "sdkClient.updateAdminToolConfig" in android_smoke_text
     assert "sdkClient.updateAdminPolicyConfig" in android_smoke_text
-    assert "sdkClient.routeAgentTools" in android_smoke_text
     assert "sdkClient.forkBranch" in android_smoke_text
     assert "sdkClient.promoteBranchDecision" in android_smoke_text
     assert "sdkClient.dismissBranchAction" in android_smoke_text
@@ -616,15 +596,12 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'searchRequest?.data.args?.query.includes("请联网查一下")' in android_smoke_text
     assert 'event.data.output?.source === "duckduckgo_html"' in android_smoke_text
     assert '"https://duckduckgo.com/html/"' in android_smoke_text
-    assert "roleDryRun.plan.decisions[0].model_id" in android_smoke_text
     assert 'skill.skill_id === "android-local-runtime"' in android_smoke_text
     assert "skillSelection.skill_ids" in android_smoke_text
     assert '["local-web-tools"]' in android_smoke_text
     assert "contextPreview.decision.budget.prompt_chars" in android_smoke_text
     assert 'contextEvidence.backend, "android-local"' in android_smoke_text
     assert "contextExplain.item.evidence_id" in android_smoke_text
-    assert "taskLedgerPreview.ledger.tasks.length" in android_smoke_text
-    assert "toolRoute.plan.decisions.map" in android_smoke_text
     assert 'completed?.data.branch_decision?.status, "promoted"' in android_smoke_text
     assert 'executed.branch_action.status, "executed"' in android_smoke_text
 

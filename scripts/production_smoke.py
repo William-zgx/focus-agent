@@ -51,7 +51,6 @@ DEFAULT_CHECKS: tuple[
     ("sdk_client_healthz", "sdk", "api", "GET", "/healthz", (200,), None),
     ("web_app", "web", "web", "GET", "/app", (200,), None),
     ("web_observability", "web", "web", "GET", "/app/observability/overview", (200,), None),
-    ("web_agent_governance", "web", "web", "GET", "/app/agent/governance", (200,), None),
     (
         "graph_min_conversation",
         "graph",

@@ -85,8 +85,6 @@ make api
 
 - `http://127.0.0.1:8000/app`
 - `http://127.0.0.1:8000/app/agent/memory`
-- `http://127.0.0.1:8000/app/agent/roles`
-- `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
@@ -399,7 +397,6 @@ uv run python scripts/ui_smoke_test.py \
 
 - [Memory System v2](memory-system-v2.md)
 - [分支决策与推荐](branch-decisions.md)
-- [Agent Governance](agent-role-routing.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)

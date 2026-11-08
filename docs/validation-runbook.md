@@ -306,8 +306,8 @@ make release-gate
 
 Production release-health must be fail-closed and should use real deployment
 signals rather than local fallback reports. Missing `/readyz`, trajectory stats,
-replay comparisons, eval reports, production smoke, Postgres ops, OTel smoke, or
-governance reports must block production release review.
+replay comparisons, eval reports, production smoke, Postgres ops, or OTel smoke
+must block production release review.
 
 Before collecting production evidence, export one complete identity:
 
@@ -323,8 +323,8 @@ All four variables are required together for non-dry-run report writers.
 input in a production pack must carry a timezone-aware evidence timestamp and a
 matching top-level `release_binding` with `commit_sha`, `deployment_id`,
 `deployment_version`, and `environment`. Production smoke, Postgres ops, OTel,
-governance, standard eval, and memory/context writers attach that identity from
-the environment. Downloaded JSON must pass
+standard eval, and memory/context writers attach that identity from the
+environment. Downloaded JSON must pass
 `scripts/release_evidence_capture.py`.
 
 The capture helper validates existing bindings before replacing their location
@@ -353,7 +353,7 @@ Run the production pack only after those fields, all input bindings, and all
 timestamps have been checked:
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 Verify `reports/release-gate/<release-id>/manifest.json` has
