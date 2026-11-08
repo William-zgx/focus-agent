@@ -200,24 +200,14 @@ relative script path boundaries, and dependency declarations before execution.
 
 ## Multi-Agent Coordination
 
-Agent Team planning attaches `sandbox:<root_thread_id>` resource claims to
-execution, build, test, and code-modification tasks. The existing resource-lock
-manager serializes conflicting tasks in the same Agent Team session. This keeps
-parallel workers from writing the same persistent thread sandbox at the same
-time.
+The retained resource-lock primitives can serialize holders of the same
+`sandbox:<root_thread_id>` claim when a caller declares one. They do not infer
+claims for ordinary sandbox commands and are not a global host-level Docker
+capacity controller.
 
-During long task execution, Agent Team periodically heartbeats both the task
-claim and acquired sandbox/resource locks. If enqueue or lease maintenance fails,
-the task is moved back to a retryable pending state or marked with a clear
-blocked/failed status instead of remaining orphaned in `queued`.
-
-The current lock scope is per Agent Team session. It is not a global host-level
-Docker capacity controller.
-
-Agent Team v2 job claims, resource leases, and side-effect receipts provide a
-separate persistence surface when that path and its durable backend are enabled.
-They do not turn every sandbox command into a restartable durable job; the
-generic harness still needs an explicit run/retry owner.
+Sandbox workspace persistence, resource leases, and side-effect records do not
+make every command a restartable durable job. Generic harness runs still need
+an explicit run/retry owner.
 
 ## Configuration
 
@@ -258,11 +248,9 @@ uv run pytest \
   tests/test_containerization_scaffold.py \
   tests/test_sandbox_image_cli.py \
   tests/test_sandbox_execution.py \
-  tests/test_agent_team_planning_dag_contracts.py \
   tests/test_default_tools.py \
   tests/test_skill_registry.py \
   tests/test_execution_contract.py \
-  tests/test_agent_team_multi_agent.py \
   -q
 ```
 

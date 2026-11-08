@@ -6,7 +6,7 @@
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
 
 Focus Agent 是平台级 monorepo。优先按触达面收敛验证（API/contract、Web、SDK、
-Agent Team、Android、release），只在大范围改动时跑完整 `make ci`。
+Agent 治理、Android、release），只在大范围改动时跑完整 `make ci`。
 产品定位与运行主路径见 [project-overview.md](project-overview.md)；
 架构边界见 [architecture.md](architecture.md)；全面验收见
 [validation-runbook.md](validation-runbook.md)。
@@ -20,7 +20,6 @@ flowchart TD
     Scope --> Admin["Admin / Auth"]
     Scope --> Agent["Agent Governance"]
     Scope --> Branch["Branch decisions"]
-    Scope --> Team["Agent Team"]
     Scope --> Mobile["Android"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
@@ -28,7 +27,6 @@ flowchart TD
     Admin --> AdminChecks["admin API tests + web scaffold"]
     Agent --> Eval["agent eval suites + governance tests"]
     Branch --> BranchChecks["branch decision + chat/harness tests"]
-    Team --> TeamChecks["agent-team API/service + UI smoke"]
     Mobile --> AndroidChecks["android sync/build + runtime smoke"]
     CI --> Done["进入 review"]
     WebChecks --> Done
@@ -36,7 +34,6 @@ flowchart TD
     AdminChecks --> Done
     Eval --> Done
     BranchChecks --> Done
-    TeamChecks --> Done
     AndroidChecks --> Done
 ```
 
@@ -77,7 +74,6 @@ pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
-make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
@@ -102,8 +98,7 @@ checkout/worktree 后，先重新执行 `make install`（或 `make install-anthr
 - `src/focus_agent/repositories/_postgres_base.py`：`PostgresMixin`（Postgres 仓储共用的
   `__init__` 与 connection/cursor 辅助）和 `decode_json_payload`
 
-Agent Team 服务位于 `src/focus_agent/services/agent_team/` 包（规划在
-`services/agent_team/planning/`），图助手模块位于 `src/focus_agent/engine/graph/`。
+图助手模块位于 `src/focus_agent/engine/graph/`。
 
 ## 常见开发流
 
@@ -161,7 +156,7 @@ architecture gate 对非生成源码使用规范化的 800 行上限。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-81 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+68 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，
@@ -186,7 +181,7 @@ SDK types drift guard，所以 API route 或 response model 改动即使本地 `
 make format-check
 ```
 
-如果是 runtime、sandbox、Skill、SDK、Web、Agent Team 或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
+如果是 runtime、sandbox、Skill、SDK、Web、Agent 治理或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
 
 2. 如果改动影响后端路由、stream 事件或 Web App 对 frontend SDK 的使用：
 
@@ -278,17 +273,13 @@ pnpm web:check
 公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
 如果改动 live-web 行为，请用包含 "today"、"tomorrow" 或 "本周" 的相对时间问题验证 `current_utc_time` 会先锚定时间再 `web_search`；过期证据最多触发一次修复检索，最终应给出有证据的回答或明确的不确定说明。
 
-6. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
+6. 如果改动影响 delegation governance、保留的 multi-agent coordination 或 async approval：
 
 ```bash
-.venv/bin/python -m pytest tests/test_agent_team_* -q
-make contract-check
-make web-check
-make web-build
-make ui-smoke-agent-team-adoption
+uv run pytest tests/test_multi_agent_config.py tests/test_agent_delegation.py tests/test_agent_roles.py -q
 ```
 
-Agent Team 的 fake execution 只用于验证流程，必须展示为 `final_answer_status="placeholder"` 和 `request_changes`，不能被当成可交付最终答案。浏览器检查应确认默认 UI 不显示 raw fake run text，output id / artifact id 只出现在高级详情里。
+fake delegated run 只能作为流程证据。async approval 决定只更新队列记录，不会自动重放已经返回的 graph invocation；必须显式记录并审计重试。
 
 7. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
@@ -323,7 +314,7 @@ chmod +x /tmp/focus-agent-chromium-headless
 export CHROME_PATH=/tmp/focus-agent-chromium-headless
 ```
 
-长时间 browser smoke 或 Agent Team smoke 之后，要重新检查 `/readyz`，不要只看 `/healthz`。`background_jobs.ready=false` 表示进程还活着，但本地队列没有清空；在理解或清理 pending work 前，这次验证应记录为 degraded。
+长时间 browser smoke 之后，要重新检查 `/readyz`，不要只看 `/healthz`。`background_jobs.ready=false` 表示进程还活着，但本地队列没有清空；在理解或清理 pending work 前，这次验证应记录为 degraded。
 
 如果改动影响 sandbox execution，请先构建或刷新标准执行镜像，再跑依赖 Docker 执行的浏览器或 API smoke：
 
@@ -355,13 +346,13 @@ pnpm --dir apps/web smoke:observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-10. 如果改动影响 repository 行为，尤其是 AgentTeam repository session/task/output 语义：
+10. 如果改动影响 repository 行为，请运行相关实现与共享 contract 测试，覆盖本地 SQLite 用例，并在配置 `DATABASE_URI` 时覆盖 Postgres 用例。例如：
 
 ```bash
-uv run pytest tests/test_agent_team_repository_contract.py
+uv run pytest tests/test_branch_repository_contract.py
 ```
 
-SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postgres 用例；否则只 skip Postgres backend。
+为每个受影响 repository 补充对应 contract suite，不要只依赖 import 级检查。
 
 11. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
 
@@ -554,7 +545,6 @@ pnpm --dir apps/web smoke:productivity
 - [架构说明](architecture.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
-- [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
 - [分支决策与推荐](branch-decisions.md)
 - [路线图](roadmap.md)

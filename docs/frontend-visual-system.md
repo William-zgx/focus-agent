@@ -83,7 +83,6 @@ surface:
 | Branch tree and branch detail | `branch-tree.css`, `branch-tree-01-list.css`, `branch-tree-02-graph-detail.css`, `branch-tree-detail.css` |
 | Auth and account | `auth.css`, `auth-01-bootstrap.css`, `auth-02-account.css`, `auth-02-layout-panel.css`, `auth-03-login-shell.css`, `auth-05-login-illustration.css`, `auth-06-form.css` |
 | Admin | `admin.css`, `admin-01-workspace-panels.css`, `admin-01-console-drawer.css`, `admin-02-tables.css` |
-| Agent Team | `agent-team*.css`, `agent-team-simple-*.css`, `agent-team-workbench-*.css` |
 | Observability | `observability.css`, `trajectory.css` |
 | Productivity | `productivity.css` |
 
@@ -101,7 +100,6 @@ The current target is incremental adoption:
 | Existing route shells | Keep route-level class names unless the page is already being migrated |
 | Branch Action cards | Preserve disabled/loading/error behavior while moving visual chrome toward primitives |
 | Observability workbench | Keep dense three-column layout and right rail stable; primitives should not reduce data density |
-| Agent Team workbench | Preserve cockpit/adoption workflow states before replacing local markup |
 
 ## First-Tier Routes
 
@@ -109,7 +107,6 @@ These routes are the first migration and screenshot baseline targets:
 
 - `/`
 - `/c/$conversationId/t/$threadId`
-- `/agent-team`
 - `/observability/overview`
 - `/observability/trajectory`
 
@@ -172,4 +169,4 @@ These are behavioral contracts, not visual polish claims:
   with `branch_handoff_auto_run` metadata.
 - Visual, axe, and real-Chrome checks validate the Web UI. They do not establish
   an Agent-native browser/DOM/screenshot tool, image attachment support, or a
-  provider-backed Agent Team execution path.
+  provider-backed delegated execution path.

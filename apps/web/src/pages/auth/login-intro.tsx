@@ -73,7 +73,6 @@ export function LoginIntro() {
 		"--fa-login-teal-chip": `url(#${tealChipId})`,
 	} as CSSProperties;
 	const hasWorkspace =
-		appEnv.features.agentTeam ||
 		appEnv.features.agentGovernance ||
 		appEnv.features.agentMemory ||
 		appEnv.features.observability;

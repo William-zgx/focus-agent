@@ -1,5 +1,4 @@
 export * from "./types/admin.js";
-export * from "./types/agent-team.js";
 export * from "./types/agent.js";
 export * from "./types/auth.js";
 export * from "./types/branch.js";

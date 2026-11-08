@@ -82,7 +82,7 @@ const TOOL_CONFIG_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 	},
 	productivity_capture: {
 		label: "捕获生产力事项",
-		description: "将对话或 Agent Team 内容捕获为明确的笔记或任务。",
+		description: "将对话或评审内容捕获为明确的笔记或任务。",
 	},
 	read_file: {
 		label: "读取文件",
@@ -145,7 +145,7 @@ const TOOL_CONFIG_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 const CONFIG_VALUE_COPY_ZH: Record<string, LocalizedConfigCopy> = {
 	agent_artifact_synthesis_enabled: {
 		label: "Artifact 合成",
-		description: "启用从 Agent Team 工作中合成 Artifact。",
+		description: "启用从委托工作中合成 Artifact。",
 	},
 	agent_branch_decision_conclude_threshold: {
 		label: "结论阈值",

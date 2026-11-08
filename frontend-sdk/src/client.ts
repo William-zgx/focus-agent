@@ -4,10 +4,6 @@ import {
 	applyAgentGovernanceEndpoints,
 	type AgentGovernanceEndpoints,
 } from "./client/agent-governance.js";
-import {
-	applyAgentTeamEndpoints,
-	type AgentTeamEndpoints,
-} from "./client/agent-team.js";
 import { applyAuthEndpoints, type AuthEndpoints } from "./client/auth.js";
 import {
 	applyBranchDecisionEndpoints,
@@ -98,7 +94,6 @@ export interface FocusAgentClient
 	extends AuthEndpoints,
 		AdminEndpoints,
 		AgentGovernanceEndpoints,
-		AgentTeamEndpoints,
 		BranchDecisionEndpoints,
 		ThreadBranchEndpoints,
 		MemoryEndpoints,
@@ -276,7 +271,6 @@ function streamEventRunId(event: FocusAgentEvent): string | null {
 applyAuthEndpoints(FocusAgentClient);
 applyAdminEndpoints(FocusAgentClient);
 applyAgentGovernanceEndpoints(FocusAgentClient);
-applyAgentTeamEndpoints(FocusAgentClient);
 applyBranchDecisionEndpoints(FocusAgentClient);
 applyThreadBranchEndpoints(FocusAgentClient);
 applyMemoryEndpoints(FocusAgentClient);

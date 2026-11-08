@@ -59,7 +59,6 @@ def test_android_app_scaffold_builds_capacitor_shell():
     assert "VITE_FOCUS_AGENT_APP_BASE=/" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ROUTER_BASE=/" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_BUILD_OUT_DIR=dist-android" in scripts["android:web:build"]
-    assert "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false" in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=true" not in scripts["android:web:build"]
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in scripts["android:web:build"]
     assert scripts["android:web:build:debug"].startswith(
@@ -262,7 +261,7 @@ def test_ci_requires_android_debug_sync_build_lint_and_unit_tests():
     assert "connectedDebugAndroidTest" not in job_text
 
 
-def test_android_target_uses_local_runtime_and_excludes_agent_team():
+def test_android_target_uses_local_runtime_and_feature_flags():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
 
@@ -282,7 +281,6 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert 'isAndroidTarget ? "/" : "/app/"' in env_text
     assert 'isAndroidTarget ? "/" : "/app"' in env_text
     assert "!isAndroidTarget" in env_text
-    assert "agentTeam" in env_text
     assert "agentGovernance" in env_text
     assert "agentMemory" in env_text
     assert "observability" in env_text
@@ -366,7 +364,6 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert "对话与管理优先的 Focus Agent" in login_intro_text
 
     account_portal_text = (web_root / "src" / "pages" / "auth" / "account-portal.tsx").read_text()
-    assert "appEnv.features.agentTeam" in account_portal_text
     assert "appEnv.features.agentGovernance" in account_portal_text
     assert "appEnv.features.agentMemory" in account_portal_text
     assert "appEnv.features.observability" in account_portal_text
@@ -387,12 +384,10 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
     assert router_text.index('addListener("appUrlOpen", openInternalRoute)') < router_text.index(
         ".getLaunchUrl()"
     )
-    assert "appEnv.features.agentTeam" in router_text
     assert "appEnv.features.agentGovernance" in router_text
     assert "appEnv.features.agentMemory" in router_text
     assert "appEnv.features.observability" in router_text
     assert "appEnv.features.productivity" in router_text
-    assert "...agentTeamRoutes" in router_text
     assert "...agentGovernanceRoutes" in router_text
     assert "...agentMemoryRoutes" in router_text
     assert "...observabilityRoutes" in router_text
@@ -408,13 +403,12 @@ def test_android_target_uses_local_runtime_and_excludes_agent_team():
 
     shell_config_text = (web_root / "src" / "app" / "shell" / "app-shell-config.ts").read_text()
     assert "if (!appEnv.features.productivity) return false" in shell_config_text
-    assert "appEnv.features.agentTeam" in shell_config_text
     assert "appEnv.features.agentGovernance" in shell_config_text
     assert "appEnv.features.agentMemory" in shell_config_text
     assert "appEnv.features.observability" in shell_config_text
 
 
-def test_android_feature_flags_hide_productivity_and_agent_team():
+def test_android_feature_flags_hide_productivity():
     root = Path(__file__).resolve().parents[1]
     web_root = root / "apps" / "web"
 
@@ -422,12 +416,9 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     android_build_script = package_json["scripts"]["android:web:build"]
     assert "VITE_FOCUS_AGENT_TARGET=android" in android_build_script
     assert "VITE_FOCUS_AGENT_BUILD_OUT_DIR=dist-android" in android_build_script
-    assert "VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH=false" in android_build_script
     assert "VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY=false" in android_build_script
 
     env_text = (web_root / "src" / "shared" / "config" / "env.ts").read_text()
-    assert 'import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "true"' in env_text
-    assert "agentTeam: !isAndroidTarget && isAgentTeamEnabled" in env_text
     assert re.search(
         r"agentGovernance:\s*envFlag\(\s*"
         r"import\.meta\.env\.VITE_FOCUS_AGENT_ENABLE_AGENT_GOVERNANCE,\s*"
@@ -461,12 +452,8 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     assert 'path: "/productivity/notes"' in router_text
     assert 'path: "/productivity/tasks"' in router_text
     assert "const productivityRoutes =" in router_text
-    assert "const agentTeamRoutes =" in router_text
-    assert 'VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "false"' in router_text
     assert 'VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false"' in router_text
-    assert "LazyAgentTeamWorkbenchPage" in router_text
     assert "LazyProductivityPage" in router_text
-    assert "import { AgentTeamWorkbenchPage }" not in router_text
     assert "import { ProductivityPage }" not in router_text
     assert "const agentGovernanceRoutes = appEnv.features.agentGovernance" in router_text
     assert "const agentMemoryRoutes = appEnv.features.agentMemory" in router_text
@@ -474,10 +461,6 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     assert "[productivityNotesRoute, productivityTasksRoute]" in router_text
 
     auth_page_data_text = (web_root / "src" / "pages" / "auth" / "auth-page-data.tsx").read_text()
-    assert (
-        'if (path.startsWith("/agent-team")) return appEnv.features.agentTeam'
-        in auth_page_data_text
-    )
     assert (
         'if (path.startsWith("/agent/memory")) return appEnv.features.agentMemory'
         in auth_page_data_text
@@ -500,12 +483,6 @@ def test_android_feature_flags_hide_productivity_and_agent_team():
     ).read_text()
     assert "{appEnv.features.productivity ? (" in shell_navigation_text
     assert 'to="/productivity/tasks"' in shell_navigation_text
-
-    shell_route_state_text = (
-        web_root / "src" / "app" / "shell" / "hooks" / "use-shell-route-state.ts"
-    ).read_text()
-    assert "appEnv.features.agentTeam &&" in shell_route_state_text
-    assert 'routeState.pathname === "/agent-team"' in shell_route_state_text
 
 
 def test_android_local_runtime_supports_focus_score_branch_recommendations_and_web_search():
@@ -573,7 +550,6 @@ def test_android_local_runtime_supports_focus_score_branch_recommendations_and_w
     assert 'resource === "memory"' in local_runtime_text
     assert 'resource === "observability"' in local_runtime_text
     assert "Productivity is disabled in the Android local runtime." in local_runtime_text
-    assert "appEnv.features.agentTeam, false" in android_smoke_text
     assert "appEnv.features.agentGovernance, true" in android_smoke_text
     assert "appEnv.features.agentMemory, true" in android_smoke_text
     assert "appEnv.features.observability, true" in android_smoke_text

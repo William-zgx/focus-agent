@@ -16,12 +16,12 @@ The layer answers five questions:
 - Which artifacts are accepted, rejected, retried, or waiting for review?
 - Which evidence should be recorded for trajectory, eval, feedback trend analysis, and Web inspection?
 
-The normal chat path remains isolated from Agent Team v2 coordination. A
-complex prompt, a visible `/app/agent-team` route, or an existing Team session
-does not automatically fan a normal chat turn out into Team tasks, Git
-worktrees, resource locks, or agent-to-agent messages. Those behaviors require
-an explicit Agent Team operation and the separately default-off v2 flags
-described in [agent-team-v2-rollout.md](agent-team-v2-rollout.md).
+The normal chat path remains isolated from optional multi-agent coordination.
+A complex prompt does not automatically fan a normal chat turn out into
+delegated tasks, Git worktrees, resource locks, or agent-to-agent messages.
+Role routing, delegation, and retained coordination controls are independently
+default-off or observe-first; enabling role routing alone does not enable
+automatic delegated execution.
 
 ```mermaid
 flowchart TD
@@ -105,19 +105,14 @@ This observe-first design lets the project collect trajectory evidence before gi
 | Artifact Synthesis | off | `AGENT_ARTIFACT_SYNTHESIS_ENABLED` | `artifact_synthesis_result` |
 | Critic Gate | off | `AGENT_CRITIC_GATE_ENABLED` | `critic_gate_result` |
 | Critic Gate enforcement | off | `AGENT_CRITIC_GATE_ENFORCE` | blocked synthesis / retry task |
-| Multi-Agent v2 master switch | off | `MULTI_AGENT_V2_ENABLED` | v2 coordination surface |
-| v2 DAG scheduling | off | `MULTI_AGENT_DAG_SCHEDULER_ENABLED` | dependency-aware task waves |
-| v2 resource locks | off | `MULTI_AGENT_RESOURCE_LOCK_ENABLED` | task `resource_claims` |
-| v2 progress messages | off | `MULTI_AGENT_MESSAGE_BUS_ENABLED` | agent message bus |
+| Multi-Agent v2 master switch | off | `MULTI_AGENT_V2_ENABLED` | retained coordination surface |
 | v2 async approvals | off | `MULTI_AGENT_ASYNC_APPROVAL_ENABLED` | pending tool approval queue |
-| v2 failure handler | off | `MULTI_AGENT_FAILURE_HANDLER_ENABLED` | retry/reassign/degrade/escalate decision |
 
 Feature flags move a capability through three practical stages: no-op, observation, and enforcement. This lets the project collect trajectory evidence before a router, curator, or critic is allowed to change execution behavior.
 
-For v2, `MULTI_AGENT_V2_ENABLED` is the master gate. A v2 subflag must not be
-treated as active when the master gate is off. The Agent Team Web visibility
-flag (`VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH`) controls UI build visibility
-only; it is not a runtime enforcement flag or production kill switch.
+For v2, `MULTI_AGENT_V2_ENABLED` is the master gate.
+`MULTI_AGENT_ASYNC_APPROVAL_ENABLED` must not be treated as active when the
+master gate is off.
 
 ```mermaid
 flowchart LR
@@ -155,10 +150,9 @@ These rules are regression-sensitive:
 - A `fake` delegated run is test/process evidence only. It must not be
   represented as real model execution, a Docker-isolated command, or an
   adoptable repository change.
-- `inline` or `background` Team execution can create a Git worktree for a
-  writable task, but the worktree is Git isolation rather than a command
-  sandbox. Secure command execution separately requires Docker configured
-  fail-closed.
+- A writable delegated execution path may create a Git worktree for task
+  isolation, but the worktree is Git isolation rather than a command sandbox.
+  Secure command execution separately requires Docker configured fail-closed.
 
 ## 6. Role Routing
 
@@ -216,16 +210,9 @@ decision. There are two distinct paths:
   `interrupt_id` and `tool_call_id`.
 - **v2 async queue:** when both `MULTI_AGENT_V2_ENABLED` and
   `MULTI_AGENT_ASYNC_APPROVAL_ENABLED` are enabled, the runtime records a
-  pending request and exposes it through the Agent Team approval endpoints.
-  A decision changes the queue record but does not automatically replay a graph
-  invocation that has already returned.
-
-The codebase also contains an internal Agent Team approval resume-job state
-machine. It protects raw arguments/checkpoints from display DTOs and creates an
-idempotent executor-only job for an approved, non-cancelled task. Its default
-resume store is in memory, and it is not currently wired into a public Agent
-Team endpoint or runtime executor; do not present it as an available automatic
-resume feature.
+  pending request in the async approval queue. A decision changes the queue
+  record but does not automatically replay a graph invocation that has already
+  returned.
 
 For the async path, approval or rejection must be followed by an explicit,
 auditable task/run retry. Record the request id, deciding principal, decision

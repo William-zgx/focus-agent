@@ -207,7 +207,7 @@ The native boundary is registered by `MainActivity`:
 ## Included Modules
 
 The Android target keeps the mobile surfaces focused on local conversation and
-device configuration while preserving the non-Agent-Team runtime surfaces:
+device configuration while preserving the local runtime surfaces:
 
 - Chat, conversations, threads, Focus Score, branch actions, and merge review.
 - Device-local model, tool, Skill, and policy configuration.
@@ -216,12 +216,11 @@ device configuration while preserving the non-Agent-Team runtime surfaces:
 
 The Android-local `web_search`/fetch helpers are text request helpers, not a native
 browser with DOM navigation, screenshots, or image-attachment input. They also do
-not provide the server-backed Agent Team runtime, remote MCP management, or a
-general artifact upload/download channel.
+not provide remote MCP management or a general artifact upload/download channel.
 
-The Android target disables the Agent Team workbench, productivity routes, and
-account/user/audit administration routes. The Web target continues to include
-those server-backed capabilities by default.
+The Android target disables productivity routes and account/user/audit
+administration routes. The Web target continues to include those server-backed
+capabilities by default.
 
 ## Verification
 

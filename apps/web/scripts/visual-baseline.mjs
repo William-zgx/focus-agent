@@ -9,8 +9,6 @@ const defaultRoutes = [
 	"/",
 	"/c/demo-conversation/t/demo-thread",
 	"/c/demo-conversation/t/demo-thread/review",
-	"/agent-team",
-	"/agent-team/demo-session",
 	"/observability/overview",
 	"/observability/trajectory",
 	"/agent/roles",

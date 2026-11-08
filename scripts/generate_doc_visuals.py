@@ -6,7 +6,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from doc_visual_diagrams import (
-    agent_team_dag,
     branch_action_lifecycle,
     memory_lifecycle,
     platform_map,
@@ -168,7 +167,6 @@ def main() -> int:
     write(ASSETS / "focus-agent-readme-hero.svg", hero(chinese=False))
     write(ASSETS / "focus-agent-readme-hero.zh-CN.svg", hero(chinese=True))
     write(DIAGRAMS / "architecture-platform-map.svg", platform_map())
-    write(DIAGRAMS / "agent-team-mission-dag.svg", agent_team_dag())
     write(DIAGRAMS / "streaming-boundary.svg", streaming_boundary())
     write(DIAGRAMS / "memory-lifecycle.svg", memory_lifecycle())
     write(DIAGRAMS / "tool-skill-runtime.svg", tool_skill_runtime())

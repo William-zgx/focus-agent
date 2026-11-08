@@ -40,7 +40,6 @@ flowchart LR
 - Confirm Admin Console docs match `/app/admin/config`, `/app/admin/users`, `/app/admin/audit-events`, persisted admin role checks, reasoned admin actions, session revoke, password reset, and last-active-admin protection
 - Confirm settings center docs match the current Overview / Connections / Capabilities / Agent Behavior / Security & Runtime / Advanced layout, including Skill management and the MCP reserved connection entry
 - Confirm the frontend SDK examples still match the live contract
-- Confirm Agent Team docs match dynamic planning, standalone sessions, task contracts, Cockpit UI, retry/cancel, final-answer status, and merge bundle behavior
 - Confirm trajectory observability docs match the live API, CLI, and `/app/observability/trajectory` console
 - Confirm trajectory failure promotion preview and batch replay workflow still match the API and eval CLI
 - Confirm OTel exporter env vars and runtime readiness docs still match the live tracing behavior
@@ -82,8 +81,8 @@ make release-gate RELEASE_GATE_ARGS="--dry-run --only lint"
 For broad pre-release validation outside CI, start with
 [validation-runbook.md](validation-runbook.md). It defines the expected local
 evidence bundle across runtime outcomes, sandbox fallback metadata, Skill
-contracts, SDK/OpenAPI drift, Web source smoke, real-browser smoke, Agent Team,
-observability, and release-health readiness.
+contracts, SDK/OpenAPI drift, Web source smoke, real-browser smoke, Agent
+governance and delegation, observability, and release-health readiness.
 
 For a fast API/SDK compatibility check before the full gate, run:
 
@@ -134,7 +133,6 @@ focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 - Auth/Admin UI changes also need a manual or in-app-browser pass through protected-route redirect, `试用 Demo 工作区`, username/password login after registration or admin password reset, settings center Overview/Connections/Capabilities navigation, Skill search and enablement toggles, sidebar logout, Bearer Token login, reasoned admin status/role update, session revoke, audit-event filtering, and logout-then-login account switching. Do not treat username/password registration as a release smoke shortcut because it creates persistent local users.
 - `scripts/observability_ui_smoke.py --scenario all` seeds and exercises success, failed, zero-step, and missing-detail trajectory cases across overview and trajectory pages. The smoke records fetch request URLs and checks endpoint pathnames, so route/query serialization drift should fail loudly instead of relying on brittle string matches.
 - `pnpm --dir apps/web smoke:observability` is a source-level route and wiring check; it complements the real-browser observability smoke and does not replace it.
-- `make ui-smoke-agent-team-adoption` is the command name for the Agent Team adoption source-level smoke. It covers task selection, diff/test evidence, conflict/apply state, capture to Notes/Tasks, context evidence, and skill feedback wiring; pair it with real-browser coverage when changing the visual adoption flow.
 - `scripts/memory_context_eval.py` covers the P7 memory/context quality probes: fact fidelity, key fact recall, irrelevant memory pollution, conflict memory marking, compaction answerability, and artifact refs.
 - Eval `acceptance` thresholds are enforced by the runner. Missing usage or pricing is `cost_status=unknown`, not zero cost; fake/offline harness results must remain distinct from provider quality evidence.
 - `scripts/feedback_regression.py` summarizes online feedback and adoption/governance signals into `reports/nightly/feedback-regression.json`. It is non-blocking when no production feedback artifact exists, but nightly reports must include its `feedback_pipeline` when events are provided.

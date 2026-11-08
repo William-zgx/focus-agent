@@ -44,10 +44,8 @@ This SDK packages those concerns into a small, typed client layer.
 
 `streamTurn()` accepts a text `message` (plus the documented turn options); the
 current request contract has no first-class attachment or multimodal content
-field. The SDK exposes Agent Team planning/run/merge methods because those API
-routes exist, but the server defaults keep delegation in `observe` and Agent
-Team execution `disabled`; client method availability is not evidence of a
-provider-backed run.
+field. Delegation defaults to `observe`; client method availability is not
+evidence of a provider-backed run.
 
 The built-in Web capability exposed through the current runtime is text
 `web_search`/`web_fetch`, not a browser with DOM navigation or screenshots. Agent
@@ -60,7 +58,7 @@ does not enforce that UI behavior.
 ## Package Layout
 
 - `src/client.ts` - `FocusAgentClient` facade and endpoint mixin registration
-- `src/client/` - domain endpoint modules for auth, admin, agent-team, agent-governance, thread/branch, productivity, observability, and streaming
+- `src/client/` - domain endpoint modules for auth, admin, agent-governance, thread/branch, productivity, observability, and streaming
 - `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
 - `src/errors.ts` - structured request error type
 - `src/types.ts` - public type barrel
@@ -175,7 +173,6 @@ flowchart LR
 - `getAgentDelegationPolicy()`, `planAgentDelegation()`, `listAgentDelegationRuns()`, `getAgentModelRouterPolicy()`, `routeAgentModel()`, `listAgentModelRouterDecisions()`, `listAgentSelfRepairFailures()`, `previewAgentSelfRepairPromotion()`, `listAgentReviewQueue()`, `approveAgentReviewQueueItem()`, and `rejectAgentReviewQueueItem()` - inspect delegated role runs, model routing, failure candidates, and human-review queue items
 - `getAgentContextPolicy()`, `previewAgentContext()`, `listAgentContextDecisions()`, and `listAgentContextArtifacts()` - inspect Context Engineering v2 budget decisions, compression previews, and artifact refs
 - `getAgentTaskLedgerPolicy()`, `planAgentTaskLedger()`, `listAgentTaskLedgerRuns()`, `listAgentArtifacts()`, `synthesizeAgentArtifacts()`, `listAgentCriticVerdicts()`, and `evaluateAgentCriticGate()` - inspect task ledger runs, delegated artifacts, synthesis previews, and critic gate verdicts
-- `createAgentTeamSession()`, `listAgentTeamSessions()`, `getAgentTeamSession()`, `getAgentTeamSessionView()`, `planAgentTeamSession()`, `runAgentTeamSession()`, `cancelAgentTeamSession()`, `dispatchAgentTeamSession()`, `createAgentTeamTask()`, `listAgentTeamTasks()`, `getAgentTeamTaskStatus()`, `updateAgentTeamTask()`, `runAgentTeamTask()`, `retryAgentTeamTask()`, `cancelAgentTeamTask()`, `recordAgentTeamTaskOutput()`, `prepareAgentTeamMergeBundle()`, and `recordAgentTeamMergeDecision()` - manage Agent Team sessions, tasks, outputs, execution, cancellation, retry, and merge decisions
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
 - `getThreadResolution()` - resolve a root or child thread id to its canonical root, source thread, branch id, and branch status
@@ -425,7 +422,7 @@ make sdk-openapi-types-check
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, imported-conclusion, Agent Team, productivity, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, productivity, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
 - A stream that exhausts EOF/reconnect handling without a terminal event throws `FocusAgentIncompleteStreamError`; an explicit abort remains caller cancellation.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.

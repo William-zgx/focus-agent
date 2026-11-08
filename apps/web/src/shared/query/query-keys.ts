@@ -64,14 +64,6 @@ export const queryKeys = {
 	productivityTasksRoot: ["productivity-tasks"] as const,
 	productivityTasks: (filtersKey: string) =>
 		["productivity-tasks", filtersKey] as const,
-	agentTeamSessions: (filtersKey: string) =>
-		["agent-team-sessions", filtersKey] as const,
-	agentTeamSession: (sessionId: string) =>
-		["agent-team-session", sessionId] as const,
-	agentTeamMergeReviews: (sessionId: string) =>
-		["agent-team-merge-reviews", sessionId] as const,
-	agentTeamToolApprovals: (sessionId: string) =>
-		["agent-team-tool-approvals", sessionId] as const,
 	adminUsersRoot: ["admin-users"] as const,
 	adminUsers: (filtersKey: string) => ["admin-users", filtersKey] as const,
 	adminUser: (userId: string) => ["admin-user", userId] as const,

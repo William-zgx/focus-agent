@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       merge_review_json:
-        description: "Optional Agent Team merge review JSON path included in feedback regression."
+        description: "Optional merge review JSON path included in feedback regression."
         required: false
         type: string
       skill_selection_json:

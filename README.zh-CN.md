@@ -13,7 +13,7 @@
 
 Focus Agent 是一个 **自托管、branch-aware 的 Agent 工作台与平台参考实现**，面向长任务 AI 工作流。它的核心思想很简单：主线程保持专注，探索过程进入临时分支，结论成熟后再受控合并回主线。
 
-围绕这条分支工作流，仓库提供较完整的产品面：流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆与检索、Productivity 工具、Agent Team 规划界面、沙箱执行、发布/eval 证据链，以及可选的 Android 壳。部分协作与治理能力仍是显式 flag-gated 或 preview-only；代码和页面存在不等于生产执行已开启。
+围绕这条分支工作流，仓库提供较完整的产品面：流式聊天 API、React Web App、类型化 frontend SDK、访问控制、管理员运维、可观测性、记忆与检索、Productivity 工具、Agent 治理与委派控制、沙箱执行、发布/eval 证据链，以及可选的 Android 壳。部分协作与治理能力仍是显式 flag-gated 或 preview-only；代码和页面存在不等于生产执行已开启。
 
 > 定位、体量、适用边界与运行主路径详见：
 > **[docs/project-overview.md](docs/project-overview.md)**
@@ -32,7 +32,7 @@ Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管
 - **仓库 UI 与移动端门禁：** 独立 workflow 在真实 Chrome 中验证聊天和 observability 交互；CI 同时构建、lint 并单测 Android debug 项目。Chrome workflow 只验证 Web UI 行为，不提供 Agent 原生浏览器/DOM/截图工具。Android 还具备有界可取消的原生 HTTP、cold/hot deep link 单次投递、原生安全存储和关闭 Capacitor bridge logging。详见[验证手册](docs/validation-runbook.md)和 [Android](docs/android.md)。
 - **流式韧性：** 已结束的内存 stream 会在 replay 窗口后回收；SDK reconnect 会跨连接按 event ID 去重，若 EOF 前没有 terminal event 则抛出 `FocusAgentIncompleteStreamError`。详见[流式事件契约](docs/streaming-contract.md)和[前端 SDK](frontend-sdk/README.md)。
 - **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 **81** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
-- **App Postgres schema：** 应用 schema 版本为 **v19**（含 Agent Team v2 表及更早的 productivity / branch-decision / embedding-status 迁移）。详见[架构说明 §14](docs/architecture.md)。
+- **App Postgres schema：** 应用 schema 版本为 **v19**（含 productivity / branch-decision / embedding-status 等迁移）。详见[架构说明 §14](docs/architecture.md)。
 
 ### 适用与不适用
 
@@ -47,9 +47,9 @@ Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管
 
 ### 当前能力边界（2026-09-28）
 
-当前基线为 `718be87`。默认配置中 `AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、`AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`；因此 Agent Team 的 UI/API/规划可以存在，但不会自动执行委派任务。v2 service 明确报告 `revision_commands=false`，revision command 执行尚未实现。
+当前基线为 `718be87`。默认配置中 `AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`；角色路由、模型路由、工具路由和保留的 multi-agent coordination 控制均需独立显式启用。详见 [Agent Governance](docs/agent-role-routing.md)。
 
-Task budget 字段已经存在于规划/ledger 合同中，但真实 task runner 目前使用全局 subagent round 上限，尚未执行每任务的 LLM 调用数、tool 调用数、成本或 deadline budget。文本聊天请求不是附件/多模态请求；内置 Web 工具是文本 search/fetch，Agent Team scoped tools 也没有原生浏览器/DOM/截图或图片输入闭环。文本 artifact 返回本地 path/id 引用，不是通用上传/下载交付通道。
+Task budget 字段已经存在于规划/ledger 合同中，但 runtime 使用全局 subagent round 上限，而不是每任务的 LLM 调用数、tool 调用数、成本或 deadline budget。文本聊天请求不是附件/多模态请求；内置 Web 工具是文本 search/fetch，不提供原生浏览器/DOM/截图或图片输入闭环。文本 artifact 返回本地 path/id 引用，不是通用上传/下载交付通道。
 
 当前行为与未来能力工作的区分见[能力研究](docs/plans/2026-09-28-agent-capabilities/research.md)、[设计](docs/plans/2026-09-28-agent-capabilities/design.md)和[计划](docs/plans/2026-09-28-agent-capabilities/plan.md)。
 
@@ -67,7 +67,7 @@ Task budget 字段已经存在于规划/ledger 合同中，但真实 task runner
 - 支持 AI 辅助的分支决策与发送前分支推荐，并通过用户确认的 Branch Action 卡片执行
 - 提供流式聊天 API（默认 harness 路径：`/v2/threads/.../runs[/stream]`）和内置 React Web 界面 `/app`
 - 在发送栏展示当前上下文窗口占用，并支持非破坏式手动/自动压缩
-- 提供 Agent Team Mission Runner，把目标拆成动态多 Agent 任务、回传证据并汇总最终答案；委派执行默认 disabled/observe，必须满足[Agent Team v2 灰度](docs/agent-team-v2-rollout.md)中的显式 readiness 条件
+- 提供面向多 Agent 工作流的角色路由、模型路由、工具路由和可选委派控制；自动委派默认保持 disabled/observe
 - 提供基于 owner 的生产力工作台（笔记 + 任务），并保留来源追踪（`/app/productivity/notes`、`/app/productivity/tasks`）
 - 内置分层 observability 流程：`/app/observability/overview` 负责趋势与热点发现，`/app/observability/trajectory` 负责单条样本复盘
 - 带有访问控制、管理员控制台、按能力收拢的设置中心、Zvec 检索/RAG、记忆链路、治理反馈趋势和类型完备的前端 SDK
@@ -135,14 +135,13 @@ Skill runtime 也走 local-first 路径。包内 bundled skills 提供基础 cat
 开发可以降级到 `local_subprocess` 或 `local_venv`，结果会明确标记
 fallback。详情见 [docs/sandbox-execution.md](docs/sandbox-execution.md)。
 
-Zvec 是默认的可重建检索索引，覆盖 memory search、artifact RAG、Skill matching、trajectory reuse、branch/team shadow signal 和 workspace semantic search。PostgreSQL 与文件系统仍是 canonical store。详见 [docs/retrieval-zvec.md](docs/retrieval-zvec.md)。
+Zvec 是默认的可重建检索索引，覆盖 memory search、artifact RAG、Skill matching、trajectory reuse、branch shadow signal 和 workspace semantic search。PostgreSQL 与文件系统仍是 canonical store。详见 [docs/retrieval-zvec.md](docs/retrieval-zvec.md)。
 
 PostgreSQL memory 可用时默认启用 Memory Embedding。本地 auto 模式优先 Ollama `embeddinggemma`，请显式执行 `ollama pull embeddinggemma`，或配置 OpenAI-compatible embedding endpoint。
 
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/observability/overview`
@@ -209,9 +208,9 @@ GitHub Actions 还包含真实 Chrome workflow，用于验证聊天、branch/rev
 observability 交互；Android job 会运行 debug build、lint 和 unit tests。
 本地等价命令及模拟器/真机检查见
 [docs/validation-runbook.md](docs/validation-runbook.md)。涉及 runtime、沙箱、
-Skill、Agent Team、observability 或 release-readiness 的大范围改动时，请以该
+Skill、Agent 治理、observability 或 release-readiness 的大范围改动时，请以该
 runbook 作为完整证据路径（源码检查、OpenAPI/SDK 漂移、真实浏览器 smoke、
-`/readyz`）。通过 Chrome UI workflow 不等于 Agent 能浏览网页、接收图片附件或完成真实 provider-backed Agent Team run。
+`/readyz`）。通过 Chrome UI workflow 不等于 Agent 能浏览网页、接收图片附件或完成真实 provider-backed delegated run。
 
 ## 贡献与支持
 
@@ -230,8 +229,6 @@ Bug、功能请求和文档改进请优先使用 GitHub issue templates。安全
 - [路线图](docs/roadmap.md)
 - [流式事件契约](docs/streaming-contract.md)
 - [Auth / Access](docs/auth-access.md)
-- [Agent Team 工作台](docs/agent-team-workbench.md)
-- [Agent Team v2 灰度](docs/agent-team-v2-rollout.md)
 - [Android App](docs/android.md)
 - [发布检查清单](docs/release-checklist.md)
 - [前端 SDK](frontend-sdk/README.md)

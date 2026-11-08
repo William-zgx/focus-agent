@@ -159,7 +159,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'const MOBILE_SHELL_QUERY = "(max-width: 900px)"' in app_shell_text
     assert "globalThis.window?.matchMedia(MOBILE_SHELL_QUERY).matches" in app_shell_text
     assert 'setSidebarCollapsed(isMobileShellViewport() || stored === "1")' in app_shell_text
-    assert 'state.location.pathname.includes("/agent-team")' not in app_shell_text
     assert 'state.location.pathname.includes("/admin/")' not in app_shell_text
     assert 'urlLanguage === "en" || urlLanguage === "zh"' in app_shell_text
     assert "window.localStorage.getItem(LANGUAGE_KEY)" in app_shell_text
@@ -169,9 +168,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert 'className="fa-sidebar-account-avatar"' in app_shell_text
     assert "已登录" not in app_shell_text
     assert "lastChatTarget" in app_shell_text
-    assert "lastAgentTeamTarget" in app_shell_text
     assert "lastAdminTarget" not in app_shell_text
-    assert "rootThreadSearch" in app_shell_text
     assert 'pathname === "/observability/overview"' in app_shell_text
     assert 'pathname === "/observability/trajectory"' in app_shell_text
     assert 'pathname === "/agent/governance"' in app_shell_text
@@ -179,7 +176,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "isDiagnosticsRoute" not in app_shell_text
     assert "const chatNavLabel" in app_shell_text
     assert "const productivityNavLabel" in app_shell_text
-    assert "const agentTeamNavLabel" in app_shell_text
     assert "const adminNavLabel" in app_shell_text
     assert "const sidebarToggleLabel" in app_shell_text
     assert "const currentAccountLabel" in app_shell_text
@@ -193,12 +189,10 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert "tooltipProps(adminNavLabel)" in app_shell_text
     assert "tooltipProps(productivityNavLabel)" in app_shell_text
     assert 'to="/productivity/tasks"' in app_shell_text
-    assert "agentTeamRootThreadId" in app_shell_text
     assert "is-${shellMode}-shell" in app_shell_text
     assert "fa-workspace-sidebar-toggle" in app_shell_text
     assert '"fa-workspace-sidebar"' in app_shell_text
     assert "isChatShell ? (" in app_shell_text
-    assert 'to="/agent-team"' in app_shell_text
     assert 'to="/observability/overview"' in app_shell_text
     assert 'to="/agent/governance"' in app_shell_text
     assert 'to="/admin/config"' in app_shell_text
@@ -209,12 +203,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     ).read_text()
     assert "{isAdmin ? (" not in global_navigation_text
     assert "AdminAccessGate" not in global_navigation_text
-    assert 'const agentTeamNavLabel = isChineseUi ? "团队" : "Team";' in global_navigation_text
-    assert "appEnv.features.agentTeam ? (" in global_navigation_text
-    assert "aria-label={agentTeamNavLabel}" in global_navigation_text
-    assert "tooltipProps(agentTeamNavLabel)" in global_navigation_text
-    assert "AgentTeamIcon" in global_navigation_text
-    assert 'to="/agent-team"' in global_navigation_text
     sidebar_copy_text = (
         web_root / "src" / "app" / "shell" / "app-shell-sidebar-brand.tsx"
     ).read_text()
@@ -222,7 +210,6 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     chat_header_actions_text = (
         web_root / "src" / "app" / "shell" / "app-shell-chat-header.tsx"
     ).read_text()
-    assert 'to="/agent-team"' not in chat_header_actions_text
     assert 'to="/admin/users"' not in chat_header_actions_text
     assert "SessionExitIcon" not in chat_header_actions_text
 
@@ -253,16 +240,7 @@ def test_react_web_app_scaffold_exists_and_uses_workspace_sdk():
     assert ".fa-sidebar-account-avatar" in styles_text
     assert ".fa-workspace-sidebar" in styles_text
     assert ".fa-chat-panel.is-workspace-shell" in styles_text
-    assert ".fa-agent-team-workspace-shell" in styles_text
     assert ".fa-admin-page-bar" in styles_text
-
-    agent_team_text = (
-        web_root / "src" / "features" / "agent-team" / "agent-team-workbench.tsx"
-    ).read_text()
-    assert "fa-agent-team-workspace-shell" in agent_team_text
-    assert "fa-agent-team-stage" in agent_team_text
-    assert "AgentTeamCockpit" in agent_team_text
-    assert "AgentTeamRouteTabs" not in agent_team_text
 
     admin_chrome_text = (web_root / "src" / "pages" / "admin" / "admin-page-chrome.tsx").read_text()
     admin_heading_text = admin_chrome_text.split("export function AdminPageHeading", maxsplit=1)[

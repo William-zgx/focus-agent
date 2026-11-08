@@ -48,11 +48,6 @@ export type ChatNavTarget = {
 	threadId: string;
 };
 
-export type AgentTeamNavTarget = {
-	rootThreadId?: string;
-	sessionId?: string;
-};
-
 export type ShellMode = "admin" | "agent-workbench" | "chat";
 
 export function isProductivityPath(pathname: string) {
@@ -66,12 +61,6 @@ export function isProductivityPath(pathname: string) {
 
 export function isAgentWorkbenchPath(pathname: string) {
 	if (isProductivityPath(pathname)) return true;
-	if (
-		appEnv.features.agentTeam &&
-		(pathname === "/agent-team" || pathname.startsWith("/agent-team/"))
-	) {
-		return true;
-	}
 	if (
 		appEnv.features.observability &&
 		(pathname === "/observability/overview" ||

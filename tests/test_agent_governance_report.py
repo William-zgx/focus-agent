@@ -46,28 +46,30 @@ def test_governance_report_aggregates_quality_dimensions(tmp_path: Path) -> None
     delegation = tmp_path / "delegation.json"
     governance = tmp_path / "governance.json"
     task_ledger = tmp_path / "task-ledger.json"
-    agent_team = tmp_path / "agent-team.json"
     _write_report(delegation, suite="agent_delegation", per_tag_success={"agent_delegation": 1.0})
     _write_report(
         governance,
         suite="agent_governance",
-        per_tag_success={"critic": 1.0, "memory_curator": 1.0, "review_queue": 1.0},
+        per_tag_success={
+            "critic": 1.0,
+            "memory_curator": 1.0,
+            "review_queue": 1.0,
+            "merge_review": 1.0,
+        },
     )
     _write_report(task_ledger, suite="agent_task_ledger", per_tag_success={"critic_gate": 1.0})
-    _write_report(agent_team, suite="agent_team", per_tag_success={"merge_review": 1.0})
 
     report = agent_governance_report.build_governance_report(
         eval_reports=[
             ("delegation", delegation),
             ("governance", governance),
             ("task-ledger", task_ledger),
-            ("agent-team", agent_team),
         ]
     )
 
     assert report["meta"]["suite"] == "agent_governance_quality"
     assert report["summary"]["status"] == "passed"
-    assert report["summary"]["present_reports"] == 4
+    assert report["summary"]["present_reports"] == 3
     assert report["quality"]["delegation"]["task_success"] == 1.0
     assert report["quality"]["critic"]["tags"] == {"critic": 1.0, "critic_gate": 1.0}
     assert report["quality"]["review"]["tags"] == {

@@ -26,7 +26,6 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 不把短期上下文、规则、项目指令或工作记忆 embedding 化；这些内容继续通过 context assembly、pinned/context state、skills 和 `AGENTS.md` 等显式上下文进入模型。
 - 不把 Markdown snapshot 当运行时事实源。
 - 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/usage/candidates/forget。
-- 不改变 Agent Team / Mission Runner 公共 API、UI、任务模型。
 
 ## 2. 架构总览
 
@@ -152,8 +151,7 @@ flowchart TD
 当前 `MemoryRecord` 没有 `revision_id` 或 `parent_revision_id`。同一
 `memory_id` 的 merge 会通过 `model_copy` 和 repository upsert 更新现有行；
 `MemoryAuditEvent` 是 append-only，当前 merge 会合并保留 `evidence_refs`，但
-二者都不能还原每一次 content/summary 版本。Agent Team v2 的 revision 表是
-独立的协作任务快照，不能当作 memory revision history。
+二者都不能还原每一次 content/summary 版本。
 
 ### 3.4 Write Decision、Audit、Candidate、Retrieval Plan
 
@@ -1044,8 +1042,8 @@ Zvec retrieval 已默认启用：
 当前 memory 的治理证据、forget tombstone 和 `evidence_refs` 已持久化，但
 canonical memory 仍是同一 `memory_id` 的可更新记录，没有独立的 immutable
 revision chain。若需要审计级历史回放或 conflict 的逐版本比较，应单独接入
-memory revision 表/事件投影；不要把 Agent Team v2 revision 或 embedding
-content hash 当作 memory 内容版本。
+memory revision 表/事件投影；不要把任务快照或 embedding content hash 当作
+memory 内容版本。
 
 ### 18.4 Candidate Promotion
 

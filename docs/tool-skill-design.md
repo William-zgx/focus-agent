@@ -629,7 +629,7 @@ The first general-agent batch is now part of the baseline:
 
 These capabilities are still primitives. For example, `research` decides how to gather and synthesize evidence, while `web_search`, `web_fetch`, and artifact tools perform the concrete operations.
 
-Durable execution is similarly layered: Agent Team v2 jobs and side-effect
+Durable execution is similarly layered: background jobs and side-effect
 receipts are persisted only on their configured path; the generic harness
 `RunManager` and follow-up queues do not become restartable merely because a
 journal or Skill entrypoint exists. Approval records can block a turn, but an
@@ -650,7 +650,7 @@ tests, UI affordances, SDK methods, and tool primitives. The remaining backlog
 is workflow quality on top of those stores:
 
 - richer task event summarization and task filters,
-- note/task backlinks from conversations, Agent Team outputs, and artifacts,
+- note/task backlinks from conversations, delegated outputs, and artifacts,
 - skills that decide when to save to memory versus notes/tasks/artifacts,
 - user-configurable retention and archive policies.
 

@@ -110,14 +110,6 @@ def seed_memory_records(database_uri: str | None, *, user_id: str) -> None:
             "project_fact",
             0.9,
         ),
-        (
-            "docs-memory-agent-team",
-            "agent-team-evidence",
-            "Agent Team adoption evidence",
-            "Mission tasks should preserve acceptance criteria, changed files, test evidence, and final-answer synthesis before merge review.",
-            "project_fact",
-            0.82,
-        ),
     ]
     with psycopg.connect(database_uri) as connection:
         with connection.cursor() as cursor:
@@ -208,19 +200,6 @@ def seed_productivity(api_base_url: str, *, token: str) -> None:
                 "captured_from": "docs",
             },
         )
-        _json_request(
-            f"{api_base_url.rstrip('/')}/v1/notes",
-            method="POST",
-            token=token,
-            payload={
-                "title": "Docs screenshot: Agent Team adoption",
-                "body": "Accepted task outputs can be captured back into notes and tasks with review evidence attached.",
-                "tags": ["docs", "agent-team"],
-                "source_thread_id": "docs-screenshot-root",
-                "source_url": "/app/agent-team/docs-screenshot-session",
-                "captured_from": "docs",
-            },
-        )
 
     tasks = _json_request(f"{api_base_url.rstrip('/')}/v1/tasks", token=token)
     existing_titles = {
@@ -256,22 +235,6 @@ def seed_productivity_records(database_uri: str | None, *, user_id: str) -> bool
             source_id="docs-streaming-boundary",
             source_url="/app/c/docs-screenshot-root/t/docs-screenshot-root",
             pinned_context={"thread_id": "docs-screenshot-root"},
-            captured_from="docs",
-            metadata={"docs_screenshot": True},
-            created_at=now,
-            updated_at=now,
-        ),
-        FocusNote(
-            note_id="docs-note-agent-team-adoption",
-            user_id=user_id,
-            title="Docs screenshot: Agent Team adoption",
-            body="Accepted task outputs can be captured back into notes and tasks with review evidence attached.",
-            tags=["docs", "agent-team"],
-            source_thread_id="docs-screenshot-root",
-            source_kind="agent_team_review",
-            source_id="docs-agent-team-adoption",
-            source_url="/app/agent-team/docs-screenshot-session",
-            pinned_context={"thread_id": "docs-screenshot-root", "review": "adoption"},
             captured_from="docs",
             metadata={"docs_screenshot": True},
             created_at=now,

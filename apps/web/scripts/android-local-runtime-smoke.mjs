@@ -7,7 +7,6 @@ import { pathToFileURL } from "node:url";
 process.env.VITE_FOCUS_AGENT_TARGET = "android";
 process.env.VITE_FOCUS_AGENT_APP_BASE = "/";
 process.env.VITE_FOCUS_AGENT_ROUTER_BASE = "/";
-process.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH = "false";
 process.env.VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY = "false";
 
 class MemoryStorage {
@@ -997,7 +996,6 @@ try {
 		"env.mjs",
 	);
 	assert.equal(appEnv.useLocalRuntime, true);
-	assert.equal(appEnv.features.agentTeam, false);
 	assert.equal(appEnv.features.agentGovernance, true);
 	assert.equal(appEnv.features.agentMemory, true);
 	assert.equal(appEnv.features.observability, true);
@@ -2030,7 +2028,7 @@ try {
 			await expectJson(
 				await focusFetch(
 					"http://focus-agent.local/v1/agent/delegation/plan",
-					jsonBody({ message: "Do not start Agent Team on Android." }),
+					jsonBody({ message: "Keep Android delegation disabled." }),
 				),
 			)
 		).plan.tasks.length,

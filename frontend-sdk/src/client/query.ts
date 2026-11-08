@@ -1,6 +1,4 @@
 import type {
-  FocusAgentAgentTeamListSessionsRequest,
-  FocusAgentAgentTeamListTasksRequest,
   FocusAgentAuditEventListRequest,
   FocusAgentObservabilityOverviewRequest,
   FocusAgentTrajectoryListRequest,
@@ -59,23 +57,6 @@ export function buildTrajectoryQueryString(
   if ("offset" in request) {
     appendQueryValue(params, "offset", request.offset);
   }
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
-export function buildAgentTeamQueryString(
-  request: FocusAgentAgentTeamListSessionsRequest | FocusAgentAgentTeamListTasksRequest = {},
-): string {
-  const params = new URLSearchParams();
-  if ("root_thread_id" in request) {
-    appendQueryValue(params, "root_thread_id", request.root_thread_id);
-  }
-  appendQueryValue(params, "status", request.status);
-  if ("role" in request) {
-    appendQueryValue(params, "role", request.role);
-  }
-  appendQueryValue(params, "limit", request.limit);
-  appendQueryValue(params, "offset", request.offset);
   const query = params.toString();
   return query ? `?${query}` : "";
 }

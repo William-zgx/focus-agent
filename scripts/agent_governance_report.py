@@ -24,7 +24,6 @@ DEFAULT_EVAL_REPORTS: tuple[tuple[str, Path], ...] = (
     ("delegation", Path("reports/release-gate/eval-agent-delegation.json")),
     ("governance", Path("reports/release-gate/eval-agent-governance.json")),
     ("task-ledger", Path("reports/release-gate/eval-agent-task-ledger.json")),
-    ("agent-team", Path("reports/release-gate/eval-agent-team.json")),
 )
 
 
@@ -477,9 +476,7 @@ def build_governance_report(
     missing = [artifact["path"] for artifact in artifacts if artifact.get("status") == "missing"]
     failed = [artifact["label"] for artifact in artifacts if artifact.get("status") == "failed"]
     quality = {
-        "delegation": _tag_success(
-            artifacts, ("agent_delegation", "agent_task_ledger", "agent_team")
-        ),
+        "delegation": _tag_success(artifacts, ("agent_delegation", "agent_task_ledger")),
         "critic": _tag_success(artifacts, ("critic", "critic_gate", "reviewer")),
         "review": _tag_success(artifacts, ("review_queue", "merge_review", "memory_curator")),
         "cost": _cost_quality(artifacts),

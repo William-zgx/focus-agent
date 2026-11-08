@@ -6,7 +6,7 @@ Historical validation baseline: `718be87`; startup and configuration facts corre
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
 
 Focus Agent is a platform-scale monorepo. Prefer scoped checks for the surface you touch
-(API/contract, Web, SDK, Agent Team, Android, release), and reserve `make ci` for broad
+(API/contract, Web, SDK, agent governance, Android, release), and reserve `make ci` for broad
 changes. Product positioning and module spines: [project-overview.md](project-overview.md).
 Architecture boundaries: [architecture.md](architecture.md). Full acceptance:
 [validation-runbook.md](validation-runbook.md).
@@ -50,7 +50,6 @@ pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
-make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
@@ -79,9 +78,7 @@ local copy:
   Postgres repository `__init__` and connection/cursor helpers) and
   `decode_json_payload`
 
-Agent Team services live in the `src/focus_agent/services/agent_team/` package
-(planning in `services/agent_team/planning/`), and graph helpers live in
-`src/focus_agent/engine/graph/`.
+Graph helpers live in `src/focus_agent/engine/graph/`.
 
 ## Common Flows
 
@@ -169,7 +166,7 @@ Python formatting-only review, run:
 make format-check
 ```
 
-For broad runtime, sandbox, Skill, SDK, Web, Agent Team, or observability
+For broad runtime, sandbox, Skill, SDK, Web, agent governance, or observability
 changes, use the full evidence path in [validation-runbook.md](validation-runbook.md).
 That runbook layers `make ci`, OpenAPI/SDK drift checks, source-level smoke,
 real-browser smoke, and `/readyz` verification so local validation has one
@@ -279,17 +276,13 @@ The standalone Node regression imports `frontend-sdk/dist/index.js`; build the S
 See [streaming-contract.md](streaming-contract.md) for the public SSE event contract and the internal `quarantine` / `visible` phase boundary. Browser checks should include a tool-using prompt and confirm that no DSML/XML/function-call text appears in the assistant bubble while tool cards still render.
 For live-web changes, use a relative-time prompt such as "today", "tomorrow", or "本周" and confirm `current_utc_time` anchors the search before `web_search`; stale evidence should trigger at most one repair search and then either a supported answer or an explicit uncertainty answer.
 
-6. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
+6. If delegation governance, retained multi-agent coordination, or async approvals changed:
 
 ```bash
-.venv/bin/python -m pytest tests/test_agent_team_* -q
-make contract-check
-make web-check
-make web-build
-make ui-smoke-agent-team-adoption
+uv run pytest tests/test_multi_agent_config.py tests/test_agent_delegation.py tests/test_agent_roles.py -q
 ```
 
-Fake Agent Team execution is a workflow-only validation mode. It must surface as `final_answer_status="placeholder"` and `request_changes`, not as a deliverable answer. Browser checks should confirm the default UI hides raw fake run text and keeps output ids/artifact ids inside Advanced details.
+A fake delegated run is process evidence only. An async approval decision changes its queue record but does not automatically replay a graph invocation that already returned; use an explicit, auditable retry.
 
 7. If browser-level chat, branch tree, or merge-review flows changed:
 
@@ -328,7 +321,7 @@ chmod +x /tmp/focus-agent-chromium-headless
 export CHROME_PATH=/tmp/focus-agent-chromium-headless
 ```
 
-After long browser or Agent Team smoke runs, re-check `/readyz`, not only
+After long browser smoke runs, re-check `/readyz`, not only
 `/healthz`. `background_jobs.ready=false` means the process is alive but local
 queues have not drained, and the run should be recorded as degraded until the
 queue is cleared or the pending work is understood.
@@ -363,13 +356,13 @@ If the API redirects `/app` to the Vite server, pass `--app-base-url http://127.
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-10. If repository behavior changed, especially AgentTeam repository session/task/output semantics:
+10. If repository behavior changed, run the relevant implementation and shared contract tests, including SQLite local cases and Postgres cases when `DATABASE_URI` is available. For example:
 
 ```bash
-uv run pytest tests/test_agent_team_repository_contract.py
+uv run pytest tests/test_branch_repository_contract.py
 ```
 
-SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is set and otherwise skip only the Postgres backend.
+Add the contract suites for every affected repository rather than relying only on import-level checks.
 
 11. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
 
@@ -574,7 +567,6 @@ If this fails, check:
 - [Architecture](architecture.md)
 - [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)
-- [Agent Team Workbench](agent-team-workbench.md)
 - [Agent Governance](agent-role-routing.md)
 - [Branch Decisions](branch-decisions.md)
 - [Roadmap](roadmap.md)

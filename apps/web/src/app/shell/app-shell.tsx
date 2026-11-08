@@ -51,7 +51,6 @@ export function AppShell({ children }: PropsWithChildren) {
 		isAdminShell,
 		isAgentGovernanceRoute,
 		isAgentMemoryRoute,
-		isAgentTeamRoute,
 		isAgentWorkbenchShell,
 		isChatRoute,
 		isChatShell,
@@ -60,23 +59,16 @@ export function AppShell({ children }: PropsWithChildren) {
 		isReviewRoute,
 		isWorkspaceShell,
 		pathname,
-		rootThreadSearch,
-		sessionId,
 		shellMode,
 	} = useShellRouteState();
-	const { activeAgentWorkbenchModule, agentTeamRootThreadId, chatNavTarget } =
-		useShellNavTargets({
-			conversationId,
-			isAgentGovernanceRoute,
-			isAgentMemoryRoute,
-			isAgentTeamRoute,
-			isChatRoute,
-			isObservabilityRoute,
-			isProductivityRoute,
-			rootThreadSearch,
-			sessionId,
-			threadId,
-		});
+	const { activeAgentWorkbenchModule, chatNavTarget } = useShellNavTargets({
+		conversationId,
+		isAgentGovernanceRoute,
+		isAgentMemoryRoute,
+		isObservabilityRoute,
+		isProductivityRoute,
+		threadId,
+	});
 	const {
 		languagePreference,
 		setLanguagePreference,
@@ -340,7 +332,6 @@ export function AppShell({ children }: PropsWithChildren) {
 						) : appEnv.useLocalRuntime && isAdminShell ? null : (
 							<AppShellWorkspaceSidebar
 								activeAgentWorkbenchModule={activeAgentWorkbenchModule}
-								agentTeamRootThreadId={agentTeamRootThreadId}
 								isAgentWorkbenchShell={isAgentWorkbenchShell}
 								isChineseUi={isChineseUi}
 								pathname={pathname}
@@ -350,7 +341,6 @@ export function AppShell({ children }: PropsWithChildren) {
 					<div className="fa-sidebar-dock">
 						<AppShellGlobalNavigation
 							chatNavTarget={chatNavTarget}
-							isAgentTeamRoute={isAgentTeamRoute}
 							isChatRoute={isChatRoute}
 							isChineseUi={isChineseUi}
 							isProductivityRoute={isProductivityRoute}
@@ -465,9 +455,7 @@ export function AppShell({ children }: PropsWithChildren) {
 					<div
 						className={`fa-chat-main-body ${
 							isAgentWorkbenchShell ? "is-agent-workbench-route" : ""
-						} ${isAgentTeamRoute ? "is-agent-team-route" : ""} ${
-							isAdminShell ? "is-admin-route" : ""
-						}`.trim()}
+						} ${isAdminShell ? "is-admin-route" : ""}`.trim()}
 					>
 						{children}
 					</div>

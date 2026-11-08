@@ -383,50 +383,6 @@ const agentGovernanceRoutes = appEnv.features.agentGovernance
 
 const agentMemoryRoutes = appEnv.features.agentMemory ? [agentMemoryRoute] : [];
 
-const agentTeamRoutes =
-	import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "false" ||
-	!appEnv.features.agentTeam
-		? []
-		: (() => {
-				const LazyAgentTeamWorkbenchPage = lazy(() =>
-					import("@/pages/agent-team/team-workbench-page").then((module) => ({
-						default: module.AgentTeamWorkbenchPage,
-					})),
-				);
-				const agentTeamRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamSessionRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamTasksRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/tasks",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamApprovalsRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/approvals",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamEvidenceRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/evidence",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				return [
-					agentTeamRoute,
-					agentTeamSessionRoute,
-					agentTeamTasksRoute,
-					agentTeamApprovalsRoute,
-					agentTeamEvidenceRoute,
-				];
-			})();
-
 const productivityRoutes =
 	import.meta.env.VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false" ||
 	!appEnv.features.productivity
@@ -457,7 +413,6 @@ const routeTree = rootRoute.addChildren([
 	...observabilityRoutes,
 	...agentGovernanceRoutes,
 	...agentMemoryRoutes,
-	...agentTeamRoutes,
 	...productivityRoutes,
 	adminUsersRoute,
 	adminUserDetailRoute,

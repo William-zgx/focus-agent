@@ -77,7 +77,6 @@ make api
 Open:
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
 - `http://127.0.0.1:8000/app/agent/roles`
 - `http://127.0.0.1:8000/app/agent/governance`
@@ -130,7 +129,7 @@ psql "$DATABASE_URI"
 
 ## 4. Memory Embedding And Zvec Retrieval
 
-PostgreSQL memory is the production canonical memory store. Zvec is the default rebuildable retrieval index for memory, artifact RAG, Skill matching, trajectory, branch context, Agent Team plan reuse, governance feedback, failure cases, and workspace semantic search.
+PostgreSQL memory is the production canonical memory store. Zvec is the default rebuildable retrieval index for memory, artifact RAG, Skill matching, trajectory, branch context, governance feedback, failure cases, and workspace semantic search.
 
 Default retrieval settings:
 
@@ -192,10 +191,10 @@ checks, backfill targets, and multi-replica notes.
 ## 5. Local Persistence
 
 When the API binary runs without `DATABASE_URI`, local app-state is durable by
-default: branch, conversation, thread-access, user, productivity, and Agent
-Team (sessions, tasks, and v2 run records) repositories share `BRANCH_DB_PATH`
-(default `.focus_agent/branches.sqlite3`). Local mode still has no Postgres
-trajectory recorder or artifact metadata repository.
+default: branch, conversation, thread-access, user, and productivity
+repositories share `BRANCH_DB_PATH` (default `.focus_agent/branches.sqlite3`).
+Local mode still has no Postgres trajectory recorder or artifact metadata
+repository.
 
 The local fallback also uses SQLite for both LangGraph checkpoints and the
 local store by default. The default files are
@@ -338,7 +337,7 @@ Set it only when the Vite page should call a different API origin.
 
 ## 9. Android App
 
-The Android app is a Capacitor shell around the React build. It uses `/` as the in-app route base and sets the Android web target so Chat and Admin remain available while Agent Team and Productivity routes are excluded from the mobile surface.
+The Android app is a Capacitor shell around the React build. It uses `/` as the in-app route base and sets the Android web target so Chat and Admin remain available while Productivity routes are excluded from the mobile surface.
 
 Requirements for this target:
 

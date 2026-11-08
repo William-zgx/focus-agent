@@ -11,7 +11,7 @@
 > [plan](../plans/2026-09-28-agent-capabilities/plan.md)。
 
 本手册用于运行已实现、但默认关闭的 Multi-Agent v2 协调能力。它不是全量上线
-声明，也不替代 [Agent Team v2 灰度与回滚手册](../agent-team-v2-rollout.md) 的
+声明，也不替代 Agent Team v2 灰度与回滚手册的
 产品/发布口径。普通聊天不因本手册中的开关或工作台可见而自动进入 Team runtime。
 
 ## 1. 开关与默认状态
@@ -102,7 +102,7 @@ curl --fail --show-error --silent http://127.0.0.1:8000/readyz
 
 任务完成文本不足以证明真实执行。最小证据链必须包含 `execution_mode`、`agent_run_id`、
 `delegated_task_id`、`model_id`、artifact、worktree 元数据、`changed_files`、diff、测试
-原始输出及 reviewer/verifier 结论。详见 [Agent Team Workbench](../agent-team-workbench.md)。
+原始输出及 reviewer/verifier 结论。详见 Agent Team Workbench。
 
 ### 审批与恢复
 

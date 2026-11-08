@@ -8,7 +8,6 @@ const defaultOutputDir = "reports/a11y-baseline";
 const defaultRoutes = [
 	"/",
 	"/c/demo-conversation/t/demo-thread",
-	"/agent-team",
 	"/observability/overview",
 	"/observability/trajectory",
 ];

@@ -4,12 +4,7 @@ import { appEnv } from "@/shared/config/env";
 
 type AppShellWorkspaceSidebarProps = {
 	activeAgentWorkbenchModule:
-		| "diagnostics"
-		| "governance"
-		| "memory"
-		| "productivity"
-		| "team";
-	agentTeamRootThreadId: string;
+		"diagnostics" | "governance" | "memory" | "productivity";
 	isAgentWorkbenchShell: boolean;
 	isChineseUi: boolean;
 	pathname: string;
@@ -17,7 +12,6 @@ type AppShellWorkspaceSidebarProps = {
 
 export function AppShellWorkspaceSidebar({
 	activeAgentWorkbenchModule,
-	agentTeamRootThreadId,
 	isAgentWorkbenchShell,
 	isChineseUi,
 	pathname,
@@ -51,24 +45,6 @@ export function AppShellWorkspaceSidebar({
 			>
 				{isAgentWorkbenchShell ? (
 					<>
-						{appEnv.features.agentTeam ? (
-							<Link
-								className={`fa-workspace-sidebar-item ${
-									activeAgentWorkbenchModule === "team" ? "is-active" : ""
-								}`.trim()}
-								search={
-									agentTeamRootThreadId
-										? { root_thread_id: agentTeamRootThreadId }
-										: undefined
-								}
-								to="/agent-team"
-							>
-								<span>{isChineseUi ? "协作" : "Team"}</span>
-								<strong>
-									{isChineseUi ? "并发任务与会话" : "Tasks and sessions"}
-								</strong>
-							</Link>
-						) : null}
 						{appEnv.features.observability ? (
 							<Link
 								className={`fa-workspace-sidebar-item ${
