@@ -77,7 +77,7 @@ def _research_graph(
             )
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model", lambda *a, **kw: Runnable()
+        "focus_agent.engine.graph_builder.create_chat_model", lambda *a, **kw: Runnable()
     )
 
     @tool
@@ -112,7 +112,8 @@ def _research_graph(
         )
 
     graph = build_graph(
-        settings=Settings(), tool_registry=ToolRegistry(tools=(web_search, web_fetch))
+        settings=Settings(agent_max_tool_rounds=8),
+        tool_registry=ToolRegistry(tools=(web_search, web_fetch)),
     )
     result = graph.invoke(
         {
@@ -141,11 +142,13 @@ def test_research_budget_reserves_one_synthesis_without_degrading_a_good_answer(
     synthesis = [messages for enabled, messages in invocations if not enabled]
     assert len(synthesis) == 1
     assert len(calls) == 8
-    assert any(isinstance(m, SystemMessage) and "No more tools" in m.content for m in synthesis[0])
+    assert any(
+        isinstance(m, SystemMessage) and "tool budget for this turn is used up" in m.content
+        for m in synthesis[0]
+    )
     assert "正文读取" in result["messages"][-1].content
-    # Like Hermes, exhausting the round budget is normal; the synthesized answer is
-    # judged by the usual evidence checks and only a failed synthesis degrades it.
-    assert result["answer_verification"]["research_budget_exhausted"] is True
+    # v2 records budget exhaustion in plan_meta instead of v1 answer_verification.
+    assert result["plan_meta"]["tool_budget_exhausted"] is True
     assert result["task_outcome"]["status"] == "answered"
 
 
@@ -154,12 +157,12 @@ def test_budget_synthesis_cannot_restart_tools_or_leak_internal_summary(monkeypa
         monkeypatch, keep_searching=True, invalid_synthesis=True
     )
     assert len(calls) == 8
-    assert sum(not enabled for enabled, _ in invocations) == 1
+    assert sum(not enabled for enabled, _ in invocations) == 2
     final = result["messages"][-1]
     assert not final.tool_calls
     assert "compressed for prompt budgeting" not in final.content
     assert "https://example.com/agent" in final.content
-    assert result["task_outcome"]["status"] == "degraded_answer"
+    assert final.additional_kwargs["tool_result_fallback_reason"] == "model_synthesis_failed"
 
 
 def test_recent_weeks_query_is_anchored_without_losing_search_filters():
@@ -190,13 +193,6 @@ def test_repeated_identical_search_is_not_rerun_across_rounds(monkeypatch):
     )
 
     assert calls == [("web_search", "Agent project evidence")]
-    later_prompts = [messages for enabled, messages in invocations[1:] if enabled]
-    assert any(
-        isinstance(message, SystemMessage)
-        and "Already retrieved in this turn" in message.content
-        and 'web_search "Agent project evidence"' in message.content
-        for message in later_prompts[0]
-    )
     suppressed = [
         message
         for message in result["messages"]
@@ -204,6 +200,7 @@ def test_repeated_identical_search_is_not_rerun_across_rounds(monkeypatch):
         and message.artifact.get("runtime", {}).get("repeated_retrieval_suppressed")
     ]
     assert suppressed
+    assert "Already retrieved earlier in this turn" in suppressed[0].content
     assert "正文读取" in result["messages"][-1].content
 
 

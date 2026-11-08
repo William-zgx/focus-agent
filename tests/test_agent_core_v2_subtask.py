@@ -100,11 +100,11 @@ def _v2_graph(
     **settings,
 ):
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: model,
     )
     return build_graph(
-        settings=Settings(agent_core="v2", **settings),
+        settings=Settings(**settings),
         checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(mode="off"),
@@ -363,25 +363,6 @@ def test_v2_two_subtasks_run_in_one_parallel_step(monkeypatch, tmp_path):
         message.artifact["runtime"]["parallel_batch_size"] == 2 for message in messages.values()
     )
     assert result.value["messages"][-1].content == "Both subtasks finished."
-
-
-def test_v1_graph_does_not_register_run_subtask(monkeypatch):
-    captured: dict[str, Any] = {}
-
-    def capture_executor(**kwargs):
-        captured.update(kwargs)
-        return lambda state: {}
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.components.make_tool_executor_node", capture_executor
-    )
-
-    graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(lookup,)))
-
-    assert graph is not None
-    assert set(captured["tools_by_name"]) == {"lookup"}
-    assert "run_subtask" not in captured["tool_runtime_by_name"]
-    assert captured["include_tool_invocation_context"] is False
 
 
 def test_v2_subtask_exception_becomes_error_tool_message(monkeypatch, tmp_path):

@@ -203,15 +203,13 @@ class _RecordingRunnable:
 def test_agent_loop_sends_import_notice_to_the_model_as_a_user_turn():
     from types import SimpleNamespace
 
-    from focus_agent.capabilities.tool_registry import ToolRegistry
     from focus_agent.config import Settings
-    from focus_agent.engine.graph.agent_loop import make_agent_loop_node
+    from focus_agent.engine.loop.agent import make_loop_agent_node
 
     model = _RecordingRunnable()
-    node = make_agent_loop_node(
+    node = make_loop_agent_node(
         settings=Settings(),
         tools=(),
-        tool_registry=ToolRegistry(tools=()),
         model_for=lambda *_args: model,
         model_with_tools_for=lambda *_args: model,
     )

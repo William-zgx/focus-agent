@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool
 
 from focus_agent.api.main import create_app
@@ -22,7 +21,7 @@ from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.governance import ContextMemoryEvidence, FeedbackEvent, SkillSelectionEvent
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
-from focus_agent.engine.graph_builder import _tools_for_policy, build_graph
+from focus_agent.engine.graph.policy_tools import _tools_for_policy
 from focus_agent.memory.curator import MemoryCurator
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.skills.registry import SkillRegistry, bundled_skills_dir
@@ -624,60 +623,6 @@ def test_tool_router_matches_graph_policy_filtering_for_core_policies():
     assert approval_decision.allowed is True
     assert approval_decision.reason == "approval_required"
     assert "approval_lookup" in execution_plan.allowed_tools
-
-
-def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
-    captured = {}
-
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
-
-    class FakeModel:
-        def bind_tools(self, bound_tools):
-            captured["bound_tools"] = [item.name for item in bound_tools]
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(
-            plan_act_reflect_enabled=False,
-            agent_tool_router_enabled=True,
-            agent_tool_router_enforce=True,
-        ),
-        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact)),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="验证并修改代码。")],
-            "role_route_plan": {
-                "decisions": [
-                    {"role": "orchestrator"},
-                    {"role": "critic"},
-                ]
-            },
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
-        version="v2",
-    )
-
-    assert captured["bound_tools"] == ["search_code"]
-    assert result.value["tool_route_plan"]["role"] == "critic"
-    assert "write_text_artifact" in result.value["tool_route_plan"]["denied_tools"]
-    assert any(
-        record["name"] == "tool_route_plan" and record["mirror_key"] == "tool_route_plan"
-        for record in result.value["governance_records"]
-    )
 
 
 def test_memory_curator_promotes_clean_branch_findings_and_blocks_discarded_branch():

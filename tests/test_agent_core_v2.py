@@ -82,11 +82,11 @@ def _v2_graph(
     **settings,
 ):
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: model,
     )
     return build_graph(
-        settings=Settings(agent_core="v2", **settings),
+        settings=Settings(**settings),
         checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(mode="off"),
@@ -108,18 +108,16 @@ def _ask(text: str) -> dict:
     return {"messages": [HumanMessage(content=text)], "selected_model": "openai:gpt-4.1-mini"}
 
 
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [(None, "v1"), ("", "v1"), ("legacy", "v1"), ("V2", "v2"), (" loop ", "v2")],
-)
-def test_agent_core_env_parsing(raw, expected):
+@pytest.mark.parametrize("raw", [None, "", "V2", " v2 "])
+def test_agent_core_env_parsing(raw):
     env = {} if raw is None else {"AGENT_CORE": raw}
-    assert load_agent_config(env, Settings())["agent_core"] == expected
+    assert load_agent_config(env, Settings())["agent_core"] == "v2"
 
 
-def test_agent_core_env_rejects_unknown_core():
-    with pytest.raises(ValueError, match="AGENT_CORE"):
-        load_agent_config({"AGENT_CORE": "v3"}, Settings())
+@pytest.mark.parametrize("raw", ["v1", "legacy", "loop", "v3"])
+def test_agent_core_env_rejects_other_cores(raw):
+    with pytest.raises(ValueError, match="AGENT_CORE must be v2"):
+        load_agent_config({"AGENT_CORE": raw}, Settings())
 
 
 def test_agent_max_tool_rounds_is_at_least_one():
@@ -145,15 +143,17 @@ def test_v2_graph_keeps_service_addressed_nodes_and_drops_routing(monkeypatch, t
     assert not {"plan", "reflect", "role_route_dry_run", "delegation_governance"} & nodes
 
 
-def test_default_core_is_still_the_routed_graph(monkeypatch):
+def test_default_core_is_the_model_driven_graph(monkeypatch):
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: _ScriptedModel([AIMessage(content="hi")]),
     )
 
     graph = build_graph(settings=Settings(), tool_registry=ToolRegistry(tools=(lookup,)))
 
-    assert "plan" in set(graph.get_graph().nodes)
+    nodes = set(graph.get_graph().nodes)
+    assert "agent_loop" in nodes
+    assert "plan" not in nodes
 
 
 def test_v2_direct_answer_binds_all_tools_and_streams_visibly(monkeypatch, tmp_path):

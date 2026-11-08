@@ -1,4 +1,4 @@
-"""Model-driven agent core, selected with ``AGENT_CORE=v2``."""
+"""Model-driven agent core."""
 
 from .builder import build_loop_graph
 

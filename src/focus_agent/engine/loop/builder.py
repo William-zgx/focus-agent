@@ -1,4 +1,4 @@
-"""Graph for the model-driven core (``AGENT_CORE=v2``).
+"""Graph for the model-driven agent core.
 
 bootstrap_turn -> retrieve_memory -> assemble_context -> agent_loop
 agent_loop <-> tool_executor

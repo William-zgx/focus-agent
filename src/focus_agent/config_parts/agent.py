@@ -53,11 +53,9 @@ def _normalize_branch_recommendation_mode(value: object) -> str:
 
 def _normalize_agent_core(value: object) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized in {"", "v1", "legacy"}:
-        return "v1"
-    if normalized in {"v2", "loop"}:
+    if normalized in {"", "v2"}:
         return "v2"
-    raise ValueError("AGENT_CORE must be one of: v1, v2")
+    raise ValueError("AGENT_CORE must be v2")
 
 
 def _pgvector_extension_mode_env(env: MutableMapping[str, str], defaults: Any) -> str:

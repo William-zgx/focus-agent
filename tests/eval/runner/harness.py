@@ -495,7 +495,6 @@ class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase o
     def __init__(self, factory: Callable[..., Any] | None):
         self.factory = factory
         self._original: Any = None
-        self._builder_original: Any = None
         self._locked = False
 
     def __enter__(self):
@@ -504,21 +503,16 @@ class _model_factory_patch:  # noqa: N801 — context-manager style, lowercase o
         _BUILD_LOCK.acquire()
         self._locked = True
         from focus_agent.engine import graph_builder as _gb
-        from focus_agent.engine.graph import builder as _graph_builder
 
         self._original = _gb.create_chat_model
-        self._builder_original = _graph_builder.create_chat_model
         _gb.create_chat_model = self.factory
-        _graph_builder.create_chat_model = self.factory
         return self
 
     def __exit__(self, exc_type, exc, tb):
         if self._locked:
             from focus_agent.engine import graph_builder as _gb
-            from focus_agent.engine.graph import builder as _graph_builder
 
             _gb.create_chat_model = self._original
-            _graph_builder.create_chat_model = self._builder_original
             _BUILD_LOCK.release()
             self._locked = False
         return False

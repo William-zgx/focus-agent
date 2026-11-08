@@ -175,7 +175,21 @@ def make_loop_agent_node(
                 known_tool_names=known_names,
                 budget=context_budget,
             )
-            if _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
+            if (tool_budget_exhausted or tools_withheld_for_context) and getattr(
+                response, "tool_calls", None
+            ):
+                repair_reason = "tool_free_tool_call"
+                response = _repair_tool_free_answer_response(
+                    response=response.model_copy(update={"tool_calls": []}),
+                    prompt_messages=prompt_messages,
+                    fallback_messages=fallback_messages,
+                    context_budget=context_budget,
+                    selected_model=selected_model,
+                    selected_thinking_mode=thinking_mode,
+                    model_for=final_answer_model_for,
+                    known_tool_names=known_names,
+                )
+            elif _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
                 repair_reason = "textual_tool_marker"
                 response = (
                     _repair_textual_tool_call_response(

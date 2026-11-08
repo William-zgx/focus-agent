@@ -164,12 +164,12 @@ def test_v2_todos_block_survives_an_exhausted_tool_budget(monkeypatch, tmp_path)
 def test_v2_todo_write_does_not_change_the_shared_registry(monkeypatch, tmp_path):
     registry = ToolRegistry(tools=(lookup,))
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: _ScriptedModel([AIMessage(content="hi")]),
     )
 
     build_graph(
-        settings=Settings(agent_core="v2"),
+        settings=Settings(),
         checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(mode="off"),
@@ -177,27 +177,6 @@ def test_v2_todo_write_does_not_change_the_shared_registry(monkeypatch, tmp_path
     )
 
     assert set(registry.by_name) == {"lookup"}
-
-
-def test_v1_graph_does_not_offer_todo_write(monkeypatch, tmp_path):
-    model = _ScriptedModel([AIMessage(content="hi")])
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        lambda *args, **kwargs: model,
-    )
-    graph = build_graph(
-        settings=Settings(),
-        checkpointer=PersistentInMemorySaver(tmp_path / "checkpoints.pkl"),
-        memory_retriever=MemoryRetriever(store=None),
-        memory_extractor=MemoryExtractor(mode="off"),
-        tool_registry=ToolRegistry(tools=(lookup,)),
-    )
-
-    _invoke(graph, _ask("hello"), "thread-v1")
-
-    assert model.prompts
-    assert all("todo_write" not in names for names in model.bound_tool_names)
-    assert all("## Current todos" not in _system_text(prompt) for prompt in model.prompts)
 
 
 def test_todo_rule_only_when_tool_is_available():

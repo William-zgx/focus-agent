@@ -45,7 +45,7 @@ def chat_for_graph(graph, tmp_path):
 
 def test_manual_compaction_writes_to_completed_production_graph(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model", lambda *a, **k: StaticModel()
+        "focus_agent.engine.graph_builder.create_chat_model", lambda *a, **k: StaticModel()
     )
     graph = build_graph(
         settings=Settings(plan_act_reflect_enabled=False),

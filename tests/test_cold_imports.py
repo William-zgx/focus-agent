@@ -37,7 +37,7 @@ def _run_cold_import(code: str) -> subprocess.CompletedProcess[str]:
         from focus_agent.engine.model_factory import GraphModelFactory
 
         assert GraphModelFactory.__name__ == "GraphModelFactory"
-        assert "focus_agent.engine.graph.builder" not in sys.modules
+        assert "focus_agent.engine.loop.builder" not in sys.modules
         assert "focus_agent.harness.agents.factory" not in sys.modules
         """,
         """
@@ -46,7 +46,7 @@ def _run_cold_import(code: str) -> subprocess.CompletedProcess[str]:
         from focus_agent.engine.graph.tool_execution import HarnessToolServices
 
         assert HarnessToolServices.__name__ == "HarnessToolServices"
-        assert "focus_agent.engine.graph.builder" not in sys.modules
+        assert "focus_agent.engine.loop.builder" not in sys.modules
         assert "focus_agent.engine.model_factory" not in sys.modules
         assert "focus_agent.harness.agents.factory" not in sys.modules
         """,
@@ -57,7 +57,7 @@ def _run_cold_import(code: str) -> subprocess.CompletedProcess[str]:
 
         assert callable(parse_mentions)
         assert "focus_agent.harness.agents.factory" not in sys.modules
-        assert "focus_agent.engine.graph.builder" not in sys.modules
+        assert "focus_agent.engine.loop.builder" not in sys.modules
         """,
     ],
 )
@@ -75,16 +75,10 @@ def test_graph_package_preserves_eager_export_contract_lazily() -> None:
 
         import focus_agent.engine.graph as graph
 
-        assert "focus_agent.engine.graph.builder" not in sys.modules
+        assert "focus_agent.engine.loop.builder" not in sys.modules
         assert "focus_agent.engine.model_factory" not in sys.modules
 
-        module_names = (
-            "agent_loop",
-            "builder",
-            "policy",
-            "policy_intent",
-            "tool_execution",
-        )
+        module_names = ("tool_execution",)
         modules = [
             importlib.import_module(f"focus_agent.engine.graph.{module_name}")
             for module_name in module_names
@@ -120,7 +114,7 @@ def test_harness_packages_preserve_public_exports_lazily() -> None:
         import focus_agent.harness.agents as agents
 
         assert "focus_agent.harness.agents.factory" not in sys.modules
-        assert "focus_agent.engine.graph.builder" not in sys.modules
+        assert "focus_agent.engine.loop.builder" not in sys.modules
 
         from focus_agent.harness.schemas.config import HarnessConfig
 

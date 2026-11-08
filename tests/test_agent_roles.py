@@ -2,20 +2,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from langchain.messages import AIMessage, HumanMessage
-from langchain.tools import tool
 
 from focus_agent.api.main import create_app
-from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
-from focus_agent.core.request_context import RequestContext
 from focus_agent.delegation.roles import (
     AgentRole,
     RoleModelResolver,
     build_role_route_plan,
     infer_role_candidates,
 )
-from focus_agent.engine.graph_builder import build_graph
 
 
 class _RoleDecisionRepo:
@@ -152,97 +147,6 @@ def test_infer_role_candidates_respects_parallel_cap():
     )
 
     assert candidates == [AgentRole.PLANNER, AgentRole.EXECUTOR]
-
-
-def test_graph_default_off_does_not_record_role_route_plan(monkeypatch):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
-
-    class FakeModel:
-        def bind_tools(self, _tools):
-            raise AssertionError("direct answer should not bind tools")
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(plan_act_reflect_enabled=False),
-        tool_registry=ToolRegistry(tools=()),
-    )
-
-    result = graph.invoke(
-        {"messages": [HumanMessage(content="用一句话解释 role routing。")]},
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
-    )
-
-    assert result.value.get("role_route_plan") is None
-
-
-def test_graph_enabled_records_role_route_plan_without_changing_model_path(monkeypatch):
-    captured: dict[str, object] = {}
-
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
-
-    class FakeModel:
-        def bind_tools(self, bound_tools):
-            captured["bound_tools"] = [item.name for item in bound_tools]
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    def fake_create_chat_model(model_id, **kwargs):
-        captured["model_id"] = model_id
-        captured["kwargs"] = kwargs
-        return FakeModel()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        fake_create_chat_model,
-    )
-
-    @tool
-    def search_code(query: str) -> str:
-        """Search code."""
-        return query
-
-    settings = Settings(
-        model="openai:gpt-4.1-mini",
-        agent_role_routing_enabled=True,
-        agent_role_executor_model="moonshot:kimi-k2.6",
-        plan_act_reflect_enabled=False,
-    )
-    graph = build_graph(settings=settings, tool_registry=ToolRegistry(tools=(search_code,)))
-
-    result = graph.invoke(
-        {"messages": [HumanMessage(content="实现 backend runtime role routing。")]},
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
-    )
-
-    plan = result.value["role_route_plan"]
-    records = result.value["governance_records"]
-    assert plan["enabled"] is True
-    assert plan["decisions"][1]["role"] == "executor"
-    assert plan["decisions"][1]["model_id"] == "moonshot:kimi-k2.6"
-    assert records[0]["name"] == "role_route_plan"
-    assert records[0]["payload"]["decisions"][1]["role"] == "executor"
-    assert captured["model_id"] == "openai:gpt-4.1-mini"
-    assert captured["bound_tools"] == ["search_code"]
 
 
 def test_agent_role_policy_dry_run_and_decisions_api(monkeypatch, tmp_path):

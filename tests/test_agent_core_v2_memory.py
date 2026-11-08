@@ -56,13 +56,13 @@ class _ScriptedModel:
         return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
 
 
-def _memory_graph(monkeypatch, model, *, agent_core: str, store: InMemoryStore):
+def _memory_graph(monkeypatch, model, *, store: InMemoryStore):
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: model,
     )
     return build_graph(
-        settings=Settings(agent_core=agent_core),
+        settings=Settings(),
         store=store,
         memory_retriever=MemoryRetriever(store=store),
         memory_writer=MemoryWriter(store=store),
@@ -93,7 +93,7 @@ def _memory_save_call(args: dict, *, call_id: str = "memory-save-1") -> AIMessag
 def test_v2_without_memory_save_writes_no_user_preference(monkeypatch):
     store = InMemoryStore()
     model = _ScriptedModel([AIMessage(content="好的，我会保持回答简洁。")])
-    graph = _memory_graph(monkeypatch, model, agent_core="v2", store=store)
+    graph = _memory_graph(monkeypatch, model, store=store)
 
     result = _invoke(graph, PREFERENCE)
 
@@ -112,7 +112,7 @@ def test_v2_memory_save_writes_to_trusted_user_profile(monkeypatch):
             AIMessage(content="记住了。"),
         ]
     )
-    graph = _memory_graph(monkeypatch, model, agent_core="v2", store=store)
+    graph = _memory_graph(monkeypatch, model, store=store)
 
     result = _invoke(graph, PREFERENCE)
 
@@ -135,7 +135,7 @@ def test_v2_memory_save_with_foreign_user_id_is_rejected(monkeypatch):
             AIMessage(content="无法保存。"),
         ]
     )
-    graph = _memory_graph(monkeypatch, model, agent_core="v2", store=store)
+    graph = _memory_graph(monkeypatch, model, store=store)
 
     result = _invoke(graph, PREFERENCE)
 
@@ -159,7 +159,7 @@ def test_v2_branch_memory_save_still_becomes_branch_finding(monkeypatch):
             AIMessage(content="已记录分支发现。"),
         ]
     )
-    graph = _memory_graph(monkeypatch, model, agent_core="v2", store=store)
+    graph = _memory_graph(monkeypatch, model, store=store)
 
     result = _invoke(graph, "记住这个分支结论。", branch_id="branch-1")
 
@@ -167,19 +167,6 @@ def test_v2_branch_memory_save_still_becomes_branch_finding(monkeypatch):
     assert [item["finding"] for item in findings] == ["Yugabyte needs 3 nodes"]
     branch_hits = store.search(branch_local_memory_namespace("thread-1", "branch-1"))
     assert [hit.value["kind"] for hit in branch_hits] == ["branch_finding"]
-
-
-def test_v1_still_extracts_user_preference_heuristically(monkeypatch):
-    store = InMemoryStore()
-    model = _ScriptedModel([AIMessage(content="好的，我会保持回答简洁。")])
-    graph = _memory_graph(monkeypatch, model, agent_core="v1", store=store)
-
-    _invoke(graph, PREFERENCE)
-
-    records = _profile_records(store)
-    assert [(item["kind"], item["content"], item["user_id"]) for item in records] == [
-        ("user_profile", PREFERENCE, "user-1")
-    ]
 
 
 def test_operating_rules_mention_memory_save_only_when_offered():
@@ -202,18 +189,18 @@ def test_v2_offers_memory_tools_with_a_repository_backend(monkeypatch):
         pass
 
     registry = build_tool_registry(
-        settings=Settings(agent_core="v2"),
-        skill_registry=SkillRegistry.from_settings(Settings(agent_core="v2")),
+        settings=Settings(),
+        skill_registry=SkillRegistry.from_settings(Settings()),
         store=None,
         memory_repository=_Repository(),
     )
     model = _ScriptedModel([AIMessage(content="ok")])
     monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
+        "focus_agent.engine.graph_builder.create_chat_model",
         lambda *args, **kwargs: model,
     )
     graph = build_graph(
-        settings=Settings(agent_core="v2"),
+        settings=Settings(),
         memory_retriever=MemoryRetriever(store=None),
         memory_extractor=MemoryExtractor(),
         tool_registry=registry,
