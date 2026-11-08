@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from focus_agent.capabilities.tool_registry import ToolRegistry
-from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
-from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemoryStore
 from focus_agent.memory import (
     MemoryAuditEvent,
@@ -536,53 +533,6 @@ def test_memory_writer_replaces_project_fact_when_incoming_is_correction():
     payload = next(iter(store.data[namespace].values()))
     assert payload["content"] == "更正：默认输出语言改为英文。"
     assert payload["summary"] == "默认输出语言改为英文。"
-
-
-def test_graph_extracts_and_writes_user_memory(monkeypatch, tmp_path):
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, prompt_messages):  # noqa: ARG002
-            return AIMessage(content="好的，之后我会避免使用 emoji。")
-
-    class FakeModel:
-        def bind_tools(self, _tools):
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-
-    store = PersistentInMemoryStore(tmp_path / "graph-store.pkl")
-    graph = build_graph(
-        settings=Settings(),
-        store=store,
-        tool_registry=ToolRegistry(tools=()),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="回答里不要使用 emoji。")],
-            "selected_model": "openai:fake",
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="thread-1"),
-        version="v2",
-    )
-
-    hits = store.search(user_profile_namespace("user-1"), query="emoji", limit=10)
-
-    assert result.value["memory_write_requests"] == []
-    assert result.value["memory_write_result"]["prepared"] >= 1
-    assert result.value["memory_write_result"]["written"]
-    assert len(hits) == 1
-    payload = hits[0].value
-    assert payload["kind"] == "user_preference"
-    assert "emoji" in payload["content"]
 
 
 class _MemoryWriterRepository:

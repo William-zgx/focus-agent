@@ -94,36 +94,6 @@ def _scoped_trajectory_query(
     return scoped
 
 
-def _role_route_decision_items(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        plan_meta = dict(row.get("plan_meta") or {})
-        role_route_plan = _plan_meta_governance_payload(plan_meta, "role_route_plan")
-        if not isinstance(role_route_plan, dict):
-            continue
-        decisions = role_route_plan.get("decisions")
-        if not isinstance(decisions, list):
-            decisions = []
-        items.append(
-            {
-                "turn_id": row.get("id"),
-                "request_id": row.get("request_id"),
-                "trace_id": row.get("trace_id"),
-                "thread_id": row.get("thread_id"),
-                "root_thread_id": row.get("root_thread_id"),
-                "status": row.get("status"),
-                "started_at": row.get("started_at"),
-                "enabled": bool(role_route_plan.get("enabled", False)),
-                "route_reason": role_route_plan.get("route_reason"),
-                "max_parallel_runs": role_route_plan.get("max_parallel_runs"),
-                "orchestrator_model_id": role_route_plan.get("orchestrator_model_id"),
-                "role_count": len(decisions),
-                "decisions": decisions,
-            }
-        )
-    return items
-
-
 def _list_response_fields(
     *,
     runtime: AppRuntime | Any,
@@ -240,6 +210,5 @@ __all__ = [
     "_list_plan_meta_list_items",
     "_list_response_fields",
     "_plan_meta_items",
-    "_role_route_decision_items",
     "_scoped_governance_runtime",
 ]

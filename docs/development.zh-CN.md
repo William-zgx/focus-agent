@@ -6,7 +6,7 @@
 这份文档收拢日常开发和验证命令，不把命令矩阵继续堆在根目录 README 里。
 
 Focus Agent 是平台级 monorepo。优先按触达面收敛验证（API/contract、Web、SDK、
-Agent Team、Android、release），只在大范围改动时跑完整 `make ci`。
+Agent v2 core、Android、release），只在大范围改动时跑完整 `make ci`。
 产品定位与运行主路径见 [project-overview.md](project-overview.md)；
 架构边界见 [architecture.md](architecture.md)；全面验收见
 [validation-runbook.md](validation-runbook.md)。
@@ -18,17 +18,15 @@ flowchart TD
     Scope --> Web["Web App"]
     Scope --> SDK["Frontend SDK"]
     Scope --> Admin["Admin / Auth"]
-    Scope --> Agent["Agent Governance"]
+    Scope --> Agent["Agent v2 core"]
     Scope --> Branch["Branch decisions"]
-    Scope --> Team["Agent Team"]
     Scope --> Mobile["Android"]
     Backend --> CI["make lint + make ci-test"]
     Web --> WebChecks["make web-check + make web-build"]
     SDK --> SDKChecks["make sdk-check + make sdk-build"]
     Admin --> AdminChecks["admin API tests + web scaffold"]
-    Agent --> Eval["agent eval suites + governance tests"]
+    Agent --> Eval["agent eval suites + context tests"]
     Branch --> BranchChecks["branch decision + chat/harness tests"]
-    Team --> TeamChecks["agent-team API/service + UI smoke"]
     Mobile --> AndroidChecks["android sync/build + runtime smoke"]
     CI --> Done["进入 review"]
     WebChecks --> Done
@@ -36,7 +34,6 @@ flowchart TD
     AdminChecks --> Done
     Eval --> Done
     BranchChecks --> Done
-    TeamChecks --> Done
     AndroidChecks --> Done
 ```
 
@@ -77,7 +74,6 @@ pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
-make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
@@ -102,8 +98,7 @@ checkout/worktree 后，先重新执行 `make install`（或 `make install-anthr
 - `src/focus_agent/repositories/_postgres_base.py`：`PostgresMixin`（Postgres 仓储共用的
   `__init__` 与 connection/cursor 辅助）和 `decode_json_payload`
 
-Agent Team 服务位于 `src/focus_agent/services/agent_team/` 包（规划在
-`services/agent_team/planning/`），图助手模块位于 `src/focus_agent/engine/graph/`。
+图助手模块位于 `src/focus_agent/engine/graph/`。
 
 ## 常见开发流
 
@@ -161,7 +156,7 @@ architecture gate 对非生成源码使用规范化的 800 行上限。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-81 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+68 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，
@@ -186,7 +181,7 @@ SDK types drift guard，所以 API route 或 response model 改动即使本地 `
 make format-check
 ```
 
-如果是 runtime、sandbox、Skill、SDK、Web、Agent Team 或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
+如果是 runtime、sandbox、Skill、SDK、Web、Agent v2 core 或 observability 这类横跨多模块的改动，请按 [validation-runbook.md](validation-runbook.md) 跑完整证据链。该 runbook 会把 `make ci`、OpenAPI/SDK drift、源码级 smoke、真实浏览器 smoke 和 `/readyz` readiness 串成一套统一的本地通过/失败口径。
 
 2. 如果改动影响后端路由、stream 事件或 Web App 对 frontend SDK 的使用：
 
@@ -278,17 +273,11 @@ pnpm web:check
 公开 SSE 事件契约和内部 `quarantine` / `visible` phase 边界见 [streaming-contract.md](streaming-contract.md)。浏览器检查应包含真实工具调用问题，并确认 assistant 气泡不出现 DSML/XML/function-call 文本，同时工具处理卡仍正常展示。
 如果改动 live-web 行为，请用包含 "today"、"tomorrow" 或 "本周" 的相对时间问题验证 `current_utc_time` 会先锚定时间再 `web_search`；过期证据最多触发一次修复检索，最终应给出有证据的回答或明确的不确定说明。
 
-6. 如果改动影响 Agent Team planning、execution、final-answer synthesis 或 Mission Runner UI：
+6. 如果改动影响保留的 multi-agent coordination：
 
 ```bash
-.venv/bin/python -m pytest tests/test_agent_team_* -q
-make contract-check
-make web-check
-make web-build
-make ui-smoke-agent-team-adoption
+uv run pytest tests/test_multi_agent_config.py -q
 ```
-
-Agent Team 的 fake execution 只用于验证流程，必须展示为 `final_answer_status="placeholder"` 和 `request_changes`，不能被当成可交付最终答案。浏览器检查应确认默认 UI 不显示 raw fake run text，output id / artifact id 只出现在高级详情里。
 
 7. 如果改动影响真实浏览器里的聊天、分支树或 merge-review 流程：
 
@@ -323,7 +312,7 @@ chmod +x /tmp/focus-agent-chromium-headless
 export CHROME_PATH=/tmp/focus-agent-chromium-headless
 ```
 
-长时间 browser smoke 或 Agent Team smoke 之后，要重新检查 `/readyz`，不要只看 `/healthz`。`background_jobs.ready=false` 表示进程还活着，但本地队列没有清空；在理解或清理 pending work 前，这次验证应记录为 degraded。
+长时间 browser smoke 之后，要重新检查 `/readyz`，不要只看 `/healthz`。`background_jobs.ready=false` 表示进程还活着，但本地队列没有清空；在理解或清理 pending work 前，这次验证应记录为 degraded。
 
 如果改动影响 sandbox execution，请先构建或刷新标准执行镜像，再跑依赖 Docker 执行的浏览器或 API smoke：
 
@@ -355,13 +344,13 @@ pnpm --dir apps/web smoke:observability
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-10. 如果改动影响 repository 行为，尤其是 AgentTeam repository session/task/output 语义：
+10. 如果改动影响 repository 行为，请运行相关实现与共享 contract 测试，覆盖本地 SQLite 用例，并在配置 `DATABASE_URI` 时覆盖 Postgres 用例。例如：
 
 ```bash
-uv run pytest tests/test_agent_team_repository_contract.py
+uv run pytest tests/test_branch_repository_contract.py
 ```
 
-SQLite 用例默认本地运行。设置 `DATABASE_URI` 时会同时运行 Postgres 用例；否则只 skip Postgres backend。
+为每个受影响 repository 补充对应 contract suite，不要只依赖 import 级检查。
 
 11. 如果改动影响 ChatService、runtime 装配或 config/runtime 目录边界：
 
@@ -459,13 +448,11 @@ make frontend-android-runtime-smoke
 16. 如果改动影响 release ops、nightly、production smoke、Postgres ops 或 OTel smoke：
 
 ```bash
-uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py
 make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-make agent-governance-report
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
@@ -482,22 +469,17 @@ uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
 
 `alembic upgrade head` 需要 `DATABASE_URI`；Docker entrypoint 会在 `DATABASE_URI` 存在时自动执行。当前 Alembic baseline 会委托 app schema migrations，并应保持 `focus_schema_migrations` 与 `postgres_schema.py` 对齐。
 
-18. 如果改动影响 Agent 角色路由、delegation execution、Memory Curator、Tool Router、Context Engineering、Task Ledger、helper-model fallback 或治理观测：
+18. 如果改动影响 capability API、Context Engineering 或 helper-model fallback：
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
-uv run python -m tests.eval --suite agent_arch --concurrency 1
-uv run python -m tests.eval --suite agent_governance --concurrency 1
-uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run pytest tests/test_agent_context_engineering.py tests/eval/test_agent_context_suite.py
 uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
-项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、
-`golden_multi_agent` 和 `harness_stability` 是 release-blocking suite；
-`model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型路由或多 Agent 行为时，也建议跑：
+项目级评测策略记录在 `docs/agent-evaluation.md`。`smoke`、`observability` 和
+`harness_stability` 是 release-blocking suite；
+`model_matrix` 和 `trajectory_failures` 是 nightly 非阻断信号。改动模型选择/fallback 或多 Agent 行为时，也建议跑：
 
 ```bash
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
@@ -510,7 +492,6 @@ local-first 工具路径：
 ```bash
 make test-graph-builder
 uv run pytest tests/test_default_tools.py -k "search_code or apply_patch or run_workspace_command"
-uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
 如果本机 `.venv` 里的 `psycopg` 因缺少 `libpq` 在测试收集阶段失败，可先用当前 focused observability workaround：
@@ -554,7 +535,5 @@ pnpm --dir apps/web smoke:productivity
 - [架构说明](architecture.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)
-- [Agent Team Workbench](agent-team-workbench.md)
-- [Agent Governance](agent-role-routing.md)
 - [分支决策与推荐](branch-decisions.md)
 - [路线图](roadmap.md)

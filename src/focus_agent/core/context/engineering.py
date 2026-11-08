@@ -9,9 +9,9 @@ from typing import Any, Literal
 from langchain.messages import ToolMessage
 from pydantic import Field
 
-from ..config import Settings
-from ..core.context.policy import assemble_context
-from ..core.types import ContextBudget, PromptMode, StateModel
+from ...config import Settings
+from ..types import ContextBudget, PromptMode, StateModel
+from .policy import assemble_context
 
 ContextArtifactSource = Literal["tool_observation", "rolling_summary", "assembled_context"]
 

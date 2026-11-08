@@ -6,8 +6,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
-from ...capabilities import ToolRegistry
-from ...capabilities.tool_manifest import ToolManifest
 from ...engine.graph.tool_execution import HarnessToolServices
 from ..middleware import (
     DanglingToolCallMiddleware,
@@ -20,8 +18,6 @@ from ..runtime import RunManager
 from ..runtime.rollback import rollback_handler_for_graph
 from ..schemas import HarnessConfig
 from ..streaming import InMemoryStreamBridge, canonical_event_payload
-from ..subagents import AgentTeamSubagentRunner, SubagentExecutor
-from ..tools import create_subagent_task_tool
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +30,11 @@ class FocusAgentHarness:
     stream_bridge: InMemoryStreamBridge | JournaledStreamBridge
     middleware: MiddlewareStack
     event_store: RunJournal
-    subagent_executor: SubagentExecutor | None = None
     tool_registry: Any = None
     # Newly-integrated components (populated by ``create_focus_agent``)
     agent_definition_registry: Any | None = None  # AgentDefinitionRegistry
     extension_registry: Any | None = None  # ExtensionRegistry
     permission_manager: Any | None = None  # PermissionManager
-    system_agent_runner: Any | None = None  # SystemAgentRunner
 
     def invoke(self, payload: Any, **kwargs: Any) -> Any:
         """Invoke the graph through the harness middleware stack."""
@@ -91,7 +85,6 @@ def create_focus_agent(
     skill_registry: Any | None = None,
     tool_registry: Any | None = None,
     approval_queue: Any | None = None,
-    subagent_executor: SubagentExecutor | None = None,
 ) -> FocusAgentHarness:
     """Create the reusable Focus Agent harness around the existing graph.
 
@@ -103,17 +96,7 @@ def create_focus_agent(
     del tool_provider
     from ...engine.graph_builder import build_graph
 
-    effective_subagent_executor = _subagent_executor_for_config(
-        config=config,
-        settings=settings,
-        model_provider=model_provider,
-        subagent_executor=subagent_executor,
-    )
-    effective_tool_registry = _tool_registry_with_subagent_task(
-        tool_registry=tool_registry,
-        config=config,
-        subagent_executor=effective_subagent_executor,
-    )
+    effective_tool_registry = tool_registry
 
     # Build middleware stack BEFORE the graph so we can pass the same
     # MiddlewareStack instance to the graph nodes (for on_turn_start/end).
@@ -166,7 +149,6 @@ def create_focus_agent(
         tool_catalog=getattr(settings, "tool_catalog", None),
     )
     agent_definition_registry = new_components.get("agent_definition_registry")
-    system_agent_runner = new_components.get("system_agent_runner")
 
     graph = build_graph(
         settings=settings,
@@ -181,7 +163,6 @@ def create_focus_agent(
         approval_queue=approval_queue,
         harness_services=harness_services,
         run_manager=run_manager,
-        system_agent_runner=system_agent_runner,
         agent_definition_registry=agent_definition_registry,
     )
 
@@ -199,12 +180,10 @@ def create_focus_agent(
         stream_bridge=stream_bridge,
         middleware=middleware_stack,
         event_store=journal,
-        subagent_executor=effective_subagent_executor,
         tool_registry=effective_tool_registry,
         agent_definition_registry=agent_definition_registry,
         extension_registry=new_components.get("extension_registry"),
         permission_manager=new_components.get("permission_manager"),
-        system_agent_runner=system_agent_runner,
     )
     return harness
 
@@ -300,16 +279,6 @@ def _build_new_components(
         except Exception:  # noqa: BLE001
             logger.debug("Permission manager unavailable", exc_info=True)
 
-    # d) System agent runner.
-    if config.enable_system_agents:
-        try:
-            from .system_agents import SystemAgentRunner, create_default_system_agent_registry
-
-            system_registry: Any = create_default_system_agent_registry()
-            components["system_agent_runner"] = SystemAgentRunner(system_registry)
-        except Exception:  # noqa: BLE001
-            logger.debug("System agent runner unavailable", exc_info=True)
-
     return components
 
 
@@ -333,59 +302,3 @@ def _lifecycle_publisher_for_bridge(
         )
 
     return publish
-
-
-def _subagent_executor_for_config(
-    *,
-    config: HarnessConfig,
-    settings: Any,
-    model_provider: Any | None,
-    subagent_executor: SubagentExecutor | None,
-) -> SubagentExecutor | None:
-    if subagent_executor is not None:
-        return subagent_executor
-    if not (config.subagents.enabled or config.features.subagents):
-        return None
-    # Select the runner based on config. Process isolation is opt-in
-    # (defaults to False) so existing deployments keep in-process behavior.
-    if config.subagents.use_process_isolation:
-        from ..subagents.process_runner import ProcessSubagentTaskRunner
-
-        runner: Any = ProcessSubagentTaskRunner(
-            cli_entry_point=config.subagents.cli_entry_point,
-            default_timeout_seconds=config.subagents.process_timeout_seconds,
-            graceful_shutdown_seconds=config.subagents.graceful_shutdown_seconds,
-        )
-    else:
-        runner = AgentTeamSubagentRunner(settings=settings, model_factory=model_provider)
-    return SubagentExecutor(
-        runner,
-        max_parallel=config.subagents.max_concurrent_subagents,
-    )
-
-
-def _tool_registry_with_subagent_task(
-    *,
-    tool_registry: Any | None,
-    config: HarnessConfig,
-    subagent_executor: SubagentExecutor | None,
-) -> Any | None:
-    if subagent_executor is None:
-        return tool_registry
-    if tool_registry is None:
-        return None
-    if "task" in getattr(tool_registry, "by_name", {}):
-        return tool_registry
-
-    task_tool = create_subagent_task_tool(
-        subagent_executor,
-        max_parallel=config.subagents.max_concurrent_subagents,
-    )
-    manifests = tuple(getattr(tool_registry, "manifests", ()) or ())
-    return ToolRegistry(
-        tools=(*tuple(getattr(tool_registry, "tools", ()) or ()), task_tool),
-        manifests=(
-            *manifests,
-            ToolManifest.from_tool(task_tool, provider_id="harness_subagents"),
-        ),
-    )

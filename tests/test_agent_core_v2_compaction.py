@@ -249,10 +249,9 @@ def test_v2_graph_compaction_helper_is_quarantined_and_counted(monkeypatch, tmp_
     def create_model(model_id, *_args, **_kwargs):
         return helper if model_id == "helper:test" else main
 
-    monkeypatch.setattr("focus_agent.engine.graph.builder.create_chat_model", create_model)
+    monkeypatch.setattr("focus_agent.engine.graph_builder.create_chat_model", create_model)
     graph = build_graph(
         settings=Settings(
-            agent_core="v2",
             helper_model="helper:test",
             context_auto_compaction_post_turn_ratio=0.85,
         ),

@@ -125,7 +125,7 @@ Capture API 是面向工具链/前端来源录入的收口。
 
 ```mermaid
 sequenceDiagram
-    participant Source as Chat/Agent Team/其他来源
+    participant Source as Chat/Merge Review/其他来源
     participant API as /productivity/capture/*
     participant Service as ProductivityService
     participant Repo as Repository

@@ -5,28 +5,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class AgentRolePolicyResponse(BaseModel):
-    enabled: bool = False
-    default_model: str
-    helper_model: str | None = None
-    max_parallel_runs: int = 1
-    roles: list[str] = Field(default_factory=list)
-    role_models: dict[str, str | None] = Field(default_factory=dict)
-    fallback_order: list[str] = Field(default_factory=list)
-
-
-class AgentRoleDryRunRequest(BaseModel):
-    message: str
-    scene: str = "long_dialog_research"
-    skill_hints: list[str] = Field(default_factory=list)
-    available_tools: list[str] = Field(default_factory=list)
-
-
-class AgentRoleDryRunResponse(BaseModel):
-    policy: AgentRolePolicyResponse
-    plan: dict[str, Any] = Field(default_factory=dict)
-
-
 class AgentSkillSelectRequest(BaseModel):
     message: str
     skill_hints: list[str] = Field(default_factory=list)
@@ -185,13 +163,6 @@ class AgentContextExplainResponse(BaseModel):
     item: AgentContextEvidenceResponse
 
 
-class AgentRoleDecisionListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
 class AgentCapabilityResponse(BaseModel):
     name: str
     description: str = ""
@@ -238,24 +209,6 @@ class AgentToolsetListResponse(BaseModel):
     count: int = 0
 
 
-class AgentToolRouteRequest(BaseModel):
-    role: str = "executor"
-    tool_policy: str = "execution"
-    available_tools: list[str] = Field(default_factory=list)
-    enforce: bool | None = None
-
-
-class AgentToolRouteResponse(BaseModel):
-    plan: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentToolRouteDecisionListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
 class AgentMemoryCuratorPolicyResponse(BaseModel):
     enabled: bool = False
     auto_promote_on_merge: bool = True
@@ -285,85 +238,6 @@ class AgentMemoryCuratorDecisionListResponse(BaseModel):
     count: int = 0
     trajectory_available: bool = False
     trajectory_error: str | None = None
-
-
-class AgentDelegationPolicyResponse(BaseModel):
-    enabled: bool = False
-    enforce: bool = False
-    max_parallel_runs: int = 1
-    default_off_legacy_safe: bool = True
-
-
-class AgentDelegationPlanRequest(BaseModel):
-    message: str
-    scene: str = "agent_delegation_console"
-    available_tools: list[str] = Field(default_factory=list)
-
-
-class AgentDelegationPlanResponse(BaseModel):
-    policy: AgentDelegationPolicyResponse
-    plan: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentDelegationRunListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
-class AgentModelRouterPolicyResponse(BaseModel):
-    enabled: bool = False
-    mode: str = "observe"
-    default_model: str
-    helper_model: str | None = None
-    role_models: dict[str, str | None] = Field(default_factory=dict)
-
-
-class AgentModelRouteRequest(BaseModel):
-    role: str = "executor"
-    selected_model: str | None = None
-    task_text: str = ""
-    tool_risk: str = "low"
-    context_size: int = 0
-
-
-class AgentModelRouteResponse(BaseModel):
-    decision: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentModelRouterDecisionListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
-class AgentSelfRepairFailureListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
-class AgentSelfRepairPromotePreviewRequest(BaseModel):
-    failures: list[dict[str, Any]] = Field(default_factory=list)
-    case_id_prefix: str = "agent_delegation"
-
-
-class AgentSelfRepairPromotePreviewResponse(BaseModel):
-    preview: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentReviewQueueListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
-class AgentReviewQueueDecisionResponse(BaseModel):
-    item: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentContextPolicyResponse(BaseModel):
@@ -401,34 +275,6 @@ class AgentContextArtifactListResponse(BaseModel):
     trajectory_error: str | None = None
 
 
-class AgentTaskLedgerPolicyResponse(BaseModel):
-    enabled: bool = False
-    artifact_synthesis_enabled: bool = False
-    critic_gate_enabled: bool = False
-    critic_gate_enforce: bool = False
-    default_off_legacy_safe: bool = True
-
-
-class AgentTaskLedgerPlanRequest(BaseModel):
-    message: str = ""
-    delegation_plan: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentTaskLedgerPlanResponse(BaseModel):
-    policy: AgentTaskLedgerPolicyResponse
-    ledger: dict[str, Any] = Field(default_factory=dict)
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
-    critic_gate_result: dict[str, Any] | None = None
-    synthesis_result: dict[str, Any] | None = None
-
-
-class AgentTaskLedgerRunListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
 class AgentArtifactListResponse(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list)
     count: int = 0
@@ -436,33 +282,7 @@ class AgentArtifactListResponse(BaseModel):
     trajectory_error: str | None = None
 
 
-class AgentArtifactSynthesisRequest(BaseModel):
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
-    critic_gate_result: dict[str, Any] | None = None
-
-
-class AgentArtifactSynthesisResponse(BaseModel):
-    result: dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentCriticVerdictListResponse(BaseModel):
-    items: list[dict[str, Any]] = Field(default_factory=list)
-    count: int = 0
-    trajectory_available: bool = False
-    trajectory_error: str | None = None
-
-
-class AgentCriticEvaluateRequest(BaseModel):
-    ledger: dict[str, Any] = Field(default_factory=dict)
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class AgentCriticEvaluateResponse(BaseModel):
-    result: dict[str, Any] = Field(default_factory=dict)
-
-
 __all__ = [
-    "AgentRolePolicyResponse",
     "AgentSkillSelectRequest",
     "AgentSkillSemanticCandidateResponse",
     "AgentSkillSelectionResponse",
@@ -479,44 +299,16 @@ __all__ = [
     "AgentContextExplainResponse",
     "AgentContextEvidenceResponse",
     "AgentContextEvidenceListResponse",
-    "AgentRoleDryRunRequest",
-    "AgentRoleDryRunResponse",
-    "AgentRoleDecisionListResponse",
     "AgentCapabilityResponse",
     "AgentCapabilityListResponse",
-    "AgentToolRouteRequest",
-    "AgentToolRouteResponse",
-    "AgentToolRouteDecisionListResponse",
     "AgentMemoryCuratorPolicyResponse",
     "AgentMemoryCuratorEvaluateRequest",
     "AgentMemoryCuratorEvaluateResponse",
     "AgentMemoryCuratorDecisionListResponse",
-    "AgentDelegationPolicyResponse",
-    "AgentDelegationPlanRequest",
-    "AgentDelegationPlanResponse",
-    "AgentDelegationRunListResponse",
-    "AgentModelRouterPolicyResponse",
-    "AgentModelRouteRequest",
-    "AgentModelRouteResponse",
-    "AgentModelRouterDecisionListResponse",
-    "AgentSelfRepairFailureListResponse",
-    "AgentSelfRepairPromotePreviewRequest",
-    "AgentSelfRepairPromotePreviewResponse",
-    "AgentReviewQueueListResponse",
-    "AgentReviewQueueDecisionResponse",
     "AgentContextPolicyResponse",
     "AgentContextPreviewRequest",
     "AgentContextPreviewResponse",
     "AgentContextDecisionListResponse",
     "AgentContextArtifactListResponse",
-    "AgentTaskLedgerPolicyResponse",
-    "AgentTaskLedgerPlanRequest",
-    "AgentTaskLedgerPlanResponse",
-    "AgentTaskLedgerRunListResponse",
     "AgentArtifactListResponse",
-    "AgentArtifactSynthesisRequest",
-    "AgentArtifactSynthesisResponse",
-    "AgentCriticVerdictListResponse",
-    "AgentCriticEvaluateRequest",
-    "AgentCriticEvaluateResponse",
 ]

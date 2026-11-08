@@ -7,7 +7,6 @@ from .config import (
     RuntimeFeatures,
     RuntimeFeatureSpec,
     StreamingConfig,
-    SubagentConfig,
 )
 from .state import (
     AgentStateSlices,
@@ -40,7 +39,6 @@ __all__ = [
     "StateSlice",
     "StateSliceSpec",
     "StreamingConfig",
-    "SubagentConfig",
     "build_state_slices",
     "state_slice_dict",
     "state_slice_model",

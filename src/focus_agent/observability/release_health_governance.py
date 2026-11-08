@@ -11,7 +11,7 @@ from focus_agent.observability.release_health_models import FAIL, PASS, WARN, Re
 def evaluate_governance_quality_report(
     governance_quality_report: Mapping[str, Any],
 ) -> ReleaseHealthSignal:
-    """Validate Agent Governance quality thresholds produced by scripts/agent_governance_report.py."""
+    """Validate Agent Governance quality thresholds from an external report."""
     summary = (
         governance_quality_report.get("summary")
         if isinstance(governance_quality_report.get("summary"), Mapping)

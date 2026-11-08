@@ -19,18 +19,10 @@ from focus_agent.repositories.postgres_trajectory_repository import (
 from focus_agent.security.tokens import Principal
 
 _LIST_ENDPOINTS = (
-    "/v1/agent/roles/decisions",
-    "/v1/agent/tool-router/decisions",
     "/v1/agent/memory/curator/decisions",
-    "/v1/agent/delegation/runs",
-    "/v1/agent/model-router/decisions",
-    "/v1/agent/self-repair/failures",
-    "/v1/agent/review-queue",
     "/v1/agent/context/decisions",
     "/v1/agent/context/artifacts",
-    "/v1/agent/task-ledger/runs",
     "/v1/agent/artifacts",
-    "/v1/agent/critic/verdicts",
 )
 
 
@@ -217,7 +209,7 @@ def test_authorized_governance_global_view_is_explicit_and_unscoped(
     )
 
     response = client.get(
-        "/v1/agent/tool-router/decisions",
+        "/v1/agent/context/decisions",
     )
 
     assert response.status_code == 200
@@ -237,7 +229,7 @@ def test_inactive_user_cannot_use_stale_global_governance_scope() -> None:
     )
 
     response = client.get(
-        "/v1/agent/tool-router/decisions",
+        "/v1/agent/context/decisions",
     )
 
     assert response.status_code == 200

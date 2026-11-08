@@ -25,7 +25,6 @@ from ..memory.embedding import (
     MemoryEmbeddingService,
     create_memory_embedding_provider,
 )
-from ..multi_agent.maintenance import MultiAgentMaintenanceWorker
 from ..observability.otel_runtime import OTelRuntime, initialize_otel_runtime
 from ..repositories.branch_repository import BranchRepository
 from ..repositories.in_memory_branch_repository import (
@@ -44,7 +43,6 @@ from ..repositories.user_repository import (
     UserRepository,
 )
 from ..retrieval.factory import create_retrieval_index
-from ..services.agent_team import AgentTeamService
 from ..services.background_work import (
     BackgroundJobHandlerRegistry,
     BoundedBackgroundQueue,
@@ -92,7 +90,6 @@ from .runtime_memory_setup import (
     _setup_memory_repository_if_available as _setup_memory_repository_if_available,
 )
 from .runtime_persistence import (
-    _create_agent_team_repository,
     _create_governance_repository,
     _create_local_fallback_persistence,
     _create_postgres_primary_persistence,
@@ -146,7 +143,6 @@ class AppRuntime:
     repo: BranchRepository
     user_repository: UserRepository
     branch_service: BranchService
-    agent_team_service: AgentTeamService
     branch_decision_service: BranchDecisionService
     user_service: UserService
     productivity_service: ProductivityService
@@ -172,7 +168,6 @@ class AppRuntime:
     otel_runtime: OTelRuntime
     background_work: BoundedBackgroundQueue
     durable_background_worker: DurableBackgroundWorker | None
-    multi_agent_maintenance_worker: MultiAgentMaintenanceWorker | None
     coordination_backend: CoordinationBackend
     postgres_connection_provider: PostgresConnectionProvider | None
     _exit_stack: ExitStack
@@ -225,12 +220,6 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         job_deduper=coordination_backend.job_deduper,
     )
     exit_stack.callback(background_work.close)
-    multi_agent_maintenance_worker = _start_multi_agent_maintenance_worker(
-        settings=settings,
-        coordination_backend=coordination_backend,
-        exit_stack=exit_stack,
-    )
-
     memory_embedding_setup = _resolve_memory_embedding_setup(settings)
     persistence = _create_runtime_persistence(
         settings=settings,
@@ -273,8 +262,6 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         memory_embedding_provider=memory.memory_embedding_provider,
         retrieval_index=memory.retrieval_index,
         coordination_backend=coordination_backend,
-        background_work=background_work,
-        postgres_connection_provider=postgres_connection_provider,
     )
 
     runtime = AppRuntime(
@@ -287,7 +274,6 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         repo=persistence.repo,
         user_repository=persistence.user_repository,
         branch_service=services.branch_service,
-        agent_team_service=services.agent_team_service,
         branch_decision_service=services.branch_decision_service,
         user_service=services.user_service,
         productivity_service=services.productivity_service,
@@ -313,30 +299,11 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         otel_runtime=otel_runtime,
         background_work=background_work,
         durable_background_worker=None,
-        multi_agent_maintenance_worker=multi_agent_maintenance_worker,
         coordination_backend=coordination_backend,
         postgres_connection_provider=persistence.postgres_connection_provider,
         _exit_stack=exit_stack,
     )
-    try:
-        runtime.agent_team_service._agent_team_runtime = runtime
-    except Exception:  # noqa: BLE001
-        logger.debug("Agent Team runtime readiness context unavailable", exc_info=True)
     return runtime
-
-
-def _start_multi_agent_maintenance_worker(
-    *,
-    settings: Settings,
-    coordination_backend: CoordinationBackend,
-    exit_stack: ExitStack,
-) -> MultiAgentMaintenanceWorker | None:
-    if not bool(getattr(settings, "multi_agent_v2_enabled", False)):
-        return None
-    worker = MultiAgentMaintenanceWorker(coordination_backend)
-    worker.start()
-    exit_stack.callback(worker.close)
-    return worker
 
 
 def _create_runtime_persistence(
@@ -495,8 +462,6 @@ def _create_runtime_services(
     memory_embedding_provider: object | None,
     retrieval_index: object | None,
     coordination_backend: CoordinationBackend,
-    background_work: BoundedBackgroundQueue,
-    postgres_connection_provider: PostgresConnectionProvider | None = None,
 ) -> RuntimeServices:
     return _create_runtime_services_impl(
         settings=settings,
@@ -510,12 +475,7 @@ def _create_runtime_services(
         memory_embedding_provider=memory_embedding_provider,
         retrieval_index=retrieval_index,
         coordination_backend=coordination_backend,
-        background_work=background_work,
-        agent_team_repository=_create_agent_team_repository(
-            settings, connection_provider=postgres_connection_provider
-        ),
         branch_service_factory=BranchService,
-        agent_team_service_factory=AgentTeamService,
         user_service_factory=UserService,
         branch_decision_service_factory=BranchDecisionService,
         productivity_service_factory=ProductivityService,

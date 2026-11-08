@@ -84,10 +84,7 @@ make api
 启动后可访问：
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/agent-team`
 - `http://127.0.0.1:8000/app/agent/memory`
-- `http://127.0.0.1:8000/app/agent/roles`
-- `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/admin/users`
 - `http://127.0.0.1:8000/app/admin/audit-events`
@@ -133,7 +130,7 @@ psql "$DATABASE_URI"
 
 ## 4. Memory Embedding 与 Zvec Retrieval
 
-PostgreSQL memory 是生产 canonical memory store。Zvec 是默认的可重建检索索引，覆盖 memory、artifact RAG、Skill matching、trajectory、branch context、Agent Team plan reuse、governance feedback、failure cases 和 workspace semantic search。
+PostgreSQL memory 是生产 canonical memory store。Zvec 是默认的可重建检索索引，覆盖 memory、artifact RAG、Skill matching、trajectory、branch context、governance feedback、failure cases 和 workspace semantic search。
 
 默认检索配置：
 
@@ -195,9 +192,8 @@ collection 名称、安全校验、backfill target 和多副本约束见 [Zvec R
 
 API 二进制在没有 `DATABASE_URI` 时也会默认持久化本地 app-state：
 branch、conversation、thread access、用户和 productivity repository 共用
-`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`）。Agent Team 的 session、task 和
-v2 run record 也存在同一个 SQLite 文件里，API 重启后仍在；该模式没有 Postgres trajectory
-recorder 和 artifact metadata repository。
+`BRANCH_DB_PATH`（默认 `.focus_agent/branches.sqlite3`）。该模式没有 Postgres
+trajectory recorder 和 artifact metadata repository。
 
 LangGraph checkpoint/store 默认使用 SQLite，文件分别为
 `.focus_agent/langgraph-checkpoints.sqlite3` 和
@@ -301,7 +297,7 @@ Web App 默认把 `VITE_FOCUS_AGENT_API_BASE_URL` 解析为 `window.location.ori
 
 ## 9. Android App
 
-Android App 是一层 Capacitor 原生壳，包住 React 构建产物。移动构建使用 `/` 作为应用内路由 base，并设置 Android web target：保留对话与系统管理功能，排除 Agent Team 和 Productivity 路由。
+Android App 是一层 Capacitor 原生壳，包住 React 构建产物。移动构建使用 `/` 作为应用内路由 base，并设置 Android web target：保留对话与系统管理功能，排除 Productivity 路由。
 
 该 target 需要：
 
@@ -401,7 +397,6 @@ uv run python scripts/ui_smoke_test.py \
 
 - [Memory System v2](memory-system-v2.md)
 - [分支决策与推荐](branch-decisions.md)
-- [Agent Governance](agent-role-routing.md)
 - [Observability Runbook](observability-runbook.md)
 - [Auth / Access](auth-access.md)
 - [管理员控制台](admin-console.md)

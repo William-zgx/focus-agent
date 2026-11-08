@@ -84,7 +84,6 @@ Alert guidance should use the existing `/metrics` scrape. Start with these signa
 - `focus_agent_trajectory_non_succeeded_count / focus_agent_trajectory_turn_count`: alert on a sustained failure-rate increase, not a single failed turn.
 - `focus_agent_trajectory_avg_latency_ms`, `focus_agent_trajectory_max_latency_ms`, and `focus_agent_trajectory_total_fallback_uses`: use warning alerts for sustained latency or fallback growth, then pivot into `/app/observability/overview`.
 - `focus_agent.tool_pool.queue` (OpenTelemetry observable gauge, not part of the Prometheus `/metrics` scrape): warn from the OTel metrics export when the isolated tool pool queue grows for multiple scrape windows; pair it with `focus_agent.tool_pool.active`.
-- `agent_team_scheduler_lock_wait_ms` (OpenTelemetry histogram, not part of the Prometheus `/metrics` scrape): warn from the OTel metrics export when p95 rises above the single-digit millisecond target during multi-session agent-team starts.
 - `focus_agent_background_job_status_count{status="retrying"}` or `{status="dead_lettered"}`, or the admin background job summary: investigate embedding provider health or redaction spikes before enabling 100% async embedding.
 - `/readyz.active_connections`: track DB pool in-use connections during rollout and compare against `FOCUS_AGENT_DB_POOL_MAX`.
 
@@ -98,7 +97,6 @@ Before moving a perf flag from 10% to 50% or 100%, capture the same small bundle
 curl http://127.0.0.1:8000/readyz > reports/release-gate/readyz.json
 curl http://127.0.0.1:8000/metrics > reports/release-gate/metrics.prom
 uv run python scripts/bench_checkpoint.py --backend pickle --turns 500 > reports/release-gate/checkpoint-pickle.json
-uv run python scripts/bench_scheduler_lock.py --sessions 10 > reports/release-gate/scheduler-lock.json
 uv run python scripts/bench_tool_parallel.py --tools 10 > reports/release-gate/tool-parallel.txt
 ```
 
@@ -109,7 +107,6 @@ Interpretation:
 - Memory async: pending `memory_embedding` jobs should drain; retrying/dead-letter growth points at provider outage or schema mismatch.
 - Retrieval: `retrieval_zvec` should stay ready after startup; a degraded check means search quality may fall back even though canonical stores remain intact.
 - Tool pool: queue depth should remain near zero when workers are not saturated.
-- Scheduler lock: 10 independent sessions should show p95 lock wait below 5 ms on a quiet local runner.
 
 Executable alert-rule checks should write a small JSON report for release review. The release-health helper accepts it with `--alert-report-json` and fails the release if the report has no executable rule coverage, declares a failed status, or contains firing alerts. A minimal passing report looks like:
 
@@ -379,9 +376,6 @@ the API; use it as a fast wiring check, not as browser evidence.
 The release gate runs the helper after the smoke and observability eval suites have written JSON reports:
 
 ```bash
-uv run python scripts/agent_governance_report.py \
-  --report-json reports/agent-governance/latest.json
-
 uv run python scripts/release_health_check.py \
   --mode local \
   --ready-url http://127.0.0.1:8000/readyz \
@@ -389,13 +383,11 @@ uv run python scripts/release_health_check.py \
   --allow-self-check-fallback \
   --eval-report-json reports/release-gate/eval-smoke.json \
   --eval-report-json reports/release-gate/eval-observability.json \
-  --eval-report-json reports/release-gate/eval-golden-multi-agent.json \
   --eval-report-json reports/release-gate/memory-context-eval.json \
-  --governance-report-json reports/agent-governance/latest.json \
   --report-json reports/release-gate/release-health.json
 ```
 
-For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, alert-rule execution results from `--alert-report-json`, Postgres migration verification from `--postgres-migration-report-json`, production smoke from `--production-smoke-report-json`, Postgres ops from `--postgres-ops-report-json`, OpenTelemetry smoke from `--otel-smoke-report-json`, Agent governance quality from `--governance-report-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, eval report, production smoke, Postgres ops, OTel smoke, or governance report inputs are release-blocking and return exit code 1. Supplied alert, Postgres, production smoke, Postgres ops, OTel, and governance reports are also release-blocking when they are malformed, failed, contain blocking threshold violations, or are dry-run reports in production.
+For a live deployment, switch to `--mode live` or `--mode production`, remove `--allow-self-check-fallback`, and pass captured deployment signals. The helper accepts `/readyz` from `--readyz-json` or `--runtime-status-json`, trajectory stats from `--trajectory-stats-json`, optional trajectory baselines from `--baseline-trajectory-stats-json`, replay comparison rows from `--replay-comparisons-json`, alert-rule execution results from `--alert-report-json`, Postgres migration verification from `--postgres-migration-report-json`, production smoke from `--production-smoke-report-json`, Postgres ops from `--postgres-ops-report-json`, OpenTelemetry smoke from `--otel-smoke-report-json`, eval reports from repeated `--eval-report-json` arguments, and optional baseline eval reports from repeated `--baseline-eval-report-json` arguments. In live/production mode, missing readyz, trajectory stats, replay comparison, eval report, production smoke, Postgres ops, or OTel smoke inputs are release-blocking and return exit code 1. Supplied alert, Postgres, production smoke, Postgres ops, and OTel reports are also release-blocking when they are malformed, failed, contain blocking threshold violations, or are dry-run reports in production.
 
 Production jobs can also probe the live service directly with `--ready-url` and `--trajectory-stats-url`, but those probes are still fail-closed: an unavailable endpoint writes a failed release-health report instead of silently using local self-check samples.
 
@@ -467,7 +459,7 @@ evidence fails closed.
 Production release review should archive an evidence pack after the live signals are captured:
 
 ```bash
-make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --governance-report-json reports/agent-governance/latest.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-golden-multi-agent.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
+make release-evidence RELEASE_EVIDENCE_ARGS="--release-id <release-id> --approval-id <approval-id> --approval-status approved --retention-days 90 --storage-dir reports/release-gate/archive --readyz-json reports/release-gate/readyz.json --trajectory-stats-json reports/release-gate/trajectory-stats.json --replay-comparisons-json reports/release-gate/replay-comparisons.json --alert-report-json reports/release-gate/alert-report.json --postgres-migration-report-json reports/release-gate/postgres-migration.json --production-smoke-report-json reports/release-gate/production-smoke.json --postgres-ops-report-json reports/release-gate/postgres-ops.json --otel-smoke-report-json reports/release-gate/otel-smoke.json --eval-report-json reports/release-gate/eval-smoke.json --eval-report-json reports/release-gate/eval-observability.json --eval-report-json reports/release-gate/eval-harness-stability.json --eval-report-json reports/release-gate/memory-context-eval.json --baseline-eval-report-json reports/release-gate/baseline-eval-smoke.json"
 ```
 
 The resulting `reports/release-gate/<release-id>/manifest.json` has
@@ -535,14 +527,9 @@ uv run python scripts/otel_smoke.py \
   --collector-health-url http://otel-collector:13133/healthz \
   --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' \
   --report-json reports/release-gate/otel-smoke.json
-
-uv run python scripts/agent_governance_report.py \
-  --report-json reports/agent-governance/latest.json \
-  --max-review-queue-backlog 10 \
-  --max-avg-cost-usd 0.05
 ```
 
-Attach these reports to release-health with `--production-smoke-report-json`, `--postgres-ops-report-json`, `--otel-smoke-report-json`, and `--governance-report-json`. The reports intentionally fail closed when supplied: empty coverage, malformed JSON, explicit `passed=false`, failed statuses, failed row-level checks, or governance blocking signals block the release-health result.
+Attach these reports to release-health with `--production-smoke-report-json`, `--postgres-ops-report-json`, and `--otel-smoke-report-json`. The reports intentionally fail closed when supplied: empty coverage, malformed JSON, explicit `passed=false`, failed statuses, failed row-level checks, or blocking signals block the release-health result.
 
 Ownership allow / deny checks can be exported as trajectory-compatible `ownership.audit` entries. The exported payload includes principal, resource type, resource id, action, decision, reason, and request id, which makes cross-principal denials searchable in the same observability pipeline without adding a new database schema. These records are evidence for the instrumented ownership checks; they do not by themselves prove that every downstream mutation or side effect is isolated across the full request chain.
 

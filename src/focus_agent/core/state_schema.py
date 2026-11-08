@@ -23,7 +23,6 @@ from .state_governance_metrics import (
     task_outcome_metrics,
     tool_intent_metrics,
     tool_outcome_metrics,
-    tool_route_metrics,
 )
 
 GOVERNANCE_METRIC_KEYS = _governance_metrics.GOVERNANCE_METRIC_KEYS
@@ -157,11 +156,7 @@ GOVERNANCE_RECORD_DESCRIPTORS: tuple[GovernanceRecordDescriptor, ...] = (
         mirror_key="tool_intent_plan",
         metric_extractor=tool_intent_metrics,
     ),
-    GovernanceRecordDescriptor(
-        "tool_route_plan",
-        mirror_key="tool_route_plan",
-        metric_extractor=tool_route_metrics,
-    ),
+    GovernanceRecordDescriptor("tool_route_plan", mirror_key="tool_route_plan"),
     GovernanceRecordDescriptor(
         "memory_write_result",
         domain="observability",

@@ -10,11 +10,8 @@ import json
 import time
 from pathlib import Path
 
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage
 from langchain.tools import tool as langchain_tool
-
-from focus_agent.config import Settings
-from focus_agent.engine.graph.governance_nodes import make_delegation_governance_node
 
 from .cli import _case_model_variants, _load_model_matrix, _write_failed_cases_dataset
 from .judges import EnvironmentJudge, RuleJudge, TrajectoryJudge
@@ -188,7 +185,7 @@ def test_eval_case_parses_extended_schema_without_migrating_old_cases():
             "capability": "delegation",
             "risk_level": "medium",
             "agent_topology": {"roles": ["planner", "critic"], "critic_required": True},
-            "environment": {"assertions": [{"path": "agent_team_tasks", "min_len": 2}]},
+            "environment": {"assertions": [{"path": "agent_topology.roles", "min_len": 2}]},
             "model_matrix": [{"label": "strong", "model": "openai:gpt-4.1"}],
             "model_policy": {"fallback": "openai:gpt-4.1-mini"},
             "retries": 1,
@@ -222,7 +219,7 @@ def test_environment_judge_requires_final_state_and_allows_explicit_input_checks
                         "equals": "openai:fast",
                         "source": "input",
                     },
-                    {"path": "agent_team_tasks", "min_len": 2},
+                    {"path": "agent_topology.roles", "min_len": 2},
                     {"path": "answer_quality", "contains": "approved"},
                 ]
             },
@@ -234,7 +231,7 @@ def test_environment_judge_requires_final_state_and_allows_explicit_input_checks
         answer="",
         trajectory=[],
         state={
-            "agent_team_tasks": [{"role": "planner"}, {"role": "critic"}],
+            "agent_topology": {"roles": ["planner", "critic"]},
             "answer_quality": ["approved", "reviewed"],
         },
     )
@@ -291,50 +288,6 @@ def test_environment_judge_can_assert_actual_trajectory():
     ]
     verdict = EnvironmentJudge().evaluate(case=case, answer="", trajectory=steps, state={})
     assert verdict.passed, verdict.reasoning
-
-
-def test_golden_multi_agent_environment_checks_need_actual_behavior():
-    cases = load_dataset(Path(__file__).parent / "datasets" / "golden_multi_agent.jsonl")
-    verdicts = [
-        EnvironmentJudge().evaluate(
-            case=case,
-            answer="",
-            trajectory=[],
-            state={},
-        )
-        for case in cases
-    ]
-
-    assert len(verdicts) == 4
-    assert all(not verdict.passed for verdict in verdicts)
-
-
-def test_golden_multi_agent_assertions_follow_actual_governance():
-    cases = load_dataset(Path(__file__).parent / "datasets" / "golden_multi_agent.jsonl")
-
-    def no_provider(*args, **kwargs):
-        raise AssertionError("Offline governance validation must not call a provider")
-
-    for mode in ("fake", "observe"):
-        settings = Settings(
-            agent_role_routing_enabled=True,
-            agent_role_max_parallel_runs=3,
-            agent_delegation_enabled=True,
-            agent_delegation_execution_mode=mode,
-            agent_task_ledger_enabled=True,
-            agent_critic_gate_enabled=True,
-        )
-        node = make_delegation_governance_node(
-            settings=settings, tools=[], chat_model_factory=no_provider
-        )
-        for case in cases[:2]:
-            state = {
-                **case.input.get("initial_state", {}),
-                "messages": [HumanMessage(content=case.input["user_message"])],
-            }
-            state.update(node(state))
-            verdict = EnvironmentJudge().evaluate(case=case, answer="", trajectory=[], state=state)
-            assert verdict.passed is (mode == "fake"), (case.id, mode, verdict.reasoning)
 
 
 def test_trajectory_judge_enforces_multi_agent_role_expectations():

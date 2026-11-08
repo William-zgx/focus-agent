@@ -67,7 +67,6 @@ def _isolated_env(state_dir: Path, model: str) -> dict[str, str]:
         # Branch control must stay explicit in arm B and absent in arm A.
         "AGENT_BRANCH_RECOMMENDATION_ENABLED": "false",
         "AGENT_BRANCH_DECISION_ENABLED": "false",
-        "AGENT_DELEGATION_ENABLED": "false",
         # External services that would add noise unrelated to the arms.
         "AGENT_MEMORY_EMBEDDING_ENABLED": "false",
         "TAVILY_API_KEY": "",
@@ -178,7 +177,7 @@ def _usage(result: Any) -> dict[str, int] | None:
 
 
 def _install_capture(log: list[dict[str, Any]]) -> None:
-    import focus_agent.engine.graph.builder as graph_builder
+    import focus_agent.engine.graph_builder as graph_builder
     import focus_agent.engine.model_factory as model_factory
     import focus_agent.model_registry as model_registry
     import focus_agent.services.branches as branches_package

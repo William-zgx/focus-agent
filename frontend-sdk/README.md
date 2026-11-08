@@ -27,10 +27,9 @@ This SDK packages those concerns into a small, typed client layer.
 - Conversation, branch tree, branch action, and merge review request helpers
 - Admin settings helpers for model, tool, policy, and Skill configuration
 - Branch decision config/list/promote/dismiss helpers for AI-assisted branch recommendations
-- Agent governance helpers for skill selection, preference feedback, feedback trend summaries, role/tool/model routing, context, task ledger, critic, and review queue surfaces
+- Agent governance helpers for model catalogs, skill selection, preference feedback, feedback trend summaries, capabilities/toolsets, memory curation and usage, context, and artifact listing
 - Productivity request helpers for notes/tasks/capture, including task lifecycle actions and event list
 - Trajectory observability helpers for overview/list/detail/stats/replay/promote plus batch promote-preview and replay-compare flows
-- Agent role-routing helpers for policy inspection, dry-run decisions, and trajectory decision review
 - Strongly typed event names and payloads
 - SSE parser for `fetch(..., { method: "POST" })` response bodies
 - Bounded stream reconnect/resume with `Last-Event-ID`
@@ -44,14 +43,11 @@ This SDK packages those concerns into a small, typed client layer.
 
 `streamTurn()` accepts a text `message` (plus the documented turn options); the
 current request contract has no first-class attachment or multimodal content
-field. The SDK exposes Agent Team planning/run/merge methods because those API
-routes exist, but the server defaults keep delegation in `observe` and Agent
-Team execution `disabled`; client method availability is not evidence of a
-provider-backed run.
+field. Client method availability is not evidence of a provider-backed run.
 
 The built-in Web capability exposed through the current runtime is text
 `web_search`/`web_fetch`, not a browser with DOM navigation or screenshots. Agent
-artifact APIs expose list/synthesis metadata, while text artifact writes return
+artifact APIs expose list metadata, while text artifact writes return
 local path/id references; consumers should not assume a portable artifact
 upload/download channel. `recommendation_user_visible=false` is an audit-only
 event and consumers must suppress confirmation controls themselves; the SDK
@@ -60,7 +56,7 @@ does not enforce that UI behavior.
 ## Package Layout
 
 - `src/client.ts` - `FocusAgentClient` facade and endpoint mixin registration
-- `src/client/` - domain endpoint modules for auth, admin, agent-team, agent-governance, thread/branch, productivity, observability, and streaming
+- `src/client/` - domain endpoint modules for auth, admin, agent-governance, thread/branch, productivity, observability, and streaming
 - `src/transport.ts` - shared HTTP/SSE transport, token resolution, `fetchImpl`, and abort handling
 - `src/errors.ts` - structured request error type
 - `src/types.ts` - public type barrel
@@ -170,12 +166,10 @@ flowchart LR
 - `getAdminConfig()`, `updateAdminModelConfig()`, `updateAdminToolConfig()`, `updateAdminPolicyConfig()`, `updateAdminSkillConfig()` - administer model connections, tools, policies, and Skill enablement
 - `listUsers()`, `createUser()`, `getUser()`, `updateUser()`, `updateUserStatus()`, `updateUserRoles()`, `listUserSessions()`, `revokeUserSession()`, `resetUserPassword()`, and `listAuditEvents()` - administer users, sessions, passwords, and audit events
 - `listModels()` - fetch the current model catalog
-- `getAgentRolePolicy()`, `dryRunAgentRoleRoute()`, `listAgentRoleDecisions()`, `selectAgentSkills()`, `listAgentSkillSelections()`, `sendAgentSkillSelectionFeedback()`, `getAgentSkillCatalog()`, `updateAgentSkillPreference()`, and `getAgentFeedbackTrend()` - inspect role routing policy, preview orchestrator decisions, review persisted role_route_plan records, manage skill selection evidence, and read governance feedback trend summaries
-- `listAgentCapabilities()`, `routeAgentTools()`, `listAgentToolRouteDecisions()`, `getAgentMemoryCuratorPolicy()`, `evaluateAgentMemoryCurator()`, and `listAgentMemoryCuratorDecisions()` - inspect governance capabilities, tool routing, and memory curator decisions
-- `getAgentDelegationPolicy()`, `planAgentDelegation()`, `listAgentDelegationRuns()`, `getAgentModelRouterPolicy()`, `routeAgentModel()`, `listAgentModelRouterDecisions()`, `listAgentSelfRepairFailures()`, `previewAgentSelfRepairPromotion()`, `listAgentReviewQueue()`, `approveAgentReviewQueueItem()`, and `rejectAgentReviewQueueItem()` - inspect delegated role runs, model routing, failure candidates, and human-review queue items
+- `selectAgentSkills()`, `listAgentSkillSelections()`, `sendAgentSkillSelectionFeedback()`, `getAgentSkillCatalog()`, `updateAgentSkillPreference()`, and `getAgentFeedbackTrend()` - manage skill selection evidence and read governance feedback trend summaries
+- `listAgentCapabilities()`, `listAgentToolsets()`, `getAgentMemoryCuratorPolicy()`, `evaluateAgentMemoryCurator()`, `listAgentMemoryCuratorDecisions()`, and `getMemoryUsage()` - inspect governance capabilities, toolsets, memory curator decisions, and memory usage
 - `getAgentContextPolicy()`, `previewAgentContext()`, `listAgentContextDecisions()`, and `listAgentContextArtifacts()` - inspect Context Engineering v2 budget decisions, compression previews, and artifact refs
-- `getAgentTaskLedgerPolicy()`, `planAgentTaskLedger()`, `listAgentTaskLedgerRuns()`, `listAgentArtifacts()`, `synthesizeAgentArtifacts()`, `listAgentCriticVerdicts()`, and `evaluateAgentCriticGate()` - inspect task ledger runs, delegated artifacts, synthesis previews, and critic gate verdicts
-- `createAgentTeamSession()`, `listAgentTeamSessions()`, `getAgentTeamSession()`, `getAgentTeamSessionView()`, `planAgentTeamSession()`, `runAgentTeamSession()`, `cancelAgentTeamSession()`, `dispatchAgentTeamSession()`, `createAgentTeamTask()`, `listAgentTeamTasks()`, `getAgentTeamTaskStatus()`, `updateAgentTeamTask()`, `runAgentTeamTask()`, `retryAgentTeamTask()`, `cancelAgentTeamTask()`, `recordAgentTeamTaskOutput()`, `prepareAgentTeamMergeBundle()`, and `recordAgentTeamMergeDecision()` - manage Agent Team sessions, tasks, outputs, execution, cancellation, retry, and merge decisions
+- `listAgentArtifacts()` - list persisted agent artifacts and trajectory availability
 - `listConversations()`, `createConversation()`, `renameConversation()`, `archiveConversation()`, `activateConversation()` - manage conversation shells
 - `getThreadState()` - fetch the current thread payload used by the app, including optional `context_usage`
 - `getThreadResolution()` - resolve a root or child thread id to its canonical root, source thread, branch id, and branch status
@@ -425,7 +419,7 @@ make sdk-openapi-types-check
 ## Notes
 
 - This SDK is intentionally small and focused on the current Focus Agent protocol.
-- Branch, conversation, merge proposal, imported-conclusion, Agent Team, productivity, agent role-routing, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
+- Branch, conversation, merge proposal, imported-conclusion, productivity, agent governance, and trajectory observability types are exported from `src/types.ts` for frontend consumers.
 - HTTP request failures throw `FocusAgentRequestError`, which includes `status` and `statusText`.
 - A stream that exhausts EOF/reconnect handling without a terminal event throws `FocusAgentIncompleteStreamError`; an explicit abort remains caller cancellation.
 - `make contract-check` tracks the SDK public surface, package exports, stream event names, and Web App imports from `@focus-agent/web-sdk`; intentional SDK/API drift should include the contract snapshot diff in review.

@@ -131,17 +131,6 @@ export function BackToParentIcon(props: ToolbarIconProps) {
 	);
 }
 
-export function AgentTeamIcon(props: ToolbarIconProps) {
-	return (
-		<ToolbarIcon {...props}>
-			<circle cx="9" cy="8" r="3" />
-			<path d="M4.5 19c.6-3 2.1-4.5 4.5-4.5s3.9 1.5 4.5 4.5" />
-			<path d="M15.5 11.5a2.5 2.5 0 1 0-1.1-4.7" />
-			<path d="M15.5 14.5c2 .2 3.3 1.5 4 4" />
-		</ToolbarIcon>
-	);
-}
-
 export function ProductivityIcon(props: ToolbarIconProps) {
 	return (
 		<ToolbarIcon {...props}>

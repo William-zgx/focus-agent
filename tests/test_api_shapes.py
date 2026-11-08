@@ -12,37 +12,11 @@ from focus_agent.api.route_utils.token_usage import (
 )
 from focus_agent.api.schemas import (
     AgentArtifactListResponse,
-    AgentArtifactSynthesisRequest,
-    AgentArtifactSynthesisResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
-    AgentCriticEvaluateRequest,
-    AgentCriticEvaluateResponse,
-    AgentCriticVerdictListResponse,
-    AgentDelegationPlanRequest,
-    AgentDelegationPlanResponse,
-    AgentDelegationPolicyResponse,
-    AgentDelegationRunListResponse,
-    AgentModelRouterDecisionListResponse,
-    AgentModelRouteRequest,
-    AgentModelRouteResponse,
-    AgentModelRouterPolicyResponse,
-    AgentReviewQueueDecisionResponse,
-    AgentReviewQueueListResponse,
-    AgentRoleDecisionListResponse,
-    AgentRoleDryRunRequest,
-    AgentRoleDryRunResponse,
-    AgentRolePolicyResponse,
-    AgentSelfRepairFailureListResponse,
-    AgentSelfRepairPromotePreviewRequest,
-    AgentSelfRepairPromotePreviewResponse,
-    AgentTaskLedgerPlanRequest,
-    AgentTaskLedgerPlanResponse,
-    AgentTaskLedgerPolicyResponse,
-    AgentTaskLedgerRunListResponse,
     BackgroundDeadLetterJobListResponse,
     BackgroundDeadLetterJobResponse,
     BackgroundDeadLetterReplayResponse,
@@ -308,58 +282,7 @@ def test_branch_action_contract_shapes():
     assert dumped["navigation"] == {"root_thread_id": "root-1", "thread_id": "child-2"}
 
 
-def test_agent_role_contract_shapes():
-    policy = AgentRolePolicyResponse(
-        enabled=True,
-        default_model="openai:gpt-4.1-mini",
-        helper_model="openai:deepseek-chat",
-        max_parallel_runs=3,
-        roles=["orchestrator", "planner", "executor", "critic", "memory_curator", "skill_scout"],
-        role_models={"executor": "openai:gpt-4.1-mini", "critic": "openai:deepseek-chat"},
-        fallback_order=["role-specific model override", "executor selected model", "helper model"],
-    )
-    dry_run_request = AgentRoleDryRunRequest(
-        message="Plan, implement, and verify the role routing console.",
-        scene="role_routing_console",
-        available_tools=["search_code", "read_file"],
-    )
-    dry_run_response = AgentRoleDryRunResponse(
-        policy=policy,
-        plan={
-            "enabled": True,
-            "decisions": [
-                {"role": "orchestrator", "model_id": "openai:deepseek-chat"},
-                {"role": "executor", "model_id": "openai:gpt-4.1-mini"},
-            ],
-        },
-    )
-    decision_list = AgentRoleDecisionListResponse(
-        items=[
-            {
-                "turn_id": "turn-1",
-                "role_count": 2,
-                "decisions": dry_run_response.plan["decisions"],
-            }
-        ],
-        count=1,
-        trajectory_available=True,
-    )
-
-    dumped = dry_run_response.model_dump(mode="json")
-
-    assert policy.roles == [
-        "orchestrator",
-        "planner",
-        "executor",
-        "critic",
-        "memory_curator",
-        "skill_scout",
-    ]
-    assert dry_run_request.available_tools == ["search_code", "read_file"]
-    assert dumped["plan"]["decisions"][1]["role"] == "executor"
-    assert decision_list.items[0]["turn_id"] == "turn-1"
-    assert decision_list.trajectory_available is True
-
+def test_agent_governance_contract_shapes():
     from focus_agent.api.contracts import (
         AgentCapabilityListResponse,
         AgentCapabilityResponse,
@@ -367,9 +290,6 @@ def test_agent_role_contract_shapes():
         AgentMemoryCuratorEvaluateRequest,
         AgentMemoryCuratorEvaluateResponse,
         AgentMemoryCuratorPolicyResponse,
-        AgentToolRouteDecisionListResponse,
-        AgentToolRouteRequest,
-        AgentToolRouteResponse,
         AgentToolsetListResponse,
         AgentToolsetResponse,
     )
@@ -390,8 +310,6 @@ def test_agent_role_contract_shapes():
         ],
         count=1,
     )
-    route_request = AgentToolRouteRequest(role="critic", available_tools=["search_code"])
-    route_response = AgentToolRouteResponse(plan={"allowed_tools": ["search_code"]})
     toolsets = AgentToolsetListResponse(
         items=[
             AgentToolsetResponse(
@@ -414,49 +332,8 @@ def test_agent_role_contract_shapes():
         findings=[{"finding": "Promote me"}],
     )
     memory_response = AgentMemoryCuratorEvaluateResponse(decision={"status": "ready"})
-    tool_decisions = AgentToolRouteDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
     memory_decisions = AgentMemoryCuratorDecisionListResponse(
         items=[{"turn_id": "turn-1"}], count=1
-    )
-
-    assert capabilities.items[0].name == "search_code"
-    assert capabilities.items[0].max_calls_per_turn == 3
-    assert capabilities.items[0].output_summary_contract == "Return path, line, and snippet."
-    assert route_request.role == "critic"
-    assert route_response.plan["allowed_tools"] == ["search_code"]
-    assert toolsets.items[0].tools == ["search_code"]
-    assert memory_policy.conflict_strategy == "needs_review"
-    assert memory_request.findings[0]["finding"] == "Promote me"
-    assert memory_response.decision["status"] == "ready"
-    assert tool_decisions.count == 1
-    assert memory_decisions.count == 1
-
-    delegation_policy = AgentDelegationPolicyResponse(
-        enabled=True, enforce=False, max_parallel_runs=2
-    )
-    delegation_request = AgentDelegationPlanRequest(message="Plan, execute, and verify.")
-    delegation_response = AgentDelegationPlanResponse(
-        policy=delegation_policy,
-        plan={"enabled": True, "runs": [{"role": "executor"}]},
-    )
-    delegation_runs = AgentDelegationRunListResponse(items=[{"run_id": "run-1"}], count=1)
-    model_policy = AgentModelRouterPolicyResponse(
-        enabled=True,
-        mode="observe",
-        default_model="openai:gpt-4.1-mini",
-        role_models={"executor": "openai:gpt-4.1-mini"},
-    )
-    model_request = AgentModelRouteRequest(role="critic", selected_model="openai:gpt-4.1-mini")
-    model_response = AgentModelRouteResponse(decision={"effective_model": "openai:deepseek-chat"})
-    model_decisions = AgentModelRouterDecisionListResponse(items=[{"turn_id": "turn-1"}], count=1)
-    failures = AgentSelfRepairFailureListResponse(items=[{"failure_type": "tool_denied"}], count=1)
-    promote_request = AgentSelfRepairPromotePreviewRequest(
-        failures=[{"failure_type": "tool_denied"}]
-    )
-    promote_response = AgentSelfRepairPromotePreviewResponse(preview={"candidates": []})
-    review_queue = AgentReviewQueueListResponse(items=[{"item_id": "review-1"}], count=1)
-    review_response = AgentReviewQueueDecisionResponse(
-        item={"item_id": "review-1", "status": "approved"}
     )
     context_policy = AgentContextPolicyResponse(enabled=True, artifact_min_chars=12000)
     context_preview_request = AgentContextPreviewRequest(
@@ -468,52 +345,22 @@ def test_agent_role_contract_shapes():
     context_artifacts = AgentContextArtifactListResponse(
         items=[{"artifact_id": "context/a.txt"}], count=1
     )
-    task_ledger_policy = AgentTaskLedgerPolicyResponse(
-        enabled=True, artifact_synthesis_enabled=True
-    )
-    task_ledger_request = AgentTaskLedgerPlanRequest(message="Plan tasks")
-    task_ledger_response = AgentTaskLedgerPlanResponse(
-        policy=task_ledger_policy,
-        ledger={"tasks": [{"task_id": "task-1"}]},
-        artifacts=[{"artifact_id": "artifact-1"}],
-    )
-    task_ledger_runs = AgentTaskLedgerRunListResponse(items=[{"task_id": "task-1"}], count=1)
     artifact_list = AgentArtifactListResponse(items=[{"artifact_id": "artifact-1"}], count=1)
-    synthesis_request = AgentArtifactSynthesisRequest(artifacts=[{"artifact_id": "artifact-1"}])
-    synthesis_response = AgentArtifactSynthesisResponse(
-        result={"accepted_artifact_ids": ["artifact-1"]}
-    )
-    critic_verdicts = AgentCriticVerdictListResponse(items=[{"verdict": "pass"}], count=1)
-    critic_request = AgentCriticEvaluateRequest(artifacts=[{"artifact_id": "artifact-1"}])
-    critic_response = AgentCriticEvaluateResponse(result={"verdict": "pass"})
 
-    assert delegation_request.scene == "agent_delegation_console"
-    assert delegation_response.plan["runs"][0]["role"] == "executor"
-    assert delegation_runs.items[0]["run_id"] == "run-1"
-    assert model_policy.role_models["executor"] == "openai:gpt-4.1-mini"
-    assert model_request.role == "critic"
-    assert model_response.decision["effective_model"] == "openai:deepseek-chat"
-    assert model_decisions.count == 1
-    assert failures.items[0]["failure_type"] == "tool_denied"
-    assert promote_request.case_id_prefix == "agent_delegation"
-    assert promote_response.preview["candidates"] == []
-    assert review_queue.items[0]["item_id"] == "review-1"
-    assert review_response.item["status"] == "approved"
+    assert capabilities.items[0].name == "search_code"
+    assert capabilities.items[0].max_calls_per_turn == 3
+    assert capabilities.items[0].output_summary_contract == "Return path, line, and snippet."
+    assert toolsets.items[0].tools == ["search_code"]
+    assert memory_policy.conflict_strategy == "needs_review"
+    assert memory_request.findings[0]["finding"] == "Promote me"
+    assert memory_response.decision["status"] == "ready"
+    assert memory_decisions.count == 1
     assert context_policy.tokenizer_mode == "tokenizer_first"
     assert context_preview_request.prompt_mode == "explore"
     assert context_preview.decision["budget"]["prompt_chars"] == 12
     assert context_decisions.count == 1
     assert context_artifacts.items[0]["artifact_id"] == "context/a.txt"
-    assert task_ledger_policy.critic_gate_enforce is False
-    assert task_ledger_request.message == "Plan tasks"
-    assert task_ledger_response.ledger["tasks"][0]["task_id"] == "task-1"
-    assert task_ledger_runs.count == 1
     assert artifact_list.items[0]["artifact_id"] == "artifact-1"
-    assert synthesis_request.artifacts[0]["artifact_id"] == "artifact-1"
-    assert synthesis_response.result["accepted_artifact_ids"] == ["artifact-1"]
-    assert critic_verdicts.items[0]["verdict"] == "pass"
-    assert critic_request.ledger == {}
-    assert critic_response.result["verdict"] == "pass"
 
 
 def test_conversation_contract_shapes():
@@ -887,28 +734,12 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/admin/background-jobs/summary" in route_paths
     assert "/v1/admin/background-jobs/dead-letter" in route_paths
     assert "/v1/admin/background-jobs/dead-letter/{job_key}/replay" in route_paths
-    assert "/v1/agent/roles/policy" in route_paths
-    assert "/v1/agent/roles/dry-run" in route_paths
-    assert "/v1/agent/roles/decisions" in route_paths
     assert "/v1/agent/feedback/trend" in route_paths
     assert "/v1/agent/capabilities" in route_paths
     assert "/v1/agent/toolsets" in route_paths
-    assert "/v1/agent/tool-router/route" in route_paths
-    assert "/v1/agent/tool-router/decisions" in route_paths
     assert "/v1/agent/memory/curator/policy" in route_paths
     assert "/v1/agent/memory/curator/evaluate" in route_paths
     assert "/v1/agent/memory/curator/decisions" in route_paths
-    assert "/v1/agent/delegation/policy" in route_paths
-    assert "/v1/agent/delegation/plan" in route_paths
-    assert "/v1/agent/delegation/runs" in route_paths
-    assert "/v1/agent/model-router/policy" in route_paths
-    assert "/v1/agent/model-router/route" in route_paths
-    assert "/v1/agent/model-router/decisions" in route_paths
-    assert "/v1/agent/self-repair/failures" in route_paths
-    assert "/v1/agent/self-repair/promote-preview" in route_paths
-    assert "/v1/agent/review-queue" in route_paths
-    assert "/v1/agent/review-queue/{item_id}/approve" in route_paths
-    assert "/v1/agent/review-queue/{item_id}/reject" in route_paths
     assert "/v1/observability/overview" in route_paths
     assert "/v1/observability/trajectory" in route_paths
     assert "/v1/observability/trajectory/stats" in route_paths
@@ -919,9 +750,6 @@ def test_public_api_no_longer_exposes_skill_catalog_routes():
     assert "/v1/observability/trajectory/batch/replay-compare" in route_paths
     assert "/v1/threads/{thread_id}/resolution" in route_paths
     assert "/v1/branches/{child_thread_id}" in route_paths
-    assert "/v1/agent-team/sessions/{session_id}/tool-approvals" in route_paths
-    assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/approve" in route_paths
-    assert "/v1/agent-team/sessions/{session_id}/tool-approvals/{request_id}/reject" in route_paths
     assert "/v2/threads/{thread_id}/runs" in route_paths
     assert "/v2/threads/{thread_id}/runs/cancel" in route_paths
     assert "/v2/threads/{thread_id}/runs/stream" in route_paths

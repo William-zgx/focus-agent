@@ -9,12 +9,14 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+from focus_agent.capabilities.tool_registry import ToolRegistry, build_tool_registry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext as BaseRequestContext
 from focus_agent.engine import graph_builder as graph_builder_module
 from focus_agent.memory import MemoryRetriever, MemoryWriter
+from focus_agent.skills import SkillRegistry
 from focus_agent.storage.namespaces import (
     branch_local_memory_namespace,
     conversation_main_namespace,
@@ -139,9 +141,19 @@ def _patch_memory_runtime(
     context_overrides = _context_overrides(case)
 
     def _build_graph(*, settings, tool_registry):
+        defaults = build_tool_registry(
+            settings=settings,
+            skill_registry=SkillRegistry.from_settings(settings),
+            store=store,
+        )
+        memory_tools = tuple(
+            item
+            for item in defaults.tools
+            if item.name in {"memory_save", "memory_search", "memory_forget"}
+        )
         return graph_builder_module.build_graph(
             settings=settings,
-            tool_registry=tool_registry,
+            tool_registry=ToolRegistry(tools=(*tool_registry.tools, *memory_tools)),
             memory_retriever=MemoryRetriever(store=store),
             memory_writer=MemoryWriter(store=store),
         )
@@ -376,10 +388,38 @@ def _case_handler(case, prompt: str) -> AIMessage:
 def _make_script(case):
     setup_users = {str(turn.get("user") or "").strip() for turn in case.setup}
     final_user = str(case.input.get("user_message") or "").strip()
+    setup_save_count = 0
 
     def _script(messages: list[Any], allow_tools: bool) -> AIMessage:  # noqa: ARG001
+        nonlocal setup_save_count
         latest_user = _latest_user(messages)
         if latest_user in setup_users and latest_user != final_user:
+            latest_human_index = max(
+                index for index, message in enumerate(messages) if isinstance(message, HumanMessage)
+            )
+            tool_completed = any(
+                isinstance(message, ToolMessage) for message in messages[latest_human_index + 1 :]
+            )
+            if not tool_completed:
+                setup_save_count += 1
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": f"memory-save-{case.id}-{setup_save_count}",
+                            "name": "memory_save",
+                            "args": {
+                                "content": latest_user,
+                                "kind": (
+                                    "user_profile"
+                                    if case.id == "mem_user_profile_go"
+                                    else "user_preference"
+                                ),
+                                "user_id": _case_user_id(case),
+                            },
+                        }
+                    ],
+                )
             return AIMessage(content="好的，我记住了。")
         return _case_handler(case, _system_text(messages))
 
@@ -435,7 +475,7 @@ def test_memory_suite_cases(case, eval_runtime_factory, monkeypatch):
 
     runtime = eval_runtime_factory(
         script=_make_script(case),
-        settings=Settings(plan_act_reflect_enabled=False),
+        settings=Settings(),
     )
     result = run_case(case, runtime=runtime)
 

@@ -33,7 +33,7 @@ def platform_map() -> str:
                 220,
                 112,
                 "Services",
-                "Chat, Branch, Agent Team, Admin, Productivity",
+                "Chat, Branch, Governance, Admin, Productivity",
                 accent="#2CA874",
             ),
             card(
@@ -99,64 +99,6 @@ def platform_map() -> str:
         ]
     )
     return frame(1280, 580, body, title="Focus Agent platform topology")
-
-
-def agent_team_dag() -> str:
-    body = "\n".join(
-        [
-            card(
-                70,
-                134,
-                210,
-                116,
-                "Mission",
-                "Goal, constraints, context evidence",
-                accent="#2FB7F5",
-            ),
-            card(
-                350, 84, 210, 102, "Planner", "Task DAG and acceptance criteria", accent="#7A68D8"
-            ),
-            card(
-                350,
-                230,
-                210,
-                102,
-                "Executor",
-                "Implementation or deliverable branch",
-                accent="#2CA874",
-            ),
-            card(650, 84, 210, 102, "Reviewer", "Risk report and findings", accent="#B65B76"),
-            card(650, 230, 210, 102, "Verifier", "Regression and eval evidence", accent="#E49B23"),
-            card(
-                970,
-                134,
-                220,
-                116,
-                "Adoption Review",
-                "Merge bundle, selected outputs, notes/tasks capture",
-                accent="#245D9C",
-            ),
-            line(280, 192, 350, 136),
-            line(280, 192, 350, 282),
-            line(560, 136, 650, 136),
-            line(560, 282, 650, 282),
-            line(860, 136, 970, 192),
-            line(860, 282, 970, 192),
-            rect(458, 384, 360, 74, fill="#EEF7F4", stroke="#CDE7DD", radius=18),
-            text(486, 416, "Agent Task Ledger + Trajectory", size=19, fill="#225B45", weight=850),
-            text(
-                486,
-                440,
-                "Every branch leaves evidence before final synthesis.",
-                size=15,
-                fill="#4F6B5F",
-                weight=600,
-            ),
-            line(545, 332, 550, 384, stroke="#2CA874"),
-            line(755, 332, 725, 384, stroke="#E49B23"),
-        ]
-    )
-    return frame(1280, 540, body, title="Agent Team mission DAG")
 
 
 def streaming_boundary() -> str:
@@ -377,7 +319,7 @@ def productivity_workflow() -> str:
                 190,
                 110,
                 "Sources",
-                "chat answers, Agent Team reviews, tools",
+                "chat answers, merge reviews, tools",
                 accent="#7A68D8",
             ),
             card(

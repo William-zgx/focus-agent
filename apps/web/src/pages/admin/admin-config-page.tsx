@@ -553,8 +553,8 @@ export function AdminConfigPage() {
 						eyebrow={isChineseUi ? "Agent" : "Agent"}
 						help={
 							isChineseUi
-								? "集中维护路由、委派、记忆、上下文和多 Agent 行为策略。"
-								: "Tune routing, delegation, memory, context, and multi-agent behavior policies."
+								? "集中维护分支、协调、记忆和上下文行为策略。"
+								: "Tune branch, coordination, memory, and context behavior policies."
 						}
 						isChineseUi={isChineseUi}
 						items={agentPolicyItems}

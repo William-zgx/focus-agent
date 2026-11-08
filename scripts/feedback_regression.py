@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_REPORT_JSON = Path("reports/nightly/feedback-regression.json")
 DEFAULT_FEEDBACK_EVENTS_JSONL = Path("reports/nightly/feedback-events.jsonl")
-DEFAULT_MERGE_REVIEWS_JSON = Path("reports/nightly/agent-team-merge-reviews.json")
+DEFAULT_MERGE_REVIEWS_JSON = Path("reports/nightly/merge-reviews.json")
 DEFAULT_SKILL_SELECTIONS_JSON = Path("reports/nightly/skill-selection-events.json")
 DEFAULT_CONTEXT_EVIDENCE_JSON = Path("reports/nightly/context-memory-evidence.json")
 DEFAULT_PRODUCTIVITY_CAPTURES_JSON = Path("reports/nightly/productivity-captures.json")
@@ -141,7 +141,7 @@ def _merge_review_status(record: Mapping[str, Any]) -> str:
 
 def _is_merge_review(record: Mapping[str, Any]) -> bool:
     source_kind = _first_text(record, ("source_kind", "kind", "event_type", "type")).lower()
-    return "merge_review" in source_kind or "agent_team_review" in source_kind
+    return "merge_review" in source_kind
 
 
 def _merge_review_summary(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

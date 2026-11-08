@@ -5,7 +5,6 @@ from pathlib import Path
 from .runner.harness import load_dataset
 
 REQUIRED_BASELINE_DATASETS = (
-    "multi_agent.jsonl",
     "planning.jsonl",
     "tool_call.jsonl",
     "memory.jsonl",

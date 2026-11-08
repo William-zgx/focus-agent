@@ -15,7 +15,6 @@ def _preflight(tool_name: str, args: dict, **overrides):
         "request_context": SimpleNamespace(),
         "tools_by_name": {"echo": object()},
         "tool_runtime_by_name": {"echo": SimpleNamespace(max_calls_per_turn=1)},
-        "route_plan": None,
         "retrieval_ledger": {},
         "seen_signatures": set(),
         "tool_call_counts": {},
@@ -49,16 +48,13 @@ def test_preflight_rejects_in_guard_order() -> None:
 
     ledger = {
         retrieval_key("web_fetch", {"url": "https://e.x"}): RetrievalLedgerEntry(
-            tool_name="web_fetch", tool_call_id="old", label="web_fetch", error=""
+            tool_name="web_fetch", tool_call_id="old", error=""
         )
     }
     repeated = _preflight("web_fetch", {"url": "https://e.x"}, retrieval_ledger=ledger)
     assert _runtime_info(repeated.error)["previous_tool_call_id"] == "old"
 
     assert "Unknown tool" in str(_preflight("nope", {}).error.content)
-
-    forbidden = _preflight("echo", {}, route_plan={"allowed_tools": ["other"]})
-    assert _runtime_info(forbidden.error)["forbidden_by_tool_router"] is True
 
     budget = _preflight("echo", {}, tool_call_counts={"echo": 1})
     assert _runtime_info(budget.error)["max_calls_per_turn_exceeded"] is True

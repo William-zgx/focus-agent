@@ -26,7 +26,6 @@ Memory v2 是 Agent graph 主路径内的执行记忆层，用于把对后续 tu
 - 不把短期上下文、规则、项目指令或工作记忆 embedding 化；这些内容继续通过 context assembly、pinned/context state、skills 和 `AGENTS.md` 等显式上下文进入模型。
 - 不把 Markdown snapshot 当运行时事实源。
 - 不提供普通 HTTP create/update memory；HTTP surface 目前是 list/detail/audit/usage/candidates/forget。
-- 不改变 Agent Team / Mission Runner 公共 API、UI、任务模型。
 
 ## 2. 架构总览
 
@@ -96,9 +95,9 @@ flowchart TD
 
 | kind | 语义 | 当前写入来源 |
 | --- | --- | --- |
-| `user_preference` | 用户输出偏好、语言、称呼、回答风格。 | v1 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
-| `user_profile` | 用户稳定自我描述，例如身份、习惯、熟悉程度。 | v1 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
-| `project_fact` | 项目规则、约定、默认配置、架构事实。 | v1 `active_goal` 启发式抽取、`memory_save`（v2 仅依赖模型显式调用）。 |
+| `user_preference` | 用户输出偏好、语言、称呼、回答风格。 | 模型显式调用 `memory_save`。 |
+| `user_profile` | 用户稳定自我描述，例如身份、习惯、熟悉程度。 | 模型显式调用 `memory_save`。 |
+| `project_fact` | 项目规则、约定、默认配置、架构事实。 | 模型显式调用 `memory_save`。 |
 | `turn_summary` | 最近 turn 的 episodic 摘要。 | 稳定 turn 后自动抽取。 |
 | `branch_finding` | 分支内验证出的结论。 | `branch_local_findings`、branch promotion。 |
 | `imported_conclusion` | merge/import 后写入主线的结论。 | Branch merge/import workflow。 |
@@ -152,8 +151,7 @@ flowchart TD
 当前 `MemoryRecord` 没有 `revision_id` 或 `parent_revision_id`。同一
 `memory_id` 的 merge 会通过 `model_copy` 和 repository upsert 更新现有行；
 `MemoryAuditEvent` 是 append-only，当前 merge 会合并保留 `evidence_refs`，但
-二者都不能还原每一次 content/summary 版本。Agent Team v2 的 revision 表是
-独立的协作任务快照，不能当作 memory revision history。
+二者都不能还原每一次 content/summary 版本。
 
 ### 3.4 Write Decision、Audit、Candidate、Retrieval Plan
 
@@ -415,7 +413,7 @@ flowchart TD
 | --- | --- | --- |
 | `AGENT_MEMORY_BACKEND` | `postgres` | 已解析，但 runtime 选择目前仍主要由 `DATABASE_URI` 决定。 |
 | `AGENT_MEMORY_READ_SOURCE` | `postgres` | 已解析，当前 retriever 是 repository 优先、无 repository 时 legacy fallback。 |
-| `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。设置后对 v1/v2 同时生效；v2 无论如何都不做 user/project 启发式抽取，只保留 turn summary 与 branch finding。 |
+| `AGENT_MEMORY_EXTRACTOR_MODE` | `heuristic` | `off` 会关闭自动抽取。v2 不做 user/project 启发式抽取，只保留 turn summary 与 branch finding。 |
 | `AGENT_MEMORY_POSTGRES_TRIGRAM_ENABLED` | `false` | 预留/可选增强配置位。 |
 | `AGENT_RETRIEVAL_BACKEND` | `zvec` | 默认 retrieval backend；`postgres` 可作为 fallback/兼容路径。 |
 | `AGENT_RETRIEVAL_FALLBACK_BACKEND` | `postgres` | Zvec 不可用时的在线回退后端。 |
@@ -523,7 +521,7 @@ Graph 节点顺序：
 bootstrap_turn
 -> retrieve_memory
 -> assemble_context
--> plan / agent_loop / tool loop / reflect
+-> agent_loop / tool loop
 -> summarize_turn
 -> extract_memories
 -> write_memories
@@ -537,7 +535,7 @@ bootstrap_turn
 - `memory_retrieval_plan`
 - `prompt_mode`
 
-`extract_memories` 只在稳定 turn 后运行。稳定条件包括：不是 reflection replan，有 messages，最后一条 AIMessage 不带未完成 tool calls，且存在 final assistant 文本。
+`extract_memories` 只在稳定 turn 后运行。稳定条件包括：有 messages，最后一条 AIMessage 不带未完成 tool calls，且存在 final assistant 文本。
 
 `write_memories` 调用 `MemoryWriter.persist_records()`。Postgres 模式下 writer 委托 `MemoryService.persist_records()`；local fallback 模式下保留 legacy store upsert。
 
@@ -548,7 +546,6 @@ bootstrap_turn
 - 当前 user query。
 - `active_goal`。
 - `task_brief`。
-- 当前 plan step goal。
 - `PromptMode.SYNTHESIZE` 下最多前两条 imported findings。
 
 组合 query 截断到 240 字符。
@@ -1044,8 +1041,8 @@ Zvec retrieval 已默认启用：
 当前 memory 的治理证据、forget tombstone 和 `evidence_refs` 已持久化，但
 canonical memory 仍是同一 `memory_id` 的可更新记录，没有独立的 immutable
 revision chain。若需要审计级历史回放或 conflict 的逐版本比较，应单独接入
-memory revision 表/事件投影；不要把 Agent Team v2 revision 或 embedding
-content hash 当作 memory 内容版本。
+memory revision 表/事件投影；不要把任务快照或 embedding content hash 当作
+memory 内容版本。
 
 ### 18.4 Candidate Promotion
 

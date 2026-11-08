@@ -40,7 +40,6 @@ function noteTitleFromDraft(value: string) {
 function sourceLabel(sourceKind: string, isChineseUi: boolean) {
 	if (!isChineseUi) return sourceKind;
 	if (sourceKind === "chat") return "对话";
-	if (sourceKind === "agent_team") return "Agent Team";
 	if (sourceKind === "merge_review") return "采纳单";
 	if (sourceKind === "task_output") return "任务输出";
 	if (sourceKind === "note") return "笔记";
@@ -186,7 +185,6 @@ export function ProductivityPage({ mode }: { mode: ProductivityPageMode }) {
 					>
 						<option value="">{isChineseUi ? "全部来源" : "All sources"}</option>
 						<option value="chat">{isChineseUi ? "对话" : "Chat"}</option>
-						<option value="agent_team">Agent Team</option>
 						<option value="merge_review">
 							{isChineseUi ? "采纳单" : "Merge review"}
 						</option>

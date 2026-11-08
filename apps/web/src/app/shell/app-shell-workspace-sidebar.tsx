@@ -3,13 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { appEnv } from "@/shared/config/env";
 
 type AppShellWorkspaceSidebarProps = {
-	activeAgentWorkbenchModule:
-		| "diagnostics"
-		| "governance"
-		| "memory"
-		| "productivity"
-		| "team";
-	agentTeamRootThreadId: string;
+	activeAgentWorkbenchModule: "diagnostics" | "memory" | "productivity";
 	isAgentWorkbenchShell: boolean;
 	isChineseUi: boolean;
 	pathname: string;
@@ -17,7 +11,6 @@ type AppShellWorkspaceSidebarProps = {
 
 export function AppShellWorkspaceSidebar({
 	activeAgentWorkbenchModule,
-	agentTeamRootThreadId,
 	isAgentWorkbenchShell,
 	isChineseUi,
 	pathname,
@@ -38,8 +31,8 @@ export function AppShellWorkspaceSidebar({
 				<p>
 					{isAgentWorkbenchShell
 						? isChineseUi
-							? "统一进入协作、诊断和治理，不再切到全屏孤岛。"
-							: "One shell for collaboration, diagnostics, and governance."
+							? "统一进入协作和诊断，不再切到全屏孤岛。"
+							: "One shell for collaboration and diagnostics."
 						: isChineseUi
 							? "管理账号、权限与审计记录。"
 							: "Manage accounts, permissions, and audit records."}
@@ -51,24 +44,6 @@ export function AppShellWorkspaceSidebar({
 			>
 				{isAgentWorkbenchShell ? (
 					<>
-						{appEnv.features.agentTeam ? (
-							<Link
-								className={`fa-workspace-sidebar-item ${
-									activeAgentWorkbenchModule === "team" ? "is-active" : ""
-								}`.trim()}
-								search={
-									agentTeamRootThreadId
-										? { root_thread_id: agentTeamRootThreadId }
-										: undefined
-								}
-								to="/agent-team"
-							>
-								<span>{isChineseUi ? "协作" : "Team"}</span>
-								<strong>
-									{isChineseUi ? "并发任务与会话" : "Tasks and sessions"}
-								</strong>
-							</Link>
-						) : null}
 						{appEnv.features.observability ? (
 							<Link
 								className={`fa-workspace-sidebar-item ${
@@ -81,21 +56,6 @@ export function AppShellWorkspaceSidebar({
 								<span>{isChineseUi ? "诊断" : "Diagnostics"}</span>
 								<strong>
 									{isChineseUi ? "Trajectory 健康与复盘" : "Health and review"}
-								</strong>
-							</Link>
-						) : null}
-						{appEnv.features.agentGovernance ? (
-							<Link
-								className={`fa-workspace-sidebar-item ${
-									activeAgentWorkbenchModule === "governance" ? "is-active" : ""
-								}`.trim()}
-								to="/agent/governance"
-							>
-								<span>{isChineseUi ? "治理" : "Governance"}</span>
-								<strong>
-									{isChineseUi
-										? "记忆 / 工具 / 路由"
-										: "Memory / tools / routing"}
 								</strong>
 							</Link>
 						) : null}

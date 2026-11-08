@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-from .common import _normalize_agent_delegation_execution_mode, _split_csv
+from .common import _split_csv
 from .env import env_bool, env_float, env_int
 
 
@@ -53,31 +53,9 @@ def _normalize_branch_recommendation_mode(value: object) -> str:
 
 def _normalize_agent_core(value: object) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized in {"", "v1", "legacy"}:
-        return "v1"
-    if normalized in {"v2", "loop"}:
+    if normalized in {"", "v2"}:
         return "v2"
-    raise ValueError("AGENT_CORE must be one of: v1, v2")
-
-
-def _normalize_agent_team_rollout_phase(value: object) -> str:
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    if normalized in {"", "off", "disabled"}:
-        return "off"
-    if normalized in {"shadow", "canary", "enabled"}:
-        return normalized
-    raise ValueError("AGENT_TEAM_ROLLOUT_PHASE must be one of: off, shadow, canary, enabled")
-
-
-def _normalize_agent_team_execution_mode(value: object) -> str:
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    if normalized in {"", "disabled", "observe", "fake"}:
-        return "disabled"
-    if normalized in {"inline", "background", "worktree_sandbox"}:
-        return normalized
-    raise ValueError(
-        "AGENT_TEAM_EXECUTION_MODE must be one of: disabled, inline, background, worktree_sandbox"
-    )
+    raise ValueError("AGENT_CORE must be v2")
 
 
 def _pgvector_extension_mode_env(env: MutableMapping[str, str], defaults: Any) -> str:
@@ -125,109 +103,6 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_core": _normalize_agent_core(env.get("AGENT_CORE", defaults.agent_core)),
         "agent_max_tool_rounds": max(
             1, env_int(env, "AGENT_MAX_TOOL_ROUNDS", defaults.agent_max_tool_rounds)
-        ),
-        "plan_act_reflect_enabled": env_bool(
-            env, "PLAN_ACT_REFLECT_ENABLED", default=defaults.plan_act_reflect_enabled
-        ),
-        "plan_scenes": (
-            _split_csv(env.get("PLAN_SCENES"))
-            if env.get("PLAN_SCENES") is not None
-            else defaults.plan_scenes
-        ),
-        "plan_task_brief_min_chars": env_int(
-            env, "PLAN_TASK_BRIEF_MIN_CHARS", defaults.plan_task_brief_min_chars
-        ),
-        "plan_max_replans": env_int(env, "PLAN_MAX_REPLANS", defaults.plan_max_replans),
-        "agent_role_routing_enabled": env_bool(
-            env, "AGENT_ROLE_ROUTING_ENABLED", default=defaults.agent_role_routing_enabled
-        ),
-        "agent_role_orchestrator_model": (
-            env.get("AGENT_ROLE_ORCHESTRATOR_MODEL") or defaults.agent_role_orchestrator_model
-        ),
-        "agent_role_planner_model": (
-            env.get("AGENT_ROLE_PLANNER_MODEL") or defaults.agent_role_planner_model
-        ),
-        "agent_role_executor_model": (
-            env.get("AGENT_ROLE_EXECUTOR_MODEL") or defaults.agent_role_executor_model
-        ),
-        "agent_role_critic_model": (
-            env.get("AGENT_ROLE_CRITIC_MODEL") or defaults.agent_role_critic_model
-        ),
-        "agent_role_memory_model": (
-            env.get("AGENT_ROLE_MEMORY_MODEL") or defaults.agent_role_memory_model
-        ),
-        "agent_role_skill_model": (
-            env.get("AGENT_ROLE_SKILL_MODEL") or defaults.agent_role_skill_model
-        ),
-        "agent_role_max_parallel_runs": max(
-            1,
-            env_int(env, "AGENT_ROLE_MAX_PARALLEL_RUNS", defaults.agent_role_max_parallel_runs),
-        ),
-        "agent_team_skill_scout_enabled": env_bool(
-            env,
-            "AGENT_TEAM_SKILL_SCOUT_ENABLED",
-            default=defaults.agent_team_skill_scout_enabled,
-        ),
-        "agent_team_automation_level": str(
-            env.get("AGENT_TEAM_AUTOMATION_LEVEL") or defaults.agent_team_automation_level
-        )
-        .strip()
-        .lower(),
-        "agent_team_v2_enabled": env_bool(
-            env,
-            "AGENT_TEAM_V2_ENABLED",
-            default=defaults.agent_team_v2_enabled,
-        ),
-        "agent_team_rollout_phase": _normalize_agent_team_rollout_phase(
-            env.get("AGENT_TEAM_ROLLOUT_PHASE", defaults.agent_team_rollout_phase)
-        ),
-        "agent_team_execution_mode": _normalize_agent_team_execution_mode(
-            env.get("AGENT_TEAM_EXECUTION_MODE", defaults.agent_team_execution_mode)
-        ),
-        "agent_team_real_provider_enabled": env_bool(
-            env,
-            "AGENT_TEAM_REAL_PROVIDER_ENABLED",
-            default=defaults.agent_team_real_provider_enabled,
-        ),
-        "agent_team_durable_required": env_bool(
-            env,
-            "AGENT_TEAM_DURABLE_REQUIRED",
-            default=defaults.agent_team_durable_required,
-        ),
-        "agent_team_fencing_enabled": env_bool(
-            env,
-            "AGENT_TEAM_FENCING_ENABLED",
-            default=defaults.agent_team_fencing_enabled,
-        ),
-        "agent_team_approval_resume_enabled": env_bool(
-            env,
-            "AGENT_TEAM_APPROVAL_RESUME_ENABLED",
-            default=defaults.agent_team_approval_resume_enabled,
-        ),
-        "agent_team_cross_session_locks_enabled": env_bool(
-            env,
-            "AGENT_TEAM_CROSS_SESSION_LOCKS_ENABLED",
-            default=defaults.agent_team_cross_session_locks_enabled,
-        ),
-        "agent_team_kill_switch_enabled": env_bool(
-            env,
-            "AGENT_TEAM_KILL_SWITCH_ENABLED",
-            default=defaults.agent_team_kill_switch_enabled,
-        ),
-        "agent_team_legacy_write_enabled": env_bool(
-            env,
-            "AGENT_TEAM_LEGACY_WRITE_ENABLED",
-            default=defaults.agent_team_legacy_write_enabled,
-        ),
-        "agent_team_global_tab_enabled": env_bool(
-            env,
-            "AGENT_TEAM_GLOBAL_TAB_ENABLED",
-            default=defaults.agent_team_global_tab_enabled,
-        ),
-        "agent_team_adoption_enabled": env_bool(
-            env,
-            "AGENT_TEAM_ADOPTION_ENABLED",
-            default=defaults.agent_team_adoption_enabled,
         ),
         "agent_branch_decision_enabled": env_bool(
             env,
@@ -437,51 +312,4 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_zvec_data_dir": str(
             env.get("AGENT_ZVEC_DATA_DIR") or defaults.agent_zvec_data_dir
         ).strip(),
-        "agent_tool_router_enabled": env_bool(
-            env, "AGENT_TOOL_ROUTER_ENABLED", default=defaults.agent_tool_router_enabled
-        ),
-        "agent_tool_router_enforce": env_bool(
-            env, "AGENT_TOOL_ROUTER_ENFORCE", default=defaults.agent_tool_router_enforce
-        ),
-        "agent_delegation_enabled": env_bool(
-            env, "AGENT_DELEGATION_ENABLED", default=defaults.agent_delegation_enabled
-        ),
-        "agent_delegation_enforce": env_bool(
-            env, "AGENT_DELEGATION_ENFORCE", default=defaults.agent_delegation_enforce
-        ),
-        "agent_delegation_execution_mode": _normalize_agent_delegation_execution_mode(
-            env.get(
-                "AGENT_DELEGATION_EXECUTION_MODE",
-                defaults.agent_delegation_execution_mode,
-            )
-        ),
-        "agent_model_router_enabled": env_bool(
-            env, "AGENT_MODEL_ROUTER_ENABLED", default=defaults.agent_model_router_enabled
-        ),
-        "agent_model_router_mode": (
-            "enforce"
-            if str(env.get("AGENT_MODEL_ROUTER_MODE", defaults.agent_model_router_mode)).lower()
-            == "enforce"
-            else "observe"
-        ),
-        "agent_self_repair_enabled": env_bool(
-            env, "AGENT_SELF_REPAIR_ENABLED", default=defaults.agent_self_repair_enabled
-        ),
-        "agent_review_queue_enabled": env_bool(
-            env, "AGENT_REVIEW_QUEUE_ENABLED", default=defaults.agent_review_queue_enabled
-        ),
-        "agent_task_ledger_enabled": env_bool(
-            env, "AGENT_TASK_LEDGER_ENABLED", default=defaults.agent_task_ledger_enabled
-        ),
-        "agent_artifact_synthesis_enabled": env_bool(
-            env,
-            "AGENT_ARTIFACT_SYNTHESIS_ENABLED",
-            default=defaults.agent_artifact_synthesis_enabled,
-        ),
-        "agent_critic_gate_enabled": env_bool(
-            env, "AGENT_CRITIC_GATE_ENABLED", default=defaults.agent_critic_gate_enabled
-        ),
-        "agent_critic_gate_enforce": env_bool(
-            env, "AGENT_CRITIC_GATE_ENFORCE", default=defaults.agent_critic_gate_enforce
-        ),
     }

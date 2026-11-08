@@ -1,6 +1,6 @@
 export type FocusAgentNoteStatus = "active" | "archived";
 export type FocusAgentTaskStatus = "todo" | "in_progress" | "completed" | "archived";
-export type FocusAgentProductivitySourceKind = "chat" | "agent_team" | "merge_review" | "task_output" | "artifact" | "manual" | string;
+export type FocusAgentProductivitySourceKind = "chat" | "merge_review" | "task_output" | "artifact" | "manual" | string;
 
 export interface FocusAgentNote {
   note_id: string;

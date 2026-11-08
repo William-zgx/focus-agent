@@ -37,16 +37,7 @@ export function AppProviders({ children }: PropsWithChildren) {
 				},
 			},
 		});
-		[
-			queryKeys.models,
-			queryKeys.agentRolePolicy,
-			queryKeys.agentCapabilities,
-			queryKeys.agentMemoryCuratorPolicy,
-			queryKeys.agentDelegationPolicy,
-			queryKeys.agentModelRouterPolicy,
-			queryKeys.agentContextPolicy,
-			queryKeys.agentTaskLedgerPolicy,
-		].forEach((queryKey) => {
+		[queryKeys.models].forEach((queryKey) => {
 			client.setQueryDefaults(queryKey, { staleTime: STABLE_QUERY_STALE_TIME });
 		});
 		return client;

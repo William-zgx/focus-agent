@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from langchain.messages import AIMessage, HumanMessage
 from langchain.tools import tool
 
 from focus_agent.api.main import create_app
@@ -11,18 +10,13 @@ from focus_agent.api.route_utils.agent_governance_trajectory_responses import (
     _agent_governance_metrics_from_turns,
     _plan_meta_governance_payload,
 )
+from focus_agent.capabilities.catalog import build_capability_registry, build_toolset_registry
 from focus_agent.capabilities.tool_registry import ToolRegistry
-from focus_agent.capabilities.tool_router import (
-    build_capability_registry,
-    build_tool_route_plan,
-    build_toolset_registry,
-)
 from focus_agent.config import Settings
 from focus_agent.core.branching import BranchRecord, BranchRole, BranchStatus
 from focus_agent.core.governance import ContextMemoryEvidence, FeedbackEvent, SkillSelectionEvent
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import make_agent_state_record
-from focus_agent.engine.graph_builder import _tools_for_policy, build_graph
 from focus_agent.memory.curator import MemoryCurator
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.skills.registry import SkillRegistry, bundled_skills_dir
@@ -71,20 +65,6 @@ class _DecisionRepo:
                             actor="agent_f",
                         ),
                         make_agent_state_record(
-                            "tool_route_plan",
-                            {
-                                "enabled": True,
-                                "role": "critic",
-                                "tool_policy": "execution",
-                                "allowed_tools": ["search_code"],
-                                "denied_tools": ["write_text_artifact"],
-                                "decisions": [],
-                            },
-                            source="test",
-                            request_id="req-1",
-                            actor="agent_f",
-                        ),
-                        make_agent_state_record(
                             "memory_curator_decision",
                             {
                                 "enabled": True,
@@ -96,14 +76,6 @@ class _DecisionRepo:
                             source="test",
                         ),
                     ],
-                    "tool_route_plan": {
-                        "enabled": True,
-                        "role": "critic",
-                        "tool_policy": "execution",
-                        "allowed_tools": ["search_code"],
-                        "denied_tools": ["legacy_tool"],
-                        "decisions": [],
-                    },
                     "tool_intent_plan": {
                         "policy": "workspace_lookup",
                         "preferred_first_tool": "search_code",
@@ -116,51 +88,6 @@ class _DecisionRepo:
                         "promoted_memory_ids": [],
                         "conflicts": [],
                     },
-                    "agent_delegation_plan": {
-                        "enabled": True,
-                        "runs": [
-                            {
-                                "run_id": "run-1",
-                                "task_id": "task-1",
-                                "role": "executor",
-                                "status": "completed",
-                            }
-                        ],
-                    },
-                    "model_route_decision": {
-                        "enabled": True,
-                        "mode": "observe",
-                        "role": "executor",
-                        "effective_model": "openai:gpt-4.1-mini",
-                    },
-                    "agent_failure_records": [
-                        {
-                            "failure_id": "failure-1",
-                            "failure_type": "tool_denied",
-                            "failed_role": "critic",
-                        }
-                    ],
-                    "agent_review_queue": [
-                        {
-                            "item_id": "review-1",
-                            "item_type": "workspace_write_with_high_risk_tool",
-                            "status": "pending",
-                        }
-                    ],
-                    "agent_task_ledger": {
-                        "enabled": True,
-                        "status": "planned",
-                        "tasks": [
-                            {
-                                "task_id": "task-1",
-                                "role": "executor",
-                                "goal": "Produce evidence.",
-                                "status": "completed",
-                                "artifact_ids": ["artifact-1"],
-                                "retry_count": 0,
-                            }
-                        ],
-                    },
                     "delegated_artifacts": [
                         {
                             "artifact_id": "artifact-1",
@@ -171,13 +98,6 @@ class _DecisionRepo:
                             "status": "accepted",
                         }
                     ],
-                    "critic_gate_result": {
-                        "enabled": True,
-                        "enforce": False,
-                        "verdict": "pass",
-                        "accepted_artifact_ids": ["artifact-1"],
-                        "rejected_artifact_ids": [],
-                    },
                 },
             }
         ]
@@ -455,41 +375,6 @@ def test_context_explain_persists_evidence_for_listing() -> None:
     assert listed.json()["items"][0]["risk_flags"] == ["high_drift"]
 
 
-def test_tool_router_builds_capability_registry_and_denies_critic_writes():
-    registry = ToolRegistry(tools=(search_code, write_text_artifact, web_search))
-
-    capabilities = {item.name: item for item in build_capability_registry(registry)}
-    plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="critic",
-        tool_policy="execution",
-        available_tool_names=["search_code", "write_text_artifact", "web_search"],
-    )
-
-    assert capabilities["write_text_artifact"].requires_workspace_write is True
-    assert "search_code" in plan.allowed_tools
-    assert "write_text_artifact" in plan.denied_tools
-    assert "web_search" in plan.denied_tools
-
-
-def test_tool_router_respects_exposed_tool_names_for_turn_policy():
-    registry = ToolRegistry(tools=(search_code, read_file, web_search))
-
-    plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="executor",
-        tool_policy="workspace_lookup",
-        available_tool_names=["search_code", "read_file", "web_search"],
-        exposed_tool_names=["search_code"],
-    )
-
-    read_file_decision = next(item for item in plan.decisions if item.name == "read_file")
-    web_search_decision = next(item for item in plan.decisions if item.name == "web_search")
-    assert plan.allowed_tools == ["search_code"]
-    assert read_file_decision.reason == "not_exposed_by_turn_policy"
-    assert web_search_decision.reason == "policy_not_allowed:workspace_lookup"
-
-
 def test_capability_registry_exposes_tool_quality_metadata():
     @tool
     def tuned_lookup(query: str) -> str:
@@ -538,146 +423,6 @@ def test_toolset_registry_summarizes_capability_groups():
     assert toolsets["artifact"].requires_workspace_write is True
     assert toolsets["artifact"].side_effect is True
     assert toolsets["artifact"].risk_levels == ["medium"]
-
-
-def test_tool_router_matches_graph_policy_filtering_for_core_policies():
-    @tool
-    def approval_lookup(name: str) -> str:
-        """Lookup that requires approval."""
-        return name
-
-    approval_lookup.metadata = {
-        "requires_approval": True,
-        "risk_level": "high",
-        "intent_policies": ("execution",),
-        "allowed_roles": ("executor",),
-    }
-
-    tools = [
-        search_code,
-        read_file,
-        write_text_artifact,
-        web_search,
-        web_fetch,
-        current_utc_time,
-        approval_lookup,
-    ]
-    registry = ToolRegistry(tools=tuple(tools))
-
-    for policy, role in (
-        ("direct_answer", "executor"),
-        ("workspace_lookup", "executor"),
-        ("live_web_research", "planner"),
-        ("execution", "executor"),
-    ):
-        graph_allowed = [item.name for item in _tools_for_policy(policy, tools, role=role)]
-        route_plan = build_tool_route_plan(
-            tool_registry=registry,
-            role=role,
-            tool_policy=policy,
-            available_tool_names=[item.name for item in tools],
-        )
-        assert route_plan.allowed_tools == graph_allowed
-
-    live_web_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="planner",
-        tool_policy="live_web_research",
-        available_tool_names=[item.name for item in tools],
-    )
-    assert live_web_plan.allowed_tools == ["web_search", "web_fetch", "current_utc_time"]
-
-    mixed_readonly_names = [
-        "search_code",
-        "read_file",
-        "web_search",
-        "web_fetch",
-        "current_utc_time",
-        "write_text_artifact",
-    ]
-    mixed_graph_allowed = [
-        item.name
-        for item in _tools_for_policy("execution", tools, role="planner")
-        if item.name in mixed_readonly_names
-    ]
-    mixed_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="planner",
-        tool_policy="execution",
-        available_tool_names=mixed_readonly_names,
-    )
-    assert mixed_plan.allowed_tools == mixed_graph_allowed
-    assert {"search_code", "read_file", "web_search", "web_fetch", "current_utc_time"} <= set(
-        mixed_plan.allowed_tools
-    )
-    assert "write_text_artifact" in mixed_plan.denied_tools
-
-    execution_plan = build_tool_route_plan(
-        tool_registry=registry,
-        role="executor",
-        tool_policy="execution",
-        available_tool_names=[item.name for item in tools],
-    )
-    approval_decision = next(
-        item for item in execution_plan.decisions if item.name == "approval_lookup"
-    )
-    assert approval_decision.allowed is True
-    assert approval_decision.reason == "approval_required"
-    assert "approval_lookup" in execution_plan.allowed_tools
-
-
-def test_graph_tool_router_filters_bound_tools_for_critic(monkeypatch):
-    captured = {}
-
-    class FakeRunnable:
-        def with_config(self, _config):
-            return self
-
-        def invoke(self, _prompt_messages):
-            return AIMessage(content="done")
-
-    class FakeModel:
-        def bind_tools(self, bound_tools):
-            captured["bound_tools"] = [item.name for item in bound_tools]
-            return FakeRunnable()
-
-        def with_config(self, _config):
-            return FakeRunnable()
-
-    monkeypatch.setattr(
-        "focus_agent.engine.graph.builder.create_chat_model",
-        lambda *args, **kwargs: FakeModel(),
-    )
-    graph = build_graph(
-        settings=Settings(
-            plan_act_reflect_enabled=False,
-            agent_tool_router_enabled=True,
-            agent_tool_router_enforce=True,
-        ),
-        tool_registry=ToolRegistry(tools=(search_code, write_text_artifact)),
-    )
-
-    result = graph.invoke(
-        {
-            "messages": [HumanMessage(content="验证并修改代码。")],
-            "role_route_plan": {
-                "decisions": [
-                    {"role": "orchestrator"},
-                    {"role": "critic"},
-                ]
-            },
-        },
-        context=RequestContext(user_id="user-1", root_thread_id="root-1"),
-        version="v2",
-    )
-
-    assert captured["bound_tools"] == ["search_code"]
-    assert result.value["tool_route_plan"]["role"] == "critic"
-    assert "write_text_artifact" in result.value["tool_route_plan"]["denied_tools"]
-    assert any(
-        record["name"] == "tool_route_plan" and record["mirror_key"] == "tool_route_plan"
-        for record in result.value["governance_records"]
-    )
 
 
 def test_memory_curator_promotes_clean_branch_findings_and_blocks_discarded_branch():
@@ -746,12 +491,15 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
             "plan_meta": {
                 "governance_records": [
                     make_agent_state_record(
-                        "tool_route_plan",
-                        {"denied_tools": ["record_tool"], "enforce": True},
+                        "memory_curator_decision",
+                        {"promoted_memory_ids": ["record-memory"], "conflicts": []},
                         source="test",
                     )
                 ],
-                "tool_route_plan": {"denied_tools": ["legacy_tool"], "enforce": False},
+                "memory_curator_decision": {
+                    "promoted_memory_ids": ["legacy-memory"],
+                    "conflicts": [{"candidate_id": "legacy-conflict"}],
+                },
                 "tool_intent_plan": {
                     "policy": "live_web_research",
                     "preferred_first_tool": "web_search",
@@ -770,14 +518,12 @@ def test_governance_api_metrics_use_descriptors_with_legacy_fallback():
 
     metrics = _agent_governance_metrics_from_turns(rows)
 
-    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "tool_route_plan")[
-        "denied_tools"
-    ] == ["record_tool"]
-    assert metrics["tool_router_denied"] == 1
-    assert metrics["tool_router_enforced"] == 1
+    assert _plan_meta_governance_payload(rows[0]["plan_meta"], "memory_curator_decision")[
+        "promoted_memory_ids"
+    ] == ["record-memory"]
     assert metrics["tool_intent_live_web_research"] == 1
     assert metrics["tool_intent_first_tool"] == 1
-    assert metrics["memory_promotions"] == 1
+    assert metrics["memory_promotions"] == 2
     assert metrics["memory_conflicts"] == 1
 
 
@@ -787,17 +533,7 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
     app.state.runtime = SimpleNamespace(
         settings=Settings(
             auth_enabled=False,
-            agent_role_routing_enabled=True,
-            agent_role_max_parallel_runs=5,
             agent_memory_curator_enabled=True,
-            agent_tool_router_enabled=True,
-            agent_delegation_enabled=True,
-            agent_model_router_enabled=True,
-            agent_self_repair_enabled=True,
-            agent_review_queue_enabled=True,
-            agent_task_ledger_enabled=True,
-            agent_artifact_synthesis_enabled=True,
-            agent_critic_gate_enabled=True,
         ),
         tool_registry=ToolRegistry(
             tools=(search_code, write_text_artifact, web_search, skills_list, skill_view)
@@ -813,22 +549,6 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
 
     capabilities = client.get("/v1/agent/capabilities")
     toolsets = client.get("/v1/agent/toolsets")
-    role_route = client.post(
-        "/v1/agent/roles/dry-run",
-        json={
-            "message": "Plan skill selection and branch suggestion before implementation.",
-            "scene": "execution",
-            "available_tools": ["skills_list", "skill_view", "search_code", "write_text_artifact"],
-        },
-    )
-    route = client.post(
-        "/v1/agent/tool-router/route",
-        json={
-            "role": "critic",
-            "tool_policy": "execution",
-            "available_tools": ["search_code", "write_text_artifact"],
-        },
-    )
     memory_policy = client.get("/v1/agent/memory/curator/policy")
     memory_eval = client.post(
         "/v1/agent/memory/curator/evaluate",
@@ -838,114 +558,25 @@ def test_agent_governance_api_shapes(monkeypatch, tmp_path):
             "findings": [{"finding": "Promote this branch finding."}],
         },
     )
-    tool_decisions = client.get("/v1/agent/tool-router/decisions")
     memory_decisions = client.get("/v1/agent/memory/curator/decisions")
-    delegation_policy = client.get("/v1/agent/delegation/policy")
-    delegation_plan = client.post(
-        "/v1/agent/delegation/plan", json={"message": "Plan and implement delegation."}
-    )
-    delegation_runs = client.get("/v1/agent/delegation/runs")
-    model_policy = client.get("/v1/agent/model-router/policy")
-    model_route = client.post("/v1/agent/model-router/route", json={"role": "critic"})
-    model_decisions = client.get("/v1/agent/model-router/decisions")
-    failures = client.get("/v1/agent/self-repair/failures")
-    promote_preview = client.post(
-        "/v1/agent/self-repair/promote-preview",
-        json={
-            "failures": [
-                {"failure_id": "failure-1", "failure_type": "tool_denied", "failed_role": "critic"}
-            ]
-        },
-    )
-    review_queue = client.get("/v1/agent/review-queue")
-    review_approve = client.post("/v1/agent/review-queue/review-1/approve")
-    review_reject = client.post("/v1/agent/review-queue/review-1/reject")
-    task_ledger_policy = client.get("/v1/agent/task-ledger/policy")
-    task_ledger_plan = client.post(
-        "/v1/agent/task-ledger/plan", json={"message": "Plan task ledger handoff."}
-    )
-    task_ledger_runs = client.get("/v1/agent/task-ledger/runs")
     artifacts = client.get("/v1/agent/artifacts")
-    synthesis = client.post(
-        "/v1/agent/artifacts/synthesize",
-        json={
-            "artifacts": [
-                {
-                    "artifact_id": "artifact-1",
-                    "task_id": "task-1",
-                    "role": "executor",
-                    "kind": "evidence",
-                    "title": "Evidence",
-                    "status": "accepted",
-                }
-            ]
-        },
-    )
-    critic_verdicts = client.get("/v1/agent/critic/verdicts")
-    critic_eval = client.post(
-        "/v1/agent/critic/evaluate",
-        json={
-            "ledger": {
-                "enabled": True,
-                "tasks": [{"task_id": "task-1", "role": "executor", "goal": "Produce evidence."}],
-            },
-            "artifacts": [
-                {
-                    "artifact_id": "artifact-1",
-                    "task_id": "task-1",
-                    "role": "executor",
-                    "kind": "evidence",
-                    "title": "Evidence",
-                    "status": "accepted",
-                }
-            ],
-        },
-    )
     metrics = client.get("/metrics")
 
     assert capabilities.status_code == 200
     assert capabilities.json()["count"] >= 3
     assert toolsets.status_code == 200
     assert any(item["name"] == "workspace" for item in toolsets.json()["items"])
-    role_plan = role_route.json()["plan"]
-    assert role_plan["legacy_execution_unchanged"] is True
-    assert any(decision["role"] == "skill_scout" for decision in role_plan["decisions"])
-    skill_decision = next(
-        decision for decision in role_plan["decisions"] if decision["role"] == "skill_scout"
-    )
-    assert skill_decision["run_isolation_key"] == "role:skill_scout"
-    assert skill_decision["tool_governance"]["allowed_tools"] == ["skills_list", "skill_view"]
-    assert route.json()["plan"]["role"] == "critic"
-    assert "write_text_artifact" in route.json()["plan"]["denied_tools"]
+    assert memory_policy.status_code == 200
     assert memory_policy.json()["enabled"] is True
+    assert memory_eval.status_code == 200
     assert memory_eval.json()["decision"]["status"] == "ready"
-    assert tool_decisions.json()["count"] == 1
-    assert tool_decisions.json()["items"][0]["denied_tools"] == ["write_text_artifact"]
+    assert memory_decisions.status_code == 200
     assert memory_decisions.json()["count"] == 1
     assert memory_decisions.json()["items"][0]["conflicts"] == [{"candidate_id": "branch-1:0"}]
-    assert delegation_policy.json()["enabled"] is True
-    assert delegation_plan.json()["plan"]["enabled"] is True
-    assert delegation_runs.json()["items"][0]["run_id"] == "run-1"
-    assert model_policy.json()["enabled"] is True
-    assert model_route.json()["decision"]["role"] == "critic"
-    assert model_decisions.json()["count"] == 1
-    assert failures.json()["items"][0]["failure_type"] == "tool_denied"
-    assert promote_preview.json()["preview"]["candidates"][0]["tags"][0] == "agent_delegation"
-    assert review_queue.json()["items"][0]["item_id"] == "review-1"
-    assert review_approve.json()["item"]["status"] == "approved"
-    assert review_reject.json()["item"]["status"] == "rejected"
-    assert task_ledger_policy.json()["enabled"] is True
-    assert task_ledger_plan.json()["ledger"]["enabled"] is True
-    assert task_ledger_runs.json()["items"][0]["task_id"] == "task-1"
+    assert artifacts.status_code == 200
     assert artifacts.json()["items"][0]["artifact_id"] == "artifact-1"
-    assert synthesis.json()["result"]["accepted_artifact_ids"] == ["artifact-1"]
-    assert critic_verdicts.json()["items"][0]["verdict"] == "pass"
-    assert critic_eval.json()["result"]["verdict"] == "pass"
-    assert "focus_agent_tool_router_denied_count 1" in metrics.text
+    assert metrics.status_code == 200
     assert "focus_agent_tool_intent_live_web_research_count 1" in metrics.text
     assert "focus_agent_tool_intent_first_tool_count 1" in metrics.text
     assert "focus_agent_memory_conflict_count 1" in metrics.text
-    assert "focus_agent_delegation_run_count 1" in metrics.text
-    assert "focus_agent_review_pending_count 1" in metrics.text
-    assert "focus_agent_task_ledger_task_count 1" in metrics.text
     assert "focus_agent_delegated_artifact_count 1" in metrics.text

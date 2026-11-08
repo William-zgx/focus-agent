@@ -32,7 +32,6 @@ _BLOCKED_RUNTIME_FLAGS = frozenset(
         "tool_approval_pending",
         "tool_approval_denied",
         "tool_approval_invalid",
-        "forbidden_by_tool_router",
         "memory_context_authorization_failed",
         "parameter_validation_error",
         "validation_failed",

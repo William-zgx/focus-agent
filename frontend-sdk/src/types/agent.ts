@@ -16,28 +16,6 @@ export interface FocusAgentModelsResponse {
   models: FocusAgentModelOption[];
 }
 
-export interface FocusAgentRolePolicyResponse {
-  enabled: boolean;
-  default_model: string;
-  helper_model?: string | null;
-  max_parallel_runs: number;
-  roles: string[];
-  role_models: Record<string, string | null>;
-  fallback_order: string[];
-}
-
-export interface FocusAgentRoleDryRunRequest {
-  message: string;
-  scene?: string;
-  skill_hints?: string[];
-  available_tools?: string[];
-}
-
-export interface FocusAgentRoleDryRunResponse {
-  policy: FocusAgentRolePolicyResponse;
-  plan: Record<string, unknown>;
-}
-
 export interface FocusAgentSkillSelectRequest {
   message: string;
   skill_hints?: string[];
@@ -127,13 +105,6 @@ export interface FocusAgentSkillPreferenceResponse {
   updated_at?: string | null;
 }
 
-export interface FocusAgentRoleDecisionListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
 export interface FocusAgentCapability {
   name: string;
   description: string;
@@ -176,24 +147,6 @@ export interface FocusAgentToolsetListResponse {
   count: number;
 }
 
-export interface FocusAgentToolRouteRequest {
-  role?: string;
-  tool_policy?: string;
-  available_tools?: string[];
-  enforce?: boolean | null;
-}
-
-export interface FocusAgentToolRouteResponse {
-  plan: Record<string, unknown>;
-}
-
-export interface FocusAgentToolRouteDecisionListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
 export interface FocusAgentMemoryCuratorPolicyResponse {
   enabled: boolean;
   auto_promote_on_merge: boolean;
@@ -223,85 +176,6 @@ export interface FocusAgentMemoryCuratorDecisionListResponse {
   count: number;
   trajectory_available: boolean;
   trajectory_error?: string | null;
-}
-
-export interface FocusAgentDelegationPolicyResponse {
-  enabled: boolean;
-  enforce: boolean;
-  max_parallel_runs: number;
-  default_off_legacy_safe: boolean;
-}
-
-export interface FocusAgentDelegationPlanRequest {
-  message: string;
-  scene?: string;
-  available_tools?: string[];
-}
-
-export interface FocusAgentDelegationPlanResponse {
-  policy: FocusAgentDelegationPolicyResponse;
-  plan: Record<string, unknown>;
-}
-
-export interface FocusAgentDelegationRunListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
-export interface FocusAgentModelRouterPolicyResponse {
-  enabled: boolean;
-  mode: string;
-  default_model: string;
-  helper_model?: string | null;
-  role_models: Record<string, string | null>;
-}
-
-export interface FocusAgentModelRouteRequest {
-  role?: string;
-  selected_model?: string | null;
-  task_text?: string;
-  tool_risk?: string;
-  context_size?: number;
-}
-
-export interface FocusAgentModelRouteResponse {
-  decision: Record<string, unknown>;
-}
-
-export interface FocusAgentModelRouterDecisionListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
-export interface FocusAgentSelfRepairFailureListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
-export interface FocusAgentSelfRepairPromotePreviewRequest {
-  failures?: Array<Record<string, unknown>>;
-  case_id_prefix?: string;
-}
-
-export interface FocusAgentSelfRepairPromotePreviewResponse {
-  preview: Record<string, unknown>;
-}
-
-export interface FocusAgentReviewQueueListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
-export interface FocusAgentReviewQueueDecisionResponse {
-  item: Record<string, unknown>;
 }
 
 export interface FocusAgentContextPolicyResponse {
@@ -390,62 +264,9 @@ export interface FocusAgentFeedbackTrendResponse {
   generated_at?: string | null;
 }
 
-export interface FocusAgentTaskLedgerPolicyResponse {
-  enabled: boolean;
-  artifact_synthesis_enabled: boolean;
-  critic_gate_enabled: boolean;
-  critic_gate_enforce: boolean;
-  default_off_legacy_safe: boolean;
-}
-
-export interface FocusAgentTaskLedgerPlanRequest {
-  message?: string;
-  delegation_plan?: Record<string, unknown>;
-}
-
-export interface FocusAgentTaskLedgerPlanResponse {
-  policy: FocusAgentTaskLedgerPolicyResponse;
-  ledger: Record<string, unknown>;
-  artifacts: Array<Record<string, unknown>>;
-  critic_gate_result?: Record<string, unknown> | null;
-  synthesis_result?: Record<string, unknown> | null;
-}
-
-export interface FocusAgentTaskLedgerRunListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
 export interface FocusAgentArtifactListResponse {
   items: Array<Record<string, unknown>>;
   count: number;
   trajectory_available: boolean;
   trajectory_error?: string | null;
-}
-
-export interface FocusAgentArtifactSynthesisRequest {
-  artifacts?: Array<Record<string, unknown>>;
-  critic_gate_result?: Record<string, unknown> | null;
-}
-
-export interface FocusAgentArtifactSynthesisResponse {
-  result: Record<string, unknown>;
-}
-
-export interface FocusAgentCriticVerdictListResponse {
-  items: Array<Record<string, unknown>>;
-  count: number;
-  trajectory_available: boolean;
-  trajectory_error?: string | null;
-}
-
-export interface FocusAgentCriticEvaluateRequest {
-  ledger?: Record<string, unknown>;
-  artifacts?: Array<Record<string, unknown>>;
-}
-
-export interface FocusAgentCriticEvaluateResponse {
-  result: Record<string, unknown>;
 }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -50,20 +49,6 @@ _TOOL_RESULT_SYNTHESIS_NOTE = (
 )
 
 
-_UNFOUND_ANSWER_MARKERS = (
-    "未找到",
-    "没有找到",
-    "找不到",
-    "无法确认",
-    "不能确认",
-    "not found",
-    "did not find",
-    "cannot confirm",
-    "can't confirm",
-    "could not confirm",
-)
-
-
 def _latest_final_ai_text(messages: list[Any]) -> str:
     for message in reversed(messages):
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
@@ -80,10 +65,6 @@ def _context_budget_from_state(state: AgentState) -> ContextBudget:
     if budget.tokenizer_id or not selected_model:
         return budget
     return budget.model_copy(update={"tokenizer_id": selected_model})
-
-
-def _fallback_answer_from_tool_results(prompt_messages: list[Any]) -> str:
-    return _degraded_answer_from_tool_results(prompt_messages)
 
 
 def _degraded_answer_from_tool_results(prompt_messages: list[Any]) -> str:
@@ -398,38 +379,6 @@ def _tool_result_snippets(prompt_messages: list[Any]) -> list[str]:
     return list(dict.fromkeys(snippets))
 
 
-def _should_replace_unfound_workspace_answer(answer: str, source_messages: list[Any]) -> bool:
-    answer_text = " ".join(str(answer or "").lower().split())
-    if not answer_text or not any(marker in answer_text for marker in _UNFOUND_ANSWER_MARKERS):
-        return False
-
-    latest_turn = _latest_turn_messages(source_messages)
-    positive_result_seen = False
-    requested_terms = _workspace_lookup_terms(_latest_human_message_text(latest_turn))
-    for message in latest_turn:
-        if not isinstance(message, ToolMessage):
-            continue
-        payload = tool_message_json(message)
-        if not isinstance(payload, dict):
-            continue
-        results = payload.get("results")
-        if isinstance(results, list) and results:
-            return True
-        content = str(payload.get("content") or "")
-        if content and requested_terms and any(term in content for term in requested_terms):
-            positive_result_seen = True
-    return positive_result_seen
-
-
-def _workspace_lookup_terms(text: str) -> set[str]:
-    terms = {
-        token
-        for token in re.findall(r"(?<![\w.])\.?[A-Za-z_][A-Za-z0-9_]{2,}(?![\w.])", text)
-        if "/" not in token and token not in {"src", "py"}
-    }
-    return terms
-
-
 def _tool_result_synthesis_prompt(
     source_messages: list[Any], *, budget: ContextBudget | None = None
 ) -> list[Any]:
@@ -609,14 +558,12 @@ __all__ = [
     "_TOOL_RESULT_SYNTHESIS_NOTE",
     "_latest_final_ai_text",
     "_context_budget_from_state",
-    "_fallback_answer_from_tool_results",
     "_degraded_answer_from_tool_results",
     "_tool_call_args_summary",
     "_tool_runtime_summary",
     "_tool_observation_summary",
     "_tool_result_snippets",
     "_tool_result_synthesis_prompt",
-    "_should_replace_unfound_workspace_answer",
     "_has_tool_result_messages",
     "_tool_result_fallback_message",
     "_timeout_tool_result_fallback_message",

@@ -33,9 +33,9 @@ def test_feedback_report_aggregates_governance_and_adoption_signals(tmp_path: Pa
             },
             {
                 "event_id": "fb-merge-conflict",
-                "event_type": "agent_team_merge_review",
+                "event_type": "merge_review",
                 "status": "conflict",
-                "source_kind": "agent_team_merge_review",
+                "source_kind": "merge_review",
             },
         ],
     )

@@ -3,12 +3,11 @@ from __future__ import annotations
 from focus_agent.api.route_utils import (
     agent_governance_operations,
     agent_governance_serializers,
-    agent_team_responses,
     harness_run_helpers,
     memory_access,
     memory_responses,
 )
-from focus_agent.api.routers import agent_team, memory
+from focus_agent.api.routers import memory
 from focus_agent.api.routers.harness_runs import replay_helpers
 
 
@@ -19,12 +18,6 @@ def test_memory_router_private_helpers_remain_importable_facades() -> None:
     assert memory._memory_record_response is memory_responses._memory_record_response
     assert memory._audit_event_response is memory_responses._audit_event_response
     assert memory._candidate_response is memory_responses._candidate_response
-
-
-def test_agent_team_router_private_helpers_remain_importable_facades() -> None:
-    assert agent_team._mark_deprecated_route is agent_team_responses._mark_deprecated_route
-    assert agent_team._planning_metadata_payload is agent_team_responses._planning_metadata_payload
-    assert agent_team._view_response is agent_team_responses._view_response
 
 
 def test_harness_runs_replay_helpers_reuse_shared_route_helpers() -> None:

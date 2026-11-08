@@ -77,7 +77,6 @@ _MODULE_EXPORTS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "StateSlice",
             "StateSliceSpec",
             "StreamingConfig",
-            "SubagentConfig",
             "build_state_slices",
             "state_slice_dict",
             "state_slice_model",
@@ -95,10 +94,6 @@ _MODULE_EXPORTS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "StreamProxy",
             "StreamProxyConfig",
         ),
-    ),
-    (
-        ".subagents",
-        ("AgentTeamSubagentRunner",),
     ),
 )
 
@@ -123,7 +118,6 @@ _LAZY_SUBMODULES = frozenset(
         "runtime",
         "schemas",
         "streaming",
-        "subagents",
     }
 )
 
@@ -156,7 +150,6 @@ __all__ = [
     "AgentMiddleware",
     "AgentEventPublisher",
     "AgentStateSlices",
-    "AgentTeamSubagentRunner",
     "BaseAgentMiddleware",
     "BranchStateSlice",
     "CircuitBreaker",
@@ -209,7 +202,6 @@ __all__ = [
     "StreamProxy",
     "StreamProxyConfig",
     "StreamingConfig",
-    "SubagentConfig",
     "UnsupportedStrategyError",
     "build_state_slices",
     "create_focus_agent",

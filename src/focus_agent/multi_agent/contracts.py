@@ -8,25 +8,6 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 
-@dataclass(frozen=True, slots=True)
-class DAGTaskNode:
-    task_id: str
-    role: str
-    dependencies: tuple[str, ...]
-    resource_claims: tuple[str, ...]
-    priority: int
-    timeout_seconds: float
-    max_retries: int
-
-
-class DAGSchedulerPort(Protocol):
-    def compute_next_wave(
-        self, *, completed: set[str], failed: set[str], in_progress: set[str]
-    ) -> list[DAGTaskNode]: ...
-
-    def validate(self) -> None: ...
-
-
 class LockMode(StrEnum):
     EXCLUSIVE = "exclusive"
     SHARED = "shared"
@@ -185,31 +166,12 @@ class ApprovalQueuePort(Protocol):
     def expire_pending(self) -> int: ...
 
 
-@dataclass(frozen=True, slots=True)
-class ConflictReport:
-    conflict_id: str
-    task_a: str
-    task_b: str
-    conflict_type: str
-    severity: str
-    description: str
-    suggested_resolution: str
-
-
-class ConflictDetectorPort(Protocol):
-    def detect(self, task_outputs: dict[str, dict[str, Any]]) -> list[ConflictReport]: ...
-
-
 __all__ = [
     "AgentMessage",
     "AgentMessageType",
     "ApprovalQueuePort",
     "ApprovalRequest",
     "ApprovalStatus",
-    "ConflictDetectorPort",
-    "ConflictReport",
-    "DAGSchedulerPort",
-    "DAGTaskNode",
     "FailureHandlerPort",
     "FailureStrategy",
     "LockMode",

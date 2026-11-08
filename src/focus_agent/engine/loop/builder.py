@@ -1,4 +1,4 @@
-"""Graph for the model-driven core (``AGENT_CORE=v2``).
+"""Graph for the model-driven agent core.
 
 bootstrap_turn -> retrieve_memory -> assemble_context -> agent_loop
 agent_loop <-> tool_executor
@@ -78,7 +78,6 @@ def build_loop_graph(
     approval_queue: Any | None = None,
     harness_services: HarnessToolServices | None = None,
     run_manager: Any | None = None,
-    system_agent_runner: Any | None = None,
     agent_definition_registry: Any | None = None,
 ):
     components = _with_todo_write(
@@ -102,7 +101,6 @@ def build_loop_graph(
     )
     lifecycle = TurnLifecycle(
         harness_services=harness_services,
-        system_agent_runner=system_agent_runner,
         summarize=make_model_compaction_summarizer(
             settings=settings,
             model_for=components.model_for,

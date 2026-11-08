@@ -65,7 +65,6 @@ _MAKE_TARGETS = {
     "test-graph-builder",
     "test-thread-stream-frontend-regressions",
     "ui-smoke",
-    "ui-smoke-agent-team-adoption",
     "ui-smoke-observability",
     "ui-smoke-productivity",
     "web-build",

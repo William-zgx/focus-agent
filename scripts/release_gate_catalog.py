@@ -234,8 +234,6 @@ def production_release_evidence_args() -> list[str]:
         "--eval-report-json",
         "reports/release-gate/eval-observability.json",
         "--eval-report-json",
-        "reports/release-gate/eval-golden-multi-agent.json",
-        "--eval-report-json",
         "reports/release-gate/eval-harness-stability.json",
         "--eval-report-json",
         "reports/release-gate/memory-context-eval.json",
@@ -477,22 +475,6 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
         ),
     ),
     GateCommand(
-        "eval-golden-multi-agent",
-        (
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "tests.eval",
-            "--suite",
-            "golden_multi_agent",
-            "--concurrency",
-            "1",
-            "--report-json",
-            "reports/release-gate/eval-golden-multi-agent.json",
-        ),
-    ),
-    GateCommand(
         "eval-harness-stability",
         (
             "uv",
@@ -520,17 +502,6 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
         ),
     ),
     GateCommand(
-        "agent-governance-report",
-        (
-            "uv",
-            "run",
-            "python",
-            "scripts/agent_governance_report.py",
-            "--report-json",
-            "reports/agent-governance/latest.json",
-        ),
-    ),
-    GateCommand(
         "release-health",
         (
             "uv",
@@ -549,13 +520,9 @@ RELEASE_GATE_COMMANDS: tuple[GateCommand, ...] = (
             "--eval-report-json",
             "reports/release-gate/eval-observability.json",
             "--eval-report-json",
-            "reports/release-gate/eval-golden-multi-agent.json",
-            "--eval-report-json",
             "reports/release-gate/eval-harness-stability.json",
             "--eval-report-json",
             "reports/release-gate/memory-context-eval.json",
-            "--governance-report-json",
-            "reports/agent-governance/latest.json",
             "--report-json",
             "reports/release-gate/release-health.json",
         ),

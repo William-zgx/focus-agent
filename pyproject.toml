@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "focus-agent"
 version = "1.0.0"
-description = "A self-hosted, branch-aware Agent workbench and platform reference with streaming APIs, observability, memory, Agent Team workflows, and a typed SDK."
+description = "A self-hosted, branch-aware Agent workbench and platform reference with streaming APIs, observability, memory, delegation workflows, and a typed SDK."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -41,7 +41,6 @@ dev = [
 ]
 
 [project.scripts]
-focus-agent = "focus_agent.cli.task:main"
 focus-agent-demo = "focus_agent.cli.demo:main"
 focus-agent-api = "focus_agent.api.cli:main"
 focus-agent-migrate-local-state = "focus_agent.cli.migrate_local_state:main"
@@ -83,8 +82,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/focus_agent/services/agent_team.py" = ["F403"]
-"src/focus_agent/services/agent_team/run.py" = ["F403"]
 "src/focus_agent/services/branches.py" = ["F403"]
 
 [tool.ruff.format]

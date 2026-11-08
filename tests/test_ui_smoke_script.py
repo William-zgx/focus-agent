@@ -61,14 +61,6 @@ def test_productivity_smoke_script_reports_expected_routes():
     assert "$(PNPM) --dir $(WEB_DIR) smoke:productivity" in makefile_text
 
 
-def test_agent_team_adoption_smoke_command_is_reserved_for_web_worker():
-    root = Path(__file__).resolve().parents[1]
-    makefile_text = (root / "Makefile").read_text(encoding="utf-8")
-
-    assert "ui-smoke-agent-team-adoption:" in makefile_text
-    assert "$(PNPM) --dir $(WEB_DIR) smoke:agent-team-adoption" in makefile_text
-
-
 def test_normalize_thinking_mode_accepts_supported_values_and_rejects_invalid_ones():
     assert normalize_thinking_mode(None) is None
     assert normalize_thinking_mode(" DISABLED ") == "disabled"

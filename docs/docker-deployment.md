@@ -344,8 +344,7 @@ App-state 的 thread access、conversation 和 branch 导入会在 Postgres 端�
   - `make production-smoke PRODUCTION_SMOKE_ARGS="--base-url https://focus-agent.example.com --web-base-url https://focus-agent.example.com --auth-token <token> --stream-events-json reports/release-gate/stream-events.json --report-json reports/release-gate/production-smoke.json"`
   - `make postgres-ops POSTGRES_OPS_ARGS="--database-uri postgresql://user:pass@host:5432/focus_agent --backup-command 'pg_dump --format=custom --file=/tmp/focus-agent.dump postgresql://user:pass@host:5432/focus_agent' --restore-command 'pg_restore --dbname=postgresql://user:pass@restore-host:5432/focus_agent_verify /tmp/focus-agent.dump' --restore-verification-query 'SELECT 1' --retention-cleanup-query 'SELECT 1' --report-json reports/release-gate/postgres-ops.json"`
   - `make otel-smoke OTEL_SMOKE_ARGS="--endpoint http://otel-collector:4318 --collector-health-url http://otel-collector:13133/healthz --trace-query-url 'https://traces.example.com/api/traces/{trace_id}' --report-json reports/release-gate/otel-smoke.json"`
-  - `make agent-governance-report AGENT_GOVERNANCE_REPORT_ARGS="--report-json reports/agent-governance/latest.json --max-review-queue-backlog 10 --max-avg-cost-usd 0.05"`
-  - 本地或预接入阶段仍可使用 `--dry-run` 生成计划报告；production evidence 必须使用真实 base URL、真实 auth token、stream event contract report、DB backup/restore drill、collector round-trip 和 governance threshold report。
+  - 本地或预接入阶段仍可使用 `--dry-run` 生成计划报告；production evidence 必须使用真实 base URL、真实 auth token、stream event contract report、DB backup/restore drill 和 collector round-trip。
 - trajectory list/stats/overview 支持用 `request_id` 和 `trace_id` 过滤，Web 复盘台也支持 request/trace 深链排障
 - 部署前至少执行：
   - `make ci`

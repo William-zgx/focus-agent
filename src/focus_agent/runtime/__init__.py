@@ -1,6 +1,5 @@
 """Runtime compatibility exports and shared runtime utilities."""
 
-from .model_router import ModelChoice, ModelRouter, ModelRouterDecision, TaskKind
 from .thread_pool import (
     shared_thread_pool,
     shutdown_thread_pool,
@@ -21,12 +20,8 @@ __all__ = [
     "AppRuntime",
     "create_runtime",
     "ensure_runtime_directories",
-    "ModelChoice",
-    "ModelRouter",
-    "ModelRouterDecision",
     "shared_thread_pool",
     "shutdown_thread_pool",
-    "TaskKind",
     "thread_pool_max_workers",
     "tool_thread_pool",
 ]

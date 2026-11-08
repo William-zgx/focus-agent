@@ -1,10 +1,6 @@
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
-from focus_agent.engine.graph.retrieval_ledger import (
-    collect_retrieval_ledger,
-    retrieval_key,
-    retrieval_ledger_note,
-)
+from focus_agent.engine.graph.retrieval_ledger import collect_retrieval_ledger, retrieval_key
 
 
 def _call(call_id: str, name: str, args: dict) -> AIMessage:
@@ -42,10 +38,6 @@ def test_ledger_tracks_only_successful_retrieval_in_latest_turn():
     ledger = collect_retrieval_ledger(messages)
 
     assert list(ledger) == [retrieval_key("web_search", {"query": "agent news"})]
-    note = retrieval_ledger_note(ledger)
-    assert 'web_search "agent news"' in note
-    assert "stale" not in note
-    assert retrieval_ledger_note({}) == ""
 
 
 def test_ledger_remembers_permanent_fetch_failures_but_not_transient_ones():
@@ -67,75 +59,11 @@ def test_ledger_remembers_permanent_fetch_failures_but_not_transient_ones():
     entry = ledger[retrieval_key("web_fetch", {"url": "https://openai.com/index/post"})]
     assert "403" in entry.error
     assert retrieval_key("web_fetch", {"url": "https://example.com/slow"}) not in ledger
-    assert "failed permanently" in retrieval_ledger_note(ledger)
-
-
-def test_ledger_labels_fetched_pages_and_their_continuations_with_dates():
-    page = (
-        '{"url": "https://blog.example/agents-week", "published_at": "2026-04-20T09:00:00Z", '
-        '"artifact_ref": "tool-observation://web_fetch/abc", "content": "Agents week"}'
-    )
-    messages = [
-        HumanMessage(content="最近两个月Agent领域的进展"),
-        _call("fetch", "web_fetch", {"url": "https://blog.example/agents-week"}),
-        ToolMessage(content=page, tool_call_id="fetch"),
-        _call(
-            "read",
-            "artifact_read",
-            {"artifact_id": "tool-observation://web_fetch/abc", "offset": 4000},
-        ),
-        ToolMessage(content='{"content": "more"}', tool_call_id="read"),
-    ]
-
-    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
-
-    assert "web_fetch https://blog.example/agents-week [published 2026-04-20]" in note
-    assert "offset=4000 [page published 2026-04-20]" in note
-    assert "outside the requested time window" in note
-
-
-def test_ledger_reads_publication_dates_from_metadata_and_alternate_keys():
-    nested = '{"url": "https://a.example/x", "metadata": {"published_date": "2026-03-02"}}'
-    alternate = '{"url": "https://b.example/y", "publishedDate": "2026-01-15T10:00:00Z"}'
-    messages = [
-        HumanMessage(content="question"),
-        _call("a", "web_fetch", {"url": "https://a.example/x"}),
-        ToolMessage(content=nested, tool_call_id="a"),
-        _call("b", "web_fetch", {"url": "https://b.example/y"}),
-        ToolMessage(content=alternate, tool_call_id="b"),
-    ]
-
-    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
-
-    assert "https://a.example/x [published 2026-03-02]" in note
-    assert "https://b.example/y [published 2026-01-15]" in note
-
-
-def test_ledger_links_continuation_through_observation_ref_without_artifact_ref():
-    # A page whose continuation is addressed by its prompt observation ref (no
-    # explicit artifact_ref) still carries its publication date to artifact_read.
-    page = '{"url": "https://c.example/z", "published_at": "2026-02-01", "content": "x"}'
-    messages = [
-        HumanMessage(content="question"),
-        _call("fetch-c", "web_fetch", {"url": "https://c.example/z"}),
-        ToolMessage(content=page, tool_call_id="fetch-c"),
-        _call(
-            "read-c",
-            "artifact_read",
-            {"artifact_id": "tool-observation://web_fetch/fetch-c", "offset": 2000},
-        ),
-        ToolMessage(content='{"content": "more"}', tool_call_id="read-c"),
-    ]
-
-    note = retrieval_ledger_note(collect_retrieval_ledger(messages))
-
-    assert "offset=2000 [page published 2026-02-01]" in note
 
 
 def test_ledger_treats_error_payloads_as_failures_not_successful_retrievals():
     # web_fetch reports failures as JSON payloads inside a success-status
-    # ToolMessage; those used to be recorded as "already retrieved", which made
-    # the executor reject a retry of a transiently failing page.
+    # ToolMessage; those must not block a retry of a transiently failing page.
     messages = [
         HumanMessage(content="question"),
         _call("busy", "web_fetch", {"url": "https://d.example/slow"}),

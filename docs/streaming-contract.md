@@ -147,8 +147,7 @@ Server producers must enforce this rule:
 
 - Model streams are `quarantine` by default.
 - Only chunks explicitly marked with internal `stream_phase=visible` may become `message.delta`.
-- Tool-bound model calls, repair calls, tool planning, and missing phase metadata stay quarantined. The exception is the `AGENT_CORE=v2` agent call, which is always `visible` because the model decides about tools while it streams.
-- Internal graph nodes such as `plan` and `reflect` never publish `message.delta`.
+- Tool-bound model calls, repair calls, tool planning, and missing phase metadata stay quarantined. The v2 model-driven agent call is `visible` because the model decides about tools while it streams.
 - Tool calls continue to publish `tool.call.delta`, tool lifecycle events, `reasoning.delta`, `task.update`, and `state.update` while visible text is quarantined.
 - Visible text is buffered and filtered per model `message_id`. When a later message starts publishing, its first `message.delta` is prefixed with a blank line, so a tool preamble and the answer never run together.
 - `message.completed` prefers the final graph-state assistant answer. A dirty stream buffer must not overwrite a safe final answer, and a stream buffer whose message carried tool calls is never used as the completed answer.

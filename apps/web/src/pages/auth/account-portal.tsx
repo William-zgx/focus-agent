@@ -103,12 +103,6 @@ export function AccountPortal({
 }) {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const enabledModules = ["主对话"];
-	if (appEnv.features.agentTeam) {
-		enabledModules.push("Agent Team");
-	}
-	if (appEnv.features.agentGovernance) {
-		enabledModules.push("治理");
-	}
 	if (appEnv.features.observability) {
 		enabledModules.push("复盘诊断");
 	}

@@ -694,13 +694,13 @@ def test_release_health_check_governance_blocking_signal_blocks_release(tmp_path
         {
             "summary": {
                 "status": "failed",
-                "blocking_signals": ["delegation_success"],
+                "blocking_signals": ["quality_success"],
                 "warning_signals": ["cost_token_tool_budget"],
             },
-            "thresholds": {"delegation_success": {"warning_min": 0.98, "blocking_min": 0.95}},
+            "thresholds": {"quality_success": {"warning_min": 0.98, "blocking_min": 0.95}},
             "signals": [
                 {
-                    "key": "delegation_success",
+                    "key": "quality_success",
                     "status": "block",
                     "severity": "blocking",
                     "value": 0.9,
@@ -727,5 +727,5 @@ def test_release_health_check_governance_blocking_signal_blocks_release(tmp_path
 
     assert exit_code == 1
     assert governance_signal["status"] == "fail"
-    assert governance_signal["details"]["blocking_signals"] == ["delegation_success"]
-    assert governance_signal["details"]["thresholds"]["delegation_success"]["blocking_min"] == 0.95
+    assert governance_signal["details"]["blocking_signals"] == ["quality_success"]
+    assert governance_signal["details"]["thresholds"]["quality_success"]["blocking_min"] == 0.95

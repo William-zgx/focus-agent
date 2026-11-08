@@ -335,7 +335,7 @@ export function ConversationToolbarView({
 
 			{usesCompactConversationActions && !renameTarget ? (
 				<details
-					className="fa-agent-team-more-menu fa-conversation-actions-menu"
+					className="fa-conversation-actions-menu"
 					onToggle={handleCompactMenuToggle}
 					open={isCompactMenuOpen}
 				>
@@ -350,7 +350,7 @@ export function ConversationToolbarView({
 					</summary>
 					{isCompactMenuOpen ? (
 						<div
-							className="fa-agent-team-more-menu-panel fa-conversation-actions-menu-panel"
+							className="fa-conversation-actions-menu-panel"
 							style={{
 								left: "auto",
 								maxWidth: "calc(100vw - 24px)",

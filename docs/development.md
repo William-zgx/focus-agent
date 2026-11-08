@@ -6,7 +6,7 @@ Historical validation baseline: `718be87`; startup and configuration facts corre
 This guide collects the day-to-day development and validation commands that do not belong in the root README.
 
 Focus Agent is a platform-scale monorepo. Prefer scoped checks for the surface you touch
-(API/contract, Web, SDK, Agent Team, Android, release), and reserve `make ci` for broad
+(API/contract, Web, SDK, v2 agent core, Android, release), and reserve `make ci` for broad
 changes. Product positioning and module spines: [project-overview.md](project-overview.md).
 Architecture boundaries: [architecture.md](architecture.md). Full acceptance:
 [validation-runbook.md](validation-runbook.md).
@@ -50,7 +50,6 @@ pnpm android:apk:debug
 make ui-smoke
 make ui-smoke-observability
 make ui-smoke-productivity
-make ui-smoke-agent-team-adoption
 make test-graph-builder
 make test-chat-service
 focus-agent-retrieval-index doctor
@@ -79,9 +78,7 @@ local copy:
   Postgres repository `__init__` and connection/cursor helpers) and
   `decode_json_payload`
 
-Agent Team services live in the `src/focus_agent/services/agent_team/` package
-(planning in `services/agent_team/planning/`), and graph helpers live in
-`src/focus_agent/engine/graph/`.
+Graph helpers live in `src/focus_agent/engine/graph/`.
 
 ## Common Flows
 
@@ -141,7 +138,7 @@ large files, so every scanned file above 800 lines is a regression; a file that
 was split below the limit must not be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 81 items.
+IDs from `docs/compat-debt-baseline.json`. The current inventory is 54 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an
@@ -169,7 +166,7 @@ Python formatting-only review, run:
 make format-check
 ```
 
-For broad runtime, sandbox, Skill, SDK, Web, Agent Team, or observability
+For broad runtime, sandbox, Skill, SDK, Web, v2 agent core, or observability
 changes, use the full evidence path in [validation-runbook.md](validation-runbook.md).
 That runbook layers `make ci`, OpenAPI/SDK drift checks, source-level smoke,
 real-browser smoke, and `/readyz` verification so local validation has one
@@ -279,17 +276,11 @@ The standalone Node regression imports `frontend-sdk/dist/index.js`; build the S
 See [streaming-contract.md](streaming-contract.md) for the public SSE event contract and the internal `quarantine` / `visible` phase boundary. Browser checks should include a tool-using prompt and confirm that no DSML/XML/function-call text appears in the assistant bubble while tool cards still render.
 For live-web changes, use a relative-time prompt such as "today", "tomorrow", or "本周" and confirm `current_utc_time` anchors the search before `web_search`; stale evidence should trigger at most one repair search and then either a supported answer or an explicit uncertainty answer.
 
-6. If Agent Team planning, execution, final-answer synthesis, or Mission Runner UI changed:
+6. If retained multi-agent coordination changed:
 
 ```bash
-.venv/bin/python -m pytest tests/test_agent_team_* -q
-make contract-check
-make web-check
-make web-build
-make ui-smoke-agent-team-adoption
+uv run pytest tests/test_multi_agent_config.py -q
 ```
-
-Fake Agent Team execution is a workflow-only validation mode. It must surface as `final_answer_status="placeholder"` and `request_changes`, not as a deliverable answer. Browser checks should confirm the default UI hides raw fake run text and keeps output ids/artifact ids inside Advanced details.
 
 7. If browser-level chat, branch tree, or merge-review flows changed:
 
@@ -328,7 +319,7 @@ chmod +x /tmp/focus-agent-chromium-headless
 export CHROME_PATH=/tmp/focus-agent-chromium-headless
 ```
 
-After long browser or Agent Team smoke runs, re-check `/readyz`, not only
+After long browser smoke runs, re-check `/readyz`, not only
 `/healthz`. `background_jobs.ready=false` means the process is alive but local
 queues have not drained, and the run should be recorded as degraded until the
 queue is cleared or the pending work is understood.
@@ -363,13 +354,13 @@ If the API redirects `/app` to the Vite server, pass `--app-base-url http://127.
 uv run pytest tests/test_api_middleware.py tests/test_api_trajectory_observability.py tests/test_api_trajectory_actions.py tests/test_trajectory_cli.py
 ```
 
-10. If repository behavior changed, especially AgentTeam repository session/task/output semantics:
+10. If repository behavior changed, run the relevant implementation and shared contract tests, including SQLite local cases and Postgres cases when `DATABASE_URI` is available. For example:
 
 ```bash
-uv run pytest tests/test_agent_team_repository_contract.py
+uv run pytest tests/test_branch_repository_contract.py
 ```
 
-SQLite cases run locally by default. Postgres cases run when `DATABASE_URI` is set and otherwise skip only the Postgres backend.
+Add the contract suites for every affected repository rather than relying only on import-level checks.
 
 11. If ChatService, runtime assembly, or config/runtime directory boundaries changed:
 
@@ -478,13 +469,11 @@ When the Web login surface, account shell, admin route protection, or token stor
 16. If release ops, nightly, production smoke, Postgres ops, or OTel smoke changed:
 
 ```bash
-uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py tests/test_agent_governance_report.py
+uv run pytest tests/test_release_gate.py tests/test_release_evidence.py tests/test_release_health_check.py tests/test_nightly_regression.py tests/test_production_smoke.py tests/test_postgres_ops.py tests/test_otel_smoke.py
 make nightly-regression
 make production-smoke PRODUCTION_SMOKE_ARGS="--dry-run --base-url https://focus-agent.example.com"
 make postgres-ops POSTGRES_OPS_ARGS="--dry-run"
 make otel-smoke OTEL_SMOKE_ARGS="--dry-run --endpoint http://otel-collector:4318"
-make agent-governance-report
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
@@ -501,23 +490,18 @@ uv run pytest tests/test_coordination.py tests/test_default_tools.py -k artifact
 
 `alembic upgrade head` requires `DATABASE_URI`; the Docker entrypoint runs it automatically when `DATABASE_URI` is present. The Alembic baseline currently delegates to the app schema migrations and should keep `focus_schema_migrations` aligned with `postgres_schema.py`.
 
-18. If Agent role routing, delegation execution, memory curator, tool router, context engineering, task ledger, helper-model fallback, or governance observability changed:
+18. If capability APIs, context engineering, or helper-model fallback changed:
 
 ```bash
-uv run pytest tests/test_agent_roles.py tests/test_agent_governance.py tests/test_agent_delegation.py tests/test_agent_context_engineering.py tests/test_agent_task_ledger.py tests/eval/test_agent_arch_suite.py tests/eval/test_agent_governance_suite.py tests/eval/test_agent_delegation_suite.py tests/eval/test_agent_context_suite.py tests/eval/test_agent_task_ledger_suite.py
-uv run python -m tests.eval --suite agent_arch --concurrency 1
-uv run python -m tests.eval --suite agent_governance --concurrency 1
-uv run python -m tests.eval --suite agent_delegation --concurrency 1
+uv run pytest tests/test_agent_context_engineering.py tests/eval/test_agent_context_suite.py
 uv run python -m tests.eval --suite agent_context --concurrency 1
-uv run python -m tests.eval --suite agent_task_ledger --concurrency 1
-uv run python -m tests.eval --suite golden_multi_agent --concurrency 1
 uv run python -m tests.eval --suite harness_stability --concurrency 1
 ```
 
 The project-level eval policy is documented in `docs/agent-evaluation.md`.
-`smoke`, `golden_multi_agent`, and `harness_stability` are release-blocking
+`smoke`, `observability`, and `harness_stability` are release-blocking
 suites; `model_matrix` and `trajectory_failures` are nightly, non-blocking
-signal suites. When changing model routing or multi-agent behavior, also run:
+signal suites. When changing model selection/fallback or multi-agent behavior, also run:
 
 ```bash
 uv run python -m tests.eval --suite model_matrix --concurrency 1 --max-cases 1
@@ -530,7 +514,6 @@ also cover the local-first tool path:
 ```bash
 make test-graph-builder
 uv run pytest tests/test_default_tools.py -k "search_code or apply_patch or run_workspace_command"
-uv run python -m tests.eval --suite agent_arch --concurrency 1
 ```
 
 If local test collection fails because the active `.venv` `psycopg` install cannot load `libpq`, use the focused stub workaround for observability checks:
@@ -574,7 +557,5 @@ If this fails, check:
 - [Architecture](architecture.md)
 - [Auth / Access](auth-access.md)
 - [Admin Console](admin-console.md)
-- [Agent Team Workbench](agent-team-workbench.md)
-- [Agent Governance](agent-role-routing.md)
 - [Branch Decisions](branch-decisions.md)
 - [Roadmap](roadmap.md)

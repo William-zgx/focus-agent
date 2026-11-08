@@ -97,6 +97,77 @@
 	gap: 8px;
 }
 
+.fa-conversation-actions-menu {
+	position: relative;
+}
+
+.fa-conversation-actions-menu > summary {
+	list-style: none;
+	cursor: pointer;
+}
+
+.fa-conversation-actions-menu > summary::-webkit-details-marker {
+	display: none;
+}
+
+.fa-conversation-actions-menu-panel {
+	position: absolute;
+	z-index: 20;
+	top: calc(100% + 8px);
+	right: 0;
+	display: grid;
+	gap: 6px;
+	min-width: 190px;
+	padding: 8px;
+	border: 1px solid var(--fa-border-subtle);
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--fa-panel-2) 96%, transparent 4%);
+	box-shadow: var(--fa-shadow);
+}
+
+.fa-conversation-actions-menu-panel button,
+.fa-conversation-actions-menu-panel a {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	width: 100%;
+	min-height: 30px;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--fa-text);
+	font: inherit;
+	text-align: left;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.fa-conversation-actions-menu-panel button:hover,
+.fa-conversation-actions-menu-panel a:hover {
+	border-color: var(--fa-border-subtle);
+	background: color-mix(in srgb, var(--fa-accent) 10%, transparent);
+}
+
+.fa-conversation-actions-menu-panel button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+@media (max-width: 900px) {
+	.fa-conversation-actions-menu-panel {
+		right: auto;
+		left: 0;
+		max-width: min(280px, calc(100vw - 32px));
+	}
+}
+
+@media (max-width: 760px) {
+	.fa-conversation-actions-menu-panel {
+		max-width: calc(100vw - 32px);
+	}
+}
+
 .fa-chat-logo-toggle {
 	padding: 0;
 	border: 0;

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
-
-from langchain.messages import HumanMessage
 
 from ...core.state import AgentState
 from .memory_nodes import maybe_interrupt_for_merge
@@ -21,46 +18,6 @@ _TURN_SCOPED_PLAN_META_KEYS = frozenset(
 )
 
 
-def _fire_system_agent(
-    runner: Any | None,
-    trigger_name: str,
-    ctx: dict[str, Any],
-) -> None:
-    """Fire system agents for ``trigger_name`` as fire-and-forget background tasks.
-
-    Safe to call from a sync node. Never raises; if no running event loop is
-    available (e.g. tests invoking the graph synchronously) the trigger is
-    silently skipped.
-    """
-
-    if runner is None:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    try:
-        loop.create_task(runner.trigger(trigger_name, ctx))
-    except Exception:  # noqa: BLE001
-        logger.debug(
-            "Failed to fire system agent trigger '%s'",
-            trigger_name,
-            exc_info=True,
-        )
-
-
-def _build_system_agent_ctx(state: AgentState, runtime: Any) -> dict[str, Any]:
-    """Build a minimal context dict for system agent handlers."""
-
-    ctx = getattr(runtime, "context", None)
-    return {
-        "state": dict(state),
-        "context": ctx,
-        "user_id": getattr(ctx, "user_id", None),
-        "root_thread_id": getattr(ctx, "root_thread_id", None),
-    }
-
-
 class TurnLifecycle:
     """Owns the start/end hooks of one compiled graph.
 
@@ -72,11 +29,9 @@ class TurnLifecycle:
         self,
         *,
         harness_services: HarnessToolServices | None,
-        system_agent_runner: Any | None,
         summarize: Callable[[AgentState], dict[str, Any]] = _summarize_turn_impl,
     ) -> None:
         self._services = harness_services
-        self._system_agent_runner = system_agent_runner
         self._summarize = summarize
         self._agent_start_fired_threads: set[str] = set()
 
@@ -124,14 +79,8 @@ class TurnLifecycle:
             logger.warning("middleware.on_turn_end failed", exc_info=True)
 
     def bootstrap_turn(self, state: AgentState, runtime: Any) -> dict[str, Any]:
+        del runtime
         self._fire_on_turn_start(state)
-        human_count = sum(1 for m in state.get("messages", []) or [] if isinstance(m, HumanMessage))
-        if human_count <= 1:
-            _fire_system_agent(
-                self._system_agent_runner,
-                "first_user_message",
-                _build_system_agent_ctx(state, runtime),
-            )
         # Plan/reflect state and answer-repair budgets are scoped to one turn;
         # bootstrap runs only at START, so interrupt resumes keep them.
         plan_meta = {
@@ -148,16 +97,8 @@ class TurnLifecycle:
         }
 
     def summarize_turn(self, state: AgentState, runtime: Any) -> dict[str, Any]:
-        result = self._summarize(state)
-        _fire_system_agent(
-            self._system_agent_runner,
-            "turn_end",
-            {
-                **_build_system_agent_ctx(state, runtime),
-                "rolling_summary": result.get("rolling_summary", ""),
-            },
-        )
-        return result
+        del runtime
+        return self._summarize(state)
 
     def maybe_interrupt_for_merge(self, state: AgentState) -> dict[str, Any]:
         self._fire_on_turn_end(state)

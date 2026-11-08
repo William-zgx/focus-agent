@@ -18,7 +18,6 @@ import { Suspense, type ReactNode, lazy, useEffect, useMemo } from "react";
 import { ShellUiProvider } from "@/app/shell/shell-ui-context";
 import { AppShell } from "@/app/shell/app-shell";
 import { androidAppUrlToInternalRoute } from "@/android-local-runtime/helpers";
-import { AgentRoleConsolePage } from "@/pages/agents/agent-role-console-page";
 import { AdminAuditEventsPage } from "@/pages/admin/admin-audit-events-page";
 import { AdminConfigPage } from "@/pages/admin/admin-config-page";
 import { AdminUserDetailPage } from "@/pages/admin/admin-user-detail-page";
@@ -295,18 +294,6 @@ const observabilityOverviewRoute = createRoute({
 	component: () => <TrajectoryPage />,
 });
 
-const agentRoleConsoleRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent/roles",
-	component: () => <AgentRoleConsolePage />,
-});
-
-const agentGovernanceConsoleRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/agent/governance",
-	component: () => <AgentRoleConsolePage />,
-});
-
 const agentMemoryRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/agent/memory",
@@ -377,55 +364,7 @@ const observabilityRoutes = appEnv.features.observability
 	? [trajectoryRoute, observabilityOverviewRoute]
 	: [];
 
-const agentGovernanceRoutes = appEnv.features.agentGovernance
-	? [agentRoleConsoleRoute, agentGovernanceConsoleRoute]
-	: [];
-
 const agentMemoryRoutes = appEnv.features.agentMemory ? [agentMemoryRoute] : [];
-
-const agentTeamRoutes =
-	import.meta.env.VITE_FOCUS_AGENT_ENABLE_AGENT_WORKBENCH === "false" ||
-	!appEnv.features.agentTeam
-		? []
-		: (() => {
-				const LazyAgentTeamWorkbenchPage = lazy(() =>
-					import("@/pages/agent-team/team-workbench-page").then((module) => ({
-						default: module.AgentTeamWorkbenchPage,
-					})),
-				);
-				const agentTeamRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamSessionRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamTasksRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/tasks",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamApprovalsRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/approvals",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				const agentTeamEvidenceRoute = createRoute({
-					getParentRoute: () => rootRoute,
-					path: "/agent-team/$sessionId/evidence",
-					component: () => lazyRoute(<LazyAgentTeamWorkbenchPage />),
-				});
-				return [
-					agentTeamRoute,
-					agentTeamSessionRoute,
-					agentTeamTasksRoute,
-					agentTeamApprovalsRoute,
-					agentTeamEvidenceRoute,
-				];
-			})();
 
 const productivityRoutes =
 	import.meta.env.VITE_FOCUS_AGENT_ENABLE_PRODUCTIVITY === "false" ||
@@ -455,9 +394,7 @@ const routeTree = rootRoute.addChildren([
 	threadRoute,
 	reviewRoute,
 	...observabilityRoutes,
-	...agentGovernanceRoutes,
 	...agentMemoryRoutes,
-	...agentTeamRoutes,
 	...productivityRoutes,
 	adminUsersRoute,
 	adminUserDetailRoute,

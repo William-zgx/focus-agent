@@ -343,8 +343,6 @@ def test_build_turn_trajectory_record_mirrors_governance_records_to_plan_meta():
     assert record.plan_meta["tool_route_plan"]["denied_tools"] == ["write_text_artifact"]
     assert record.plan_meta["governance_records"][0]["name"] == "tool_route_plan"
     assert record.plan_meta["governance_records"][0]["schema_version"] == 2
-    assert record.metrics["tool_router_denied"] == 1
-    assert record.metrics["tool_router_enforced"] == 1
 
 
 def test_build_turn_trajectory_record_uses_descriptor_metrics_and_legacy_fallback():
@@ -369,8 +367,6 @@ def test_build_turn_trajectory_record_uses_descriptor_metrics_and_legacy_fallbac
     )
 
     assert record.plan_meta["tool_route_plan"]["denied_tools"] == ["legacy_tool"]
-    assert record.metrics["tool_router_denied"] == 1
-    assert record.metrics["tool_router_enforced"] == 1
     assert record.metrics["agent_task_ledger_tasks"] == 2
     assert record.metrics["delegated_artifacts"] == 1
 

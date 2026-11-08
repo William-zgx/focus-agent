@@ -13,7 +13,7 @@
 
 Focus Agent is a **self-hosted, branch-aware Agent workbench and platform reference** for long AI workflows. The core idea is simple: keep the main thread focused, explore in temporary branches, and merge conclusions back only when they are ready.
 
-Around that branching workflow, the repository ships a broad product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, Agent Team planning surfaces, sandbox execution, release/eval evidence, and an optional Android shell. Several collaboration and governance surfaces are deliberately flag-gated or preview-only; their presence in the repository is not a claim that production execution is enabled.
+Around that branching workflow, the repository ships a broad product surface: streaming chat APIs, a React web app, a typed frontend SDK, access control, Admin operations, observability, memory and retrieval, Productivity tools, agent approval and coordination controls, sandbox execution, release/eval evidence, and an optional Android shell. Several collaboration and governance surfaces are deliberately flag-gated or preview-only; their presence in the repository is not a claim that production execution is enabled.
 
 > Positioning detail, scale snapshot, fit/non-fit, and runtime spines:
 > **[docs/project-overview.md](docs/project-overview.md)**
@@ -31,8 +31,8 @@ Treat it as a **medium-sized monorepo** (backend + typed SDK + React app + optio
 - **Release/evidence tooling:** schema-v2 evidence packs bind reports to commit, deployment ID, deployment version, environment, and timezone-aware generation time; production mode validates identity and freshness instead of accepting an unrelated or stale report. These are release gates and evidence formats, not proof that this repository is deployed or production-ready. See [Release Checklist](docs/release-checklist.md) and [CI Release Gate](docs/ci/github-actions-release-gate.md).
 - **Repository UI and mobile gates:** a dedicated workflow runs real Chrome chat and observability interactions, while CI builds, lints, and unit-tests the Android debug project. The Chrome workflow validates Web UI behavior only; it does not provide an Agent-native browser/DOM/screenshot tool. Android also has bounded/cancellable native HTTP, one-shot cold/hot deep-link delivery, secure key storage, and disabled Capacitor bridge logging. See [Validation](docs/validation-runbook.md) and [Android](docs/android.md).
 - **Resilient streams:** ended in-memory streams are reclaimed after a replay window; SDK reconnects deduplicate event IDs across connections and raise `FocusAgentIncompleteStreamError` if EOF arrives without a terminal event. See [Streaming Contract](docs/streaming-contract.md) and the [Frontend SDK](frontend-sdk/README.md).
-- **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains **81** intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
-- **App Postgres schema:** application schema version is **v19** (Agent Team v2 tables plus earlier productivity / branch-decision / embedding-status migrations). See [Architecture §14](docs/architecture.md).
+- **Measured architecture debt:** the architecture gate blocks non-generated files above 800 lines with no grandfathered large-file debt. Compatibility debt is tracked by stable item ID; the current baseline contains **54** intentional 1.x items, including public facades that remain until their 2.0 removal criteria are met. See the [architecture](docs/architecture-debt-baseline.json) and [compatibility](docs/compat-debt-baseline.json) baselines.
+- **App Postgres schema:** application schema version is **v19** (including productivity / branch-decision / embedding-status migrations). See [Architecture §14](docs/architecture.md).
 
 ### Fit And Non-Fit
 
@@ -47,9 +47,9 @@ Honest boundary: **platform completeness is currently stronger than end-to-end a
 
 ### Current Capability Boundaries (2026-09-28)
 
-The repository baseline is `718be87`. The default configuration keeps `AGENT_TEAM_V2_ENABLED=false`, `AGENT_TEAM_EXECUTION_MODE=disabled`, `AGENT_DELEGATION_ENABLED=false`, and `AGENT_DELEGATION_EXECUTION_MODE=observe`; Agent Team UI/API/planning can therefore exist without automatic delegated execution. The v2 service reports `revision_commands=false`, and revision-command execution is not implemented.
+The v2 core uses model-driven tool calls and bounded, single-level `run_subtask` execution. Retained coordination and approval controls are independently opt-in. See [Architecture](docs/architecture.md).
 
-Task budget fields are part of the planning/ledger contracts, but the real task runner currently uses the global subagent round limit and does not enforce per-task LLM-call, tool-call, cost, or deadline budgets. The text chat request is not an attachment/multimodal request; built-in Web tools are text search/fetch, and Agent Team scoped tools do not provide a native browser/DOM/screenshot or image-input loop. Text artifacts return local path/id references rather than a general upload/download delivery channel.
+The text chat request is not an attachment/multimodal request, and built-in Web tools are text search/fetch rather than a native browser/DOM/screenshot or image-input loop. Text artifacts return local path/id references rather than a general upload/download delivery channel.
 
 For the distinction between current behavior and proposed capability work, see the [capability research](docs/plans/2026-09-28-agent-capabilities/research.md), [design](docs/plans/2026-09-28-agent-capabilities/design.md), and [plan](docs/plans/2026-09-28-agent-capabilities/plan.md).
 
@@ -67,7 +67,7 @@ The branch-workflow quality claim is under evaluation. In the frozen 32-task exp
 - AI-assisted branch decisions and pre-turn branch recommendations that produce user-confirmed Branch Action cards
 - Streaming chat APIs (default harness path: `/v2/threads/.../runs[/stream]`) and a built-in React web app at `/app`
 - Current context-window usage in the composer, with non-destructive manual and automatic compaction
-- Agent Team Mission Runner for goal-driven multi-agent planning, task evidence, and final-answer synthesis; delegated execution is disabled/observe by default and requires the explicit readiness conditions in [Agent Team v2 rollout](docs/agent-team-v2-rollout.md)
+- Model-driven v2 tool loop with bounded, single-level `run_subtask` execution and opt-in coordination/approval controls
 - Owner-scoped Productivity workbench (notes + tasks) with source trace (`/app/productivity/notes`, `/app/productivity/tasks`)
 - Split observability flow: `/app/observability/overview` for trends and hotspots, `/app/observability/trajectory` for single-turn review
 - Access control, Admin Console, capability-centered settings, Zvec-backed retrieval/RAG, memory pipeline, governance feedback trends, and typed frontend SDK
@@ -137,15 +137,13 @@ development can fall back to `local_subprocess` or `local_venv`, and those
 results are explicitly marked as fallback. See
 [docs/sandbox-execution.md](docs/sandbox-execution.md).
 
-Zvec is the default rebuildable retrieval index for memory search, artifact RAG, Skill matching, trajectory reuse, branch/team shadow signals, and workspace semantic search. PostgreSQL and the filesystem remain canonical stores. See [docs/retrieval-zvec.md](docs/retrieval-zvec.md).
+Zvec is the default rebuildable retrieval index for memory search, artifact RAG, Skill matching, trajectory reuse, branch shadow signals, and workspace semantic search. PostgreSQL and the filesystem remain canonical stores. See [docs/retrieval-zvec.md](docs/retrieval-zvec.md).
 
 Memory embedding is enabled by default when PostgreSQL memory is available. Local auto mode prefers Ollama `embeddinggemma`; install it explicitly with `ollama pull embeddinggemma`, or configure an OpenAI-compatible embedding endpoint.
 
 Then open:
 
 - `http://127.0.0.1:8000/app`
-- `http://127.0.0.1:8000/app/agent-team`
-- `http://127.0.0.1:8000/app/agent/governance`
 - `http://127.0.0.1:8000/app/admin/config`
 - `http://127.0.0.1:8000/app/observability/overview`
 - `http://127.0.0.1:8000/readyz` and `http://127.0.0.1:8000/metrics`
@@ -211,11 +209,11 @@ GitHub Actions also contains a real Chrome workflow for chat, branch/review, and
 observability interaction gates, plus an Android job that runs debug build,
 lint, and unit tests. Local equivalents and simulator/device checks are listed
 in [docs/validation-runbook.md](docs/validation-runbook.md). For broad runtime,
-sandbox, Skill, Agent Team, observability, or release-readiness work, use that
+sandbox, Skill, agent governance, observability, or release-readiness work, use that
 runbook as the full evidence path (source checks, OpenAPI/SDK drift guards,
 real-browser UI smoke, and `/readyz`). A passing Chrome UI workflow is not evidence
 that an Agent can browse the Web, accept image attachments, or complete a real
-provider-backed Agent Team run.
+provider-backed delegated run.
 
 ## Contributing and Support
 
@@ -234,8 +232,6 @@ Please use the GitHub issue templates for bugs, feature requests, and documentat
 - [Roadmap](docs/roadmap.md)
 - [Streaming Contract](docs/streaming-contract.md)
 - [Auth / Access](docs/auth-access.md)
-- [Agent Team Workbench](docs/agent-team-workbench.md)
-- [Agent Team v2 Rollout](docs/agent-team-v2-rollout.md)
 - [Android App](docs/android.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Frontend SDK](frontend-sdk/README.md)

@@ -99,8 +99,8 @@ def artifact_read(artifact_id: str, offset: int | None = None, limit: int | None
 
 artifact_read.metadata = {"_focus_agent_save_tool_observation": _save_eval_tool_observation}
 
-# artifact_read adds 109 schema tokens (64 -> 173); retain the same message allowance.
-_LONG_TOOL_PROMPT_TOKEN_LIMIT = 600 + 109
+# Leave room for the model-driven loop's built-in todo and subtask schemas too.
+_LONG_TOOL_PROMPT_TOKEN_LIMIT = 1400
 
 
 def _long_tool_output_script(messages: list[Any], allow_tools: bool) -> AIMessage:

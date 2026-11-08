@@ -24,7 +24,7 @@
 <rect x="670" y="128" width="220" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
 <circle cx="694" cy="156" r="7" fill="#2CA874"/>
 <text x="712" y="162" fill="#102033" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Services</text>
-<text x="692" y="192" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Chat, Branch, Agent Team, Admin,</text>
+<text x="692" y="192" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Chat, Branch, Governance, Admin,</text>
 <text x="692" y="212" fill="#52677F" font-family="Inter, Avenir Next, Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Productivity</text>
 <rect x="970" y="128" width="220" height="112" rx="16" fill="#FFFFFF" stroke="#D5E0EC" stroke-width="1"/>
 <circle cx="994" cy="156" r="7" fill="#E49B23"/>

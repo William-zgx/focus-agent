@@ -5,8 +5,8 @@ Updated: 2026-09-28
 This is the canonical guide for Focus Agent retrieval indexing. PostgreSQL and
 the filesystem remain the canonical stores. Zvec is a rebuildable, embedded
 retrieval index used for memory search, artifact RAG, Skill semantic matching,
-trajectory reuse, branch context, Agent Team plan reuse, failure recovery,
-governance feedback, and workspace semantic search.
+trajectory reuse, branch context, failure recovery, governance feedback, and
+workspace semantic search.
 
 ## Runtime Model
 
@@ -79,7 +79,6 @@ Zvec as the default retrieval backend.
 | `focus_skills` | Skill registry | semantic Skill matching with token scorer fallback |
 | `focus_trajectory` | trajectory recorder | similar turns and tool-observation reuse |
 | `focus_branch_context` | branch decision events | pre-turn branch recommendation shadow signal |
-| `focus_agent_team_plans` | Agent Team sessions/tasks/outputs | similar plan context refs during planning |
 | `focus_failure_cases` | failed/error trajectory turns | recovery case lookup |
 | `focus_governance_feedback` | context evidence, Skill feedback, feedback events | shadow rerank/quality evidence |
 | `focus_workspace_chunks` | current workspace filesystem | semantic code/docs search via `workspace_search` |
@@ -96,8 +95,6 @@ Zvec as the default retrieval backend.
   enter `focus_failure_cases`.
 - Branch recommendation records `zvec_branch_context` as a weight-zero shadow
   signal. It does not change branch action selection.
-- Agent Team planning records similar plans as `agent_team_plan_reuse` shadow
-  `context_refs`. It does not change task count, roles, or dependencies.
 - Governance feedback indexing is best-effort after context evidence, Skill
   selection, and feedback writes.
 - `workspace_search` is read-only and restricted to `workspace_root`; it skips
@@ -117,7 +114,7 @@ focus-agent-retrieval-index backfill --target all --limit 1000
 Supported backfill targets:
 
 ```text
-memory artifact skill trajectory branch-context agent-team-plans
+memory artifact skill trajectory branch-context
 failure-cases governance-feedback workspace
 ```
 

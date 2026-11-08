@@ -548,54 +548,14 @@ def test_settings_from_env_reads_workspace_root(monkeypatch):
     assert settings.workspace_root == "/tmp/focus-agent-workspace"
 
 
-def test_settings_from_env_reads_agent_role_routing_flags(monkeypatch):
-    monkeypatch.setenv("AGENT_ROLE_ROUTING_ENABLED", "true")
-    monkeypatch.setenv("AGENT_ROLE_ORCHESTRATOR_MODEL", "openai:gpt-4.1-mini")
-    monkeypatch.setenv("AGENT_ROLE_PLANNER_MODEL", "moonshot:kimi-k2.6")
-    monkeypatch.setenv("AGENT_ROLE_EXECUTOR_MODEL", "ollama:qwen2.5:7b")
-    monkeypatch.setenv("AGENT_ROLE_CRITIC_MODEL", "openai:gpt-4.1")
-    monkeypatch.setenv("AGENT_ROLE_MEMORY_MODEL", "openai:deepseek-chat")
-    monkeypatch.setenv("AGENT_ROLE_SKILL_MODEL", "openai:gpt-4.1-mini")
-    monkeypatch.setenv("AGENT_ROLE_MAX_PARALLEL_RUNS", "3")
+def test_settings_from_env_reads_memory_curation_flags(monkeypatch):
     monkeypatch.setenv("AGENT_MEMORY_CURATOR_ENABLED", "true")
     monkeypatch.setenv("AGENT_MEMORY_AUTO_PROMOTE_ON_MERGE", "false")
-    monkeypatch.setenv("AGENT_TOOL_ROUTER_ENABLED", "true")
-    monkeypatch.setenv("AGENT_TOOL_ROUTER_ENFORCE", "false")
-    monkeypatch.setenv("AGENT_DELEGATION_ENABLED", "true")
-    monkeypatch.setenv("AGENT_DELEGATION_ENFORCE", "true")
-    monkeypatch.setenv("AGENT_MODEL_ROUTER_ENABLED", "true")
-    monkeypatch.setenv("AGENT_MODEL_ROUTER_MODE", "enforce")
-    monkeypatch.setenv("AGENT_SELF_REPAIR_ENABLED", "true")
-    monkeypatch.setenv("AGENT_REVIEW_QUEUE_ENABLED", "true")
-    monkeypatch.setenv("AGENT_TASK_LEDGER_ENABLED", "true")
-    monkeypatch.setenv("AGENT_ARTIFACT_SYNTHESIS_ENABLED", "true")
-    monkeypatch.setenv("AGENT_CRITIC_GATE_ENABLED", "true")
-    monkeypatch.setenv("AGENT_CRITIC_GATE_ENFORCE", "true")
 
     settings = Settings.from_env()
 
-    assert settings.agent_role_routing_enabled is True
-    assert settings.agent_role_orchestrator_model == "openai:gpt-4.1-mini"
-    assert settings.agent_role_planner_model == "moonshot:kimi-k2.6"
-    assert settings.agent_role_executor_model == "ollama:qwen2.5:7b"
-    assert settings.agent_role_critic_model == "openai:gpt-4.1"
-    assert settings.agent_role_memory_model == "openai:deepseek-chat"
-    assert settings.agent_role_skill_model == "openai:gpt-4.1-mini"
-    assert settings.agent_role_max_parallel_runs == 3
     assert settings.agent_memory_curator_enabled is True
     assert settings.agent_memory_auto_promote_on_merge is False
-    assert settings.agent_tool_router_enabled is True
-    assert settings.agent_tool_router_enforce is False
-    assert settings.agent_delegation_enabled is True
-    assert settings.agent_delegation_enforce is True
-    assert settings.agent_model_router_enabled is True
-    assert settings.agent_model_router_mode == "enforce"
-    assert settings.agent_self_repair_enabled is True
-    assert settings.agent_review_queue_enabled is True
-    assert settings.agent_task_ledger_enabled is True
-    assert settings.agent_artifact_synthesis_enabled is True
-    assert settings.agent_critic_gate_enabled is True
-    assert settings.agent_critic_gate_enforce is True
 
 
 def test_settings_from_env_enables_trajectory_when_database_uri_exists(monkeypatch):

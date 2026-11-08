@@ -55,7 +55,7 @@ The graph, not stream consumers or UI reducers, decides whether a tool failed, r
 ## Recovery Policy
 
 These outcomes describe the current turn's graph/tool recovery, not a promise of
-process-level task recovery. A journal, Agent Team job, lease, or side-effect
+process-level task recovery. A journal, background job, lease, or side-effect
 receipt may preserve evidence on the configured durable path, but a generic
 harness process is not automatically hydrated and restarted from that record.
 Pending approval remains a blocker until an explicit, auditable resume or retry

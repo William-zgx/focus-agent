@@ -8,7 +8,6 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.engine.graph import web_result_fallback as graph_web_result_fallback
 from focus_agent.engine.graph.evidence import normalize_evidence_bundle, normalize_evidence_ledger
-from focus_agent.engine.graph.execution_contract import tool_result_names
 from focus_agent.engine.graph.tool_history_repair import _has_repeated_failed_tool_call
 from focus_agent.engine.graph.tool_messages import (
     artifact_source_refs,
@@ -55,16 +54,15 @@ def test_tool_message_failed_covers_every_payload_failure_shape() -> None:
     )
 
 
-def test_failed_payloads_do_not_satisfy_contract_or_become_evidence() -> None:
-    # Previously ok=false / timed_out payloads in success-status messages counted
-    # as satisfying web_fetch results and were normalised into evidence.
+def test_failed_payloads_do_not_become_evidence() -> None:
+    # Previously ok=false / timed_out payloads in success-status messages were
+    # normalised into evidence.
     messages = [
         _fetch_call("a", "b"),
         _tool({"url": "https://a.example", "ok": False, "content": "x"}, "a"),
         _tool({"url": "https://b.example", "timed_out": True, "content": "y"}, "b"),
     ]
 
-    assert tool_result_names(messages) == []
     assert normalize_evidence_bundle(messages) == []
     assert normalize_evidence_ledger(messages) == []
 

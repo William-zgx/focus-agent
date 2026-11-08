@@ -32,7 +32,7 @@ merge conclusions only after review.
 它 **是**：
 
 - 面向长任务研究 / 调试 / 写作 / 审查的 Web-first 应用平台
-- 带流式协议、typed SDK、鉴权、Admin、可观测、记忆检索、Agent Team 规划面、发布证据链的 monorepo；部分 runtime 能力仍默认关闭或只提供 preview
+- 带流式协议、typed SDK、鉴权、Admin、可观测、记忆检索、发布证据链的 monorepo；部分 runtime 能力仍默认关闭或只提供 preview
 - 可被团队 fork 后改造成自有 AI 工作台的参考实现
 
 ---
@@ -65,29 +65,27 @@ merge conclusions only after review.
 
 - [branch-decisions.md](branch-decisions.md)
 - [streaming-contract.md](streaming-contract.md)
-- [agent-team-workbench.md](agent-team-workbench.md)
-- [agent-team-v2-rollout.md](agent-team-v2-rollout.md)
 
 ---
 
 ## 3. 当前体量（代码事实） / Scale Snapshot
 
-以下数字来自 **2026-11-05 的仓库快照**（`simplify/repo-cleanup` 分支），用于校准“脚手架” vs “平台”的预期，
+以下数字来自 **2026-11-08 的仓库快照**，用于校准“脚手架” vs “平台”的预期，
 不是对外 SLA。
 
-| 维度 | 量级（2026-11-05 快照） |
+| 维度 | 量级（2026-11-08 快照） |
 |------|----------|
 | Python 包版本 | `1.0.0`（`pyproject.toml`） |
-| 后端 Python 源文件 | ~537 个（`src/focus_agent/**/*.py`） |
-| 后端 Python 行数 | ~12.9 万行 |
-| 测试 Python 文件 | ~274（`tests/**/*.py`） |
-| Web 前端 TS/TSX | ~271（`apps/web/src`） |
-| Frontend SDK TS | ~48（`frontend-sdk/src`，另含 1 个 generated types 文件） |
-| OpenAPI paths / schemas | 159 paths / 273 schemas（`docs/api/openapi.json`） |
-| 兼容债务 baseline | **81** 项（`docs/compat-debt-baseline.json`，`scripts/compat_report.py`） |
+| 后端 Python 源文件 | ~499 个（`src/focus_agent/**/*.py`） |
+| 后端 Python 行数 | ~11.3 万行 |
+| 测试 Python 文件 | ~250（`tests/**/*.py`） |
+| Web 前端 TS/TSX | ~233（`apps/web/src`） |
+| Frontend SDK TS | ~47（`frontend-sdk/src`，另含 1 个 generated types 文件） |
+| OpenAPI paths / schemas | 107 paths / 187 schemas（`docs/api/openapi.json`） |
+| 兼容债务 baseline | **54** 项（`docs/compat-debt-baseline.json`，`scripts/compat_report.py`） |
 | 架构债务 baseline | 非生成文件 **800 行上限**，无 grandfather 大文件 |
 | App Postgres schema | **v19**（`SCHEMA_VERSION` in `postgres_schema.py`） |
-| CI workflows | `ci`、`browser-smoke`、`eval`、`nightly-regression`、`release-gate`、`agent-team-evidence`、`dependency-drift` |
+| CI workflows | `ci`、`browser-smoke`、`eval`、`nightly-regression`、`release-gate`、`dependency-drift` |
 
 结论：仓库已超过“周末 demo 脚手架”体量，应按 **中型自托管平台 monorepo** 维护。
 
@@ -101,7 +99,7 @@ merge conclusions only after review.
 │  React Web (/app) · Frontend SDK · Capacitor Android         │
 ├─────────────────────────────────────────────────────────────┤
 │  Product surfaces                                            │
-│  Chat + Branch · Agent Team · Governance · Productivity      │
+│  Chat + Branch · Agent APIs · Productivity                   │
 │  Admin · Observability · Memory console · Auth/Account       │
 ├─────────────────────────────────────────────────────────────┤
 │  Runtime spine                                               │
@@ -118,7 +116,7 @@ merge conclusions only after review.
 |------|----------|--------------|
 | **Core** | branch-aware chat、SSE stream contract、typed SDK、鉴权与 owner 边界 | 必选理解 |
 | **Platform** | memory、Zvec retrieval、tools/skills/sandbox、Admin、observability/trajectory | 完整工作台需要 |
-| **Collaboration** | Agent Team Mission/plan/run API、v2 schema & flags | 规划与展示可用；`AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、委派默认 `observe`，真实任务需要单独 readiness |
+| **Collaboration** | multi-agent coordination primitives | 由独立配置控制 |
 | **Mobile** | Android Capacitor + `android-local-runtime` | 可选；与 server-backed Web 并行 |
 | **Release** | release-gate、evidence pack、nightly、eval harness | 生产采用需要 |
 
@@ -140,7 +138,7 @@ Android 与 Web 不是同一集成模型：
 1. Client → `POST /v2/threads/{thread_id}/runs` 或 `.../runs/stream`
 2. Harness run API（`api/routers/harness_runs/`）做鉴权与 preflight
 3. 可选：显式 Branch Action 执行，或 pre-turn branch recommendation → pending action
-4. `ChatService` / harness 编排 → LangGraph graph（`engine/graph/builder.py`；`engine/graph_builder.py` 为兼容 shim）
+4. `ChatService` / harness 编排 → v2 LangGraph tool loop（`engine/loop/builder.py`；`engine/graph_builder.py` 为统一入口）
 5. Tool runtime、memory、retrieval、trajectory 写入
 6. Canonical SSE events → frontend-sdk parser/reducers → Web UI
 
@@ -150,18 +148,16 @@ Android 与 Web 不是同一集成模型：
 - 生命周期与 merge：`services/branches/`
 - 兼容 re-export：顶层 `src/focus_agent/branch_service.py`、`src/focus_agent/chat_service.py` 等 **shim**（计入 compat baseline）
 
-### 5.3 Agent Team
+### 5.3 Multi-Agent Coordination
 
-- 产品与 API：`services/agent_team/`（规划在 `services/agent_team/planning/`）、`api/routers/agent_team.py`、Web `features/agent-team/`
-- v2 执行与 schema：Postgres v19 表 + feature flags（见 [agent-team-v2-rollout.md](agent-team-v2-rollout.md)）
-- **默认不自动启用 v2 真实执行**：`AGENT_TEAM_V2_ENABLED=false`、`AGENT_TEAM_EXECUTION_MODE=disabled`、`AGENT_DELEGATION_ENABLED=false`、`AGENT_DELEGATION_EXECUTION_MODE=observe`；UI/API/规划可见 ≠ runtime ready。当前 v2 capability 报告 `revision_commands=false`，revision command 尚未实现。
+- 保留的 multi-agent coordination primitives 由独立配置控制。
 
 ### 5.4 装配点
 
 `engine/runtime.py` 中的 `create_runtime()` / `AppRuntime` 是后端运行态装配入口，挂载：
 
 - graph / harness / stream bridge / run manager
-- branch / branch-decision / agent-team / user / productivity services
+- branch / branch-decision / user / productivity services
 - memory pipeline、retrieval index、skill/tool registries
 - trajectory、background worker、coordination backend、OTel
 
@@ -194,13 +190,13 @@ Android 与 Web 不是同一集成模型：
 | 如何严肃地跑 Agent 应用（协议、权限、持久化、回放、发布门禁） | Agent 任务成功率、成本/延迟画像、多 Agent 结果质量门槛 |
 | 本地与 CI 可验证性 | 真实生产控制面绑定（deployment identity 不可伪造） |
 | 安全默认与 fail-closed 路径 | 企业 IdP/JWKS、跨服务 logout、长时多实例演练 |
-| 文档与 debt 计量 | 81 项兼容库存：先迁移仓库调用方，再删除；出现外部采用方后增加 telemetry 与迁移窗口 |
+| 文档与 debt 计量 | 54 项兼容库存：先迁移仓库调用方，再删除；出现外部采用方后增加 telemetry 与迁移窗口 |
 | 文本聊天、文本 Web search/fetch、路径型文本 artifact | 原生浏览器/DOM/截图、图片附件/多模态输入、通用 artifact 上传下载 |
 
 平台完备度 **高于** 结果质量证据；此外，task budget 合同目前没有接入真实 runner 的
 每任务 LLM/tool/cost/deadline enforcement，不能把 budget 字段当作运行时配额。CI 的
-真实 Chrome 只证明 Web UI 交互，不证明 Agent 原生 browser 能力或真实 provider-backed
-Team run。roadmap 以“仍缺的真实环境/规模/证据”描述未来项，而不是空泛的“继续优化”。
+真实 Chrome 只证明 Web UI 交互，不证明 Agent 原生 browser 能力。
+roadmap 以“仍缺的真实环境/规模/证据”描述未来项，而不是空泛的“继续优化”。
 
 当前能力与未来能力研究、设计、计划分开维护：见
 [capability research](plans/2026-09-28-agent-capabilities/research.md)、

@@ -13,7 +13,6 @@ from focus_agent.engine.graph.tool_call_repair import _tool_call_dedupe_key
 
 from ...capabilities.default_tool_modules.memory import authorize_memory_tool_args
 from ...capabilities.tool_runtime import build_tool_error_message
-from ...core.repo_call import has_repo_method
 from .retrieval_ledger import RetrievalLedgerEntry, retrieval_key
 from .tool_result_hooks import _blocked_tool_error, _denied_tool_result
 
@@ -92,7 +91,6 @@ def _preflight_tool_call(
     request_context: Any,
     tools_by_name: Mapping[str, Any],
     tool_runtime_by_name: Mapping[str, Any],
-    route_plan: Mapping[str, Any] | None,
     retrieval_ledger: Mapping[str, RetrievalLedgerEntry],
     seen_signatures: set[str],
     tool_call_counts: dict[str, int],
@@ -150,11 +148,6 @@ def _preflight_tool_call(
     tool = tools_by_name.get(tool_name)
     if tool is None:
         return reject(f"Unknown tool: {tool_name}")
-    if _forbidden_by_route_plan(route_plan, tool_name):
-        return reject(
-            f"Forbidden tool by Tool Router policy: {tool_name}",
-            {"forbidden_by_tool_router": True},
-        )
     runtime_meta = tool_runtime_by_name.get(tool_name)
     if runtime_meta is None:
         return reject(
@@ -293,23 +286,3 @@ def _intercept_tool_call(
                 exc_info=True,
             )
     return InterceptionResult(None, tool_args)
-
-
-def _route_plan_mapping(route_plan: Any) -> Mapping[str, Any] | None:
-    if isinstance(route_plan, Mapping):
-        return route_plan
-    if not has_repo_method(route_plan, "model_dump"):
-        return None
-    dumped = route_plan.model_dump(mode="json")
-    return dumped if isinstance(dumped, Mapping) else None
-
-
-def _forbidden_by_route_plan(
-    route_plan: Mapping[str, Any] | None,
-    tool_name: str,
-) -> bool:
-    if not route_plan or not bool(route_plan.get("enforce", True)):
-        return False
-    allowed_tools = {str(name) for name in route_plan.get("allowed_tools") or []}
-    denied_tools = {str(name) for name in route_plan.get("denied_tools") or []}
-    return tool_name in denied_tools or tool_name not in allowed_tools

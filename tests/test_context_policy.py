@@ -16,10 +16,6 @@ from focus_agent.core.types import (
     FindingItem,
     PromptMode,
 )
-from focus_agent.engine.graph.output_language import (
-    enforce_temporal_anchor,
-    repair_chinese_output,
-)
 
 
 def test_assemble_context_changes_output_by_mode():
@@ -194,118 +190,6 @@ def test_assemble_context_requires_chinese_answers_for_chinese_requests():
     )
     assert "final answer in Chinese" in context_slice.system_instructions
     assert "English-only answer" in context_slice.system_instructions
-
-
-def test_chinese_output_rewrite_skips_english_questions_about_chinese_topics():
-    class RewritingModel:
-        def invoke(self, _messages):
-            return AIMessage(
-                content="2027 年春节在 2 月 6 日，农历羊年由此开始，这是一个完整的中文改写版本。"
-            )
-
-    draft = AIMessage(
-        content="Chinese New Year in 2027 falls on February 6, starting the Year of the Goat."
-    )
-
-    assert (
-        repair_chinese_output(
-            response=draft,
-            user_text="When is Chinese New Year in 2027?",
-            model=RewritingModel(),
-        )
-        is None
-    )
-
-
-def test_chinese_output_rewrite_rejects_missing_locked_time_and_source():
-    class RewritingModel:
-        def invoke(self, _messages):
-            return AIMessage(content="月之暗面发布了新的功能说明。")
-
-    rewritten = repair_chinese_output(
-        response=AIMessage(
-            content=(
-                "Moonshot AI announced a new Kimi feature. See https://www.moonshot.cn for details."
-            )
-        ),
-        user_text="请用中文回答今天的 Moonshot AI 新闻。",
-        model=RewritingModel(),
-        observed_at="2026-07-13T06:21:13.595437+00:00",
-        source_urls=("https://www.moonshot.cn",),
-    )
-
-    assert rewritten is None
-
-
-def test_temporal_anchor_guard_replaces_conflicting_chinese_date():
-    repair = enforce_temporal_anchor(
-        response=AIMessage(content=("当前 UTC 时间是 2025年1月9日。Moonshot AI 发布了新的新闻。")),
-        user_text="请用中文总结今天的 Moonshot AI 新闻。",
-        observed_at="2026-07-13T06:21:13.595437+00:00",
-        source_refs=(("Moonshot AI", "https://www.moonshot.cn"),),
-    )
-
-    assert repair is not None
-    assert repair.action == "answer_with_verified_temporal_anchor"
-    assert "2026-07-13T06:21:13.595437+00:00" in repair.response.content
-    assert "https://www.moonshot.cn" in repair.response.content
-    assert "2025年1月9日" not in repair.response.content
-
-
-def test_temporal_anchor_guard_replaces_reversed_date_before_utc_marker():
-    repair = enforce_temporal_anchor(
-        response=AIMessage(
-            content=("本次联网研究基于 2025-01-15 00:00:00 UTC 时间。Moonshot AI 发布了新的新闻。")
-        ),
-        user_text="请用中文总结今天的 Moonshot AI 新闻。",
-        observed_at="2026-07-13T06:21:13.595437+00:00",
-        source_refs=(("Moonshot AI", "https://www.moonshot.cn"),),
-    )
-
-    assert repair is not None
-    assert repair.action == "answer_with_verified_temporal_anchor"
-    assert "2026-07-13T06:21:13.595437+00:00" in repair.response.content
-    assert "2025-01-15" not in repair.response.content
-
-
-def test_temporal_anchor_guard_keeps_answers_that_quote_source_dates():
-    answer = (
-        "调研截至 2026-10-08 UTC。Gemini 文档页注明 Last updated 2026-10-07 UTC；"
-        "GPT-6 Sol 发布于 2026-09-22 UTC。"
-    )
-    repair = enforce_temporal_anchor(
-        response=AIMessage(content=answer),
-        user_text="请联网比较三家最新旗舰模型的发布时间。",
-        observed_at="2026-10-08T02:34:54.857113+00:00",
-    )
-
-    # Source and release dates are evidence, not a claim about the current time.
-    assert repair is None or repair.action != "answer_with_verified_temporal_anchor"
-    if repair is not None:
-        assert "Last updated 2026-10-07 UTC" in repair.response.content
-
-
-def test_temporal_anchor_guard_still_rejects_stale_as_of_claim():
-    repair = enforce_temporal_anchor(
-        response=AIMessage(content="截至 2025-01-15 UTC，Moonshot AI 发布了新的新闻。"),
-        user_text="请用中文总结今天的 Moonshot AI 新闻。",
-        observed_at="2026-07-13T06:21:13.595437+00:00",
-    )
-
-    assert repair is not None
-    assert repair.action == "answer_with_verified_temporal_anchor"
-
-
-def test_temporal_anchor_guard_accepts_unpadded_chinese_current_date():
-    answer = "以当前时间 **2026年10月8日** 为准，最近几周有多项发布。"
-    repair = enforce_temporal_anchor(
-        response=AIMessage(content=answer),
-        user_text="最近几周有哪些进展？",
-        observed_at="2026-10-08T08:27:24.043614+00:00",
-    )
-    assert repair is None or repair.action != "answer_with_verified_temporal_anchor"
-    if repair is not None:
-        assert answer in repair.response.content
 
 
 def test_prompt_budget_guard_preserves_current_user_and_active_constraints():
@@ -854,18 +738,6 @@ def test_compacted_web_evidence_keeps_dates_and_full_text_continuation():
     assert fetch["artifact_ref"] == reference
     assert fetch["continuation"] == continuation
     assert fetch["published_at"] == "2026-10-01"
-
-
-def test_temporal_anchor_preserves_foreign_language_source_excerpt():
-    excerpt = "A documented release adds asynchronous task execution and resumable sessions. " * 4
-    repair = enforce_temporal_anchor(
-        response=AIMessage(content="来源原文：" + excerpt),
-        user_text="最近几周有哪些进展？",
-        observed_at="2026-10-04T01:00:00+00:00",
-    )
-    assert repair is not None
-    assert repair.action == "prepend_verified_temporal_anchor"
-    assert excerpt.strip() in repair.response.content
 
 
 def test_policy_prompt_budget_guard_honours_preserve_required_messages():

@@ -125,7 +125,7 @@ def test_productivity_capture_api_creates_sourced_note_and_task():
             "source_url": "/app/chat/thread-1",
             "captured_from": "chat",
             "payload": {
-                "answer": "Use merge reviews before applying Agent Team output.",
+                "answer": "Use merge reviews before applying delegated output.",
                 "thread_id": "thread-1",
             },
             "pinned_context": {"thread_id": "thread-1", "turn_id": "turn-1"},
@@ -135,10 +135,10 @@ def test_productivity_capture_api_creates_sourced_note_and_task():
         "/v1/productivity/capture/task",
         headers=headers,
         json={
-            "source_kind": "agent_team_review",
+            "source_kind": "merge_review",
             "source_id": "review-1",
-            "source_url": "/app/agent-team/session-1/review-1",
-            "captured_from": "agent_team",
+            "source_url": "/app/merge-review/review-1",
+            "captured_from": "merge_review",
             "title": "Review selected diffs",
             "payload": {
                 "description": "Validate changed files and test evidence.",
@@ -150,7 +150,7 @@ def test_productivity_capture_api_creates_sourced_note_and_task():
     note = captured_note.json()["note"]
     task = captured_task.json()["task"]
     assert captured_note.status_code == 201
-    assert note["title"] == "Use merge reviews before applying Agent Team output."
+    assert note["title"] == "Use merge reviews before applying delegated output."
     assert note["source_kind"] == "chat_answer"
     assert note["source_id"] == "turn-1"
     assert note["source_url"] == "/app/chat/thread-1"
@@ -160,10 +160,10 @@ def test_productivity_capture_api_creates_sourced_note_and_task():
     assert captured_task.status_code == 201
     assert task["title"] == "Review selected diffs"
     assert task["description"] == "Validate changed files and test evidence."
-    assert task["source_kind"] == "agent_team_review"
+    assert task["source_kind"] == "merge_review"
     assert task["source_id"] == "review-1"
     assert task["source_thread_id"] == "root-thread"
-    assert task["captured_from"] == "agent_team"
+    assert task["captured_from"] == "merge_review"
 
 
 def test_list_endpoints_share_page_limit_bounds():

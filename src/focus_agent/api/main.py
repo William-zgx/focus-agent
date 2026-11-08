@@ -11,7 +11,6 @@ from .routers import (
     admin_config,
     admin_users,
     agent_governance,
-    agent_team,
     auth_models,
     branch_decisions,
     branches_merge,
@@ -43,7 +42,6 @@ def create_app() -> FastAPI:
     app.include_router(auth_models.router)
     app.include_router(admin_config.router)
     app.include_router(admin_users.router)
-    app.include_router(agent_team.router)
     app.include_router(agent_governance.router)
     app.include_router(memory.router)
     app.include_router(productivity.router)

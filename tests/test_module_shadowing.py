@@ -23,22 +23,6 @@ def test_source_tree_has_no_module_package_name_collisions() -> None:
     assert _module_package_collisions() == []
 
 
-def test_skill_planning_uses_only_the_canonical_helper_module() -> None:
-    abandoned_path = PACKAGE_ROOT / "engine" / "graph" / "agent_loop_skill_planning.py"
-    canonical_path = PACKAGE_ROOT / "engine" / "graph" / "agent_loop_helpers_skill_planning.py"
-
-    assert not abandoned_path.exists()
-    assert canonical_path.is_file()
-
-    agent_loop = importlib.import_module("focus_agent.engine.graph.agent_loop")
-    canonical = importlib.import_module(
-        "focus_agent.engine.graph.agent_loop_helpers_skill_planning"
-    )
-    assert agent_loop.build_active_skill_execution_plan is (
-        canonical.build_active_skill_execution_plan
-    )
-
-
 def test_public_imports_resolve_to_packages() -> None:
     expected_origins = {
         "focus_agent.services.chat": PACKAGE_ROOT / "services" / "chat" / "__init__.py",
