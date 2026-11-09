@@ -407,28 +407,28 @@ def test_tool_search_runtime_metadata_is_read_only_and_unguarded():
 
 def test_toml_defer_loading_override_keeps_tool_core(monkeypatch, tmp_path):
     @tool
-    def git_status() -> str:
-        """Inspect repository status."""
-        return "clean"
+    def run_workspace_command() -> str:
+        """Run an allowlisted workspace command."""
+        return "ok"
 
     @tool
-    def git_diff() -> str:
-        """Inspect repository changes."""
-        return "diff"
+    def apply_patch() -> str:
+        """Apply a patch to the workspace."""
+        return "patched"
 
     catalog_path = tmp_path / "tools.toml"
-    catalog_path.write_text("[git_status]\ndefer_loading = false\n", encoding="utf-8")
+    catalog_path.write_text("[run_workspace_command]\ndefer_loading = false\n", encoding="utf-8")
     catalog = load_tool_catalog_document(catalog_path)
     registry = ToolRegistry(
-        tools=(git_status, git_diff),
+        tools=(run_workspace_command, apply_patch),
         manifests=(
             ToolManifest.from_tool(
-                git_status,
-                overlay=catalog.metadata_overlay_for("git_status"),
+                run_workspace_command,
+                overlay=catalog.metadata_overlay_for("run_workspace_command"),
             ),
             ToolManifest.from_tool(
-                git_diff,
-                overlay=catalog.metadata_overlay_for("git_diff"),
+                apply_patch,
+                overlay=catalog.metadata_overlay_for("apply_patch"),
             ),
         ),
     )
@@ -437,10 +437,10 @@ def test_toml_defer_loading_override_keeps_tool_core(monkeypatch, tmp_path):
 
     _invoke(graph, _ask("Inspect the repository"), "thread-toml-override")
 
-    assert tool_is_deferred(git_status) is False
-    assert tool_is_deferred(git_diff) is True
-    assert "git_status" in model.bound_tool_names[0]
-    assert "git_diff" not in model.bound_tool_names[0]
+    assert tool_is_deferred(run_workspace_command) is False
+    assert tool_is_deferred(apply_patch) is True
+    assert "run_workspace_command" in model.bound_tool_names[0]
+    assert "apply_patch" not in model.bound_tool_names[0]
     assert "tool_search" in model.bound_tool_names[0]
 
 

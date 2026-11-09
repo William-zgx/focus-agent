@@ -87,9 +87,10 @@ risk levels, roles, policies, network use, and write/side-effect flags.
 
 ### Deferred tool loading
 
-The v2 loop keeps frequently used read and interaction tools eager, while task,
-note, secondary memory/conversation, Git, workspace mutation/statistics,
-artifact-management, and skill-management tools are deferred by default. MCP
+The v2 loop keeps frequently used read and interaction tools eager, including the
+read-only Git tools, while task, note, secondary memory/conversation, workspace
+mutation/statistics, artifact-management, and skill-management tools are
+deferred by default. MCP
 tools also default to `defer_loading = true`. This reduces bound schemas without
 changing execution permissions or approval requirements.
 

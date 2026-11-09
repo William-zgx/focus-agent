@@ -87,6 +87,9 @@ requires_approval = true
 
 [run_workspace_command]
 enabled = true
+# Deferred by default: the model loads it through tool_search. Uncomment to
+# bind it on every call; approval and permission metadata are unchanged.
+# defer_loading = false
 label = "Run Workspace Command"
 description = "Run an allowlisted test, lint, build, check, or trusted local skill script command in the workspace."
 allowed_commands = ["cargo", "go", "make", "mypy", "npm", "pnpm", "pytest", "ruff", "uv"]
@@ -100,9 +103,6 @@ requires_approval = true
 enabled = true
 label = "Git Status"
 description = "Inspect the current repository status from the workspace root."
-# Git tools are deferred by default. This overlay makes one eager without
-# changing its approval, permission, or other security metadata.
-# defer_loading = false
 
 [git_diff]
 enabled = true
