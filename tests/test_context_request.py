@@ -158,7 +158,7 @@ def test_request_without_tools_still_marks_provider_framing_as_estimated() -> No
 
 
 def test_protocol_repair_does_not_invoke_model_when_required_rules_overflow() -> None:
-    from focus_agent.engine.graph.textual_tool_call_repair import (
+    from focus_agent.engine.tools.textual_repair import (
         _repair_textual_tool_call_response,
     )
 

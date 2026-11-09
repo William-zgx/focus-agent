@@ -155,10 +155,10 @@ flowchart LR
 
 | 场景 | 优先阅读 |
 |------|----------|
-| 一次用户消息如何变成 SSE | `api/routers/harness_runs/` → `services/chat/` → `engine/graph/` → `transport/stream_events.py` → `frontend-sdk` parser/reducers |
+| 一次用户消息如何变成 SSE | `api/routers/harness_runs/` → `services/chat/` → `engine/loop/` → `transport/stream_events.py` → `frontend-sdk` parser/reducers |
 | 分支如何创建/合并 | `branch_decision/` + `services/branches/` + branch/merge routers |
 | 运行态如何装配 | `engine/runtime.py`（`create_runtime` / `AppRuntime`） |
-| 工具如何执行 | `capabilities/` + sandbox service + tool policy in `engine/graph/` |
+| 工具如何执行 | `capabilities/` + sandbox service + tool policy in `engine/tools/` |
 | Android 本地语义 | `apps/web/src/android-local-runtime/` + `docs/android.md` |
 
 ## 4. App Runtime
@@ -418,7 +418,7 @@ POST /v2/threads/{thread_id}/runs/stream
 
 ## 8. LangGraph 主路径
 
-核心图由 `src/focus_agent/engine/loop/builder.py` 的 `build_loop_graph` 构建，`src/focus_agent/engine/graph_builder.py` 是统一入口。`engine/loop/` 实现模型驱动的 agent/tool loop；共享的 registry、memory、model factory、tool executor 与 turn hooks 仍由 `engine/graph/` 下的组件提供。服务层按节点名调用的 `update_state(as_node=...)` 与 interrupt payload 保持不变。
+核心图由 `src/focus_agent/engine/loop/builder.py` 的 `build_loop_graph` 构建，`src/focus_agent/engine/graph_builder.py` 是统一入口。`engine/loop/` 实现模型驱动的 agent/tool loop，并提供 registry、memory、model factory 与 turn hooks；`engine/tools/` 提供 tool executor、调用修复与结果处理。服务层按节点名调用的 `update_state(as_node=...)` 与 interrupt payload 保持不变。
 
 ```text
 bootstrap_turn
@@ -514,7 +514,7 @@ main thread
 - merged branch 在前后端都按只读处理。
 - branch role 会根据第一轮分支交互更新为 execute、verify、deep dive、alternatives、writeup 等语义。
 - imported conclusion 可写入父线程状态，并可进入 memory pipeline。merge apply 时每条 key finding 使用 proposal 的 `finding_evidence_refs`（无逐条 refs 时沿用整份 `evidence_refs`）；`merge_queue` 条目额外带 `open_questions`、`finding_evidence_refs`、`child_thread_id`、`imported_at`；导入 SystemMessage 的文本保持与 chat 侧 backfill 一致，结构化字段放在 `response_metadata.focus_agent.metadata.branch_import`（`branch_id`、`branch_name`、`child_thread_id`、`summary`、`key_findings`、`open_questions`、`evidence_refs`、`artifacts`、`imported_at`），经 `serialize_message` 暴露为 `message.metadata.branch_import`。嵌套 merge（目标是父分支）把结论写入接收分支自己的 branch memory，而不是主线 memory。
-- 主线作答时，`agent_loop_prompt._build_prompt_messages` 把导入 SystemMessage（按 `response_metadata.focus_agent.metadata.branch_import` 或 `Imported conclusion from branch '` 前缀识别）在发给模型的消息里改写为一条用户消息（“我在旁支问题「<分支名>」里已经定下的决定（这些是最终结论）：”/ “Decisions I settled while looking into the side question '<name>' (these are final):” + 结论正文）和一条简短确认（“收到。”/“Noted.”）；存储的消息、API、SDK 与 UI 不变。依据：同一结论以 system 通知呈现时模型多半忽略，见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。
+- 主线作答时，`loop.messages._build_prompt_messages` 把导入 SystemMessage（按 `response_metadata.focus_agent.metadata.branch_import` 或 `Imported conclusion from branch '` 前缀识别）在发给模型的消息里改写为一条用户消息（“我在旁支问题「<分支名>」里已经定下的决定（这些是最终结论）：”/ “Decisions I settled while looking into the side question '<name>' (these are final):” + 结论正文）和一条简短确认（“收到。”/“Noted.”）；存储的消息、API、SDK 与 UI 不变。依据：同一结论以 system 通知呈现时模型多半忽略，见 [branch_ab 实验记录](plans/2026-10-31-branch-ab/status.md)。
 - merge apply 的答案验证门（`services/branches/merge.py::_merge_import_blocked_reason`）只在子线程最后一轮 `answer_verification.status == "contradicted"` 时拒绝已批准的导入；`unsupported` / `blocked`（未能验证，例如所需 web 工具不可用）不拦截用户已批准的结论。
 - prompt assembly 从 `merge_queue` 渲染独立的 `## Approved branch conclusions` 块：最新优先、按分支名标注、包含 findings / open questions / artifacts，有自己的条目与字符预算；它来自线程 state，父线程被 compaction 后依然存在。已在该块中出现的分支不再占用通用 findings 名额。
 - pre-turn branch recommendation 可以生成 `fork_child_branch` 或 `fork_sibling_branch` 的 pending Branch Action，但不会直接执行 fork。
@@ -936,7 +936,8 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
 - Background jobs：`src/focus_agent/services/background_work.py`
 - Graph builder：`src/focus_agent/engine/loop/builder.py`（`src/focus_agent/engine/graph_builder.py` 为统一入口）
 - Agent loop package：`src/focus_agent/engine/loop/`
-- Shared graph components (turn hooks/tool execution/memory nodes)：`src/focus_agent/engine/graph/`
+- Loop components (turn hooks/memory nodes)：`src/focus_agent/engine/loop/`
+- Tool pipeline (execution/call repair/result processing)：`src/focus_agent/engine/tools/`
 - Graph model factory：`src/focus_agent/engine/model_factory.py`
 - Harness：`src/focus_agent/harness/`（`agents/factory.py` 中的 `FocusAgentHarness`）
 - CLI 入口：`src/focus_agent/cli/`、`src/focus_agent/api/cli.py`、`src/focus_agent/prompts/cli.py`

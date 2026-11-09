@@ -459,7 +459,7 @@ def build_artifact_read_tool(context: ToolBuildContext, *, backend: ArtifactBack
             )
             raise
 
-    # engine/graph/tool_execution.py reads the observation saver from this metadata key.
+    # engine/tools/execution.py reads the observation saver from this metadata key.
     artifact_read.metadata = {
         **(getattr(artifact_read, "metadata", {}) or {}),
         "_focus_agent_save_tool_observation": backend.save_tool_observation,

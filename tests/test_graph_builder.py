@@ -11,26 +11,26 @@ from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import ContextBudget
-from focus_agent.engine.graph.textual_tool_call_repair import (
-    _looks_like_textual_tool_call_artifact,
-    _repair_tool_free_answer_response,
-)
-from focus_agent.engine.graph.tool_call_repair import (
+from focus_agent.engine.graph_builder import build_graph
+from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.engine.tools.call_repair import (
     _canonicalize_tool_call_args,
     _repair_and_dedupe_tool_calls,
 )
-from focus_agent.engine.graph.tool_history_repair import (
+from focus_agent.engine.tools.history_repair import (
     _count_tool_call_rounds_since_latest_human,
     _ensure_reasoning_content_for_tool_call_history,
     _messages_for_model,
     _should_force_tool_free_answer,
 )
-from focus_agent.engine.graph.tool_result_fallback import (
+from focus_agent.engine.tools.result_fallback import (
     _invoke_with_tool_result_fallback,
     _tool_result_fallback_message,
 )
-from focus_agent.engine.graph_builder import build_graph
-from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.engine.tools.textual_repair import (
+    _looks_like_textual_tool_call_artifact,
+    _repair_tool_free_answer_response,
+)
 from focus_agent.memory import MemoryExtractor, MemoryRetriever
 from focus_agent.multi_agent.approval_queue import InMemoryApprovalQueue
 
@@ -1413,7 +1413,7 @@ def test_graph_tool_executor_retries_retryable_failure_once(monkeypatch):
 
 
 def test_graph_tool_executor_allows_retry_for_retry_safe_approved_workspace_command_only():
-    from focus_agent.engine.graph.tool_execution import _retryable_failed_inputs
+    from focus_agent.engine.tools.execution import _retryable_failed_inputs
 
     workspace_input = SimpleNamespace(
         tool_call_id="cmd-1",
@@ -1482,7 +1482,7 @@ def test_graph_tool_executor_allows_retry_for_retry_safe_approved_workspace_comm
 
 
 def test_graph_tool_executor_does_not_retry_side_effect_without_retry_safe_metadata():
-    from focus_agent.engine.graph.tool_execution import _retryable_failed_inputs
+    from focus_agent.engine.tools.execution import _retryable_failed_inputs
 
     workspace_input = SimpleNamespace(
         tool_call_id="cmd-1",
@@ -1891,7 +1891,7 @@ def test_graph_tool_executor_requires_approval_before_apply_patch(monkeypatch, t
 
 
 def test_graph_tool_executor_default_allow_permission_does_not_skip_approval(monkeypatch, tmp_path):
-    from focus_agent.engine.graph.tool_execution import HarnessToolServices
+    from focus_agent.engine.tools.execution import HarnessToolServices
     from focus_agent.harness.agents.factory import _build_new_components
     from focus_agent.harness.schemas import HarnessConfig
 

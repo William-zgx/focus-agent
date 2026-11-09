@@ -14,9 +14,9 @@ from pydantic import PrivateAttr
 from focus_agent.capabilities.tool_registry import ToolRegistry
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
-from focus_agent.engine.graph.tool_execution import HarnessToolServices
 from focus_agent.engine.graph_builder import build_graph
 from focus_agent.engine.local_persistence import PersistentInMemorySaver
+from focus_agent.engine.tools.execution import HarnessToolServices
 from focus_agent.harness.governance.permissions import (
     PermissionAction,
     PermissionManager,

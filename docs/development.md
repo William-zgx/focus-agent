@@ -78,7 +78,7 @@ local copy:
   Postgres repository `__init__` and connection/cursor helpers) and
   `decode_json_payload`
 
-Graph helpers live in `src/focus_agent/engine/graph/`.
+Agent-loop helpers live in `src/focus_agent/engine/loop/`; tool execution, call repair, and result-processing helpers live in `src/focus_agent/engine/tools/`.
 
 ## Common Flows
 

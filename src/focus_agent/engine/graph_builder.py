@@ -7,8 +7,8 @@ from ..config import Settings
 from ..memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ..model_registry import create_chat_model
 from ..skills import SkillRegistry
-from .graph.tool_execution import HarnessToolServices
 from .loop.builder import build_loop_graph
+from .tools.execution import HarnessToolServices
 
 
 def build_graph(

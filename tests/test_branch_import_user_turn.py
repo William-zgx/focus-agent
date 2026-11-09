@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from focus_agent.engine.graph.agent_loop_prompt import (
+from focus_agent.engine.loop.messages import (
     _build_prompt_messages,
     _import_notices_as_user_turns,
 )

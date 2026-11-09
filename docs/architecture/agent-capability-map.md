@@ -1,6 +1,6 @@
 # Agent Capability Map
 
-Updated: 2026-11-05 (code anchors updated for the current `engine/graph/` and multi-agent package layout).
+Updated: 2026-11-05 (code anchors updated for the current `engine/loop/`, `engine/tools/`, and multi-agent package layout).
 
 Current architecture capability map for the platform workbench. Positioning and
 product layers: [../project-overview.md](../project-overview.md). This map is a

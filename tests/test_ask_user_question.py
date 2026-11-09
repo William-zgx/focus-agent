@@ -23,7 +23,7 @@ from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import ToolResultCacheStore
 from focus_agent.config import Settings, ToolCatalogConfig
 from focus_agent.core.types import ContextBudget
-from focus_agent.engine.graph.tool_execution import make_tool_executor_node
+from focus_agent.engine.tools.execution import make_tool_executor_node
 
 
 def _sample_questions() -> list[dict]:
@@ -208,7 +208,7 @@ def test_tool_executor_resumes_ask_user_question_with_answers(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "focus_agent.engine.graph.tool_execution.interrupt",
+        "focus_agent.engine.tools.execution.interrupt",
         _fake_interrupt,
     )
     result = node(state, _Runtime(context))

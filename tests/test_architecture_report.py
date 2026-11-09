@@ -195,14 +195,14 @@ def test_architecture_regression_gate_rejects_a_resolved_file_that_becomes_large
         root=architecture_report.REPO_ROOT,
     )
     report = {
-        "large_files": [{"path": "src/focus_agent/engine/graph/agent_loop.py", "lines": 801}],
+        "large_files": [{"path": "src/focus_agent/engine/loop/agent.py", "lines": 801}],
         "import_boundary_issues": [],
     }
 
     assert baseline["large_file_threshold"] == 800
     assert baseline["large_files"] == {}
     assert architecture_report.architecture_regressions(report, baseline) == [
-        "new large file: src/focus_agent/engine/graph/agent_loop.py (801 lines)"
+        "new large file: src/focus_agent/engine/loop/agent.py (801 lines)"
     ]
 
 

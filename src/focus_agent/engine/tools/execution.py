@@ -10,8 +10,8 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from focus_agent.engine.graph.tool_call_repair import _canonicalize_tool_call_args
-from focus_agent.engine.graph.tool_result_fallback import _context_budget_from_state
+from focus_agent.engine.tools.call_repair import _canonicalize_tool_call_args
+from focus_agent.engine.tools.result_fallback import _context_budget_from_state
 
 from ...capabilities.ask_user_question import (
     ASK_USER_QUESTION_TOOL_NAME,
@@ -38,14 +38,14 @@ from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_tool_outcomes_from_messages
 from ...core.state import AgentState, append_agent_state_record
-from .retrieval_ledger import collect_retrieval_ledger
-from .tool_call_guards import _intercept_tool_call, _preflight_tool_call
-from .tool_result_hooks import (
+from .guards import _intercept_tool_call, _preflight_tool_call
+from .result_hooks import (
     _apply_result_hooks,
     _ask_permission_result,
     _patch_tool_message_content,
     _patch_tool_message_error,
 )
+from .retrieval_ledger import collect_retrieval_ledger
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,9 @@ from collections.abc import Callable
 from typing import Any
 
 from ...core.state import AgentState
+from ..tools.execution import HarnessToolServices
 from .memory_nodes import maybe_interrupt_for_merge
 from .memory_nodes import summarize_turn as _summarize_turn_impl
-from .tool_execution import HarnessToolServices
 
 logger = logging.getLogger(__name__)
 

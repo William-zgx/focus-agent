@@ -15,20 +15,43 @@ from ...core.request_context import RequestContext
 from ...core.runtime_outcome import build_task_outcome
 from ...core.state import AgentState, append_agent_state_record
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE, STREAM_VISIBILITY_VISIBLE
-from ..graph.agent_loop_helpers import (
-    _latest_tool_result_content,
-    _message_content_text,
-    _new_citation_refs,
+from ..tools.call_repair import _known_tool_names, _repair_and_dedupe_tool_calls
+from ..tools.evidence import (
+    evidence_bundle_to_citation_refs,
+    normalize_evidence_bundle,
+    normalize_evidence_ledger,
 )
-from ..graph.agent_loop_prompt import (
+from ..tools.history_repair import (
+    _ensure_reasoning_content_for_tool_call_history,
+    _latest_human_message_text,
+    _latest_turn_messages,
+    _messages_for_model,
+    _should_force_tool_free_answer,
+)
+from ..tools.result_fallback import (
+    _context_budget_from_state,
+    _has_tool_result_messages,
+    _invoke_with_tool_result_fallback,
+    _tool_result_fallback_message,
+)
+from ..tools.textual_repair import (
+    _looks_like_textual_tool_call_artifact,
+    _repair_textual_tool_call_response,
+    _repair_tool_free_answer_response,
+)
+from .messages import (
     _apply_agent_definition,
     _build_prompt_messages,
     _context_overflow_execution_contract,
     _context_overflow_response,
+    _latest_tool_result_content,
+    _message_content_text,
+    _new_citation_refs,
     _root_thread_id,
     _steer_block,
 )
-from ..graph.agent_loop_support import (
+from .prompt import operating_note
+from .support import (
     _drain_steer_messages,
     _filter_tools_by_agent_def,
     _model_for_stream_phase,
@@ -37,31 +60,6 @@ from ..graph.agent_loop_support import (
     _with_focus_agent_turn_metadata,
     _with_stream_phase,
 )
-from ..graph.evidence import (
-    evidence_bundle_to_citation_refs,
-    normalize_evidence_bundle,
-    normalize_evidence_ledger,
-)
-from ..graph.textual_tool_call_repair import (
-    _looks_like_textual_tool_call_artifact,
-    _repair_textual_tool_call_response,
-    _repair_tool_free_answer_response,
-)
-from ..graph.tool_call_repair import _known_tool_names, _repair_and_dedupe_tool_calls
-from ..graph.tool_history_repair import (
-    _ensure_reasoning_content_for_tool_call_history,
-    _latest_human_message_text,
-    _latest_turn_messages,
-    _messages_for_model,
-    _should_force_tool_free_answer,
-)
-from ..graph.tool_result_fallback import (
-    _context_budget_from_state,
-    _has_tool_result_messages,
-    _invoke_with_tool_result_fallback,
-    _tool_result_fallback_message,
-)
-from .prompt import operating_note
 from .todos import todos_block
 
 AGENT_CORE_V2 = "v2"

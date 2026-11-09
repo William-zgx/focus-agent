@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from focus_agent.engine.graph.tool_messages import iter_tool_results, tool_message_failed
+from focus_agent.engine.tools.messages import iter_tool_results, tool_message_failed
 
 from ...core.tool_call_protocol import messages_since_latest_human
 

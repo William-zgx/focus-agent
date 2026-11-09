@@ -7,9 +7,9 @@ from langchain.messages import AIMessage, SystemMessage
 from focus_agent.core.context_request import build_context_request
 from focus_agent.core.tool_protocol import looks_like_textual_tool_call_artifact
 from focus_agent.core.types import ContextBudget
-from focus_agent.engine.graph.tool_call_repair import _known_tool_names
-from focus_agent.engine.graph.tool_history_repair import _message_text
-from focus_agent.engine.graph.tool_result_fallback import (
+from focus_agent.engine.tools.call_repair import _known_tool_names
+from focus_agent.engine.tools.history_repair import _message_text
+from focus_agent.engine.tools.result_fallback import (
     _has_tool_result_messages,
     _invoke_tool_result_synthesis,
     _invoke_with_tool_result_fallback,

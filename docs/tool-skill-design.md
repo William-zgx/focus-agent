@@ -153,7 +153,7 @@ The parser is intentionally minimal and optimized for bundled skills plus straig
 2. The registry keeps the full catalog visible but marks globally disabled or individually disabled skills as inactive.
 3. Skills activate through API `skill_hints`, semantic matching, or prefix triggers such as `plan:` and `review:` only when the Skill system and the target skill are enabled.
 4. `ChatService` resolves active skills, writes skill hints into `RequestContext`, persists `active_skill_ids`, and uses the cleaned task as `task_brief`.
-5. The `assemble_context` graph node (`engine/graph/memory_nodes.py`) asks the registry for available-skill and active-skill prompt blocks.
+5. The `assemble_context` graph node (`engine/loop/memory_nodes.py`) asks the registry for available-skill and active-skill prompt blocks.
 6. `context_policy` renders those blocks into the final system prompt alongside scene, branch scope, memory, and findings.
 
 ![Skill prompt injection and tool narrowing](assets/diagrams/tool-skill-runtime.svg)

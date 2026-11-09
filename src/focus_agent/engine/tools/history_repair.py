@@ -12,7 +12,7 @@ from focus_agent.core.tool_call_protocol import (
     messages_since_latest_human,
     repair_dangling_tool_call_messages,
 )
-from focus_agent.engine.graph.tool_messages import tool_message_failed
+from focus_agent.engine.tools.messages import tool_message_failed
 from focus_agent.model_registry import default_thinking_enabled, supports_thinking_mode
 
 _MAX_CONSECUTIVE_TOOL_CALL_ROUNDS = 4

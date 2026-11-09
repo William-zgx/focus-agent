@@ -9,20 +9,20 @@ from focus_agent.core.repo_call import has_repo_method
 from focus_agent.core.state import AgentState
 from focus_agent.core.tool_protocol import looks_like_textual_tool_call_artifact
 from focus_agent.core.types import ContextBudget
-from focus_agent.engine.graph.evidence import (
+from focus_agent.engine.tools.evidence import (
     evidence_bundle_source_snippets,
     normalize_evidence_bundle,
     relevant_web_tool_call_ids,
 )
-from focus_agent.engine.graph.lexicon import contains_cjk
-from focus_agent.engine.graph.tool_history_repair import (
+from focus_agent.engine.tools.history_repair import (
     _latest_human_message_text,
     _latest_turn_messages,
     _message_text,
     _truncate_inline,
 )
-from focus_agent.engine.graph.tool_messages import prompt_observation_json, tool_message_json
-from focus_agent.engine.graph.web_result_fallback import (
+from focus_agent.engine.tools.lexicon import contains_cjk
+from focus_agent.engine.tools.messages import prompt_observation_json, tool_message_json
+from focus_agent.engine.tools.web_fallback import (
     _fallback_web_answer_from_tool_results,
     _latest_relevant_web_payloads,
     _looks_like_web_observation_payload,

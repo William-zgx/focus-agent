@@ -12,7 +12,7 @@ from ...config import Settings
 from ...memory import MemoryExtractor, MemoryPolicy, MemoryRetriever, MemoryWriter
 from ...skills import SkillRegistry
 from ..model_factory import GraphModelFactory
-from .tool_execution import HarnessToolServices, make_tool_executor_node
+from ..tools.execution import HarnessToolServices, make_tool_executor_node
 
 
 @dataclass(frozen=True)

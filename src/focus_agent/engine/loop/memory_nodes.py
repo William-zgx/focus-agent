@@ -16,8 +16,8 @@ from focus_agent.core.merge_review_inputs import finding_text
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.state import AgentState
 from focus_agent.core.types import FindingItem, PromptMode
-from focus_agent.engine.graph.tool_history_repair import _latest_human_message_text
-from focus_agent.engine.graph.tool_result_fallback import (
+from focus_agent.engine.tools.history_repair import _latest_human_message_text
+from focus_agent.engine.tools.result_fallback import (
     _context_budget_from_state,
     _latest_final_ai_text,
 )

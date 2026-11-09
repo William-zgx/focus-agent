@@ -654,7 +654,7 @@ Postgres runtime 注入 `MemoryEmbeddingService` 时，`accepted` 和 `merged` �
 - audit
 - canonical repository write
 
-在 graph 执行路径中，`engine/graph/tool_execution.py` 的工具执行节点会先调用 `authorize_memory_tool_args()` 绑定当前 `RequestContext`：
+在 graph 执行路径中，`engine/tools/execution.py` 的工具执行节点会先调用 `authorize_memory_tool_args()` 绑定当前 `RequestContext`：
 
 - 未传 `user_id/root_thread_id` 时自动使用当前 context。
 - 传入不匹配的 `user_id/root_thread_id` 会返回结构化 ToolMessage error，工具不会执行。
@@ -1095,7 +1095,7 @@ Local fallback 是开发/测试便利路径，不应作为生产长期 memory �
 运行时与 graph：
 
 - `src/focus_agent/engine/runtime.py`
-- `src/focus_agent/engine/graph/memory_nodes.py`
+- `src/focus_agent/engine/loop/memory_nodes.py`
 - `src/focus_agent/api/route_utils/readiness.py`
 - `src/focus_agent/core/state.py`
 - `src/focus_agent/services/branches/merge.py`
