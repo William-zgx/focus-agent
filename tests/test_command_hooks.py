@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from focus_agent.capabilities.tool_messages import build_tool_message
 from focus_agent.capabilities.tool_runtime import ToolExecutionResult
 from focus_agent.config import CommandHookConfig
-from focus_agent.engine.graph.tool_result_hooks import _apply_result_hooks
+from focus_agent.engine.tools.result_hooks import _apply_result_hooks
 from focus_agent.harness.extensions import ExtensionContext, ExtensionRegistry
 from focus_agent.harness.extensions.command_hooks import CommandHooksExtension
 

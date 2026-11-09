@@ -3,7 +3,8 @@ from types import SimpleNamespace
 
 from focus_agent.capabilities.tool_messages import build_tool_message
 from focus_agent.capabilities.tool_runtime import ToolExecutionResult
-from focus_agent.engine.graph import tool_execution, tool_result_hooks
+from focus_agent.engine.tools import execution as tool_execution
+from focus_agent.engine.tools import result_hooks as tool_result_hooks
 from focus_agent.harness.extensions import ToolResultInterception as ExtensionInterception
 from focus_agent.harness.middleware import ToolResultInterception as MiddlewareInterception
 

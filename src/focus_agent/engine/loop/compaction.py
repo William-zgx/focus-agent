@@ -34,12 +34,22 @@ from ...core.message_utils import clip_text
 from ...core.state import AgentState
 from ...core.time_utils import utc_now
 from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE
-from ..graph.agent_loop_support import _with_stream_phase
-from ..graph.output_language import _requires_chinese_output
-from ..graph.textual_tool_call_repair import _looks_like_textual_tool_call_artifact
 from ..model_factory import ModelInvocationTimeoutError
+from ..tools.lexicon import CJK_RE
+from ..tools.textual_repair import _looks_like_textual_tool_call_artifact
+from .support import _with_stream_phase
 
 logger = logging.getLogger(__name__)
+
+
+def _cjk_count(value: str) -> int:
+    return len(CJK_RE.findall(value))
+
+
+def _requires_chinese_output(user_text: str) -> bool:
+    # A bare "chinese" would also match topics such as "Chinese New Year".
+    return bool(_cjk_count(user_text)) or "in chinese" in user_text.lower()
+
 
 _MESSAGE_MAX_CHARS = 2_000
 _TOOL_ARGS_MAX_CHARS = 400

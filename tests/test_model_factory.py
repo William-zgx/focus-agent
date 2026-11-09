@@ -173,7 +173,7 @@ def test_timeout_bound_model_keeps_langgraph_stream_context():
     from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
     from langgraph.graph import MessagesState
 
-    from focus_agent.engine.graph.agent_loop_support import _with_stream_phase
+    from focus_agent.engine.loop.support import _with_stream_phase
     from focus_agent.transport.stream_events import (
         STREAM_VISIBILITY_VISIBLE,
         stream_visibility_phase_from_metadata,

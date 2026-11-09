@@ -190,7 +190,7 @@ def test_failed_save_and_artifact_read_trim_are_not_reported_as_retrievable():
 
 def test_graph_uses_active_child_thread_for_observation_scope(monkeypatch):
     from focus_agent.capabilities.tool_execution_types import ToolExecutionResult
-    from focus_agent.engine.graph import tool_execution as graph_tool_execution
+    from focus_agent.engine.tools import execution as graph_tool_execution
 
     @tool
     def probe() -> str:

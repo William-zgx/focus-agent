@@ -2,7 +2,7 @@ import json
 
 from langchain.messages import AIMessage, ToolMessage
 
-from focus_agent.engine.graph.evidence import (
+from focus_agent.engine.tools.evidence import (
     EVIDENCE_LAYER_SNIPPET,
     TRUST_TIER_BACKGROUND,
     TRUST_TIER_HIGH,

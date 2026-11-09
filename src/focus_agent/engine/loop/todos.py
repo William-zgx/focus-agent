@@ -15,7 +15,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from ...core.tool_call_protocol import messages_since_latest_human
-from ..graph.tool_messages import iter_tool_results, tool_message_failed
+from ..tools.messages import iter_tool_results, tool_message_failed
 
 TODO_WRITE_TOOL_NAME = "todo_write"
 MAX_TODOS = 20

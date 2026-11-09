@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from focus_agent.engine.graph.retrieval_ledger import RetrievalLedgerEntry, retrieval_key
-from focus_agent.engine.graph.tool_call_guards import _intercept_tool_call, _preflight_tool_call
-from focus_agent.engine.graph.tool_execution import HarnessToolServices
+from focus_agent.engine.tools.execution import HarnessToolServices
+from focus_agent.engine.tools.guards import _intercept_tool_call, _preflight_tool_call
+from focus_agent.engine.tools.retrieval_ledger import RetrievalLedgerEntry, retrieval_key
 from focus_agent.harness.extensions import ToolInterceptionResult
 from focus_agent.harness.governance.permissions import PermissionAction
 

@@ -43,7 +43,7 @@ def _run_cold_import(code: str) -> subprocess.CompletedProcess[str]:
         """
         import sys
 
-        from focus_agent.engine.graph.tool_execution import HarnessToolServices
+        from focus_agent.engine.tools.execution import HarnessToolServices
 
         assert HarnessToolServices.__name__ == "HarnessToolServices"
         assert "focus_agent.engine.loop.builder" not in sys.modules
@@ -67,38 +67,17 @@ def test_leaf_modules_import_cleanly_in_fresh_process(code: str) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_graph_package_preserves_eager_export_contract_lazily() -> None:
+def test_tools_package_does_not_eagerly_import_execution() -> None:
     result = _run_cold_import(
         """
-        import importlib
         import sys
 
-        import focus_agent.engine.graph as graph
+        import focus_agent.engine.tools as tools
 
+        assert "focus_agent.engine.tools.execution" not in sys.modules
         assert "focus_agent.engine.loop.builder" not in sys.modules
         assert "focus_agent.engine.model_factory" not in sys.modules
-
-        module_names = ("tool_execution",)
-        modules = [
-            importlib.import_module(f"focus_agent.engine.graph.{module_name}")
-            for module_name in module_names
-        ]
-        expected_exports = list(
-            dict.fromkeys(
-                name
-                for module in modules
-                for name in module.__all__
-            )
-        )
-        expected_owners = {
-            name: module
-            for module in modules
-            for name in module.__all__
-        }
-
-        assert graph.__all__ == expected_exports
-        for name in expected_exports:
-            assert getattr(graph, name) is getattr(expected_owners[name], name)
+        assert not hasattr(tools, "HarnessToolServices")
         """
     )
 

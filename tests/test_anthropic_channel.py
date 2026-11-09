@@ -8,8 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from focus_agent.config import ConfiguredModel, ModelCatalogConfig, ProviderConfig, Settings
 from focus_agent.core.token_usage import accumulate_token_usage, message_token_usage
-from focus_agent.engine.graph.agent_loop_helpers import _message_content_text
-from focus_agent.engine.graph.tool_history_repair import _messages_for_model
+from focus_agent.engine.loop.messages import _message_content_text
+from focus_agent.engine.tools.history_repair import _messages_for_model
 from focus_agent.model_registry import create_chat_model
 from focus_agent.observability.trajectory import _build_metrics
 

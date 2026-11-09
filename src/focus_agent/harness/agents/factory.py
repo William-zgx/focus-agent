@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
-from ...engine.graph.tool_execution import HarnessToolServices
+from ...engine.tools.execution import HarnessToolServices
 from ..middleware import (
     DanglingToolCallMiddleware,
     LLMErrorHandlingMiddleware,

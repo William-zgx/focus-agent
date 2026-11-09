@@ -98,7 +98,7 @@ checkout/worktree 后，先重新执行 `make install`（或 `make install-anthr
 - `src/focus_agent/repositories/_postgres_base.py`：`PostgresMixin`（Postgres 仓储共用的
   `__init__` 与 connection/cursor 辅助）和 `decode_json_payload`
 
-图助手模块位于 `src/focus_agent/engine/graph/`。
+Agent loop 助手模块位于 `src/focus_agent/engine/loop/`；工具执行、调用修复与结果处理模块位于 `src/focus_agent/engine/tools/`。
 
 ## 常见开发流
 

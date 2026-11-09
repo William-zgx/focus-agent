@@ -2,7 +2,7 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.messages import messages_from_dict, messages_to_dict
 
-from focus_agent.engine.graph.tool_history_repair import _messages_for_model
+from focus_agent.engine.tools.history_repair import _messages_for_model
 
 
 @pytest.mark.parametrize("restored", [False, True])
