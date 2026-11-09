@@ -66,8 +66,11 @@ def _repair_textual_tool_call_response(
     available_tools: list[Any],
     model_for,
     model_with_tools_for,
+    known_tool_names: set[str] | None = None,
 ) -> Any:
-    known_names = _known_tool_names(available_tools)
+    known_names = (
+        _known_tool_names(available_tools) if known_tool_names is None else known_tool_names
+    )
     if not _looks_like_textual_tool_call_artifact(response, known_tool_names=known_names):
         return response
 

@@ -449,6 +449,7 @@ flowchart LR
 - `retrieve_memory` 从可读 namespace 检索 durable memory。
 - `assemble_context` 组装 recent messages、rolling summary、memory block、skill block 和 prompt budget。
 - `agent_loop` 把 agent definition 允许的工具绑定给模型，由模型决定是否调用、调用哪些；模型创建和 bind-tools 缓存由 `engine/model_factory.py` 承担。
+- 标记 `defer_loading` 的低频工具默认不直接绑定：模型通过只读 `tool_search` 按名称或关键词加载，已加载集合从当前 branch 的完整 transcript 派生，跨轮次与 compaction 保持且不会泄漏到子任务。`AGENT_DEFERRED_TOOLS_ENABLED=false` 恢复原来的全量 eager binding；执行器仍保留 agent definition 允许的完整工具集，审批与权限边界不变。
 - message/tool-call repair helpers 保持在 graph builder/message helper 边界内，避免 provider stream chunk 泄漏到 prompt。
 - `tool_executor` 执行工具、处理缓存、fallback 和观察裁剪。调用前依次经过 preflight、extension `on_tool_call`、middleware 与 `PermissionManager`：DENY 返回结构化拒绝；ASK 与 `requires_approval` 共用 approval payload / `approval_queue` / LangGraph interrupt / approve/reject resume 路径，ALLOW 不会跳过工具自身审批。`run_subtask` 子图显式关闭 approval interrupt，ASK 在子代理内变成 blocked ToolMessage，不会从父工具调用中抛出 interrupt。
 - 执行后通过 middleware 与 extension `on_tool_result` 处理结果；工具 catalog 中的 `[[hooks.pre_tool_use]]` / `[[hooks.post_tool_use]]` 由同一个内置 command-hook Extension 执行，不新增 tool execution 拦截层。pre hook 可阻断，post hook 可通过 `additional_context` 追加模型可见结果。

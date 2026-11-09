@@ -114,6 +114,7 @@ def _build_tool(
             "parallel_safe": read_only,
             "cacheable": False,
             "requires_approval": server.requires_approval,
+            "defer_loading": server.defer_loading,
             "risk_level": (
                 "high" if server.requires_approval else ("low" if read_only else "medium")
             ),

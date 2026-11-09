@@ -85,6 +85,27 @@ derives a toolset catalog from runtime metadata and exposes it through
 duplicating a parallel registry. The catalog summarizes tool names, providers,
 risk levels, roles, policies, network use, and write/side-effect flags.
 
+### Deferred tool loading
+
+The v2 loop keeps frequently used read and interaction tools eager, including the
+read-only Git tools, while task, note, secondary memory/conversation, workspace
+mutation/statistics, artifact-management, and skill-management tools are
+deferred by default. MCP
+tools also default to `defer_loading = true`. This reduces bound schemas without
+changing execution permissions or approval requirements.
+
+When deferred tools are available, the model receives a stable `Deferred tools`
+catalog and the read-only `tool_search` tool. `select:name_a,name_b` loads exact
+names; keyword queries search names, descriptions, intent tags, and toolsets,
+with name hits ranked first and at most 10 results. Loaded tools are derived
+from the full branch transcript, remain available across turns and compaction,
+and are isolated from fresh subtask transcripts. A direct call to an allowed
+deferred tool still executes and marks it loaded.
+
+Set `defer_loading = false` in a tool's TOML metadata overlay or MCP server
+entry to keep it eager. Set `AGENT_DEFERRED_TOOLS_ENABLED=false` to disable the
+entire mechanism and restore the previous eager binding behavior.
+
 ## Skill Boundary
 
 A skill is prompt-level guidance for a repeatable task pattern. It can decide when and how to combine tools, but it should not claim hidden capabilities that the runtime cannot provide.
@@ -240,6 +261,7 @@ env_from = {API_KEY = "DEMO_MCP_API_KEY"}
 enabled = true
 allowed_tools = ["add"]
 requires_approval = true
+defer_loading = true
 timeout_seconds = 60
 ```
 

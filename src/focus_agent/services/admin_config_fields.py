@@ -24,6 +24,13 @@ class ConfigFieldSpec(NamedTuple):
 
 _POLICY_FIELD_SPECS: tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
+        "agent_deferred_tools_enabled",
+        "AGENT_DEFERRED_TOOLS_ENABLED",
+        "Deferred tools",
+        "boolean",
+        "Load rarely used tools on demand through tool_search.",
+    ),
+    ConfigFieldSpec(
         "multi_agent_v2_enabled",
         "MULTI_AGENT_V2_ENABLED",
         "Multi-agent v2",

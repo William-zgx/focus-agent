@@ -87,6 +87,9 @@ requires_approval = true
 
 [run_workspace_command]
 enabled = true
+# Deferred by default: the model loads it through tool_search. Uncomment to
+# bind it on every call; approval and permission metadata are unchanged.
+# defer_loading = false
 label = "Run Workspace Command"
 description = "Run an allowlisted test, lint, build, check, or trusted local skill script command in the workspace."
 allowed_commands = ["cargo", "go", "make", "mypy", "npm", "pnpm", "pytest", "ruff", "uv"]
@@ -210,6 +213,8 @@ order = 100
 # env_from = {API_KEY = "DEMO_MCP_API_KEY"}
 # allowed_tools = ["add"]
 # requires_approval = true
+# MCP tools are deferred by default; set false to expose them eagerly.
+# defer_loading = false
 # timeout_seconds = 60
 
 # Optional server-only permission rules. The last matching rule wins; calls that

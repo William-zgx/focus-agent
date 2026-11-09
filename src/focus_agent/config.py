@@ -199,6 +199,7 @@ class Settings:
     context_memory_evidence_enabled: bool = True
     agent_core: str = "v2"
     agent_max_tool_rounds: int = 16
+    agent_deferred_tools_enabled: bool = True
     multi_agent_v2_enabled: bool = False
     multi_agent_async_approval_enabled: bool = False
     multi_agent_message_ttl_seconds: float = 300.0

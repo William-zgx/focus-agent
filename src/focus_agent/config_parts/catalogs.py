@@ -62,6 +62,7 @@ _TOOL_METADATA_OVERLAY_KEYS = frozenset(
         "allowed_roles",
         "cache_scope",
         "cacheable",
+        "defer_loading",
         "fallback_group",
         "intent_policies",
         "intent_tags",
@@ -82,7 +83,7 @@ _MCP_SERVER_NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
 _MCP_TRANSPORTS = frozenset({"stdio", "streamable_http"})
 _MCP_SERVER_CONFIG_KEYS = frozenset(
     "name transport command args env env_from url headers_from_env enabled "
-    "allowed_tools requires_approval timeout_seconds".split()
+    "allowed_tools requires_approval defer_loading timeout_seconds".split()
 )
 _TOOL_CATALOG_RESERVED_KEYS = frozenset({"providers", "mcp_servers", "permissions", "hooks"})
 
@@ -789,6 +790,7 @@ def _load_mcp_server_configs(
                 enabled=_tool_enabled(item.get("enabled"), True),
                 allowed_tools=tuple(dict.fromkeys(_split_listish(item.get("allowed_tools")))),
                 requires_approval=_tool_enabled(item.get("requires_approval"), True),
+                defer_loading=_tool_enabled(item.get("defer_loading"), True),
                 timeout_seconds=timeout_seconds,
             )
         )

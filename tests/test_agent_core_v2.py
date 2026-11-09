@@ -79,6 +79,7 @@ def _v2_graph(
     *,
     tools=(lookup,),
     harness_services=None,
+    agent_definition_registry=None,
     **settings,
 ):
     monkeypatch.setattr(
@@ -92,6 +93,7 @@ def _v2_graph(
         memory_extractor=MemoryExtractor(mode="off"),
         tool_registry=ToolRegistry(tools=tuple(tools)),
         harness_services=harness_services,
+        agent_definition_registry=agent_definition_registry,
     )
 
 
