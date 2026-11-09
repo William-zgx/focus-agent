@@ -100,6 +100,9 @@ requires_approval = true
 enabled = true
 label = "Git Status"
 description = "Inspect the current repository status from the workspace root."
+# Git tools are deferred by default. This overlay makes one eager without
+# changing its approval, permission, or other security metadata.
+# defer_loading = false
 
 [git_diff]
 enabled = true
@@ -210,6 +213,8 @@ order = 100
 # env_from = {API_KEY = "DEMO_MCP_API_KEY"}
 # allowed_tools = ["add"]
 # requires_approval = true
+# MCP tools are deferred by default; set false to expose them eagerly.
+# defer_loading = false
 # timeout_seconds = 60
 
 # Optional server-only permission rules. The last matching rule wins; calls that

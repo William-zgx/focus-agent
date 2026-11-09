@@ -29,11 +29,7 @@ from ..tools.call_repair import _known_tool_names
 from ..tools.execution import HarnessToolServices
 from .agent import make_loop_agent_node
 from .compaction import make_model_compaction_summarizer
-from .components import (
-    GraphComponents,
-    make_graph_tool_executor,
-    resolve_graph_components,
-)
+from .components import GraphComponents, resolve_graph_components
 from .memory_nodes import (
     make_assemble_context_node,
     make_extract_memories_node,
@@ -42,6 +38,7 @@ from .memory_nodes import (
 )
 from .subtask import with_subtask_tool
 from .todos import TODO_WRITE_TOOL_NAME, build_todo_write_tool
+from .tool_search import make_loop_tool_executor, with_tool_search
 from .turn_hooks import TurnLifecycle
 
 
@@ -80,19 +77,22 @@ def build_loop_graph(
     run_manager: Any | None = None,
     agent_definition_registry: Any | None = None,
 ):
-    components = _with_todo_write(
-        resolve_graph_components(
-            settings=settings,
-            checkpointer=checkpointer,
-            store=store,
-            memory_retriever=memory_retriever,
-            memory_policy=memory_policy,
-            memory_writer=memory_writer,
-            memory_extractor=memory_extractor,
-            skill_registry=skill_registry,
-            tool_registry=tool_registry,
-            chat_model_factory=chat_model_factory,
-        )
+    components = with_tool_search(
+        settings=settings,
+        components=_with_todo_write(
+            resolve_graph_components(
+                settings=settings,
+                checkpointer=checkpointer,
+                store=store,
+                memory_retriever=memory_retriever,
+                memory_policy=memory_policy,
+                memory_writer=memory_writer,
+                memory_extractor=memory_extractor,
+                skill_registry=skill_registry,
+                tool_registry=tool_registry,
+                chat_model_factory=chat_model_factory,
+            )
+        ),
     )
     components = with_subtask_tool(
         settings=settings,
@@ -129,12 +129,13 @@ def build_loop_graph(
     )
     builder.add_node(
         "tool_executor",
-        make_graph_tool_executor(
+        make_loop_tool_executor(
             settings=settings,
             components=components,
             approval_queue=approval_queue,
             harness_services=harness_services,
             include_tool_invocation_context=True,
+            agent_definition_registry=agent_definition_registry,
         ),
     )
     builder.add_node("summarize_turn", lifecycle.summarize_turn)

@@ -77,6 +77,7 @@ class MCPServerConfig:
     enabled: bool = True
     allowed_tools: tuple[str, ...] = ()
     requires_approval: bool = True
+    defer_loading: bool = True
     timeout_seconds: float = 60.0
 
 

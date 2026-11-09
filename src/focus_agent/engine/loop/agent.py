@@ -61,6 +61,7 @@ from .support import (
     _with_stream_phase,
 )
 from .todos import todos_block
+from .tool_search import deferred_tools_block, loaded_deferred_tool_names, tool_is_deferred
 
 AGENT_CORE_V2 = "v2"
 _MODEL_DRIVEN_POLICY = "model_driven"
@@ -102,16 +103,34 @@ def make_loop_agent_node(
             context_budget = context_budget.model_copy(update={"tokenizer_id": selected_model})
 
         available_tools = _filter_tools_by_agent_def(all_tools, agent_def)
+        # The operating note and textual repair see every available tool, including
+        # deferred ones that are not bound yet.
+        known_names = _known_tool_names(available_tools)
+        deferred_tools = (
+            [tool_obj for tool_obj in available_tools if tool_is_deferred(tool_obj)]
+            if settings.agent_deferred_tools_enabled
+            else []
+        )
+        # Like todos, loaded tools belong to the full branch transcript, not the compacted view.
+        branch_messages = branch_context_messages(state_messages, values=state)
+        loaded_names = loaded_deferred_tool_names(branch_messages, deferred_tools)
+        if deferred_tools:
+            core_tools = [
+                tool_obj for tool_obj in available_tools if not tool_is_deferred(tool_obj)
+            ]
+            available_tools = [
+                *core_tools,
+                *(tool_obj for tool_obj in deferred_tools if tool_obj.name in loaded_names),
+            ]
         tool_budget_exhausted = bool(available_tools) and _should_force_tool_free_answer(
             state_messages, max_rounds=max_tool_rounds
         )
         if tool_budget_exhausted:
             available_tools = []
-        known_names = _known_tool_names(available_tools or all_tools)
         history = _messages_for_model(state)
         steer_block = _steer_block(_drain_steer_messages(run_manager, _root_thread_id(runtime)))
-        # Todos come from the full branch transcript; the model view may be compacted.
-        todos_note = todos_block(branch_context_messages(state_messages, values=state))
+        todos_note = todos_block(branch_messages)
+        deferred_note = deferred_tools_block(deferred_tools)
 
         def request_with(offered_tools: list[Any]) -> ContextRequest:
             prompt = _build_prompt_messages(
@@ -122,9 +141,10 @@ def make_loop_agent_node(
                     part
                     for part in (
                         operating_note(
-                            _known_tool_names(offered_tools) if offered_tools else (),
+                            known_names if offered_tools else (),
                             tool_budget_exhausted=tool_budget_exhausted,
                         ),
+                        deferred_note if offered_tools else "",
                         todos_note,
                     )
                     if part
@@ -198,6 +218,7 @@ def make_loop_agent_node(
                         available_tools=available_tools,
                         model_for=quarantined_model_for,
                         model_with_tools_for=quarantined_model_with_tools_for,
+                        known_tool_names=known_names,
                     )
                     if available_tools
                     else _repair_tool_free_answer_response(

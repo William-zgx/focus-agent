@@ -104,6 +104,11 @@ def load_agent_config(env: MutableMapping[str, str], defaults: Any) -> dict[str,
         "agent_max_tool_rounds": max(
             1, env_int(env, "AGENT_MAX_TOOL_ROUNDS", defaults.agent_max_tool_rounds)
         ),
+        "agent_deferred_tools_enabled": env_bool(
+            env,
+            "AGENT_DEFERRED_TOOLS_ENABLED",
+            default=defaults.agent_deferred_tools_enabled,
+        ),
         "agent_branch_decision_enabled": env_bool(
             env,
             "AGENT_BRANCH_DECISION_ENABLED",

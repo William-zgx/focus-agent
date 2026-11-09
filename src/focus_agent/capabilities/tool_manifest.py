@@ -14,6 +14,7 @@ _BOOL_METADATA_FIELDS = frozenset(
         "allow_network",
         "allow_filesystem",
         "requires_approval",
+        "defer_loading",
     }
 )
 _TUPLE_METADATA_FIELDS = frozenset(
@@ -183,6 +184,12 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_policies": ("workspace_lookup", "live_web_research", "execution"),
         "allowed_roles": ("planner", "executor", "critic", "memory_curator"),
     },
+    "artifact_search": {
+        "toolset": "artifact",
+        "parallel_safe": True,
+        "intent_policies": ("workspace_lookup", "execution"),
+        "allowed_roles": ("executor", "critic", "memory_curator"),
+    },
     "artifact_update": {
         "toolset": "artifact",
         "side_effect": True,
@@ -321,6 +328,33 @@ _LEGACY_TOOL_DEFAULTS: dict[str, dict[str, Any]] = {
         "intent_policies": ("execution",),
     },
 }
+
+for _tool_name in (
+    "tasks_create",
+    "tasks_list",
+    "tasks_update",
+    "notes_create",
+    "notes_search",
+    "notes_update",
+    "productivity_capture",
+    "memory_forget",
+    "conversation_summary",
+    "git_status",
+    "git_diff",
+    "git_log",
+    "run_workspace_command",
+    "apply_patch",
+    "codebase_stats",
+    "artifact_list",
+    "artifact_search",
+    "artifact_update",
+    "skill_install",
+    "skills_list",
+    "skill_sources",
+    "skills_refresh_index",
+    "run_skill_entrypoint",
+):
+    _LEGACY_TOOL_DEFAULTS[_tool_name]["defer_loading"] = True
 
 
 def _split_listish(value: object) -> tuple[str, ...]:

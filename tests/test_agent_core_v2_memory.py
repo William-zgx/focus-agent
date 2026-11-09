@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.store.memory import InMemoryStore
 
 from focus_agent.capabilities.tool_registry import build_tool_registry
@@ -208,7 +208,13 @@ def test_v2_offers_memory_tools_with_a_repository_backend(monkeypatch):
 
     _invoke(graph, "hello")
 
-    assert {"memory_save", "memory_search", "memory_forget"} <= set(model.bound_tool_names[0])
+    bound_names = set(model.bound_tool_names[0])
+    assert {"memory_save", "memory_search", "tool_search"} <= bound_names
+    assert "memory_forget" not in bound_names
+    system_texts = [
+        message.content for message in model.prompts[0] if isinstance(message, SystemMessage)
+    ]
+    assert any("- memory_forget:" in text for text in system_texts)
 
 
 def test_operating_rules_drop_memory_when_tools_are_withheld():

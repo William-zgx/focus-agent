@@ -28,8 +28,9 @@ from ...transport.stream_events import STREAM_VISIBILITY_QUARANTINE
 from ..tools.evidence import evidence_bundle_to_citation_refs, normalize_evidence_bundle
 from ..tools.execution import HarnessToolServices
 from .agent import make_loop_agent_node
-from .components import GraphComponents, make_graph_tool_executor
+from .components import GraphComponents
 from .messages import _message_content_text
+from .tool_search import make_loop_tool_executor, with_tool_search
 
 RUN_SUBTASK_TOOL_NAME = "run_subtask"
 _SUBTASK_SOURCE_LIMIT = 5
@@ -87,10 +88,13 @@ def _make_subtask_tool(
             for item in subtask_tools
         ),
     )
-    subtask_components = replace(
-        components,
-        tools=list(subtask_registry.tools),
-        tool_registry=subtask_registry,
+    subtask_components = with_tool_search(
+        settings=settings,
+        components=replace(
+            components,
+            tools=list(subtask_registry.tools),
+            tool_registry=subtask_registry,
+        ),
     )
     subgraph = _compile_subtask_graph(
         settings=settings,
@@ -214,7 +218,7 @@ def _compile_subtask_graph(
     )
     builder.add_node(
         "tool_executor",
-        make_graph_tool_executor(
+        make_loop_tool_executor(
             settings=settings,
             components=components,
             approval_queue=None,
