@@ -37,7 +37,11 @@ def test_lifecycle_helpers_report_failures():
 
         interrupted = await lifecycle._handle_stream_exception(
             runtime=runtime,
-            chat=SimpleNamespace(),
+            chat=SimpleNamespace(
+                _response_payload=lambda **kwargs: {"thread_id": "thread-1"},
+                _safe_get_values=lambda thread_id: {"task_outcome": {"status": "failed"}},
+                _safe_get_interrupts=lambda thread_id: [],
+            ),
             run_id="run-1",
             thread_id="thread-1",
             user_id="user-1",
@@ -51,8 +55,6 @@ def test_lifecycle_helpers_report_failures():
             initial_message_count=0,
             initial_llm_calls=0,
             started_at=0,
-            safe_chat_values=lambda **kwargs: {"task_outcome": {"status": "failed"}},
-            safe_failed_thread_state=lambda **kwargs: {"thread_id": "thread-1"},
             record_harness_turn=lambda **kwargs: recorded.append(kwargs),
         )
 
@@ -100,7 +102,11 @@ def test_lifecycle_helpers_mark_timeout_runs_with_timeout_status():
 
         interrupted = await lifecycle._handle_stream_exception(
             runtime=SimpleNamespace(run_manager=manager),
-            chat=SimpleNamespace(),
+            chat=SimpleNamespace(
+                _response_payload=lambda **kwargs: {"thread_id": "thread-timeout"},
+                _safe_get_values=lambda thread_id: {},
+                _safe_get_interrupts=lambda thread_id: [],
+            ),
             run_id="run-timeout",
             thread_id="thread-timeout",
             user_id="user-1",
@@ -114,8 +120,6 @@ def test_lifecycle_helpers_mark_timeout_runs_with_timeout_status():
             initial_message_count=0,
             initial_llm_calls=0,
             started_at=0,
-            safe_chat_values=lambda **kwargs: {},
-            safe_failed_thread_state=lambda **kwargs: {"thread_id": "thread-timeout"},
             record_harness_turn=lambda **kwargs: recorded.append(kwargs),
         )
 

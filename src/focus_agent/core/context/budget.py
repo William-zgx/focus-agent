@@ -4,7 +4,6 @@ from langchain.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
 
 from .. import context_prompt_budget as _prompt_budget
 from .. import context_token_counting as _token_counting
-from ..context_prompt_budget import _prompt_budget_count
 from ..context_token_counting import approximate_token_count
 from ..types import ContextBudget, PromptMode
 from .tool_observations import trim_tool_observation
@@ -139,11 +138,9 @@ def _conversation_safe_messages(messages: list[AnyMessage], *, limit: int) -> li
     return safe_messages[-limit:]
 
 
+# trim_tool_observation remains a public re-export for compatibility.
 __all__ = [
-    "_coerce_prompt_mode",
-    "_conversation_safe_messages",
-    "_prompt_budget_count",
-    "approximate_token_count",
     "apply_prompt_budget_guard",
+    "approximate_token_count",
     "trim_tool_observation",
 ]

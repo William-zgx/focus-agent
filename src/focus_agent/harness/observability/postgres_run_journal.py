@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
+from uuid import uuid4
 
 from psycopg.types.json import Jsonb
 
@@ -12,6 +13,14 @@ from focus_agent.repositories.postgres_schema import ensure_app_postgres_schema_
 from focus_agent.runtime.thread_pool import shared_thread_pool
 
 from ...core.time_utils import utc_now_iso
+from ..runtime.recovery import (
+    HARNESS_RUN_API_CLAIM_OWNER,
+    HARNESS_RUN_API_LEASE_TTL_SECONDS,
+    HARNESS_RUN_RECOVERY_KIND,
+    REPLAY_SAFE_EXTERNAL_OUTCOMES,
+    HarnessRunRecovery,
+)
+from ..runtime.runs import is_execution_terminal_run_status
 from ..streaming import StreamEvent
 from .run_journal import (
     JournalEvent,
@@ -36,6 +45,9 @@ class PostgresRunJournal(PostgresMixin):
     ``append_event``, so no process-wide lock is needed and connections come
     from the shared pool when a provider is configured.
     """
+
+    harness_run_lease_ttl_seconds = HARNESS_RUN_API_LEASE_TTL_SECONDS
+    harness_run_heartbeat_interval_seconds = 60.0
 
     def setup(self) -> None:
         with self._connection() as conn:
@@ -104,6 +116,40 @@ class PostgresRunJournal(PostgresMixin):
                         now,
                     ),
                 )
+                job_key = f"{HARNESS_RUN_RECOVERY_KIND}:{run_id}"
+                payload = {
+                    "run_id": run_id,
+                    "external_outcome": str((metadata or {}).get("external_outcome") or "unknown"),
+                }
+                checkpoint_id = (kwargs or {}).get("checkpoint_id")
+                if checkpoint_id is not None:
+                    payload["checkpoint_id"] = checkpoint_id
+                claim_token = uuid4().hex
+                claimed_until = datetime.now(UTC) + timedelta(
+                    seconds=HARNESS_RUN_API_LEASE_TTL_SECONDS
+                )
+                cur.execute(
+                    """
+                    INSERT INTO focus_background_jobs (
+                        job_key, kind, payload, run_at, max_attempts, dedupe_policy,
+                        status, attempt, claimed_by, claimed_until, claim_token,
+                        last_error, last_heartbeat_at, last_failed_at, dead_lettered_at,
+                        idempotency_key, created_at, updated_at, metadata
+                    )
+                    VALUES (%s, %s, %s, now(), 2, 'skip', 'running', 0, %s, %s, %s, NULL,
+                            NULL, NULL, NULL, NULL, %s, now(), now(), '{}'::jsonb)
+                    ON CONFLICT (job_key) DO NOTHING
+                    """,
+                    (
+                        job_key,
+                        HARNESS_RUN_RECOVERY_KIND,
+                        Jsonb(payload),
+                        HARNESS_RUN_API_CLAIM_OWNER,
+                        claimed_until,
+                        claim_token,
+                        job_key,
+                    ),
+                )
 
         await self._run_db(operation)
 
@@ -114,6 +160,8 @@ class PostgresRunJournal(PostgresMixin):
         *,
         error: str | None = None,
     ) -> None:
+        execution_terminal = is_execution_terminal_run_status(status)
+
         def operation(conn: Any) -> None:
             with conn.cursor() as cur:
                 cur.execute(
@@ -124,8 +172,68 @@ class PostgresRunJournal(PostgresMixin):
                     """,
                     (status, error, utc_now_iso(), run_id),
                 )
+                if execution_terminal:
+                    cur.execute(
+                        """
+                        UPDATE focus_background_jobs
+                        SET status = 'succeeded',
+                            claimed_by = NULL,
+                            claimed_until = NULL,
+                            claim_token = NULL,
+                            last_heartbeat_at = now(),
+                            updated_at = now()
+                        WHERE job_key = %s
+                          AND kind = %s
+                          AND claimed_by = %s
+                          AND status IN ('pending', 'running', 'retrying')
+                        """,
+                        (
+                            f"{HARNESS_RUN_RECOVERY_KIND}:{run_id}",
+                            HARNESS_RUN_RECOVERY_KIND,
+                            HARNESS_RUN_API_CLAIM_OWNER,
+                        ),
+                    )
 
         await self._run_db(operation)
+
+    async def heartbeat_harness_run(
+        self,
+        run_id: str,
+        *,
+        ttl_seconds: float,
+    ) -> bool:
+        claimed_until = datetime.now(UTC) + timedelta(seconds=max(ttl_seconds, 0.001))
+
+        def operation(conn: Any) -> bool:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE focus_background_jobs AS jobs
+                    SET claimed_until = %s,
+                        last_heartbeat_at = now(),
+                        updated_at = now()
+                    FROM focus_harness_runs AS runs
+                    WHERE jobs.job_key = %s
+                      AND jobs.kind = %s
+                      AND jobs.claimed_by = %s
+                      AND jobs.status = 'running'
+                      AND jobs.claimed_until > now()
+                      AND runs.run_id = %s
+                      AND jobs.payload->>'run_id' = runs.run_id
+                      AND runs.status IN ('pending', 'running')
+                    RETURNING jobs.job_key
+                    """,
+                    (
+                        claimed_until,
+                        f"{HARNESS_RUN_RECOVERY_KIND}:{run_id}",
+                        HARNESS_RUN_RECOVERY_KIND,
+                        HARNESS_RUN_API_CLAIM_OWNER,
+                        run_id,
+                    ),
+                )
+                return cur.fetchone() is not None
+
+        return await self._run_db(operation)
 
     async def update_run_completion(self, run_id: str, **kwargs: Any) -> None:
         def operation(conn: Any) -> None:
@@ -177,6 +285,155 @@ class PostgresRunJournal(PostgresMixin):
 
         rows = await self._run_db(operation)
         return [_row_to_run(row) for row in rows]
+
+    async def list_harness_run_recoveries(
+        self,
+        *,
+        kind: str = HARNESS_RUN_RECOVERY_KIND,
+    ) -> list[HarnessRunRecovery]:
+        if kind != HARNESS_RUN_RECOVERY_KIND:
+            return []
+
+        def operation(conn: Any) -> list[dict[str, Any]]:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        runs.*,
+                        jobs.job_key AS recovery_job_key,
+                        jobs.status AS recovery_job_status,
+                        jobs.attempt AS recovery_attempt,
+                        jobs.claim_token AS recovery_claim_token,
+                        jobs.claimed_until AS recovery_claimed_until,
+                        jobs.idempotency_key AS recovery_idempotency_key,
+                        jobs.payload AS recovery_payload
+                    FROM focus_harness_runs AS runs
+                    JOIN focus_background_jobs AS jobs
+                      ON jobs.payload->>'run_id' = runs.run_id
+                    WHERE jobs.kind = %s
+                    ORDER BY runs.created_at, runs.run_id, jobs.job_key
+                    """,
+                    (kind,),
+                )
+                return cur.fetchall()
+
+        rows = await self._run_db(operation)
+        recoveries: list[HarnessRunRecovery] = []
+        for row in rows:
+            run = _row_to_run(row)
+            payload = _dict_json(row.get("recovery_payload"))
+            job_key = str(row.get("recovery_job_key") or "")
+            expected_job_key = f"{HARNESS_RUN_RECOVERY_KIND}:{run.run_id}"
+            checkpoint_id = _optional_str(payload.get("checkpoint_id"))
+            external_outcome = str(payload.get("external_outcome") or "unknown")
+            job_status = str(row.get("recovery_job_status") or "unknown")
+            attempt = int(row.get("recovery_attempt") or 0)
+            requires_reconciliation = (
+                job_key != expected_job_key
+                or row.get("recovery_idempotency_key") != expected_job_key
+                or job_status not in {"pending", "running", "retrying"}
+            )
+            recoveries.append(
+                HarnessRunRecovery(
+                    run_id=run.run_id,
+                    thread_id=run.thread_id,
+                    job_id=job_key,
+                    assistant_id=run.assistant_id,
+                    user_id=run.user_id,
+                    status=run.status,
+                    on_disconnect=run.on_disconnect,
+                    multitask_strategy=run.multitask_strategy,
+                    metadata=run.metadata,
+                    kwargs=run.kwargs,
+                    error=run.error,
+                    created_at=run.created_at,
+                    updated_at=run.updated_at,
+                    attempt=attempt,
+                    job_status=job_status,
+                    checkpoint_id=checkpoint_id,
+                    claim_token=_optional_str(row.get("recovery_claim_token")),
+                    claim_expires_at=row.get("recovery_claimed_until"),
+                    requires_reconciliation=requires_reconciliation,
+                    external_outcome=external_outcome,
+                )
+            )
+        return recoveries
+
+    async def requeue_harness_run(
+        self,
+        *,
+        run_id: str,
+        job_id: str,
+        claim_token: str | None,
+    ) -> bool | None:
+        if claim_token is None:
+            return False
+        if job_id != f"{HARNESS_RUN_RECOVERY_KIND}:{run_id}":
+            return None
+
+        def operation(conn: Any) -> bool | None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE focus_background_jobs
+                    SET status = 'retrying',
+                        run_at = now(),
+                        claimed_by = NULL,
+                        claimed_until = NULL,
+                        claim_token = NULL,
+                        last_error = 'claim expired before completion',
+                        last_failed_at = now(),
+                        updated_at = now()
+                    WHERE job_key = %s
+                      AND kind = %s
+                      AND idempotency_key = job_key
+                      AND payload->>'run_id' = %s
+                      AND EXISTS (
+                          SELECT 1 FROM focus_harness_runs AS runs
+                          WHERE runs.run_id = focus_background_jobs.payload->>'run_id'
+                            AND (
+                                runs.status = 'pending'
+                                OR (
+                                    runs.status = 'running'
+                                    AND focus_background_jobs.payload->>'external_outcome' = ANY(%s)
+                                )
+                            )
+                      )
+                      AND status = 'running'
+                      AND claim_token = %s
+                      AND claimed_until IS NOT NULL
+                      AND claimed_until <= now()
+                      AND attempt < max_attempts
+                    RETURNING job_key
+                    """,
+                    (
+                        job_id,
+                        HARNESS_RUN_RECOVERY_KIND,
+                        run_id,
+                        sorted(REPLAY_SAFE_EXTERNAL_OUTCOMES),
+                        claim_token,
+                    ),
+                )
+                if cur.fetchone() is not None:
+                    return True
+                cur.execute(
+                    """
+                    SELECT (
+                        status IN ('pending', 'retrying')
+                        OR (status = 'running' AND claimed_until > now())
+                    ) AS active
+                    FROM focus_background_jobs
+                    WHERE job_key = %s
+                      AND kind = %s
+                      AND idempotency_key = job_key
+                      AND payload->>'run_id' = %s
+                    """,
+                    (job_id, HARNESS_RUN_RECOVERY_KIND, run_id),
+                )
+                row = cur.fetchone()
+                return False if row is not None and row["active"] else None
+
+        return await self._run_db(operation)
 
     async def append_event(
         self,
@@ -419,7 +676,7 @@ def _row_to_tool_event(row: dict[str, Any]) -> JournalToolEvent:
 
 def _dict_json(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
-        return _copy_json(value)
+        return dict(value)
     if value is None:
         return {}
     return {"value": _copy_json(value)}

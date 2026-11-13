@@ -144,26 +144,7 @@ export function ThreadPage() {
 		},
 	});
 	const { followAndScrollToBottom, stickToBottom } = useThreadAutoFollow({
-		branchActionCount: branchActions.length,
-		hasTranscriptContent,
-		isStreaming,
-		lastTranscriptMessageContent: lastTranscriptMessage?.content,
-		lastTranscriptMessageId: lastTranscriptMessage?.id,
-		streamFailedMessage: streamState?.failed?.message,
-		streamProcessingStepSignal: streamState?.processingSteps
-			.map(
-				(step) =>
-					`${step.kind}:${step.id}:${step.status}:${step.content ?? ""}:${step.argsText ?? ""}`,
-			)
-			.join("\n"),
-		streamReasoningText: streamState?.reasoningText,
-		streamToolCallCount,
-		streamToolEventCount,
-		toolApprovalInterruptCount: toolApprovalInterrupts.length,
-		askUserQuestionInterruptCount: askUserQuestionInterrupts.length,
-		streamVisibleText: streamState?.visibleText,
 		threadId,
-		transcriptMessageCount: transcriptMessages.length,
 	});
 	const [toolApprovalInFlightId, setToolApprovalInFlightId] = useState<
 		string | null

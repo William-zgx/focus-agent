@@ -2,21 +2,14 @@ from types import SimpleNamespace
 
 from langchain.messages import AIMessage
 
-from focus_agent.api.contracts import ApplyMergeDecisionRequest
-from focus_agent.api.main import create_app
-from focus_agent.api.route_utils.token_usage import (
-    _aggregate_token_usage_from_turns,
-    _annotate_branch_tree_token_usage,
-    _token_usage_by_thread_for_root,
-    _token_usage_for_root_thread,
-)
-from focus_agent.api.schemas import (
+from focus_agent.api.contracts import (
     AgentArtifactListResponse,
     AgentContextArtifactListResponse,
     AgentContextDecisionListResponse,
     AgentContextPolicyResponse,
     AgentContextPreviewRequest,
     AgentContextPreviewResponse,
+    ApplyMergeDecisionRequest,
     BackgroundDeadLetterJobListResponse,
     BackgroundDeadLetterJobResponse,
     BackgroundDeadLetterReplayResponse,
@@ -48,6 +41,13 @@ from focus_agent.api.schemas import (
     TrajectoryTurnStatsEnvelopeResponse,
     UpdateBranchNameRequest,
     UpdateConversationRequest,
+)
+from focus_agent.api.main import create_app
+from focus_agent.api.route_utils.token_usage import (
+    _aggregate_token_usage_from_turns,
+    _annotate_branch_tree_token_usage,
+    _token_usage_by_thread_for_root,
+    _token_usage_for_root_thread,
 )
 from focus_agent.core.branching import (
     BranchActionKind,

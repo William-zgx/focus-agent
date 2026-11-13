@@ -31,6 +31,7 @@ from ..branches.actions import (
     serialize_branch_actions,
     target_parent_thread_id,
 )
+from .branch_navigation import execute_branch_action_navigation
 
 logger = logging.getLogger("focus_agent.branches")
 
@@ -351,8 +352,6 @@ def execute_branch_action_locked(
         action, branch_name=branch_name, handoff_message=handoff_message
     )
 
-    from .service import execute_branch_action_navigation
-
     try:
         branch_record, navigation = execute_branch_action_navigation(
             action=action,
@@ -507,7 +506,8 @@ def handle_branch_action_turn(
         if intent is None:
             return None
         if intent == "propose":
-            result = service._build_branch_action_proposal(
+            result = build_branch_action_proposal_result(
+                service=service,
                 thread_id=thread_id,
                 user_id=user_id,
                 message=message,
@@ -519,7 +519,8 @@ def handle_branch_action_turn(
         if pending is None:
             return None
         if intent == "execute":
-            result = service._execute_branch_action_locked(
+            result = execute_branch_action_locked(
+                service=service,
                 thread_id=thread_id,
                 action_id=pending.action_id,
                 user_id=user_id,
@@ -529,7 +530,8 @@ def handle_branch_action_turn(
             turn_lease.raise_if_lost()
             return result
         if intent == "dismiss":
-            thread_state = service._dismiss_branch_action_locked(
+            thread_state = dismiss_branch_action_locked(
+                service=service,
                 thread_id=thread_id,
                 action_id=pending.action_id,
                 user_id=user_id,
@@ -624,44 +626,6 @@ class ChatBranchActionFacadeMixin:
             ),
         )
 
-    def _build_branch_action_proposal(
-        self,
-        *,
-        thread_id: str,
-        user_id: str,
-        message: str,
-        request_id: str | None,
-    ) -> dict[str, Any]:
-        return build_branch_action_proposal_result(
-            service=self,
-            thread_id=thread_id,
-            user_id=user_id,
-            message=message,
-            request_id=request_id,
-        )
-
-    def _execute_branch_action_locked(
-        self,
-        *,
-        thread_id: str,
-        action_id: str,
-        user_id: str,
-        request_id: str | None = None,
-        user_message: str | None = None,
-        branch_name: str | None = None,
-        handoff_message: str | None = None,
-    ) -> dict[str, Any]:
-        return execute_branch_action_locked(
-            service=self,
-            thread_id=thread_id,
-            action_id=action_id,
-            user_id=user_id,
-            request_id=request_id,
-            user_message=user_message,
-            branch_name=branch_name,
-            handoff_message=handoff_message,
-        )
-
     def execute_branch_action(
         self,
         *,
@@ -674,7 +638,8 @@ class ChatBranchActionFacadeMixin:
         handoff_message: str | None = None,
     ) -> dict[str, Any]:
         with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
-            result = self._execute_branch_action_locked(
+            result = execute_branch_action_locked(
+                service=self,
                 thread_id=thread_id,
                 action_id=action_id,
                 user_id=user_id,
@@ -686,24 +651,6 @@ class ChatBranchActionFacadeMixin:
             turn_lease.raise_if_lost()
             return result
 
-    def _dismiss_branch_action_locked(
-        self,
-        *,
-        thread_id: str,
-        action_id: str,
-        user_id: str,
-        request_id: str | None = None,
-        user_message: str | None = None,
-    ) -> dict[str, Any]:
-        return dismiss_branch_action_locked(
-            service=self,
-            thread_id=thread_id,
-            action_id=action_id,
-            user_id=user_id,
-            request_id=request_id,
-            user_message=user_message,
-        )
-
     def dismiss_branch_action(
         self,
         *,
@@ -714,7 +661,8 @@ class ChatBranchActionFacadeMixin:
         user_message: str | None = None,
     ) -> dict[str, Any]:
         with self._thread_turn_lease(thread_id=thread_id) as turn_lease:
-            result = self._dismiss_branch_action_locked(
+            result = dismiss_branch_action_locked(
+                service=self,
                 thread_id=thread_id,
                 action_id=action_id,
                 user_id=user_id,

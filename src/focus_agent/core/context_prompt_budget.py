@@ -11,8 +11,7 @@ from .context.tool_observations import (
     _tool_observation_within_budget,
     trim_tool_observation,
 )
-from .context_assembly import _context_block_priority
-from .context_assembly_rendering import _context_block_header
+from .context_assembly_rendering import _context_block_header, _context_block_priority
 from .context_policy_helpers import units_to_char_budget as _units_to_char_budget_helper
 from .types import ContextBudget, PromptMode
 

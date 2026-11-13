@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from langchain.messages import SystemMessage
 
+from ...core.branch_messages import append_imported_summary, render_imported_conclusion
 from ...core.branching import (
     BranchRecord,
     BranchStatus,
@@ -446,29 +447,20 @@ class BranchMemoryPromotionMixin:
 
     @staticmethod
     def _imported_conclusion_message(imported: ImportedConclusion) -> str:
-        lines = [
-            f"Imported conclusion from branch '{imported.branch_name}':",
-            imported.summary.strip(),
-        ]
-        key_findings = [item.strip() for item in imported.key_findings if str(item).strip()]
-        if key_findings:
-            lines.append("")
-            lines.append("Key findings:")
-            lines.extend(f"- {item}" for item in key_findings)
-        evidence_refs = [item.strip() for item in imported.evidence_refs if str(item).strip()]
-        if evidence_refs:
-            lines.append("")
-            lines.append(f"Evidence refs: {', '.join(evidence_refs)}")
-        return "\n".join(lines).strip()
+        return render_imported_conclusion(
+            branch_name=imported.branch_name,
+            summary=imported.summary,
+            key_findings=imported.key_findings,
+            evidence_refs=imported.evidence_refs,
+        )
 
     @staticmethod
     def _append_imported_summary(existing_summary: object, imported: ImportedConclusion) -> str:
-        previous = str(existing_summary or "").strip()
-        imported_line = f"Imported from {imported.branch_name}: {imported.summary.strip()}".strip()
-        combined = "\n".join(part for part in [previous, imported_line] if part)
-        if len(combined) > 4000:
-            combined = combined[-4000:]
-        return combined
+        return append_imported_summary(
+            existing_summary,
+            branch_name=imported.branch_name,
+            summary=imported.summary,
+        )
 
     @classmethod
     def _filter_merge_importable_findings(cls, findings: list[object]) -> list[FindingItem]:

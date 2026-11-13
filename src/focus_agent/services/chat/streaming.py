@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from typing import Any
@@ -16,8 +15,6 @@ logger = logging.getLogger("focus_agent.chat")
 
 _STREAM_END = object()
 _STREAM_SHUTDOWN_TIMEOUT_SECONDS = 2.0
-_DEFAULT_STREAM_SHUTDOWN_TIMEOUT_SECONDS = _STREAM_SHUTDOWN_TIMEOUT_SECONDS
-_TURNS_FACADE_MODULE = "focus_agent.services.chat.turns"
 
 
 class GraphStreamIdleTimeoutError(TimeoutError):
@@ -25,14 +22,6 @@ class GraphStreamIdleTimeoutError(TimeoutError):
 
 
 def _stream_shutdown_timeout_seconds() -> float:
-    facade = sys.modules.get(_TURNS_FACADE_MODULE)
-    if facade is not None:
-        facade_timeout = getattr(facade, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", None)
-        if (
-            facade_timeout is not None
-            and facade_timeout != _DEFAULT_STREAM_SHUTDOWN_TIMEOUT_SECONDS
-        ):
-            return float(facade_timeout)
     return float(_STREAM_SHUTDOWN_TIMEOUT_SECONDS)
 
 

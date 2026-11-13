@@ -127,10 +127,10 @@ test-graph-builder: .venv/bin/python
 	$(PYTEST) tests/test_graph_builder.py
 
 test-chat-service: .venv/bin/python
-	$(PYTEST) tests/test_chat_service.py
+	$(PYTEST) tests/unit/chat tests/test_chat_service_refactor.py
 
 test-thread-stream-frontend-regressions: sdk-build
-	node --test tests/test_thread_stream_frontend_regressions.mjs
+	node --test tests/frontend/*.mjs
 
 lint: .venv/bin/python
 	$(RUFF) check .

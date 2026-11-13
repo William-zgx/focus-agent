@@ -39,13 +39,13 @@ from ...route_utils.branch_handoff_decisions import (
     record_branch_handoff_decision_for_run,
 )
 from . import replay_streaming_lifecycle as _streaming_lifecycle
+from .replay_finalization import _HarnessRunFinalizer
 from .replay_helpers import (
     _branch_action_intent_for_run,
     _branch_recommendation_timeout_seconds,
     _canonical_custom_event,
     _capture_run_rollback_target,
     _close_run_stream,
-    _context_for_turn,
     _create_run_record,
     _handle_branch_recommendation_for_run_async,
     _is_branch_handoff_auto_run,
@@ -107,6 +107,12 @@ async def stream_harness_run(
         rollback_target=rollback_target,
         rollback_partial=is_branch_action,
         rollback_unreverted_scopes=("branch_action",) if is_branch_action else (),
+        context=context,
+        branch_meta=branch_meta,
+        request_id=getattr(request.state, "request_id", None),
+        branch_action=is_branch_action,
+        skip_branch_recommendation=skip_branch_recommendation,
+        stream=True,
     )
     if is_branch_action:
         producer = asyncio.create_task(
@@ -177,6 +183,12 @@ async def stream_harness_resume(
         user_id=principal.user_id,
         graph_payload=command,
         rollback_target=rollback_target,
+        context=context,
+        branch_meta=branch_meta,
+        request_id=getattr(request.state, "request_id", None),
+        kind="chat.resume",
+        skip_branch_recommendation=True,
+        stream=True,
     )
     producer = asyncio.create_task(
         _produce_run_stream(
@@ -254,6 +266,24 @@ async def _produce_run_stream(
         run_name="focus_agent_harness_stream",
     )
 
+    turn_message = str(message or _message_text_from_graph_payload(payload))
+    finalizer = _HarnessRunFinalizer(
+        runtime=runtime,
+        chat=chat,
+        run_id=run_id,
+        thread_id=thread_id,
+        user_id=user_id,
+        kind=kind,
+        context=context,
+        branch_meta=branch_meta,
+        trace_correlation=trace_correlation,
+        payload=payload,
+        initial_message_count=initial_message_count,
+        initial_llm_calls=initial_llm_calls,
+        started_at=started_at,
+        record_harness_turn=_record_harness_turn_and_schedule,
+    )
+    succeeded = False
     publish = _streaming_lifecycle._RunEventPublisher(
         runtime=runtime,
         run_id=run_id,
@@ -265,7 +295,6 @@ async def _produce_run_stream(
         await runtime.run_manager.set_status(run_id, RunStatus.RUNNING)
         await publish("run.metadata")
         await publish("run.status", phase="running")
-        turn_message = str(message or _message_text_from_graph_payload(payload))
         if turn_message and not skip_branch_recommendation:
             branch_recommendation_result = await _handle_branch_recommendation_for_run_async(
                 chat=chat,
@@ -276,13 +305,7 @@ async def _produce_run_stream(
                 timeout_seconds=_branch_recommendation_timeout_seconds(runtime.settings),
             )
             if branch_recommendation_result is not None:
-                latest_context, latest_branch_meta, final_values = _context_for_turn(
-                    chat=chat,
-                    thread_id=thread_id,
-                    user_id=user_id,
-                    fallback_context=context,
-                    fallback_branch_meta=branch_meta,
-                )
+                _, _, final_values = finalizer.refresh()
                 message_text = str(branch_recommendation_result.get("message") or "")
                 final_task_outcome = final_values.get("task_outcome")
                 if message_text and not looks_like_textual_tool_call_artifact(message_text):
@@ -292,28 +315,17 @@ async def _produce_run_stream(
                         source="branch_recommendation",
                         **_task_outcome_event_payload(final_task_outcome),
                     )
-                _record_harness_turn_and_schedule(
-                    chat=chat,
-                    thread_id=thread_id,
-                    user_id=user_id,
-                    root_thread_id=latest_context.root_thread_id,
-                    kind=kind,
-                    status="succeeded",
-                    final_values=final_values,
-                    initial_message_count=initial_message_count,
-                    initial_llm_calls=initial_llm_calls,
-                    started_at=started_at,
-                    branch_meta=latest_branch_meta,
-                    trace_correlation=trace_correlation,
-                    payload={"messages": [HumanMessage(content=turn_message)]},
+                finalization = await finalizer.succeed(
                     answer=message_text or None,
+                    thread_state=branch_recommendation_result["thread_state"],
                     schedule_side_effects=False,
+                    payload={"messages": [HumanMessage(content=turn_message)]},
                 )
-                await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
+                succeeded = True
                 await publish(
                     "run.completed",
                     status="succeeded",
-                    thread_state=branch_recommendation_result.get("thread_state"),
+                    thread_state=finalization.thread_state,
                     branch_action=branch_recommendation_result.get("branch_action"),
                     branch_decision=branch_recommendation_result.get("branch_decision"),
                     **_task_outcome_event_payload(final_task_outcome),
@@ -445,10 +457,7 @@ async def _produce_run_stream(
             )
             return
 
-        latest_context, latest_branch_meta, final_values = chat._context_for_thread(
-            thread_id=thread_id,
-            user_id=user_id,
-        )
+        _, _, final_values = finalizer.refresh()
         final_task_outcome = final_values.get("task_outcome")
         final_messages = list(final_values.get("messages", []) or [])
         appended_messages = (
@@ -476,7 +485,6 @@ async def _produce_run_stream(
             )
         if reasoning_buffer:
             await publish("reasoning.delta", delta="", completed=True, content=reasoning_buffer)
-        await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
         mark_branch_handoff_decision_outcome(
             runtime=runtime,
             decision=handoff_decision,
@@ -484,37 +492,17 @@ async def _produce_run_stream(
             run_id=run_id,
             message=turn_message,
         )
-        thread_state = chat._response_payload(
-            thread_id=thread_id,
-            user_id=user_id,
-            context=latest_context,
-            branch_meta=latest_branch_meta,
-            interrupts=chat._safe_get_interrupts(thread_id),
-            trace_correlation=trace_correlation,
-        )
-        _record_harness_turn_and_schedule(
-            chat=chat,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=latest_context.root_thread_id,
-            kind=kind,
-            status="succeeded",
-            final_values=final_values,
-            initial_message_count=initial_message_count,
-            initial_llm_calls=initial_llm_calls,
-            started_at=started_at,
-            branch_meta=latest_branch_meta,
-            trace_correlation=trace_correlation,
-            payload=payload,
-            answer=thread_state.get("assistant_message") or final_visible_text or None,
-        )
+        finalization = await finalizer.succeed(fallback_answer=final_visible_text or None)
+        succeeded = True
         await publish(
             "run.completed",
             status="succeeded",
-            thread_state=thread_state,
+            thread_state=finalization.thread_state,
             **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:
+        if succeeded:
+            return
         await _streaming_lifecycle._handle_cancelled_stream(
             runtime=runtime,
             chat=chat,
@@ -529,6 +517,8 @@ async def _produce_run_stream(
             handoff_message=message or _message_text_from_graph_payload(payload),
         )
     except Exception as exc:  # noqa: BLE001
+        if succeeded:
+            return
         interrupted = await _streaming_lifecycle._handle_stream_exception(
             runtime=runtime,
             chat=chat,
@@ -578,6 +568,23 @@ async def _produce_branch_action_run_stream(
     input_messages = [HumanMessage(content=message)]
     trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
 
+    finalizer = _HarnessRunFinalizer(
+        runtime=runtime,
+        chat=chat,
+        run_id=run_id,
+        thread_id=thread_id,
+        user_id=user_id,
+        kind=kind,
+        context=context,
+        branch_meta=branch_meta,
+        trace_correlation=trace_correlation,
+        payload={"messages": input_messages},
+        initial_message_count=initial_message_count,
+        initial_llm_calls=initial_llm_calls,
+        started_at=started_at,
+        record_harness_turn=_record_harness_turn_and_schedule,
+    )
+    succeeded = False
     publish = _streaming_lifecycle._RunEventPublisher(
         runtime=runtime,
         run_id=run_id,
@@ -598,13 +605,7 @@ async def _produce_branch_action_run_stream(
         )
         if result is None:
             raise RuntimeError("Branch action intent disappeared before execution.")
-        latest_context, latest_branch_meta, final_values = _context_for_turn(
-            chat=chat,
-            thread_id=thread_id,
-            user_id=user_id,
-            fallback_context=context,
-            fallback_branch_meta=branch_meta,
-        )
+        _, _, final_values = finalizer.refresh()
         final_task_outcome = final_values.get("task_outcome")
         message_text = str(result.get("message") or "")
         if message_text and not looks_like_textual_tool_call_artifact(result["message"]):
@@ -614,28 +615,16 @@ async def _produce_branch_action_run_stream(
                 source="branch_action",
                 **_task_outcome_event_payload(final_task_outcome),
             )
-        _record_harness_turn_and_schedule(
-            chat=chat,
-            thread_id=thread_id,
-            user_id=user_id,
-            root_thread_id=latest_context.root_thread_id,
-            kind=kind,
-            status="succeeded",
-            final_values=final_values,
-            initial_message_count=initial_message_count,
-            initial_llm_calls=initial_llm_calls,
-            started_at=started_at,
-            branch_meta=latest_branch_meta,
-            trace_correlation=trace_correlation,
-            payload={"messages": input_messages},
+        finalization = await finalizer.succeed(
             answer=message_text or None,
+            thread_state=result.get("thread_state"),
             schedule_side_effects=False,
         )
-        await runtime.run_manager.set_status(run_id, RunStatus.SUCCESS)
+        succeeded = True
         await publish(
             "run.completed",
             status="succeeded",
-            thread_state=result.get("thread_state"),
+            thread_state=finalization.thread_state,
             branch_action=result.get("branch_action"),
             branch_record=result.get("branch_record"),
             navigation=result.get("navigation"),
@@ -643,6 +632,8 @@ async def _produce_branch_action_run_stream(
             **_task_outcome_event_payload(final_task_outcome),
         )
     except asyncio.CancelledError:
+        if succeeded:
+            return
         await _streaming_lifecycle._handle_cancelled_stream(
             runtime=runtime,
             chat=chat,
@@ -655,6 +646,8 @@ async def _produce_branch_action_run_stream(
             publish=publish,
         )
     except Exception as exc:  # noqa: BLE001
+        if succeeded:
+            return
         interrupted = await _streaming_lifecycle._handle_stream_exception(
             runtime=runtime,
             chat=chat,

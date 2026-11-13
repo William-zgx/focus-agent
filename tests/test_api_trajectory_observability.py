@@ -317,7 +317,11 @@ def test_trajectory_batch_promote_preview_filters_failed_turns_and_honors_limit(
 
     def _fake_promote(record, **kwargs):
         captured.append({"record": record, **kwargs})
-        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        case_id = (
+            kwargs["converted_case"].case.id
+            if "converted_case" in kwargs
+            else f"{kwargs['case_id_prefix']}-{record['id']}"
+        )
         return {
             "source_turn_id": record["id"],
             "case_id": case_id,
@@ -357,7 +361,7 @@ def test_trajectory_batch_promote_preview_filters_failed_turns_and_honors_limit(
     assert body["items"][0]["dataset_record"]["origin"]["trajectory_id"] == "turn-1"
     assert body["jsonl"] == '{"id":"batch-turn-1"}'
     assert captured[0]["record"]["id"] == "turn-1"
-    assert captured[0]["copy_answer_substring"] is True
+    assert captured[0]["converted_case"].case.id == "batch-turn-1"
 
 
 def test_trajectory_batch_promote_preview_returns_empty_result(
@@ -393,7 +397,11 @@ def test_trajectory_batch_replay_compare_returns_summary(
     client = _build_client(monkeypatch, tmp_path)
 
     def _fake_promote(record, **kwargs):
-        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        case_id = (
+            kwargs["converted_case"].case.id
+            if "converted_case" in kwargs
+            else f"{kwargs['case_id_prefix']}-{record['id']}"
+        )
         return {
             "source_turn_id": record["id"],
             "case_id": case_id,
@@ -412,7 +420,11 @@ def test_trajectory_batch_replay_compare_returns_summary(
         }
 
     def _fake_replay(record, **kwargs):
-        case_id = f"{kwargs['case_id_prefix']}-{record['id']}"
+        case_id = (
+            kwargs["converted_case"].case.id
+            if "converted_case" in kwargs
+            else f"{kwargs['case_id_prefix']}-{record['id']}"
+        )
         replay_passed = record["id"] == "turn-1"
         return {
             "source_turn_id": record["id"],
@@ -446,6 +458,15 @@ def test_trajectory_batch_replay_compare_returns_summary(
             },
         }
 
+    conversion_calls: list[list[dict[str, object]]] = []
+    real_convert = trajectory_actions.convert_trajectory_records
+
+    def _count_convert(records, **kwargs):
+        materialized = list(records)
+        conversion_calls.append(materialized)
+        return real_convert(materialized, **kwargs)
+
+    monkeypatch.setattr(trajectory_actions, "convert_trajectory_records", _count_convert)
     monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
     monkeypatch.setattr(trajectory_actions, "run_replay_for_turn", _fake_replay)
 
@@ -467,6 +488,10 @@ def test_trajectory_batch_replay_compare_returns_summary(
     assert body["results"][0]["model_used"] == "moonshot:kimi-k2.6"
     assert body["results"][0]["replay_case_jsonl"] == '{"id":"batch-turn-1"}'
     assert body["results"][1]["comparison"]["replay_error"] == "mismatch"
+    assert [[record["id"] for record in call] for call in conversion_calls] == [
+        ["turn-1"],
+        ["turn-2"],
+    ]
 
 
 def test_observability_overview_readyz_and_metrics(

@@ -7,7 +7,7 @@ from langchain.tools import tool
 from focus_agent.capabilities.tool_execution_types import ToolExecutionInput
 from focus_agent.capabilities.tool_registry import ToolRuntimeMeta
 from focus_agent.capabilities.tool_runtime import execute_tool_calls
-from focus_agent.core.context_policy import apply_prompt_budget_guard
+from focus_agent.core.context import apply_prompt_budget_guard
 from focus_agent.core.types import ContextBudget
 
 

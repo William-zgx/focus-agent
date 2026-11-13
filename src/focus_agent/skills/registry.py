@@ -549,39 +549,7 @@ class SkillRegistry(SkillRegistryManagementMixin, SkillRegistryDiscoveryMixin):
             )
         return "No skills selected."
 
-    def list_skills(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": skill.skill_id,
-                "description": skill.description,
-                "enabled": self.is_skill_enabled(skill.skill_id),
-                "triggers": list(skill.triggers),
-                "aliases": list(skill.aliases),
-                "localized_triggers": list(skill.localized_triggers),
-                "domains": list(skill.domains),
-                "intents": list(skill.intents),
-                "when_to_use": list(skill.when_to_use),
-                "primary_tools": list(skill.primary_tools),
-                "recommended_tools": list(skill.recommended_tools),
-                "prompt_mode": skill.prompt_mode.value if skill.prompt_mode else None,
-                "path": str(skill.path),
-                "source_id": skill.source_id,
-                "source_type": skill.source_type,
-                "version": skill.version,
-                "trust_level": skill.trust_level,
-                "install_state": skill.install_state,
-                "provenance": skill.provenance,
-                "checksum": skill.checksum,
-                "capability_requirements": list(skill.capability_requirements),
-                "entrypoints": [_entrypoint_to_dict(entry) for entry in skill.entrypoints],
-            }
-            for skill in self._skills
-        ]
-
-    def view_skill(self, skill_id: str) -> dict[str, Any] | None:
-        skill = self.resolve(skill_id)
-        if skill is None:
-            return None
+    def _skill_payload(self, skill: SkillDefinition) -> dict[str, Any]:
         return {
             "name": skill.skill_id,
             "description": skill.description,
@@ -605,8 +573,18 @@ class SkillRegistry(SkillRegistryManagementMixin, SkillRegistryDiscoveryMixin):
             "checksum": skill.checksum,
             "capability_requirements": list(skill.capability_requirements),
             "entrypoints": [_entrypoint_to_dict(entry) for entry in skill.entrypoints],
-            "content": skill.body,
         }
+
+    def list_skills(self) -> list[dict[str, Any]]:
+        return [self._skill_payload(skill) for skill in self._skills]
+
+    def view_skill(self, skill_id: str) -> dict[str, Any] | None:
+        skill = self.resolve(skill_id)
+        if skill is None:
+            return None
+        payload = self._skill_payload(skill)
+        payload["content"] = skill.body
+        return payload
 
     def render_available_skills_block(self) -> str:
         active_skills = self._active_skills()

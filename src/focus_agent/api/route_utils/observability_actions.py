@@ -37,10 +37,14 @@ def build_trajectory_promotion_response(
     *,
     payload: Any,
 ) -> TrajectoryPromotionResponse:
+    converted_case = trajectory_actions.convert_trajectory_record(
+        record,
+        **_promotion_payload_kwargs(payload),
+    )
     return TrajectoryPromotionResponse.model_validate(
         trajectory_actions.build_promoted_dataset_payload(
             record,
-            **_promotion_payload_kwargs(payload),
+            converted_case=converted_case,
         )
     )
 
@@ -52,15 +56,20 @@ def build_trajectory_replay_response(
     settings: Settings,
     model_used: str,
 ) -> TrajectoryReplayResponse:
+    conversion_kwargs = _promotion_payload_kwargs(payload)
+    converted_case = trajectory_actions.convert_trajectory_record(
+        record,
+        **conversion_kwargs,
+    )
     promoted = trajectory_actions.build_promoted_dataset_payload(
         record,
-        **_promotion_payload_kwargs(payload),
+        converted_case=converted_case,
     )
     replay = trajectory_actions.run_replay_for_turn(
         record,
         settings=settings,
         model=getattr(payload, "model", None),
-        **_promotion_payload_kwargs(payload),
+        converted_case=converted_case,
     )
     return TrajectoryReplayResponse(
         source_turn_id=replay["source_turn_id"],

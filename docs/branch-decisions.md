@@ -426,8 +426,8 @@ When branch decisions, recommendations, or Branch Action UX change, run:
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
 uv run pytest tests/test_branch_decision_intent.py tests/test_branch_decision_answer_first.py tests/test_branch_decision_merge_back.py tests/test_branch_decision_eval_dataset.py
 uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
-uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
-node --test tests/test_thread_stream_frontend_regressions.mjs
+uv run pytest tests/unit/chat tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/frontend/test_thread_stream_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check

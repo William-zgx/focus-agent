@@ -3,22 +3,13 @@ from __future__ import annotations
 import logging
 import threading
 from typing import TYPE_CHECKING, Any
-from typing import Protocol as Protocol
 
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
 from focus_agent.branch_decision.budget import recommendation_expired
 
-from ...core.branching import (
-    BranchActionKind as BranchActionKind,
-)
-from ...core.branching import (
-    BranchActionNavigation as BranchActionNavigation,
-)
-from ...core.branching import (
-    BranchMeta,
-)
+from ...core.branching import BranchMeta
 from ...core.repo_call import has_repo_method
 from ...core.request_context import RequestContext
 from ...core.time_utils import utc_now
@@ -36,11 +27,8 @@ from ..branches.actions import (
     serialize_branch_actions,
 )
 from ..coordination import create_in_memory_coordination_backend
-from .branch_actions import ChatBranchActionFacadeMixin
-from .branch_navigation import (  # noqa: F401
-    BranchServiceProtocol,
-    execute_branch_action_navigation,
-)
+from .branch_actions import ChatBranchActionFacadeMixin, handle_branch_action_turn
+from .context_compaction import ChatContextCompactionMixin
 from .ports import ChatServicePorts
 from .runtime_coordination import ChatRuntimeCoordinationMixin
 from .serialization import (
@@ -56,7 +44,7 @@ from .threads import (
     effective_thinking_mode,
     response_payload,
 )
-from .turns import ChatContextCompactionMixin, ChatTurnRecordingMixin
+from .turn_recording import ChatTurnRecordingMixin
 
 if TYPE_CHECKING:
     from ...engine.runtime import AppRuntime
@@ -85,7 +73,18 @@ class ChatService(
         )
         self._active_turn_leases: dict[str, Any] = {}
         self._active_turns_lock = threading.Lock()
+        self._background_work_lock = threading.Lock()
+        self._closed = False
         self._background_work = self.ports.background_work
+
+    def close(self) -> bool:
+        """Close owned background work without stopping an injected shared queue."""
+        with self._background_work_lock:
+            self._closed = True
+            background_work = self._background_work
+        if self.ports.background_work is None and background_work is not None:
+            return background_work.close()
+        return True
 
     @staticmethod
     def _message_content_to_text(content: Any) -> str:
@@ -578,7 +577,8 @@ class ChatService(
         request_id: str | None = None,
         skill_hints: tuple[str, ...] = (),
     ) -> dict[str, Any]:
-        branch_action_result = self._handle_branch_action_turn(
+        branch_action_result = handle_branch_action_turn(
+            service=self,
             thread_id=thread_id,
             user_id=user_id,
             message=message,

@@ -31,7 +31,7 @@ Focus Agent 是开源 **平台参考实现 / 自托管工作台**，不是托管
 - **发布/证据工具链：** schema v2 evidence pack 将报告绑定到 commit、deployment ID、deployment version、environment 和带时区的生成时间；production 模式会校验身份与新鲜度，不接受无关或过期报告。这些是发布门禁和证据格式，不代表仓库已经部署或达到 production ready。详见[发布检查清单](docs/release-checklist.md)和 [CI Release Gate](docs/ci/github-actions-release-gate.md)。
 - **仓库 UI 与移动端门禁：** 独立 workflow 在真实 Chrome 中验证聊天和 observability 交互；CI 同时构建、lint 并单测 Android debug 项目。Chrome workflow 只验证 Web UI 行为，不提供 Agent 原生浏览器/DOM/截图工具。Android 还具备有界可取消的原生 HTTP、cold/hot deep link 单次投递、原生安全存储和关闭 Capacitor bridge logging。详见[验证手册](docs/validation-runbook.md)和 [Android](docs/android.md)。
 - **流式韧性：** 已结束的内存 stream 会在 replay 窗口后回收；SDK reconnect 会跨连接按 event ID 去重，若 EOF 前没有 terminal event 则抛出 `FocusAgentIncompleteStreamError`。详见[流式事件契约](docs/streaming-contract.md)和[前端 SDK](frontend-sdk/README.md)。
-- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，当前不 grandfather 任何大文件债务；兼容债务按稳定 item ID 跟踪，当前基线为 **54** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
+- **架构债务量化：** architecture gate 阻断超过 800 行的非生成文件，生产代码零豁免，13 个既有大型测试采用只减不增的临时上限；兼容债务按稳定 item ID 跟踪，当前基线为 **51** 个有意保留的 1.x 项，其中 public facade 要到满足 2.0 移除条件后才会删除。详见 [architecture baseline](docs/architecture-debt-baseline.json) 和 [compatibility baseline](docs/compat-debt-baseline.json)。
 - **App Postgres schema：** 应用 schema 版本为 **v19**（含 productivity / branch-decision / embedding-status 等迁移）。详见[架构说明 §14](docs/architecture.md)。
 
 ### 适用与不适用

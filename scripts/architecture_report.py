@@ -21,7 +21,7 @@ DEFAULT_SCAN_PATHS = (
     "scripts",
     "apps/web/src",
     "frontend-sdk/src",
-    "tests/eval",
+    "tests",
 )
 DEFAULT_LARGE_FILE_THRESHOLD = 800
 DEFAULT_LARGE_FILE_WARNING_RATIO = 0.95
@@ -52,6 +52,7 @@ class ImportBoundaryRule:
     source_prefix: str
     forbidden_imports: tuple[str, ...]
     reason: str
+    excluded_paths: tuple[str, ...] = ()
 
 
 PYTHON_IMPORT_RULES: tuple[ImportBoundaryRule, ...] = (
@@ -61,12 +62,48 @@ PYTHON_IMPORT_RULES: tuple[ImportBoundaryRule, ...] = (
         "production package code must not depend on scripts, tests, or frontend workspaces",
     ),
     ImportBoundaryRule(
+        "src/focus_agent/core",
+        (
+            "api",
+            "services",
+            "repositories",
+            "focus_agent.api",
+            "focus_agent.services",
+            "focus_agent.repositories",
+        ),
+        "core domain code must not depend on API, service, or repository adapters",
+    ),
+    ImportBoundaryRule(
+        "src/focus_agent/repositories",
+        ("api", "services", "focus_agent.api", "focus_agent.services"),
+        "repository adapters must not depend on API or application services",
+    ),
+    ImportBoundaryRule(
+        "src/focus_agent/services/chat",
+        (".service", "focus_agent.services.chat.service"),
+        "chat implementation modules must use dependencies directly, not the ChatService facade",
+        (
+            "src/focus_agent/services/chat/__init__.py",
+            "src/focus_agent/services/chat/service.py",
+        ),
+    ),
+    ImportBoundaryRule(
         "scripts",
         ("apps", "frontend_sdk", "frontend-sdk"),
         "automation scripts must not depend on frontend implementation modules",
     ),
 )
 TEXT_IMPORT_RULES: tuple[ImportBoundaryRule, ...] = (
+    ImportBoundaryRule(
+        "apps/web/src/shared",
+        ("features", "pages", "@/features", "@/pages"),
+        "shared Web code must not depend on feature or page modules",
+    ),
+    ImportBoundaryRule(
+        "apps/web/src/entities",
+        ("features", "pages", "@/features", "@/pages"),
+        "Web entities must not depend on feature or page modules",
+    ),
     ImportBoundaryRule(
         "apps/web/src",
         ("src/focus_agent", "scripts"),
@@ -121,14 +158,27 @@ def _iter_files(paths: Sequence[str | Path], *, root: Path) -> list[Path]:
     return sorted(files, key=lambda path: _relative(path, root=root))
 
 
-def _line_count(path: Path) -> int:
-    return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+def _source_text(path: Path, *, texts: dict[Path, str] | None = None) -> str:
+    if texts is not None:
+        return texts[path]
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _is_generated_file(path: Path, *, root: Path) -> bool:
+def _line_count(
+    path: Path,
+    *,
+    texts: dict[Path, str] | None = None,
+    line_counts: dict[Path, int] | None = None,
+) -> int:
+    if line_counts is not None:
+        return line_counts[path]
+    return len(_source_text(path, texts=texts).splitlines())
+
+
+def _is_generated_file(path: Path, *, root: Path, texts: dict[Path, str] | None = None) -> bool:
     if _relative(path, root=root) not in GENERATED_FILE_PATHS:
         return False
-    header = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[:8])
+    header = "\n".join(_source_text(path, texts=texts).splitlines()[:8])
     return all(marker in header for marker in GENERATED_FILE_MARKERS)
 
 
@@ -137,12 +187,14 @@ def collect_large_files(
     *,
     root: Path,
     threshold: int,
+    texts: dict[Path, str] | None = None,
+    line_counts: dict[Path, int] | None = None,
 ) -> list[dict[str, Any]]:
     large_files: list[dict[str, Any]] = []
     for path in files:
-        if _is_generated_file(path, root=root):
+        if _is_generated_file(path, root=root, texts=texts):
             continue
-        lines = _line_count(path)
+        lines = _line_count(path, texts=texts, line_counts=line_counts)
         if lines <= threshold:
             continue
         large_files.append(
@@ -161,13 +213,15 @@ def collect_near_large_files(
     root: Path,
     threshold: int,
     warning_ratio: float,
+    texts: dict[Path, str] | None = None,
+    line_counts: dict[Path, int] | None = None,
 ) -> list[dict[str, Any]]:
     warning_at = max(1, math.ceil(threshold * warning_ratio))
     near_large_files: list[dict[str, Any]] = []
     for path in files:
-        if _is_generated_file(path, root=root):
+        if _is_generated_file(path, root=root, texts=texts):
             continue
-        lines = _line_count(path)
+        lines = _line_count(path, texts=texts, line_counts=line_counts)
         if lines < warning_at or lines > threshold:
             continue
         near_large_files.append(
@@ -186,21 +240,21 @@ def collect_line_count_top(
     *,
     root: Path,
     limit: int = DEFAULT_LINE_COUNT_TOP_N,
+    texts: dict[Path, str] | None = None,
+    line_counts: dict[Path, int] | None = None,
 ) -> list[dict[str, Any]]:
-    line_counts = [
-        {
-            "lines": _line_count(path),
-            "path": _relative(path, root=root),
-        }
+    counts = line_counts or {path: _line_count(path, texts=texts) for path in files}
+    items = [
+        {"lines": counts[path], "path": _relative(path, root=root)}
         for path in files
-        if not _is_generated_file(path, root=root)
+        if not _is_generated_file(path, root=root, texts=texts)
     ]
-    return sorted(line_counts, key=lambda item: (-item["lines"], item["path"]))[:limit]
+    return sorted(items, key=lambda item: (-item["lines"], item["path"]))[:limit]
 
 
-def _python_imports(path: Path) -> list[tuple[int, str]]:
+def _python_imports(path: Path, *, texts: dict[Path, str] | None = None) -> list[tuple[int, str]]:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(_source_text(path, texts=texts))
     except SyntaxError as exc:
         return [(exc.lineno or 1, "<syntax-error>")]
     imports: list[tuple[int, str]] = []
@@ -213,11 +267,9 @@ def _python_imports(path: Path) -> list[tuple[int, str]]:
     return imports
 
 
-def _text_imports(path: Path) -> list[tuple[int, str]]:
+def _text_imports(path: Path, *, texts: dict[Path, str] | None = None) -> list[tuple[int, str]]:
     imports: list[tuple[int, str]] = []
-    for line_no, line in enumerate(
-        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
-    ):
+    for line_no, line in enumerate(_source_text(path, texts=texts).splitlines(), start=1):
         stripped = line.strip()
         if " from " not in stripped and not stripped.startswith("import "):
             continue
@@ -235,19 +287,29 @@ def _matches_prefix(path: Path, *, root: Path, prefix: str) -> bool:
 
 
 def _violates(import_name: str, forbidden_import: str) -> bool:
-    normalized = import_name.lstrip(".")
+    normalized = import_name.lstrip("./")
+    normalized_forbidden = forbidden_import.lstrip("./")
     return (
-        normalized == forbidden_import
-        or normalized.startswith(f"{forbidden_import}.")
-        or normalized.startswith(f"{forbidden_import}/")
+        normalized == normalized_forbidden
+        or normalized.startswith(f"{normalized_forbidden}.")
+        or normalized.startswith(f"{normalized_forbidden}/")
     )
 
 
-def _boundary_issues_for_file(path: Path, *, root: Path) -> list[dict[str, Any]]:
+def _boundary_issues_for_file(
+    path: Path, *, root: Path, texts: dict[Path, str] | None = None
+) -> list[dict[str, Any]]:
     rules = PYTHON_IMPORT_RULES if path.suffix == ".py" else TEXT_IMPORT_RULES
-    imports = _python_imports(path) if path.suffix == ".py" else _text_imports(path)
+    imports = (
+        _python_imports(path, texts=texts)
+        if path.suffix == ".py"
+        else _text_imports(path, texts=texts)
+    )
     issues: list[dict[str, Any]] = []
+    relative = _relative(path, root=root)
     for rule in rules:
+        if relative in rule.excluded_paths:
+            continue
         if not _matches_prefix(path, root=root, prefix=rule.source_prefix):
             continue
         for line_no, import_name in imports:
@@ -258,7 +320,7 @@ def _boundary_issues_for_file(path: Path, *, root: Path) -> list[dict[str, Any]]
                             "forbidden_import": forbidden,
                             "import_name": import_name,
                             "line": line_no,
-                            "path": _relative(path, root=root),
+                            "path": relative,
                             "reason": rule.reason,
                             "source_prefix": rule.source_prefix,
                         }
@@ -266,12 +328,14 @@ def _boundary_issues_for_file(path: Path, *, root: Path) -> list[dict[str, Any]]
     return issues
 
 
-def collect_import_boundary_issues(files: Iterable[Path], *, root: Path) -> list[dict[str, Any]]:
+def collect_import_boundary_issues(
+    files: Iterable[Path], *, root: Path, texts: dict[Path, str] | None = None
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     for path in files:
         if path.suffix not in {".js", ".jsx", ".mjs", ".py", ".ts", ".tsx"}:
             continue
-        issues.extend(_boundary_issues_for_file(path, root=root))
+        issues.extend(_boundary_issues_for_file(path, root=root, texts=texts))
     return issues
 
 
@@ -284,15 +348,27 @@ def build_architecture_report(
 ) -> dict[str, Any]:
     root_path = Path(root).resolve()
     files = _iter_files(scan_paths, root=root_path)
-    large_files = collect_large_files(files, root=root_path, threshold=large_file_threshold)
+    texts = {path: _source_text(path) for path in files}
+    line_counts = {path: len(texts[path].splitlines()) for path in files}
+    large_files = collect_large_files(
+        files,
+        root=root_path,
+        threshold=large_file_threshold,
+        texts=texts,
+        line_counts=line_counts,
+    )
     near_large_files = collect_near_large_files(
         files,
         root=root_path,
         threshold=large_file_threshold,
         warning_ratio=large_file_warning_ratio,
+        texts=texts,
+        line_counts=line_counts,
     )
-    line_count_top10 = collect_line_count_top(files, root=root_path)
-    boundary_issues = collect_import_boundary_issues(files, root=root_path)
+    line_count_top10 = collect_line_count_top(
+        files, root=root_path, texts=texts, line_counts=line_counts
+    )
+    boundary_issues = collect_import_boundary_issues(files, root=root_path, texts=texts)
     issue_count = len(large_files) + len(boundary_issues)
     return {
         "meta": {
@@ -349,6 +425,9 @@ def architecture_regressions(
             regressions.append(f"new large file: {path} ({lines} lines)")
         elif lines > maximum:
             regressions.append(f"large file grew: {path} ({lines} > {maximum})")
+    current_large_paths = {str(item["path"]) for item in report["large_files"]}
+    for path in sorted(allowed_files.keys() - current_large_paths):
+        regressions.append(f"resolved baseline path must be removed: {path}")
     if report["import_boundary_issues"]:
         regressions.append(f"import boundary issues: {len(report['import_boundary_issues'])}")
     return regressions

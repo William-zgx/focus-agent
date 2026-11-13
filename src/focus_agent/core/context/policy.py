@@ -7,42 +7,41 @@ from langchain.messages import AnyMessage
 
 from ..branch_brief import resolve_fork_brief
 from ..branch_conclusions import render_approved_conclusions
-from ..context_compaction import select_recent_messages
-from ..state import normalize_agent_state
-from ..types import ContextBudget, PromptMode
-from .assembly import (
-    _branch_scope_block,
+from ..context_assembly_coercion import (
     _coerce_artifact_lines,
     _coerce_constraints,
     _coerce_imported_lines,
     _coerce_legacy_imported_lines,
     _coerce_local_finding_lines,
     _coerce_pinned_facts,
-    _current_plan_step_goal,
+)
+from ..context_assembly_lines import (
     _dedupe_artifact_lines,
     _dedupe_finding_lines,
     _dedupe_memory_lines,
     _dedupe_preferring_reference,
     _dedupe_text_lines,
+)
+from ..context_assembly_rendering import (
+    _branch_scope_block,
+    _current_plan_step_goal,
     _mode_instructions,
     _render_block_order,
     _render_lines,
     _skill_system_block,
 )
-from .budget import (
-    _coerce_prompt_mode,
-    _conversation_safe_messages,
-    _prompt_budget_count,
-    apply_prompt_budget_guard,
-    approximate_token_count,
-    trim_tool_observation,
-)
+from ..context_compaction import select_recent_messages
+from ..context_token_counting import approximate_token_count
+from ..state import normalize_agent_state
+from ..types import ContextBudget, PromptMode
+from .budget import _coerce_prompt_mode, _conversation_safe_messages, apply_prompt_budget_guard
+from .tool_observations import trim_tool_observation
 
+# Budget helpers remain public here for legacy context_policy callers.
 __all__ = [
     "ContextSlice",
-    "_prompt_budget_count",
-    "approximate_token_count",
     "apply_prompt_budget_guard",
+    "approximate_token_count",
     "assemble_context",
     "trim_tool_observation",
 ]

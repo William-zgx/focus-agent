@@ -1,1 +1,3 @@
-export { Tag } from "./index";
+import { Badge } from "./Badge";
+
+export const Tag = Badge;

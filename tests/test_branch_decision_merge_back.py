@@ -18,7 +18,7 @@ from focus_agent.repositories.governance_repository import InMemoryGovernanceRep
 from focus_agent.services.branches.actions import normalize_branch_actions
 from focus_agent.services.chat import ChatService
 from focus_agent.services.coordination import create_in_memory_coordination_backend
-from tests.test_chat_service import (
+from tests.unit.chat.support import (
     BranchActionBranchService,
     BranchRecommendationGraph,
     _branch_recommendation_service,
@@ -72,7 +72,9 @@ def test_non_merge_back_phrases_are_ignored(message: str) -> None:
 # ----------------------------------------------------------------- pre-turn path
 
 
-def _child_chat(tmp_path: Path, graph: object, **ports: object) -> ChatService:
+def _child_chat(
+    chat_service_factory, tmp_path: Path, graph: object, **ports: object
+) -> ChatService:
     settings = Settings(
         agent_branch_recommendation_enabled=True,
         agent_branch_recommendation_mode="suggest",
@@ -80,7 +82,7 @@ def _child_chat(tmp_path: Path, graph: object, **ports: object) -> ChatService:
     repo = _repo_with_child_branch(tmp_path)
     decision_service = _branch_recommendation_service(settings, graph)
     decision_service.branch_service = SimpleNamespace(repo=repo)
-    return ChatService(
+    return chat_service_factory(
         SimpleNamespace(
             settings=settings,
             graph=graph,
@@ -102,9 +104,11 @@ def _branch_graph() -> BranchRecommendationGraph:
     )
 
 
-def test_merge_back_on_child_branch_answers_then_shows_review_card(tmp_path: Path) -> None:
+def test_merge_back_on_child_branch_answers_then_shows_review_card(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _branch_graph()
-    chat = _child_chat(tmp_path, graph)
+    chat = _child_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(
         thread_id="child-1", user_id="owner-1", message="这个结论可以带回主线了"
@@ -122,9 +126,11 @@ def test_merge_back_on_child_branch_answers_then_shows_review_card(tmp_path: Pat
     assert action["reason"] == "你想把这个分支的结论带回上一层。"
 
 
-def test_merge_back_wording_on_root_thread_shows_no_card(tmp_path: Path) -> None:
+def test_merge_back_wording_on_root_thread_shows_no_card(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _branch_graph()
-    chat = _child_chat(tmp_path, graph)
+    chat = _child_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(thread_id="root-1", user_id="owner-1", message="可以合并了")
 
@@ -132,10 +138,12 @@ def test_merge_back_wording_on_root_thread_shows_no_card(tmp_path: Path) -> None
     assert payload.get("branch_actions") in (None, [])
 
 
-def test_return_to_parent_executes_navigation_without_forking(tmp_path: Path) -> None:
+def test_return_to_parent_executes_navigation_without_forking(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _branch_graph()
     branch_service = BranchActionBranchService()
-    chat = _child_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _child_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(thread_id="child-1", user_id="owner-1", message="merge it back to main")
     action = graph.values["branch_actions"][-1]
 

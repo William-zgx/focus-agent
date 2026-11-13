@@ -1,6 +1,6 @@
 # Focus Agent 整体架构设计
 
-更新时间：2026-11-08；默认聊天仅使用 `AGENT_CORE=v2` 模型驱动 tool loop。2026-11-05 已按 `simplify/repo-cleanup` 后的源码布局校正路径、图节点和计数，历史验收范围保持原报告口径。
+更新时间：2026-11-11；默认聊天仅使用 `AGENT_CORE=v2` 模型驱动 tool loop。2026-11-11 已按当前源码刷新模块、OpenAPI/compat 计数和模型 catalog 路径，历史验收范围保持原报告口径。
 
 本文是 Focus Agent 的整体架构入口，说明系统定位、平台维护边界、核心请求链路、持久化边界、前端/SDK、部署形态和验证口径。它只保留跨模块设计和关键路径。
 
@@ -30,8 +30,8 @@ Focus Agent 是一个 **自托管、Web-first 的 branch-aware Agent 工作台�
 受控 merge-back、记忆治理、工具调用、可观测复盘、Admin 运维、
 发布/eval 证据链、TypeScript SDK，以及可选的 Android 本地 runtime。
 
-按代码体量，应按 **中型 monorepo 平台** 维护（约 499 个 Python 模块 / ~11.3 万行后端、
-OpenAPI 129 paths、compat baseline 68 项），而不是“轻量脚手架”叙事。
+按代码体量，应按 **中型 monorepo 平台** 维护（约 453 个 Python 模块 / ~10.0 万行后端、
+OpenAPI 107 paths、compat baseline 43 项），而不是“轻量脚手架”叙事。
 
 它的核心假设是：复杂任务不是单线聊天。研究、调试、写作和验证往往需要并行探索，主线需要稳定沉淀，分支需要可丢弃、可合并、可审计。因此系统围绕以下能力设计：
 
@@ -111,14 +111,15 @@ flowchart LR
 | `src/focus_agent/api/streaming/` | SSE response helper 和公共 streaming response headers |
 | `src/focus_agent/config_parts/` | Settings 子域加载、模型/工具 catalog TOML 解析、环境变量与安全校验 |
 | `src/focus_agent/defaults/` | 包内默认配置数据；当前内置模型 provider/model catalog 只维护在 `models.toml` |
+| `src/focus_agent/model_registry.py` | 模型 catalog 合并、model ID/protocol 解析、模型配置解析与 chat model factory |
 | `src/focus_agent/engine/` | `AppRuntime` 创建、v2 LangGraph 图（`loop/builder.py`；`graph_builder.py` 为统一入口）、`loop/` 与 `graph/` 下的共享 node/policy/tool execution helpers、模型工厂、本地 fallback persistence |
 | `src/focus_agent/harness/` | FocusAgentHarness、RunManager、stream bridge、middleware stack、run journal |
-| `src/focus_agent/core/` | state、branching、request context、context policy facade、context assembly/budget/tool-observation helpers、merge review；共享小工具 `message_utils.py`（消息类型判断、`clip_text`）、`time_utils.py`（`utc_now*`）、`coercion.py` |
+| `src/focus_agent/core/` | state、branching、request context、`core/context/`、context assembly/budget/tool-observation helpers、merge review；共享小工具 `message_utils.py`（消息类型判断、`clip_text`）、`time_utils.py`（`utc_now*`）、`coercion.py` |
 | `src/focus_agent/services/` | ChatService、BranchService、UserService、ProductivityService 等 API-facing 业务服务；实现优先在 `services/chat/`、`services/branches/` 等 package |
-| `src/focus_agent/branch_service.py`、`chat_service.py` 等顶层 shim | 兼容 re-export facade（计入 compat baseline）；**找实现时优先进入 `services/` 下的实现 package** |
+| `src/focus_agent/services/chat/`、`services/branches/` | Chat/Branch canonical implementation packages；顶层 `branch_service.py`、`chat_service.py` 等 shim 已删除，不再作为导入入口 |
 | `src/focus_agent/branch_decision/` | branch decision / pre-turn recommendation 的 signal collection、scoring 和 service |
 | `src/focus_agent/repositories/` | Postgres / SQLite repository、schema（`SCHEMA_VERSION`）、trajectory、artifact metadata；Postgres 仓储共用 `_postgres_base.py` 的 `PostgresMixin`（构造、连接池/直连、`decode_json_payload`） |
-| `src/focus_agent/runtime/` | 运行时共享工具：进程级共享线程池、关闭钩子（`lifecycle.py`）、HTTP client、`ModelRouter`、secret provider |
+| `src/focus_agent/runtime/` | 运行时共享工具：进程级共享线程池、关闭钩子（`lifecycle.py`）、HTTP client、secret provider |
 | `src/focus_agent/cli/` | 命令行入口：`demo.py`、`memory_embedding.py`、`retrieval_index.py`、`trajectory.py`、`migrate_local_state.py`（`pyproject.toml` `[project.scripts]` 指向这里；API 入口是 `api/cli.py`） |
 | `src/focus_agent/memory/` | memory model、retriever、extractor、writer、curator、policy、dedupe、embedding provider/service/policy |
 | `src/focus_agent/retrieval/` | `RetrievalIndex` protocol、Zvec adapter、memory/artifact/skill/trajectory/branch/failure/governance/workspace indexing helpers |
@@ -145,9 +146,9 @@ flowchart LR
 | Persistence adapters | Postgres / SQLite repositories、schema、migration、本地 fallback | schema 和 repository contract 是稳定边界；兼容路径先用引用扫描证明安全，再删除 |
 | Mobile local runtime | `apps/web/src/android-local-runtime/`、Capacitor 原生桥 | 与 server-backed Web 并行；协议与能力变更必须单独验证，避免 silently drift |
 | Release and eval tooling | `scripts/`、release/eval/smoke tests、contract snapshots | CLI 参数、exit code、报告字段稳定；重复 I/O 和 report 读取可抽 helper，但不改变输出 shape |
-| Compatibility surface | 顶层 `branch_service.py`、`chat_service.py`、`graph.py`、`state.py`、`schemas.py` 及剩余 re-export facade | 新增代码使用实现路径；先迁移仓库调用方，再按 compat exit criteria 删除；外部采用方出现后增加迁移窗口 |
+| Compatibility surface | 剩余 re-export facade（当前 43 项）；已删除的顶层 `branch_service.py`、`chat_service.py`、`graph.py`、`state.py`、`schemas.py` 不再作为导入入口 | 新增代码使用实现路径；先迁移仓库调用方，再按 compat exit criteria 删除；外部采用方出现后增加迁移窗口 |
 
-`make architecture-report` 生成 `reports/architecture/latest.json`，用于本地观察大型文件和 import 边界信号；`make architecture-gate` 使用同一份 canonical 800 行策略和 `docs/architecture-debt-baseline.json` 在 CI 中阻断回归。当前 baseline 没有 grandfathered large file；发现问题后应按模块边界拆小 helper 或调整依赖方向，而不是放宽阈值。
+`make architecture-report` 生成 `reports/architecture/latest.json`，用于本地观察大型文件和 import 边界信号；`make architecture-gate` 使用同一份 canonical 800 行策略和 `docs/architecture-debt-baseline.json` 在 CI 中阻断回归。生产代码没有 grandfathered large file；baseline 仅为 13 个既有大型测试设置只减不增的临时上限，新增大文件或超限增长都会失败。门禁还约束 `core` / `repositories` 的反向依赖、chat branch actions 对 service facade 的回导，以及 Web `shared` / `entities` 对 `features` / `pages` 的反向依赖。发现问题后应按模块边界拆小 helper 或调整依赖方向，而不是放宽阈值。
 
 当一个改动跨越两个以上边界时，默认拆成多阶段：先抽私有 helper 或 typed port，再迁移调用点，最后才考虑删除 compatibility alias。
 
@@ -799,7 +800,7 @@ make web-dev
 - Context window 已有发送栏用量、手动/自动压缩、工具观察 artifactization 和 128k 默认预算，但 token 估算当前仍以确定性裁剪和近似预算为主。
 - Local fallback persistence 只适合本地，不适合生产多副本；裸跑 API 且无 `DATABASE_URI` 时 trajectory/artifact metadata 不具备 Postgres durability。
 - Android local runtime 与 server-backed Web 是并行集成模型，能力集合有意裁剪（例如部分 workbench/productivity 在 Android build flag 下关闭），不能假设与 Web 全量对等。
-- 1.x 兼容 facade（68 项，见 `docs/compat-debt-baseline.json`）仍在；读代码时需区分 re-export 与真正实现路径。
+- 剩余兼容 facade（baseline 43 项，见 `docs/compat-debt-baseline.json`）仍需按 exit criteria 收敛；读代码时需区分 re-export 与真正实现路径。
 - 平台工程完备度高于 Agent 结果质量证据：eval / golden failure / 成本延迟画像 / 多 Agent 质量门槛仍在扩展中（见 [roadmap.md](roadmap.md)）。
 - 企业 IdP/JWKS、不可伪造的部署控制面绑定、生产规模 RPO/RTO 演练仍是采用方集成与运维责任。
 
@@ -921,7 +922,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_metadata.py \
   tests/test_trajectory_observability.py \
   tests/test_api_trajectory_observability.py \
-  tests/test_chat_service.py
+  tests/unit/chat
 ```
 
 ## 22. 文件导航

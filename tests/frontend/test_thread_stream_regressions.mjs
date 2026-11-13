@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { TextEncoder, TextDecoder } from "node:util";
 import vm from "node:vm";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const repoRoot = process.cwd();
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const typescriptModuleUrl = pathToFileURL(
   path.join(repoRoot, "apps/web/node_modules/typescript/lib/typescript.js"),
 ).href;
@@ -2011,7 +2011,7 @@ test("web thread UI wires tool approval rendering to stream resume decisions", (
   );
   assert.equal(
     compactSource(streamRegistrySource).includes(
-      "abortControllersRef.current.delete(threadId); activeRequestIdsRef.current.delete(threadId);",
+      "requestsRef.current.delete(threadId);",
     ),
     true,
   );

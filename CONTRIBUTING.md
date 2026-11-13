@@ -51,6 +51,8 @@ make setup-local
 
 Keep provider credentials in `.focus_agent/local.env` or other untracked local configuration. Do not commit secrets, tokens, or private endpoints.
 
+Only `.focus_agent/skills/china-stock-analysis/`, `.focus_agent/skills/finviz-screener/`, and `.focus_agent/skills/stock-metrics/` are versioned skill overlays, not general local state. Local databases, logs, environment files, sandboxes, local configuration, and other skill overlays remain ignored. The two tracked files under `reports/release-gate/` are intentional historical reports; other report output remains local.
+
 ## Running the Project
 
 Start the API locally through the repo startup path:
@@ -147,7 +149,8 @@ Please try to keep changes aligned with the existing goals of the repository:
 - preserve branch-aware conversation behavior
 - preserve API and streaming contract clarity
 - update docs when behavior or setup changes
-- add or update tests when changing runtime behavior
+- add or update tests when changing runtime behavior, following `tests/README.md`
+  for unit, integration, frontend, contract, eval, and fixture placement
 
 When adding code:
 

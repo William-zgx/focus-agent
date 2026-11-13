@@ -132,13 +132,15 @@ make architecture-gate
 make compat-gate
 ```
 
-The architecture gate scans non-generated source with a canonical 800-line
-limit. `docs/architecture-debt-baseline.json` contains zero grandfathered
-large files, so every scanned file above 800 lines is a regression; a file that
-was split below the limit must not be reintroduced.
+The architecture gate scans non-generated production code and all tests with a
+canonical 800-line limit. Production/source files have zero grandfathered large
+files. `docs/architecture-debt-baseline.json` temporarily caps 13 named legacy
+test files at their current sizes: they may shrink but must not grow. Any new
+large file or growth beyond a cap is a regression, and a resolved path must not
+be reintroduced.
 
 The compatibility gate uses schema v2 and exact, line-number-independent item
-IDs from `docs/compat-debt-baseline.json`. The current inventory is 54 items.
+IDs from `docs/compat-debt-baseline.json`. The current baseline inventory is 43 items.
 The gate rejects a new item ID even when the category and total counts stay
 unchanged. Do not increase `max_total`, category limits, or `item_ids` merely
 to make CI pass: remove the new compatibility path, or document and review an
@@ -264,7 +266,7 @@ open the deep link once from a cold start and once while the app is running.
 5. If stream visibility, tool protocol filtering, frontend stream reducers, processing cards, or the live-web execution contract changed:
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_tool_runtime.py tests/test_runtime_outcome.py -q
 make sdk-build
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
@@ -330,7 +332,7 @@ If sandbox execution changed, build or refresh the standard execution image befo
 make sandbox-image
 # or without Make:
 uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
-.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
+.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_tool_runtime.py tests/test_runtime_outcome.py -q
 ```
 
 The sandbox Dockerfile defaults to `node:20-bookworm-slim` instead of a large devcontainer image. Use `--base-image`, `--apt-mirror`, or `--apt-security-mirror` with `scripts/ensure_sandbox_image.py` when a local mirror is more reliable. `FOCUS_AGENT_SANDBOX_IMAGE` can point to another trusted local image. When the default image is not available, dev runs may fall back to the local backend and include a `fallback_reason` in the tool result; do not treat that as the final security model. See [sandbox-execution.md](sandbox-execution.md) for the execution contract and troubleshooting matrix.
@@ -388,7 +390,7 @@ When prompt filtering changes, include cases for unrelated personal preferences,
 13. If runtime coordination, durable background jobs, thread turn leases, or branch refresh scheduling changed:
 
 ```bash
-uv run pytest tests/test_coordination.py tests/test_background_work.py tests/test_chat_service.py
+uv run pytest tests/test_coordination.py tests/test_background_work.py tests/unit/chat
 uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security.py
 ```
 
@@ -401,8 +403,8 @@ If API rate limiting changed, include `tests/test_coordination.py`; Postgres-bac
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
 uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
-uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
-node --test tests/test_thread_stream_frontend_regressions.mjs
+uv run pytest tests/unit/chat tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/frontend/test_thread_stream_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check
@@ -524,7 +526,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_metadata.py \
   tests/test_trajectory_observability.py \
   tests/test_api_trajectory_observability.py \
-  tests/test_chat_service.py
+  tests/unit/chat
 ```
 
 19. If Productivity workbench changed (notes/tasks/capture/workbench tools):

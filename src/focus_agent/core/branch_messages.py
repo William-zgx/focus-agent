@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import Any
 
 from .message_utils import (
@@ -56,6 +57,39 @@ _COPIED_BRANCH_CONTROL_AI_PREFIXES = (
     "已取消这次分支切换请求。",
     "Canceled this branch switch request.",
 )
+
+
+def render_imported_conclusion(
+    *,
+    branch_name: str,
+    summary: str,
+    key_findings: Iterable[object],
+    evidence_refs: Iterable[object],
+) -> str:
+    lines = [f"Imported conclusion from branch '{branch_name}':", summary.strip()]
+    normalized_findings = [text for item in key_findings if (text := str(item).strip())]
+    if normalized_findings:
+        lines.extend(["", "Key findings:"])
+        lines.extend(f"- {item}" for item in normalized_findings)
+    normalized_evidence_refs = [text for item in evidence_refs if (text := str(item).strip())]
+    if normalized_evidence_refs:
+        lines.extend(["", f"Evidence refs: {', '.join(normalized_evidence_refs)}"])
+    return "\n".join(lines).strip()
+
+
+def append_imported_summary(
+    existing_summary: object,
+    *,
+    branch_name: str,
+    summary: str,
+    deduplicate: bool = False,
+) -> str:
+    previous = str(existing_summary or "").strip()
+    imported_line = f"Imported from {branch_name}: {summary.strip()}".strip()
+    if deduplicate and imported_line in previous:
+        return previous
+    combined = "\n".join(part for part in [previous, imported_line] if part)
+    return combined[-4000:]
 
 
 def _compact(message: str) -> str:

@@ -1,9 +1,17 @@
 .DS_Store
 .idea/
 .claude/
+.serena/
 .trae/
 .env
-.focus_agent/
+# Only the named skill overlays are versioned. Databases, logs, env files,
+# sandboxes, local model/tool configuration, and all other overlays stay local.
+.focus_agent/*
+!.focus_agent/skills/
+.focus_agent/skills/*
+!.focus_agent/skills/china-stock-analysis/
+!.focus_agent/skills/finviz-screener/
+!.focus_agent/skills/stock-metrics/
 .focus_agent/local.env
 .venv/
 __pycache__/
@@ -11,8 +19,16 @@ __pycache__/
 *.log
 .pytest_cache/
 .ruff_cache/
+.cache/
 artifacts/
+# Keep only the intentional historical release-gate reports versioned.
 reports/
+!/reports/
+/reports/*
+!/reports/release-gate/
+/reports/release-gate/*
+!/reports/release-gate/perf-final.json
+!/reports/release-gate/review-report.md
 log/
 node_modules/
 frontend-sdk/node_modules/

@@ -18,6 +18,8 @@ from focus_agent.runtime.lifecycle import (
 from focus_agent.runtime.thread_pool import shutdown_thread_pool
 from focus_agent.services.chat import ChatService
 
+from ..deps import _start_durable_background_worker
+
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
@@ -30,12 +32,18 @@ async def app_lifespan(app: FastAPI):
     register_shutdown_hook(close_async_http_client)
 
     async def _close_runtime() -> None:
+        close_chat_service = getattr(app.state.chat_service, "close", None)
+        if callable(close_chat_service):
+            close_chat_service()
+        close_run_manager = getattr(getattr(runtime, "run_manager", None), "close", None)
+        if callable(close_run_manager):
+            await close_run_manager()
         runtime.close()
         close_sync_http_client()
         shutdown_thread_pool()
 
     register_shutdown_hook(_close_runtime)
-    runtime.start_durable_background_worker(app.state.chat_service)
+    await _start_durable_background_worker(runtime, app.state.chat_service)
     try:
         yield
     finally:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from unittest.mock import Mock
 
 from focus_agent.services.coordination import (
     BackgroundJobClaim,
@@ -62,6 +63,32 @@ def test_coordination_backend_uses_postgres_multi_agent_ports_when_enabled() -> 
     assert isinstance(backend.rate_limiter, PostgresRateLimitBackend)
     assert isinstance(backend.approval_queue, PostgresApprovalQueue)
     assert backend.message_bus.default_ttl_seconds == 123
+
+
+def test_postgres_coordination_backends_reuse_connection_provider() -> None:
+    provider = Mock()
+    connection = object()
+    provider.connect.return_value = connection
+
+    backend = create_coordination_backend(
+        database_uri="postgresql://example/db",
+        background_job_backend="postgres",
+        multi_agent_enabled=True,
+        connection_provider=provider,
+    )
+    adapters = (
+        backend.thread_turns,
+        backend.job_deduper,
+        backend.rate_limiter,
+        backend.resource_locks,
+        backend.message_bus,
+        backend.approval_queue,
+    )
+
+    for adapter in adapters:
+        assert adapter.connection_provider is provider
+        assert adapter._connect() is connection
+    assert provider.connect.call_count == len(adapters)
 
 
 def test_postgres_rate_limit_backend_uses_shared_bucket_table(monkeypatch) -> None:

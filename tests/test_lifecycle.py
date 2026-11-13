@@ -90,6 +90,49 @@ def test_app_lifespan_leaves_uvicorn_signal_handlers_alone(monkeypatch) -> None:
     assert signal_calls == []
 
 
+def test_app_lifespan_closes_run_manager_before_runtime(monkeypatch) -> None:
+    events = []
+
+    class FakeSettings:
+        @classmethod
+        def from_env(cls):
+            return cls()
+
+    class FakeRunManager:
+        async def close(self):
+            events.append("run_manager")
+
+    class FakeRuntime:
+        def __init__(self):
+            self.run_manager = FakeRunManager()
+
+        def close(self):
+            events.append("runtime")
+
+    async def close_async_http_client() -> None:
+        return None
+
+    monkeypatch.setattr(lifespan_module, "Settings", FakeSettings)
+    monkeypatch.setattr(lifespan_module, "validate_jwt_secret_for_environment", lambda _s: None)
+    monkeypatch.setattr(lifespan_module, "create_runtime", lambda _s: FakeRuntime())
+    monkeypatch.setattr(lifespan_module, "ChatService", lambda _runtime: object())
+    monkeypatch.setattr(lifespan_module, "close_async_http_client", close_async_http_client)
+    monkeypatch.setattr(lifespan_module, "close_sync_http_client", lambda: None)
+    monkeypatch.setattr(lifespan_module, "shutdown_thread_pool", lambda: None)
+
+    async def run_lifespan() -> None:
+        app = SimpleNamespace(state=SimpleNamespace())
+        async with lifespan_module.app_lifespan(app):
+            pass
+
+    try:
+        asyncio.run(run_lifespan())
+    finally:
+        reset_shutdown_state()
+
+    assert events == ["run_manager", "runtime"]
+
+
 def test_uvicorn_sigterm_stops_isolated_child_process(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     cleanup_marker = tmp_path / "runtime-closed"

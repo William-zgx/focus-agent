@@ -9,7 +9,11 @@ from focus_agent.core import context_token_counting as token_counting
 
 
 class _FakeEncoding:
+    def __init__(self):
+        self.encoded_texts: list[str] = []
+
     def encode(self, text: str) -> list[str]:
+        self.encoded_texts.append(text)
         return text.split() or [text]
 
 
@@ -72,6 +76,121 @@ def test_get_encoding_fallback_is_cached_after_model_lookup_fails(monkeypatch):
 
     assert calls["encoding_for_model"] == 2
     assert calls["get_encoding"] == 1
+
+
+def test_known_model_estimate_encodes_once_and_reports_metadata(monkeypatch):
+    encoding = _FakeEncoding()
+    model_lookups = []
+
+    def encoding_for_model(model: str) -> _FakeEncoding:
+        model_lookups.append(model)
+        return encoding
+
+    fake_tiktoken = types.SimpleNamespace(
+        encoding_for_model=encoding_for_model,
+        get_encoding=lambda name: pytest.fail(f"unexpected fallback lookup: {name}"),
+    )
+    monkeypatch.setitem(sys.modules, "tiktoken", fake_tiktoken)
+
+    estimate = token_counting.estimate_text_token_count(
+        "hello world",
+        chars_per_token=4,
+        tokenizer_id="gpt-test",
+        tokenizer_first=True,
+    )
+
+    assert estimate == token_counting.TokenCountEstimate(
+        tokens=2,
+        counting_backend="tiktoken",
+        tokenizer_id="gpt-test",
+        estimated=False,
+    )
+    assert encoding.encoded_texts == ["hello world"]
+    assert model_lookups == ["gpt-test"]
+
+
+def test_unknown_model_estimate_uses_fallback_once_and_reports_resolved_id(monkeypatch):
+    encoding = _FakeEncoding()
+    lookups = []
+
+    def encoding_for_model(model: str) -> _FakeEncoding:
+        lookups.append(("model", model))
+        raise KeyError("unknown model")
+
+    def get_encoding(name: str) -> _FakeEncoding:
+        lookups.append(("encoding", name))
+        return encoding
+
+    fake_tiktoken = types.SimpleNamespace(
+        encoding_for_model=encoding_for_model,
+        get_encoding=get_encoding,
+    )
+    monkeypatch.setitem(sys.modules, "tiktoken", fake_tiktoken)
+
+    estimate = token_counting.estimate_text_token_count(
+        "hello world",
+        chars_per_token=1,
+        tokenizer_id="missing-model",
+        tokenizer_first=True,
+    )
+
+    assert estimate == token_counting.TokenCountEstimate(
+        tokens=2,
+        counting_backend="tiktoken",
+        tokenizer_id=token_counting.DEFAULT_TOKENIZER_ID,
+        estimated=False,
+    )
+    assert encoding.encoded_texts == ["hello world"]
+    assert lookups == [
+        ("model", "missing-model"),
+        ("encoding", token_counting.DEFAULT_TOKENIZER_ID),
+    ]
+
+
+def test_missing_tiktoken_estimate_uses_character_fallback(monkeypatch):
+    imports = []
+
+    def missing_tiktoken(name: str):
+        imports.append(name)
+        raise ImportError("tiktoken unavailable")
+
+    monkeypatch.setattr(token_counting.importlib, "import_module", missing_tiktoken)
+
+    estimate = token_counting.estimate_text_token_count(
+        "hello world",
+        chars_per_token=5,
+        tokenizer_id="missing-model",
+        tokenizer_first=True,
+    )
+
+    assert estimate == token_counting.TokenCountEstimate(
+        tokens=3,
+        counting_backend="chars_fallback",
+        tokenizer_id="missing-model",
+        estimated=True,
+    )
+    assert imports == ["tiktoken"]
+
+
+def test_empty_text_estimate_skips_tokenizer_resolution(monkeypatch):
+    def fail_import(name: str):
+        pytest.fail(f"unexpected import for empty text: {name}")
+
+    monkeypatch.setattr(token_counting.importlib, "import_module", fail_import)
+
+    estimate = token_counting.estimate_text_token_count(
+        "",
+        chars_per_token=4,
+        tokenizer_id="gpt-test",
+        tokenizer_first=True,
+    )
+
+    assert estimate == token_counting.TokenCountEstimate(
+        tokens=0,
+        counting_backend="tiktoken",
+        tokenizer_id="gpt-test",
+        estimated=False,
+    )
 
 
 def _clear_caches() -> None:

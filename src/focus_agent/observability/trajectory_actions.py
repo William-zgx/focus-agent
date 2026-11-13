@@ -6,6 +6,7 @@ from typing import Any
 
 from focus_agent.config import Settings
 from focus_agent.eval.trajectory_replay import (
+    ConvertedTrajectoryCase,
     build_replay_comparison,
     convert_trajectory_records,
 )
@@ -32,14 +33,14 @@ def load_turn_export(
     return dict(rows[0])
 
 
-def build_promoted_dataset_payload(
+def convert_trajectory_record(
     record: dict[str, Any],
     *,
     case_id_prefix: str = "traj",
     copy_tool_trajectory: bool = False,
     copy_answer_substring: bool = False,
     answer_substring_chars: int = 160,
-) -> dict[str, Any]:
+) -> ConvertedTrajectoryCase:
     converted = convert_trajectory_records(
         [record],
         case_id_prefix=case_id_prefix,
@@ -49,7 +50,15 @@ def build_promoted_dataset_payload(
     )
     if not converted:
         raise ValueError("failed to convert trajectory record")
-    case = converted[0].case
+    return converted[0]
+
+
+def build_promoted_dataset_payload(
+    record: dict[str, Any],
+    *,
+    converted_case: ConvertedTrajectoryCase,
+) -> dict[str, Any]:
+    case = converted_case.case
     dataset_record = {
         "id": case.id,
         "input": case.input,
@@ -74,22 +83,9 @@ def run_replay_for_turn(
     *,
     settings: Settings,
     model: str | None = None,
-    case_id_prefix: str = "traj",
-    copy_tool_trajectory: bool = False,
-    copy_answer_substring: bool = False,
-    answer_substring_chars: int = 160,
+    converted_case: ConvertedTrajectoryCase,
 ) -> dict[str, Any]:
     build_default_runtime, run_case = _load_replay_runtime()
-    converted = convert_trajectory_records(
-        [record],
-        case_id_prefix=case_id_prefix,
-        copy_tool_trajectory=copy_tool_trajectory,
-        copy_answer_substring=copy_answer_substring,
-        answer_substring_chars=answer_substring_chars,
-    )
-    if not converted:
-        raise ValueError("failed to convert trajectory record")
-    converted_case = converted[0]
     replay_settings = replace(settings)
     if model:
         replay_settings.model = model

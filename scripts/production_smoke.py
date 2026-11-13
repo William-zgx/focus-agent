@@ -20,7 +20,7 @@ if __package__:
         build_stream_events_report,
         http_stream_events,
     )
-    from scripts.release_identity import attest_release_report
+    from scripts.release_identity import write_attested_release_report
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from scripts.production_smoke_stream import (
@@ -29,7 +29,7 @@ else:
         build_stream_events_report,
         http_stream_events,
     )
-    from scripts.release_identity import attest_release_report
+    from scripts.release_identity import write_attested_release_report
 
 DEFAULT_REPORT_JSON = Path("reports/release-gate/production-smoke.json")
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
@@ -491,14 +491,7 @@ def build_report(
 
 
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
-    target = _resolve_path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    payload = attest_release_report(report)
-    target.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return target
+    return write_attested_release_report(_resolve_path(path), report)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

@@ -149,14 +149,15 @@ make architecture-gate
 make compat-gate
 ```
 
-architecture gate 对非生成源码使用规范化的 800 行上限。
-`docs/architecture-debt-baseline.json` 没有任何 grandfathered 大文件，
-所以扫描范围内所有超过 800 行的文件都是回归；已经拆分到阈值以下的文件也
-不能重新长回来。
+architecture gate 对非生成生产代码和全部测试使用规范化的 800 行上限。
+生产代码没有 grandfathered 大文件；`docs/architecture-debt-baseline.json`
+仅临时记录 13 个既有大型测试的当前行数上限，它们只能缩小、不能增长。
+任何新增大文件或超过既有上限的增长都是回归；已经拆分到阈值以下的路径
+也不能重新长回来。
 
 compatibility gate 使用 schema v2 和
 `docs/compat-debt-baseline.json` 中与行号无关的精确 item ID。当前库存是
-68 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
+当前 baseline 为 43 项。即使分类计数和总数不变，只要出现新的 item ID，门禁也会失败。
 不要为了让 CI 通过而随意增加 `max_total`、分类上限或 `item_ids`：应移除
 新兼容路径；如果确实需要新增兼容项，则必须记录并评审原因与退出条件。
 `make architecture-report` 和 `make compat-report` 用于非阻断诊断，
@@ -261,7 +262,7 @@ connected tests 会覆盖 native 可取消 HTTP 与 deep-link 插件。安装后
 5. 如果改动影响 stream 可见性、工具协议过滤、frontend stream reducer、处理过程卡或 live-web execution contract：
 
 ```bash
-.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_execution_contract.py -q
+.venv/bin/pytest tests/test_streaming.py tests/test_harness_api.py tests/test_graph_builder.py tests/test_tool_runtime.py tests/test_runtime_outcome.py -q
 make sdk-build
 pnpm test:thread-stream-frontend-regressions
 pnpm sdk:check
@@ -320,7 +321,7 @@ export CHROME_PATH=/tmp/focus-agent-chromium-headless
 make sandbox-image
 # 或不通过 Make：
 uv run python scripts/ensure_sandbox_image.py --image focus-agent-sandbox:latest
-.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_execution_contract.py -q
+.venv/bin/python -m pytest tests/test_sandbox_execution.py tests/test_default_tools.py tests/test_skill_registry.py tests/test_tool_runtime.py tests/test_runtime_outcome.py -q
 ```
 
 sandbox Dockerfile 默认使用 `node:20-bookworm-slim`，不再依赖体积较大的 devcontainer 镜像。如果本地镜像源更稳定，可以给 `scripts/ensure_sandbox_image.py` 传 `--base-image`、`--apt-mirror` 或 `--apt-security-mirror`。`FOCUS_AGENT_SANDBOX_IMAGE` 可以指向其他受信任本地镜像。默认镜像不存在时，dev run 可能降级到 local backend，并在工具结果里带 `fallback_reason`；不要把这个降级路径当成最终安全模型。执行契约和排障矩阵见 [sandbox-execution.md](sandbox-execution.md)。
@@ -378,7 +379,7 @@ focus-agent-memory-embedding --database-uri "$DATABASE_URI" doctor
 13. 如果改动影响 runtime coordination、durable background jobs、thread turn lease 或 branch refresh 调度：
 
 ```bash
-uv run pytest tests/test_coordination.py tests/test_background_work.py tests/test_chat_service.py
+uv run pytest tests/test_coordination.py tests/test_background_work.py tests/unit/chat
 uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security.py
 ```
 
@@ -391,8 +392,8 @@ uv run pytest tests/test_runtime_backend_selection.py tests/test_config_security
 ```bash
 uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_api.py tests/test_branch_decision_repository.py
 uv run pytest tests/test_branch_repository_contract.py tests/test_thread_resolution_api.py
-uv run pytest tests/test_chat_service.py tests/test_harness_api.py tests/test_web_app_scaffold.py
-node --test tests/test_thread_stream_frontend_regressions.mjs
+uv run pytest tests/unit/chat tests/test_harness_api.py tests/test_web_app_scaffold.py
+node --test tests/frontend/test_thread_stream_regressions.mjs
 make contract-check
 make sdk-openapi-types-check
 make web-check
@@ -502,7 +503,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_metadata.py \
   tests/test_trajectory_observability.py \
   tests/test_api_trajectory_observability.py \
-  tests/test_chat_service.py
+  tests/unit/chat
 ```
 
 19. 如果改动生产力工作台（notes/tasks/capture）：

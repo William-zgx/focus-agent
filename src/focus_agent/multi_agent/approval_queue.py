@@ -13,6 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ..storage.postgres import PostgresConnectionProvider
 from .contracts import ApprovalRequest, ApprovalStatus
 
 
@@ -187,11 +188,20 @@ class InMemoryApprovalQueue:
 class PostgresApprovalQueue:
     """Postgres-backed approval request queue with async polling wait."""
 
-    def __init__(self, database_uri: str, *, poll_interval_seconds: float = 0.25) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        poll_interval_seconds: float = 0.25,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ) -> None:
         self.database_uri = database_uri
         self.poll_interval_seconds = max(float(poll_interval_seconds or 0.0), 0.05)
+        self.connection_provider = connection_provider
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     async def submit_and_wait(

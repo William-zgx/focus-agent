@@ -12,6 +12,7 @@ from uuid import uuid4
 import psycopg
 from psycopg.rows import dict_row
 
+from ..storage.postgres import PostgresConnectionProvider
 from .contracts import LockMode, ResourceClaim
 from .errors import DeadlockDetected
 
@@ -177,12 +178,20 @@ class InMemoryResourceLockManager:
 class PostgresResourceLockManager:
     """Postgres-backed resource locks with TTL expiry and conflict checks."""
 
-    def __init__(self, database_uri: str) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ) -> None:
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
         self._fence_token_lock = threading.Lock()
         self._fence_token_floors: dict[str, int] = {}
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod

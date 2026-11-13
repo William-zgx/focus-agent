@@ -21,6 +21,7 @@ class EnvironmentJudge:
         trajectory: list[TrajectoryStep],  # noqa: ARG002
         state: Mapping[str, Any] | None = None,
         before_state: Mapping[str, Any] | None = None,
+        oracle_state: Mapping[str, Any] | None = None,
     ) -> JudgeVerdict:
         assertions = _environment_assertions(case)
         if not assertions:
@@ -44,6 +45,7 @@ class EnvironmentJudge:
                 final_state=final_state,
                 input_state=input_state,
                 trajectory=trajectory,
+                oracle_state=oracle_state,
             )
             assertion_details.append(detail)
             failures.extend(str(failure) for failure in detail.get("failures", []))
@@ -73,6 +75,12 @@ def _environment_assertions(case: EvalCase) -> list[Mapping[str, Any]]:
     return []
 
 
+def environment_uses_oracle(case: EvalCase) -> bool:
+    return any(
+        _assertion_source(assertion) == "oracle" for assertion in _environment_assertions(case)
+    )
+
+
 def _initial_state(case: EvalCase) -> Mapping[str, Any]:
     input_payload = _get_field(case, "input") or {}
     initial_state = _get_field(input_payload, "initial_state")
@@ -86,6 +94,7 @@ def _evaluate_assertion(
     final_state: Mapping[str, Any],
     input_state: Mapping[str, Any],
     trajectory: list[TrajectoryStep],
+    oracle_state: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     path = assertion.get("path")
     failures: list[str] = []
@@ -108,6 +117,9 @@ def _evaluate_assertion(
     elif requested_source == "trajectory":
         value = _resolve_trajectory_path(trajectory, path)
         source = "trajectory" if value is not _MISSING else None
+    elif requested_source == "oracle":
+        value = _resolve_path(oracle_state if oracle_state is not None else {}, path)
+        source = "oracle" if value is not _MISSING else None
     elif requested_source == "final_state":
         value = _resolve_path(final_state, path)
         source = "final_state" if value is not _MISSING else None
@@ -138,6 +150,7 @@ def _evaluate_assertion(
         source_label = {
             "input": "input",
             "trajectory": "trajectory",
+            "oracle": "oracle",
             "final_state": "final state",
         }.get(requested_source, requested_source)
         failures.append(f"assertion[{index}] path={path!r} not found in {source_label}")

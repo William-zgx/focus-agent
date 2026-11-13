@@ -4,8 +4,8 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
-from .models import MemoryKind, MemoryRecord, MemoryWriteRequest
-from .text import memory_text_terms, normalize_memory_text
+from .models import MemoryKind, MemoryRecord, MemoryScope, MemoryWriteRequest
+from .text import has_correction_signal, memory_text_terms, normalize_memory_text
 
 
 def memory_fingerprint(record: MemoryWriteRequest | MemoryRecord) -> str:
@@ -100,6 +100,42 @@ def has_textual_overlap(left: str, right: str, *, minimum_overlap: int = 2) -> b
     if not left_tokens or not right_tokens:
         return False
     return len(left_tokens & right_tokens) >= minimum_overlap
+
+
+def is_possible_memory_conflict(existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
+    if existing.kind != incoming.kind or existing.scope != incoming.scope:
+        return False
+    if existing.scope not in {MemoryScope.USER, MemoryScope.PROJECT}:
+        return False
+    return normalize_memory_text(existing.summary or existing.content) != normalize_memory_text(
+        incoming.summary or incoming.content
+    )
+
+
+def should_replace_memory(
+    existing: MemoryRecord,
+    incoming: MemoryWriteRequest,
+    *,
+    textual_overlap: bool | None = None,
+) -> bool:
+    existing_text = existing.summary or existing.content
+    incoming_text = incoming.summary or incoming.content
+    existing_confidence = float(existing.confidence or 0.0)
+    incoming_confidence = float(incoming.confidence or 0.0)
+    if incoming.scope == MemoryScope.USER and incoming.kind == MemoryKind.USER_PREFERENCE:
+        existing_topic = user_preference_topic(existing_text)
+        if existing_topic and existing_topic == user_preference_topic(incoming_text):
+            return True
+    return (
+        incoming.importance > existing.importance
+        or incoming_confidence > existing_confidence
+        or has_correction_signal(incoming_text)
+        or (
+            has_textual_overlap(existing_text, incoming_text)
+            if textual_overlap is None
+            else textual_overlap
+        )
+    )
 
 
 def _semantic_anchor(record: MemoryWriteRequest | MemoryRecord) -> str:

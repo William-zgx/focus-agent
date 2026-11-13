@@ -22,6 +22,7 @@ from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.token_usage import message_token_usage
 from focus_agent.engine.graph_builder import build_graph
+from focus_agent.eval.oracle_evidence import has_invalid_environment, run_oracle_evidence
 from focus_agent.observability.trajectory import extract_trajectory_steps
 from focus_agent.skills import SkillRegistry
 
@@ -136,6 +137,8 @@ def _run_case_inner(
                 scene=case.scene,
                 skill_hints=tuple(case.skill_hints),
             )
+            # Tool observation reads/writes require the trusted LangGraph thread scope.
+            invoke_config = {"configurable": {"thread_id": context.root_thread_id}}
             if case.setup:
                 for turn in case.setup:
                     graph.invoke(
@@ -144,6 +147,7 @@ def _run_case_inner(
                             "task_brief": (turn.get("user") or "")[:200],
                             "selected_model": runtime.settings.model,
                         },
+                        config=invoke_config,
                         context=context,
                         version="v2",
                     )
@@ -169,7 +173,7 @@ def _run_case_inner(
                 )
             before_state = dict(payload)
 
-            result = graph.invoke(payload, context=context, version="v2")
+            result = graph.invoke(payload, config=invoke_config, context=context, version="v2")
         state = _state_from_result(result)
         answer = _last_ai_text(state.get("messages", []))
         trajectory = _extract_trajectory(state.get("messages", []))
@@ -200,6 +204,7 @@ def _run_case_inner(
         acceptance_verdict = _evaluate_case_acceptance(case=case, metrics=metrics)
         if acceptance_verdict is not None:
             verdicts.append(acceptance_verdict)
+        environment_invalid = has_invalid_environment(verdicts)
         passed = all(v.passed for v in verdicts)
         result_case_id = _result_case_id(
             case.id,
@@ -214,6 +219,7 @@ def _run_case_inner(
             verdicts=verdicts,
             trajectory=trajectory,
             metrics=metrics,
+            environment_invalid=environment_invalid,
             tags=list(case.tags),
         )
     except Exception as exc:  # noqa: BLE001
@@ -413,16 +419,20 @@ def _run_judges(
         verdicts.append(
             runtime.trajectory_judge.evaluate(case=case, answer=answer, trajectory=trajectory)
         )
+    oracle_verdict, oracle_state = run_oracle_evidence(case=case, answer=answer)
+    if oracle_verdict is not None:
+        verdicts.append(oracle_verdict)
     if _has_environment_expectations(case.environment):
-        verdicts.append(
-            runtime.environment_judge.evaluate(
-                case=case,
-                answer=answer,
-                trajectory=trajectory,
-                state=state,
-                before_state=before_state,
-            )
-        )
+        environment_kwargs: dict[str, Any] = {
+            "case": case,
+            "answer": answer,
+            "trajectory": trajectory,
+            "state": state,
+            "before_state": before_state,
+        }
+        if oracle_state is not None:
+            environment_kwargs["oracle_state"] = oracle_state
+        verdicts.append(runtime.environment_judge.evaluate(**environment_kwargs))
     return verdicts
 
 
@@ -634,7 +644,7 @@ def _failure_metrics(
     *,
     case: EvalCase,
     runtime: EvalRuntime,
-    latency_ms: float,
+    latency_ms: float | None,
     model_label: str | None,
     model_name: str,
     base_case_id: str,

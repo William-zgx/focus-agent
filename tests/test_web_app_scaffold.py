@@ -382,13 +382,13 @@ def test_react_web_app_restores_merged_branch_read_only_mode():
 
 def test_react_primitives_keep_modal_and_drawer_backdrops_out_of_tab_order():
     root = Path(__file__).resolve().parents[1]
-    primitives_text = (
-        root / "apps" / "web" / "src" / "shared" / "ui" / "primitives" / "index.tsx"
+    modal_text = (
+        root / "apps" / "web" / "src" / "shared" / "ui" / "primitives" / "Modal.tsx"
     ).read_text()
 
-    assert 'aria-label="Close modal"' in primitives_text
-    assert 'aria-label="Close drawer"' in primitives_text
-    assert primitives_text.count("tabIndex={-1}") >= 2
+    assert 'aria-label="Close modal"' in modal_text
+    assert 'aria-label="Close drawer"' in modal_text
+    assert modal_text.count("tabIndex={-1}") >= 2
 
 
 def test_react_web_app_hides_raw_tool_messages_behind_compact_activity_cards():

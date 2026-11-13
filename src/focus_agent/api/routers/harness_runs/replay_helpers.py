@@ -3,16 +3,19 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import asdict
 from time import monotonic
 from typing import Any
 
 import anyio
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from langgraph.types import Command
 
 from focus_agent.branch_decision.budget import run_with_recommendation_deadline
 from focus_agent.core.async_threads import call_in_daemon_thread
 from focus_agent.core.repo_call import has_repo_method
+from focus_agent.core.request_context import RequestContext
 from focus_agent.core.time_utils import utc_now
 from focus_agent.engine.runtime import AppRuntime
 from focus_agent.harness.runtime import (
@@ -32,7 +35,7 @@ from focus_agent.harness.streaming import (
     canonical_event_payload,
     sse_frame,
 )
-from focus_agent.observability.tracing import build_trace_correlation
+from focus_agent.observability.tracing import build_invoke_config, build_trace_correlation
 from focus_agent.runtime.lifecycle import is_shutting_down
 from focus_agent.security.tokens import Principal
 from focus_agent.services.chat import ChatService, ConcurrentTurnError
@@ -68,6 +71,7 @@ logger = logging.getLogger("focus_agent.api.harness_runs")
 _ROLLBACK_CLOSE_WAIT_SECONDS = 10.0
 _BRANCH_RECOMMENDATION_TIMEOUT_SECONDS = 5.0
 _BRANCH_RECOMMENDATION_MAX_TIMEOUT_SECONDS = 60.0
+_COMMAND_RESUME_INPUT_KIND = "langgraph.command.resume"
 _DISCONNECT_CANCEL_ACTIONS = {
     DisconnectMode.CANCEL: "interrupt",
     DisconnectMode.ROLLBACK: "rollback",
@@ -97,21 +101,71 @@ async def _create_run_record(
     rollback_target: CheckpointRollbackTarget | None = None,
     rollback_partial: bool = False,
     rollback_unreverted_scopes: tuple[str, ...] = (),
+    context: RequestContext | None = None,
+    branch_meta: Any = None,
+    request_id: str | None = None,
+    branch_action: bool = False,
+    kind: str = "chat.turn",
+    skip_branch_recommendation: bool = False,
+    stream: bool = False,
 ) -> Any:
     metadata = dict(payload.metadata)
+    # Recovery safety is server-owned; clients cannot mark unknown work replay-safe.
+    metadata["external_outcome"] = "unknown"
+    if request_id is not None:
+        metadata["request_id"] = request_id
     if rollback_target is not None:
         metadata[ROLLBACK_TARGET_METADATA_KEY] = rollback_target.to_metadata()
     if rollback_partial:
         metadata["harness.rollback_partial"] = True
     if rollback_unreverted_scopes:
         metadata["harness.rollback_unreverted_scopes"] = list(rollback_unreverted_scopes)
+    if isinstance(context, RequestContext):
+        request_context = context
+    else:
+        request_context = RequestContext(
+            user_id=getattr(context, "user_id", user_id),
+            root_thread_id=getattr(context, "root_thread_id", thread_id),
+        )
+    trace_correlation = _trace_correlation(runtime=runtime, request_id=request_id)
+    trace_branch_meta = branch_meta if hasattr(branch_meta, "branch_id") else None
+    is_command_resume = isinstance(graph_payload, Command)
+    kwargs = {
+        "input": (
+            {"resume": _json_safe(graph_payload.resume)}
+            if is_command_resume
+            else _json_safe(graph_payload)
+        ),
+        "input_kind": _COMMAND_RESUME_INPUT_KIND if is_command_resume else "messages",
+        "kind": kind,
+        "config": _json_safe(
+            build_invoke_config(
+                settings=getattr(runtime, "settings", {}),
+                thread_id=thread_id,
+                user_id=user_id,
+                root_thread_id=request_context.root_thread_id,
+                branch_meta=trace_branch_meta,
+                trace_correlation=trace_correlation,
+                run_name="focus_agent_harness_run",
+            )
+        ),
+        "context": _json_safe(asdict(request_context)),
+    }
+    if branch_meta is not None:
+        kwargs["branch_meta"] = _json_safe(branch_meta)
+    if branch_action:
+        kwargs["branch_action"] = True
+    if skip_branch_recommendation:
+        kwargs["skip_branch_recommendation"] = True
+    if stream:
+        kwargs["stream"] = True
     try:
         return await runtime.run_manager.create_or_reject(
             thread_id,
             assistant_id=payload.metadata.get("assistant_id"),
             on_disconnect=DisconnectMode(payload.on_disconnect),
             metadata=metadata,
-            kwargs={"input": _json_safe(graph_payload)},
+            kwargs=kwargs,
             multitask_strategy=MultitaskStrategy(payload.multitask_strategy),
             user_id=user_id,
             rollback_target=rollback_target,
@@ -643,6 +697,7 @@ __all__ = [
     "_branch_recommendation_timeout_seconds",
     "_call_chat_hook",
     "_capture_run_rollback_target",
+    "_COMMAND_RESUME_INPUT_KIND",
     "_close_run_stream",
     "_context_for_turn",
     "_create_run_record",

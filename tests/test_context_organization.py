@@ -4,8 +4,8 @@ from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.config import Settings
 from focus_agent.core.branch_messages import branch_context_messages
+from focus_agent.core.context import assemble_context
 from focus_agent.core.context_compaction import build_incremental_compaction_update
-from focus_agent.core.context_policy import assemble_context
 from focus_agent.core.request_context import RequestContext
 from focus_agent.core.types import FindingItem, PromptMode
 from focus_agent.engine.loop.memory_nodes import make_assemble_context_node

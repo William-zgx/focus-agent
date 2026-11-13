@@ -115,9 +115,16 @@ One JSONL file per suite under `tests/eval/datasets/`. The CLI resolves
     "must_record_handoffs_any_order": ["planner->executor"]
   },
   "environment": {
+    "oracle": {
+      "type": "workspace_command",
+      "files": {"solution.py": "..."},
+      "oracle_files": {"test_solution.py": "..."},
+      "command": ["python3", "-I", "-B", "test_solution.py"],
+      "timeout_s": 10
+    },
     "assertions": [
       {"path": "agent_topology.roles", "min_len": 2},
-      {"path": "model_route_decision.effective_model", "equals": "openai:deepseek-chat"}
+      {"source": "oracle", "path": "status", "equals": "passed"}
     ]
   },
   "model_matrix": [
@@ -144,9 +151,28 @@ Extended fields are optional and backward-compatible:
 - `capability` / `risk_level` classify cases for dashboards and filtering.
 - `agent_topology` seeds multi-agent roles and governance expectations.
 - `environment.assertions` checks final state by default. Use
-  `source: "input"` only for an explicit input-context assertion, or
-  `source: "trajectory"` for recorded execution evidence; input state is never
-  an implicit substitute for final behavior.
+  `source: "input"` only for an explicit input-context assertion,
+  `source: "trajectory"` for recorded execution evidence, or `source: "oracle"`
+  for the optional oracle result; input state is never an implicit substitute
+  for final behavior.
+- `environment.oracle` runs one deterministic `workspace_command` against inline
+  text files in a disposable workspace. `files` declares candidate-owned source
+  files; `oracle_files` separately declares immutable checks and their helpers.
+  The runner applies the candidate patch first, then overlays `oracle_files` at
+  their declared relative paths before running `command` from the candidate
+  root. Test discovery, nested paths, and ordinary project imports therefore use
+  the original layout, and ownership never depends on a `test_*` filename.
+  Overlay destinations and their ancestors must not be candidate-created
+  symlinks. This protects the independent files from static patch tampering; it
+  does not prove execution integrity against deliberately malicious candidate
+  code. A cooperative candidate runtime is assumed: code that exits the checker
+  early or shadows the selected test runner can still produce a misleading zero
+  exit status. Adversarial execution-integrity checks require a trusted external
+  test harness or stronger isolation, not this workspace oracle.
+  Its verdict is separate from Agent and harness failures: `failed` is a valid
+  negative check, while `environment_invalid` covers configuration, launch,
+  timeout, and workspace mutation errors. The runner never repairs the workspace
+  or retries the Agent to make an oracle pass.
 - `model_matrix` runs the same case across labeled model variants.
 - `retries` emits multiple attempts so flaky cases can be detected.
 - `acceptance` is enforced by the runner: `max_cost_usd` is checked per
@@ -199,9 +225,12 @@ as a non-blocking signal until cases are promoted into golden coverage.
 | `LLMJudge`        | When `judge.llm.enabled == true` and model wired up | Small  |
 | `TrajectoryJudge` | When `max_tool_calls` or `optimal_tool_sequence` set| Free   |
 | `EnvironmentJudge`| When `environment.assertions` are present           | Free   |
+| `environment_oracle` verdict | When `environment.oracle` is present      | Free   |
 
-All enabled judges must pass for a case to be marked `passed`. `LLMJudge` supports
-an escalation path: if the cheap model returns confidence below
+All enabled judges must pass for a case to be marked `passed`. `TrajectoryJudge`
+exclusively owns `max_tool_calls`; `RuleJudge` does not repeat that check, so a
+violation appears once in result verdict details without changing overall
+pass/fail behavior. `LLMJudge` supports an escalation path: if the cheap model returns confidence below
 `escalate_below` (default 0.7) and an `escalator` model is wired, the big
 model re-judges and its verdict wins.
 
@@ -213,7 +242,9 @@ model re-judges and its verdict wins.
 `EnvironmentJudge` supports `path`, `source`, `exists`, `equals`, `contains`,
 `not_contains`, `min_len`, and `max_len`. Paths use dot notation and list
 indexes, for example `agent_topology.roles.0`. The default source is
-`final_state`; `input` and `trajectory` must be selected explicitly.
+`final_state`; `input`, `trajectory`, and `oracle` must be selected explicitly.
+Oracle results expose `passed`, `status`, `reason`, `stdout`, `stderr`, plus
+`environment` and `command` metadata to these same assertion operators.
 
 ## Metrics
 

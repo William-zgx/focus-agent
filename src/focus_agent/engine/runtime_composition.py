@@ -204,6 +204,7 @@ def create_runtime_services(
     user_service_factory: Callable[..., Any],
     branch_decision_service_factory: Callable[..., Any],
     productivity_service_factory: Callable[..., Any],
+    governance_service_factory: Callable[..., Any],
 ) -> RuntimeServices:
     branch_service = branch_service_factory(
         settings=settings,
@@ -227,11 +228,18 @@ def create_runtime_services(
         memory_embedding_provider=memory_embedding_provider,
     )
     productivity_service = productivity_service_factory(productivity_repository)
+    governance_service = governance_service_factory(
+        repository=governance_repository,
+        skill_selection_event_log_enabled=settings.skill_selection_event_log_enabled,
+        retrieval_index=retrieval_index,
+        embedding_provider=memory_embedding_provider,
+    )
     return RuntimeServices(
         branch_service=branch_service,
         branch_decision_service=branch_decision_service,
         user_service=user_service,
         productivity_service=productivity_service,
+        governance_service=governance_service,
     )
 
 
@@ -242,6 +250,7 @@ def start_durable_background_worker(
     handler_registry_factory: Callable[[], object],
     handler_registrar: Callable[..., None],
     durable_worker_factory: Callable[..., object],
+    harness_run_handler: Callable[[dict[str, Any]], None] | None = None,
 ) -> object | None:
     settings = runtime.settings
     if (
@@ -265,6 +274,9 @@ def start_durable_background_worker(
         memory_embedding_service=runtime.memory_embedding_service,
         memory_repository=runtime.memory_repository,
     )
+
+    if callable(harness_run_handler):
+        registry.register("harness_run", harness_run_handler)
     worker = durable_worker_factory(
         name="runtime",
         job_backend=runtime.coordination_backend.job_deduper,

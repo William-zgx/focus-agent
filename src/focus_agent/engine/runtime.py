@@ -51,6 +51,7 @@ from ..services.background_work import (
 )
 from ..services.branches import BranchService
 from ..services.coordination import CoordinationBackend, create_coordination_backend
+from ..services.governance import GovernanceService
 from ..services.productivity import ProductivityService
 from ..services.users import UserService
 from ..skills import SkillRegistry
@@ -171,12 +172,16 @@ class AppRuntime:
     coordination_backend: CoordinationBackend
     postgres_connection_provider: PostgresConnectionProvider | None
     _exit_stack: ExitStack
+    governance_service: GovernanceService | None = None
 
     def close(self) -> None:
         self._exit_stack.close()
 
     def start_durable_background_worker(
-        self, chat_service: object
+        self,
+        chat_service: object,
+        *,
+        harness_run_handler: Callable[[dict[str, object]], None] | None = None,
     ) -> DurableBackgroundWorker | None:
         return _start_durable_background_worker_impl(
             runtime=self,
@@ -184,6 +189,7 @@ class AppRuntime:
             handler_registry_factory=BackgroundJobHandlerRegistry,
             handler_registrar=register_default_background_job_handlers,
             durable_worker_factory=DurableBackgroundWorker,
+            harness_run_handler=harness_run_handler,
         )
 
 
@@ -212,6 +218,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         background_job_retry_max_delay_seconds=settings.background_job_retry_max_delay_seconds,
         multi_agent_enabled=settings.multi_agent_v2_enabled,
         multi_agent_message_ttl_seconds=settings.multi_agent_message_ttl_seconds,
+        connection_provider=postgres_connection_provider,
     )
     background_work = BoundedBackgroundQueue(
         name="runtime",
@@ -277,6 +284,7 @@ def create_runtime(settings: Settings | None = None) -> AppRuntime:
         branch_decision_service=services.branch_decision_service,
         user_service=services.user_service,
         productivity_service=services.productivity_service,
+        governance_service=services.governance_service,
         checkpointer=persistence.checkpointer,
         store=persistence.store,
         store_namespace_selector=conversation_namespace_for_context,
@@ -479,6 +487,7 @@ def _create_runtime_services(
         user_service_factory=UserService,
         branch_decision_service_factory=BranchDecisionService,
         productivity_service_factory=ProductivityService,
+        governance_service_factory=GovernanceService,
     )
 
 

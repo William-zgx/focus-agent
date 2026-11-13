@@ -88,14 +88,6 @@ class RuleJudge:
             if forbidden_hits:
                 failures.append(f"called forbidden tools {forbidden_hits!r}")
 
-        max_tool_calls = expected.get("max_tool_calls")
-        if max_tool_calls is not None:
-            checks.append("max_tool_calls")
-            if len(trajectory) > int(max_tool_calls):
-                failures.append(
-                    f"tool_calls={len(trajectory)} exceeded max_tool_calls={max_tool_calls}"
-                )
-
         return JudgeVerdict(
             kind=self.kind,
             passed=not failures,

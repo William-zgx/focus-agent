@@ -5,7 +5,13 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+if __package__:
+    from ._report_io import write_json_report
+else:
+    from _report_io import write_json_report
 
 RELEASE_IDENTITY_ENV = {
     "commit_sha": "RELEASE_COMMIT_SHA",
@@ -93,3 +99,8 @@ def attest_release_report(
             "environment": "production" if environment.lower() == "prod" else environment,
         }
     return attested
+
+
+def write_attested_release_report(path: str | Path, report: Mapping[str, Any]) -> Path:
+    """Attest and write a release report using the shared JSON byte format."""
+    return write_json_report(path, attest_release_report(report))

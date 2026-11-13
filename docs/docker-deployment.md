@@ -368,7 +368,7 @@ PYTHONPATH=/tmp/psycopg_stub .venv/bin/pytest \
   tests/test_metadata.py \
   tests/test_trajectory_observability.py \
   tests/test_api_trajectory_observability.py \
-  tests/test_chat_service.py
+  tests/unit/chat
 ```
 
 ## 不推荐的做法

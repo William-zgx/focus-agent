@@ -24,6 +24,7 @@ REGISTERED_BACKGROUND_JOB_KINDS = frozenset(
         "conversation_title",
         "branch_title",
         "branch_decision_evaluate",
+        "harness_run",
     }
 )
 

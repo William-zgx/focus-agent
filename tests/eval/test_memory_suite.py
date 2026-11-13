@@ -15,6 +15,7 @@ from focus_agent.capabilities.tool_registry import ToolRegistry, build_tool_regi
 from focus_agent.config import Settings
 from focus_agent.core.request_context import RequestContext as BaseRequestContext
 from focus_agent.engine import graph_builder as graph_builder_module
+from focus_agent.eval.runner import harness as eval_harness
 from focus_agent.memory import MemoryRetriever, MemoryWriter
 from focus_agent.skills import SkillRegistry
 from focus_agent.storage.namespaces import (
@@ -23,7 +24,6 @@ from focus_agent.storage.namespaces import (
     user_profile_namespace,
 )
 
-from .runner import harness as eval_harness
 from .runner import load_dataset, run_case
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "memory.jsonl"

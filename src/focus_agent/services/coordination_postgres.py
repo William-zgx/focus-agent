@@ -9,7 +9,9 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ..harness.runtime.recovery import REPLAY_SAFE_EXTERNAL_OUTCOMES
 from ..security.rate_limit import RateLimitResult
+from ..storage.postgres import PostgresConnectionProvider
 from .coordination_models import (
     BackgroundJobClaim,
     BackgroundJobSpec,
@@ -22,10 +24,18 @@ from .coordination_models import (
 class PostgresRateLimitBackend:
     """Postgres-backed fixed-window rate limit buckets shared across workers."""
 
-    def __init__(self, database_uri: str) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ) -> None:
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     def check(self, *, key: str, limit: int, window_seconds: float = 60.0) -> RateLimitResult:
@@ -82,10 +92,18 @@ class PostgresRateLimitBackend:
 class PostgresThreadTurnLockBackend:
     """Postgres-backed thread turn locks with owner heartbeat and TTL expiry."""
 
-    def __init__(self, database_uri: str) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ) -> None:
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod
@@ -170,8 +188,10 @@ class PostgresBackgroundJobDeduperBackend:
         retry_base_delay_seconds: float = 5.0,
         retry_max_delay_seconds: float = 300.0,
         owner: str | None = None,
+        connection_provider: PostgresConnectionProvider | None = None,
     ) -> None:
         self.database_uri = database_uri
+        self.connection_provider = connection_provider
         self.claim_ttl_seconds = max(float(claim_ttl_seconds or 0.0), 1.0)
         self.retry_base_delay_seconds = max(float(retry_base_delay_seconds or 0.0), 0.0)
         self.retry_max_delay_seconds = max(
@@ -182,6 +202,8 @@ class PostgresBackgroundJobDeduperBackend:
         self._legacy_claims_lock = threading.Lock()
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     @staticmethod
@@ -363,8 +385,26 @@ class PostgresBackgroundJobDeduperBackend:
                         updated_at = now()
                     WHERE status = 'running'
                       AND claimed_until <= now()
+                      AND (
+                          kind <> 'harness_run'
+                          OR EXISTS (
+                              SELECT 1 FROM focus_harness_runs AS runs
+                              WHERE runs.run_id = focus_background_jobs.payload->>'run_id'
+                                AND (
+                                    runs.status = 'pending'
+                                    OR (
+                                        runs.status = 'running'
+                                        AND focus_background_jobs.payload->>'external_outcome' = ANY(%s)
+                                    )
+                                )
+                          )
+                      )
                     """,
-                    (self.retry_max_delay_seconds, self.retry_base_delay_seconds),
+                    (
+                        self.retry_max_delay_seconds,
+                        self.retry_base_delay_seconds,
+                        sorted(REPLAY_SAFE_EXTERNAL_OUTCOMES),
+                    ),
                 )
                 cur.execute(
                     """
@@ -378,7 +418,11 @@ class PostgresBackgroundJobDeduperBackend:
                                     AND run_at <= now()
                                     AND (claim_token IS NULL OR claimed_until IS NULL OR claimed_until <= now())
                                 )
-                                OR (status = 'running' AND claimed_until <= now())
+                                OR (
+                                    status = 'running'
+                                    AND claimed_until <= now()
+                                    AND kind <> 'harness_run'
+                                )
                           )
                           AND attempt < max_attempts
                         ORDER BY run_at ASC, updated_at ASC

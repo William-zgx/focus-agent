@@ -535,6 +535,77 @@ def test_memory_writer_replaces_project_fact_when_incoming_is_correction():
     assert payload["summary"] == "默认输出语言改为英文。"
 
 
+def test_memory_writer_replaces_project_fact_with_textual_overlap():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1", project_id="proj-1")
+    state = {"messages": [AIMessage(content="项目约定已更新。")]}
+    namespace = project_memory_namespace("proj-1")
+    first = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="Project deploys from the release branch.",
+        summary="Project deploys from the release branch.",
+        user_id="user-1",
+        root_thread_id="thread-1",
+        importance=0.75,
+        semantic_key="project-deployment-branch",
+    )
+    second = first.model_copy(
+        update={
+            "content": "Project deploys from the main branch.",
+            "summary": "Project deploys from the main branch.",
+        }
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert outcome["written"] == []
+    assert len(outcome["merged"]) == 1
+    assert outcome["skipped"] == []
+    payload = next(iter(store.data[namespace].values()))
+    assert payload["content"] == second.content
+    assert payload["summary"] == second.summary
+
+
+def test_memory_writer_leaves_same_topic_user_profile_unchanged_on_conflict():
+    store = _SearchAllStore()
+    writer = MemoryWriter(store=store)
+    context = RequestContext(user_id="user-1", root_thread_id="thread-1")
+    state = {"messages": [AIMessage(content="用户画像已更新。")]}
+    namespace = user_profile_namespace("user-1")
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PROFILE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=namespace,
+        content="我的母语是中文",
+        summary="我的母语是中文",
+        user_id="user-1",
+        importance=0.8,
+        semantic_key="profile-language",
+    )
+    second = first.model_copy(
+        update={
+            "content": "工作语言为英文",
+            "summary": "工作语言为英文",
+        }
+    )
+
+    writer.persist_records([first], context=context, state=state)
+    outcome = writer.persist_records([second], context=context, state=state)
+
+    assert outcome["written"] == []
+    assert outcome["merged"] == []
+    assert outcome["skipped"] == [{"summary": second.summary, "reason": "possible_conflict"}]
+    payload = next(iter(store.data[namespace].values()))
+    assert payload["content"] == first.content
+    assert payload["summary"] == first.summary
+
+
 class _MemoryWriterRepository:
     def __init__(self):
         self.records: dict[str, MemoryRecord] = {}

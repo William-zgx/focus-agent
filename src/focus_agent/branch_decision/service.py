@@ -84,25 +84,51 @@ class BranchDecisionService(
         self.retrieval_index = retrieval_index
         self.memory_embedding_provider = memory_embedding_provider
 
-    def config(self) -> BranchDecisionConfig:
-        mode = _branch_decision_mode(getattr(self.settings, "agent_branch_decision_mode", "shadow"))
-        recommendation_mode = _branch_decision_mode(
+    def _recommendation_policy(self) -> dict[str, Any]:
+        enabled = bool(getattr(self.settings, "agent_branch_recommendation_enabled", False))
+        mode = _branch_decision_mode(
             getattr(self.settings, "agent_branch_recommendation_mode", "shadow")
         )
-        recommendation_enabled = bool(
-            getattr(self.settings, "agent_branch_recommendation_enabled", False)
-        )
-        recommendation_semantic_enabled = bool(
+        semantic_enabled = bool(
             getattr(self.settings, "agent_branch_recommendation_semantic_enabled", False)
         )
-        recommendation_semantic_model = getattr(
+        semantic_model = getattr(
             self.settings,
             "agent_branch_recommendation_semantic_model",
             None,
         )
+        return {
+            "recommendation_enabled": enabled,
+            "recommendation_mode": mode,
+            "recommendation_min_confidence": float(
+                getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
+            ),
+            "recommendation_semantic_enabled": semantic_enabled,
+            "recommendation_semantic_model": semantic_model,
+            "recommendation_semantic_fallback_model": getattr(
+                self.settings, "agent_branch_recommendation_semantic_fallback_model", None
+            ),
+            "recommendation_semantic_decision_min_confidence": getattr(
+                self.settings, "agent_branch_recommendation_semantic_decision_min_confidence", 0.9
+            ),
+            "recommendation_user_visible": _recommendation_user_visible(
+                enabled=enabled,
+                mode=mode,
+            ),
+            "recommendation_diagnostics": _recommendation_diagnostics(
+                enabled=enabled,
+                mode=mode,
+                semantic_enabled=semantic_enabled,
+                semantic_model=semantic_model,
+            ),
+        }
+
+    def config(self) -> BranchDecisionConfig:
         return BranchDecisionConfig(
             enabled=bool(getattr(self.settings, "agent_branch_decision_enabled", False)),
-            mode=mode,
+            mode=_branch_decision_mode(
+                getattr(self.settings, "agent_branch_decision_mode", "shadow")
+            ),
             min_confidence=float(
                 getattr(self.settings, "agent_branch_decision_min_confidence", 0.70)
             ),
@@ -118,73 +144,16 @@ class BranchDecisionService(
             rate_limit_per_hour=int(
                 getattr(self.settings, "agent_branch_decision_rate_limit_per_hour", 3)
             ),
-            recommendation_enabled=recommendation_enabled,
-            recommendation_mode=recommendation_mode,
-            recommendation_min_confidence=float(
-                getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
-            ),
-            recommendation_semantic_enabled=recommendation_semantic_enabled,
-            recommendation_semantic_model=recommendation_semantic_model,
-            recommendation_semantic_fallback_model=getattr(
-                self.settings, "agent_branch_recommendation_semantic_fallback_model", None
-            ),
-            recommendation_semantic_decision_min_confidence=getattr(
-                self.settings, "agent_branch_recommendation_semantic_decision_min_confidence", 0.9
-            ),
-            recommendation_user_visible=_recommendation_user_visible(
-                enabled=recommendation_enabled,
-                mode=recommendation_mode,
-            ),
-            recommendation_diagnostics=_recommendation_diagnostics(
-                enabled=recommendation_enabled,
-                mode=recommendation_mode,
-                semantic_enabled=recommendation_semantic_enabled,
-                semantic_model=recommendation_semantic_model,
-            ),
+            **self._recommendation_policy(),
         )
 
     def recommendation_config(self) -> BranchDecisionConfig:
-        mode = _branch_decision_mode(
-            getattr(self.settings, "agent_branch_recommendation_mode", "shadow")
-        )
-        enabled = bool(getattr(self.settings, "agent_branch_recommendation_enabled", False))
-        semantic_enabled = bool(
-            getattr(self.settings, "agent_branch_recommendation_semantic_enabled", False)
-        )
-        semantic_model = getattr(
-            self.settings,
-            "agent_branch_recommendation_semantic_model",
-            None,
-        )
+        policy = self._recommendation_policy()
         return BranchDecisionConfig(
-            enabled=enabled,
-            mode=mode,
-            min_confidence=float(
-                getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
-            ),
-            recommendation_enabled=enabled,
-            recommendation_mode=mode,
-            recommendation_min_confidence=float(
-                getattr(self.settings, "agent_branch_recommendation_min_confidence", 0.72)
-            ),
-            recommendation_semantic_enabled=semantic_enabled,
-            recommendation_semantic_model=semantic_model,
-            recommendation_semantic_fallback_model=getattr(
-                self.settings, "agent_branch_recommendation_semantic_fallback_model", None
-            ),
-            recommendation_semantic_decision_min_confidence=getattr(
-                self.settings, "agent_branch_recommendation_semantic_decision_min_confidence", 0.9
-            ),
-            recommendation_user_visible=_recommendation_user_visible(
-                enabled=enabled,
-                mode=mode,
-            ),
-            recommendation_diagnostics=_recommendation_diagnostics(
-                enabled=enabled,
-                mode=mode,
-                semantic_enabled=semantic_enabled,
-                semantic_model=semantic_model,
-            ),
+            enabled=policy["recommendation_enabled"],
+            mode=policy["recommendation_mode"],
+            min_confidence=policy["recommendation_min_confidence"],
+            **policy,
         )
 
     def recommend_for_message(

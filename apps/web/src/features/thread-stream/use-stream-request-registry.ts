@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 interface BeginStreamRequestResult {
 	requestId: string;
@@ -6,63 +6,74 @@ interface BeginStreamRequestResult {
 }
 
 export function useStreamRequestRegistry() {
-	const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-	const activeRequestIdsRef = useRef<Map<string, string>>(new Map());
+	const requestsRef = useRef<Map<string, BeginStreamRequestResult>>(new Map());
 
 	useEffect(() => {
 		return () => {
-			for (const controller of abortControllersRef.current.values()) {
-				controller.abort();
+			for (const request of requestsRef.current.values()) {
+				request.controller.abort();
 			}
-			abortControllersRef.current.clear();
-			activeRequestIdsRef.current.clear();
+			requestsRef.current.clear();
 		};
 	}, []);
 
-	function beginStreamRequest(threadId: string): BeginStreamRequestResult {
-		const requestId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-		abortControllersRef.current.get(threadId)?.abort();
-		const controller = new AbortController();
-		abortControllersRef.current.set(threadId, controller);
-		activeRequestIdsRef.current.set(threadId, requestId);
-		return { requestId, controller };
-	}
+	const beginStreamRequest = useCallback(
+		(threadId: string): BeginStreamRequestResult => {
+			const requestId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			requestsRef.current.get(threadId)?.controller.abort();
+			const request = { requestId, controller: new AbortController() };
+			requestsRef.current.set(threadId, request);
+			return request;
+		},
+		[],
+	);
 
-	function isCurrentStreamRequest(
-		threadId: string,
-		requestId: string,
-		controller: AbortController,
-	) {
-		return (
-			activeRequestIdsRef.current.get(threadId) === requestId &&
-			!controller.signal.aborted
-		);
-	}
+	const isCurrentStreamRequest = useCallback(
+		(threadId: string, requestId: string, controller: AbortController) => {
+			const current = requestsRef.current.get(threadId);
+			return (
+				current?.requestId === requestId &&
+				current.controller === controller &&
+				!controller.signal.aborted
+			);
+		},
+		[],
+	);
 
-	function completeStreamRequest(threadId: string, requestId: string) {
-		if (activeRequestIdsRef.current.get(threadId) !== requestId) {
-			return false;
-		}
-		abortControllersRef.current.delete(threadId);
-		activeRequestIdsRef.current.delete(threadId);
-		return true;
-	}
+	const completeStreamRequest = useCallback(
+		(threadId: string, requestId: string) => {
+			if (requestsRef.current.get(threadId)?.requestId !== requestId) {
+				return false;
+			}
+			requestsRef.current.delete(threadId);
+			return true;
+		},
+		[],
+	);
 
-	function stopStreamRequest(threadId: string) {
-		abortControllersRef.current.get(threadId)?.abort();
-		abortControllersRef.current.delete(threadId);
-		activeRequestIdsRef.current.delete(threadId);
-	}
+	const stopStreamRequest = useCallback((threadId: string) => {
+		requestsRef.current.get(threadId)?.controller.abort();
+		requestsRef.current.delete(threadId);
+	}, []);
 
-	function hasStreamRequest(threadId: string) {
-		return abortControllersRef.current.has(threadId);
-	}
+	const hasStreamRequest = useCallback((threadId: string) => {
+		return requestsRef.current.has(threadId);
+	}, []);
 
-	return {
-		beginStreamRequest,
-		completeStreamRequest,
-		hasStreamRequest,
-		isCurrentStreamRequest,
-		stopStreamRequest,
-	};
+	return useMemo(
+		() => ({
+			beginStreamRequest,
+			completeStreamRequest,
+			hasStreamRequest,
+			isCurrentStreamRequest,
+			stopStreamRequest,
+		}),
+		[
+			beginStreamRequest,
+			completeStreamRequest,
+			hasStreamRequest,
+			isCurrentStreamRequest,
+			stopStreamRequest,
+		],
+	);
 }

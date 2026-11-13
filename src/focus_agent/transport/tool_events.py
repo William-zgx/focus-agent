@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.runtime_outcome import runtime_payload_from_tool_outcome
 from .stream_events import TOOL_BLOCK_TYPES, _iter_blocks, _stringify
 
 
@@ -149,12 +150,7 @@ def extract_tool_results_from_updates(data: dict[str, Any]) -> list[dict[str, An
                 dict(runtime_payload or {}) if isinstance(runtime_payload, dict) else {}
             )
             tool_call_id = getattr(message, "tool_call_id", None)
-            tool_outcome = _tool_outcome_for_call(tool_outcomes, tool_call_id)
-            tool_name = (
-                getattr(message, "name", None)
-                or artifact_payload.get("tool_name")
-                or (tool_outcome or {}).get("tool_name")
-            )
+            tool_name = getattr(message, "name", None) or artifact_payload.get("tool_name")
             status = getattr(message, "status", None)
             results.append(
                 {
@@ -166,7 +162,7 @@ def extract_tool_results_from_updates(data: dict[str, Any]) -> list[dict[str, An
                     "tool_name": tool_name,
                     "status": status,
                     "runtime": runtime_payload,
-                    "tool_outcome": tool_outcome,
+                    "tool_outcome": None,
                 }
             )
     return results
@@ -195,7 +191,7 @@ def _tool_result_payload_from_outcome(
         runtime = artifact_payload.get("runtime")
         runtime_payload = dict(runtime or {}) if isinstance(runtime, dict) else {}
     else:
-        runtime_payload = _runtime_payload_from_tool_outcome(tool_outcome)
+        runtime_payload = runtime_payload_from_tool_outcome(tool_outcome)
 
     tool_call_id = (
         getattr(message, "tool_call_id", None)
@@ -230,23 +226,6 @@ def _tool_result_payload_from_outcome(
     }
 
 
-def _runtime_payload_from_tool_outcome(tool_outcome: dict[str, Any]) -> dict[str, Any]:
-    runtime: dict[str, Any] = {
-        "tool_outcome": dict(tool_outcome),
-        "attempt_index": tool_outcome.get("attempt_index"),
-        "max_attempts": tool_outcome.get("max_attempts"),
-        "retryable": tool_outcome.get("retryable"),
-        "fallback_used": tool_outcome.get("fallback_used"),
-        "fallback_group": tool_outcome.get("fallback_group"),
-        "error_category": tool_outcome.get("error_category"),
-    }
-    if tool_outcome.get("duration_ms") is not None:
-        runtime["duration_ms"] = tool_outcome.get("duration_ms")
-    if tool_outcome.get("cache_hit") is not None:
-        runtime["cache_hit"] = tool_outcome.get("cache_hit")
-    return runtime
-
-
 def _message_status_from_tool_outcome(tool_outcome: dict[str, Any]) -> str:
     status = str(tool_outcome.get("status") or "").strip().lower()
     return "error" if status in {"failed", "blocked"} else "success"
@@ -260,16 +239,3 @@ def _content_from_tool_outcome(tool_outcome: dict[str, Any]) -> str:
     tool_name = str(tool_outcome.get("tool_name") or "tool").strip()
     attempt = tool_outcome.get("attempt_index")
     return f"{tool_name} attempt {attempt or '?'} {status or 'completed'}".strip()
-
-
-def _tool_outcome_for_call(
-    tool_outcomes: list[dict[str, Any]],
-    tool_call_id: Any,
-) -> dict[str, Any] | None:
-    call_id = str(tool_call_id or "").strip()
-    if not call_id:
-        return None
-    for outcome in reversed(tool_outcomes):
-        if str(outcome.get("tool_call_id") or "").strip() == call_id:
-            return dict(outcome)
-    return None

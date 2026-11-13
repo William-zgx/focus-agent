@@ -229,7 +229,7 @@ supported answer or explicit uncertainty answer.
 When branch recommendation or Branch Action streaming behavior changes, include:
 
 ```bash
-uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_repository.py tests/test_chat_service.py tests/test_harness_api.py
+uv run pytest tests/test_branch_decision_service.py tests/test_branch_decision_repository.py tests/unit/chat tests/test_harness_api.py
 make sdk-openapi-types-check
 ```
 

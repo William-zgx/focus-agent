@@ -116,10 +116,11 @@ class EvalResult:
     trajectory: list[TrajectoryStep] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    environment_invalid: bool = False
     tags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "case_id": self.case_id,
             "passed": self.passed,
             "answer": self.answer,
@@ -129,6 +130,9 @@ class EvalResult:
             "error": self.error,
             "tags": self.tags,
         }
+        if self.environment_invalid:
+            payload["environment_invalid"] = True
+        return payload
 
 
 def _optional_str(value: Any) -> str | None:

@@ -11,6 +11,11 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...core.time_utils import utc_now_iso
+from .recovery import (
+    HARNESS_RUN_API_LEASE_TTL_SECONDS,
+    RunRecoveryMixin,
+    is_replay_safe_external_outcome,
+)
 from .rollback import CheckpointRollbackResult
 from .run_followups import RunFollowupsMixin
 
@@ -33,6 +38,41 @@ class RunStatus(StrEnum):
     ERROR = "error"
     TIMEOUT = "timeout"
     INTERRUPTED = "interrupted"
+    RECONCILIATION_REQUIRED = "reconciliation_required"
+
+
+REPLAYABLE_RUN_STATUSES = frozenset({RunStatus.PENDING, RunStatus.RUNNING})
+EXECUTION_TERMINAL_RUN_STATUSES = frozenset(
+    {
+        RunStatus.SUCCESS,
+        RunStatus.ERROR,
+        RunStatus.TIMEOUT,
+        RunStatus.INTERRUPTED,
+    }
+)
+STREAM_TERMINAL_RUN_STATUSES = EXECUTION_TERMINAL_RUN_STATUSES | {RunStatus.RECONCILIATION_REQUIRED}
+
+
+def is_replay_safe_run_status(value: RunStatus | str | None) -> bool:
+    """Return whether the status permits replay; external outcomes are gated separately."""
+    try:
+        return _coerce_run_status(value) in REPLAYABLE_RUN_STATUSES
+    except (TypeError, ValueError):
+        return False
+
+
+def is_execution_terminal_run_status(value: RunStatus | str | None) -> bool:
+    try:
+        return _coerce_run_status(value) in EXECUTION_TERMINAL_RUN_STATUSES
+    except (TypeError, ValueError):
+        return False
+
+
+def is_stream_terminal_run_status(value: RunStatus | str | None) -> bool:
+    try:
+        return _coerce_run_status(value) in STREAM_TERMINAL_RUN_STATUSES
+    except (TypeError, ValueError):
+        return False
 
 
 class DisconnectMode(StrEnum):
@@ -144,6 +184,7 @@ class RunRecord:
     created_at: str = ""
     updated_at: str = ""
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
+    heartbeat_task: asyncio.Task[None] | None = field(default=None, repr=False)
     abort_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     abort_action: RunCancelAction = "interrupt"
     rollback_ready: asyncio.Event = field(default_factory=_completed_event, repr=False)
@@ -153,7 +194,7 @@ class RunRecord:
 
     @property
     def inflight(self) -> bool:
-        return self.status in {RunStatus.PENDING, RunStatus.RUNNING}
+        return self.status in REPLAYABLE_RUN_STATUSES
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -173,7 +214,7 @@ class RunRecord:
         }
 
 
-class RunManager(RunFollowupsMixin):
+class RunManager(RunFollowupsMixin, RunRecoveryMixin):
     """In-memory run registry with optional best-effort persistence."""
 
     def __init__(
@@ -184,12 +225,40 @@ class RunManager(RunFollowupsMixin):
         lifecycle_publisher: RunLifecyclePublisher | None = None,
         enable_followup_drain: bool = False,
     ) -> None:
+        self._loop = self._get_event_loop()
         self._runs: dict[str, RunRecord] = {}
         self._lock = asyncio.Lock()
         self._store = store
         self._rollback_handler = rollback_handler
         self._lifecycle_publisher = lifecycle_publisher
+        self._heartbeat_ttl_seconds = max(
+            float(
+                getattr(
+                    store,
+                    "harness_run_lease_ttl_seconds",
+                    HARNESS_RUN_API_LEASE_TTL_SECONDS,
+                )
+            ),
+            0.001,
+        )
+        self._heartbeat_interval_seconds = max(
+            float(
+                getattr(
+                    store,
+                    "harness_run_heartbeat_interval_seconds",
+                    min(60.0, self._heartbeat_ttl_seconds / 3.0),
+                )
+            ),
+            0.001,
+        )
         self._initialize_followup_runtime(enable_followup_drain=enable_followup_drain)
+
+    @staticmethod
+    def _get_event_loop() -> asyncio.AbstractEventLoop | None:
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return None
 
     async def create(
         self,
@@ -216,6 +285,7 @@ class RunManager(RunFollowupsMixin):
         async with self._lock:
             self._runs[record.run_id] = record
         await self._persist_created(record)
+        self._start_run_heartbeat(record)
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
         return record
 
@@ -263,6 +333,7 @@ class RunManager(RunFollowupsMixin):
             self._runs[record.run_id] = record
 
         for run in interrupted:
+            await self._stop_run_heartbeat(run)
             await self._publish_lifecycle(
                 run,
                 "run.interrupt",
@@ -271,6 +342,7 @@ class RunManager(RunFollowupsMixin):
         await self._rollback_records([run for run in interrupted if run.abort_action == "rollback"])
         await self._settle_records(interrupted)
         await self._persist_created(record)
+        self._start_run_heartbeat(record)
         for run in interrupted:
             await self._persist_status(run)
         logger.info("Harness run created: run_id=%s thread_id=%s", record.run_id, thread_id)
@@ -308,15 +380,50 @@ class RunManager(RunFollowupsMixin):
         *,
         error: str | None = None,
     ) -> None:
+        running_loop = asyncio.get_running_loop()
+        manager_loop = self._loop
+        if (
+            manager_loop is not None
+            and manager_loop is not running_loop
+            and manager_loop.is_running()
+        ):
+            future = asyncio.run_coroutine_threadsafe(
+                self.set_status(run_id, status, error=error),
+                manager_loop,
+            )
+            await asyncio.wrap_future(future)
+            return
+        if manager_loop is None:
+            self._loop = running_loop
+
         async with self._lock:
             record = self._runs.get(run_id)
             if record is None:
                 logger.warning("set_status called for unknown harness run %s", run_id)
                 return
-            record.status = _coerce_run_status(status)
+            new_status = _coerce_run_status(status)
+            if is_stream_terminal_run_status(record.status) and record.status != new_status:
+                reconciled_replay = (
+                    record.status == RunStatus.RECONCILIATION_REQUIRED
+                    and is_replay_safe_run_status(new_status)
+                    and is_replay_safe_external_outcome(record.metadata.get("external_outcome"))
+                )
+                if not reconciled_replay:
+                    logger.warning(
+                        "Ignoring harness run %s transition from terminal %s to %s",
+                        run_id,
+                        record.status.value,
+                        new_status.value,
+                    )
+                    return
+                if error is None:
+                    record.error = None
+            record.status = new_status
             record.updated_at = utc_now_iso()
             if error is not None:
                 record.error = error
+            heartbeat_task = None if record.inflight else self._cancel_run_heartbeat(record)
+        await self._await_run_heartbeat(heartbeat_task)
         await self._persist_status(record)
         logger.info("Harness run %s -> %s", run_id, record.status.value)
 
@@ -340,6 +447,7 @@ class RunManager(RunFollowupsMixin):
             if record is None or not record.inflight:
                 return False
             self._cancel_record(record, action=action)
+        await self._stop_run_heartbeat(record)
         await self._persist_status(record)
         await self._publish_lifecycle(record, "run.interrupt", {"action": record.abort_action})
         if action == "rollback":
@@ -368,6 +476,7 @@ class RunManager(RunFollowupsMixin):
             for record in records:
                 self._cancel_record(record, action=action)
         for record in records:
+            await self._stop_run_heartbeat(record)
             await self._persist_status(record)
             await self._publish_lifecycle(record, "run.interrupt", {"action": record.abort_action})
         if action == "rollback":
@@ -387,8 +496,19 @@ class RunManager(RunFollowupsMixin):
         if delay > 0:
             await asyncio.sleep(delay)
         async with self._lock:
-            self._runs.pop(run_id, None)
+            record = self._runs.pop(run_id, None)
+        if record is not None:
+            await self._stop_run_heartbeat(record)
         logger.debug("Harness run record %s cleaned up", run_id)
+
+    async def close(self) -> None:
+        """Stop API lease heartbeats without cancelling execution tasks."""
+        async with self._lock:
+            records = list(self._runs.values())
+        await asyncio.gather(
+            *(self._stop_run_heartbeat(record) for record in records),
+            return_exceptions=True,
+        )
 
     def _new_record(
         self,
@@ -629,6 +749,9 @@ def _augment_rollback_result(
 
 
 __all__ = [
+    "EXECUTION_TERMINAL_RUN_STATUSES",
+    "REPLAYABLE_RUN_STATUSES",
+    "STREAM_TERMINAL_RUN_STATUSES",
     "DisconnectMode",
     "MultitaskStrategy",
     "RunConflictError",
@@ -640,4 +763,7 @@ __all__ = [
     "RunStatus",
     "RunStore",
     "UnsupportedStrategyError",
+    "is_execution_terminal_run_status",
+    "is_replay_safe_run_status",
+    "is_stream_terminal_run_status",
 ]

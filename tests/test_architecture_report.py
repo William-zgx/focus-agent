@@ -39,6 +39,61 @@ def test_architecture_report_collects_large_files_and_import_boundary_issues(
     }
 
 
+def test_architecture_report_reads_each_source_file_once(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "src/focus_agent/service.py"
+    frontend = tmp_path / "apps/web/src/view.ts"
+    _write(source, "print('ok')\n")
+    _write(frontend, "export const value = 1;\n")
+    reads = []
+    original_read_text = Path.read_text
+
+    def tracked_read_text(path, *args, **kwargs):
+        reads.append(path)
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", tracked_read_text)
+
+    architecture_report.build_architecture_report(
+        root=tmp_path,
+        scan_paths=["src/focus_agent", "apps/web/src"],
+    )
+
+    assert reads.count(source) == 1
+    assert reads.count(frontend) == 1
+
+
+def test_architecture_report_enforces_internal_module_boundaries(tmp_path: Path) -> None:
+    _write(tmp_path / "src/focus_agent/core/policy.py", "from ..services import chat\n")
+    _write(tmp_path / "src/focus_agent/repositories/users.py", "import focus_agent.api\n")
+    _write(
+        tmp_path / "src/focus_agent/services/chat/branch_actions.py",
+        "from .service import execute_branch_action_navigation\n",
+    )
+    _write(
+        tmp_path / "src/focus_agent/services/chat/other.py",
+        "from .service import ChatService\n",
+    )
+    _write(
+        tmp_path / "src/focus_agent/services/chat/__init__.py", "from .service import ChatService\n"
+    )
+    _write(tmp_path / "apps/web/src/shared/view.ts", "import x from '@/features/chat'\n")
+    _write(tmp_path / "apps/web/src/entities/message.ts", "import x from '../pages/home'\n")
+
+    report = architecture_report.build_architecture_report(
+        root=tmp_path,
+        scan_paths=["src/focus_agent", "apps/web/src"],
+    )
+
+    assert {item["path"] for item in report["import_boundary_issues"]} == {
+        "apps/web/src/entities/message.ts",
+        "apps/web/src/shared/view.ts",
+        "src/focus_agent/core/policy.py",
+        "src/focus_agent/repositories/users.py",
+        "src/focus_agent/services/chat/branch_actions.py",
+        "src/focus_agent/services/chat/other.py",
+    }
+
+
 def test_architecture_report_cli_is_non_blocking(tmp_path: Path, capsys) -> None:
     _write(tmp_path / "src/focus_agent/large.py", "\n".join(["x = 1"] * 4))
     report_json = tmp_path / "report.json"
@@ -146,6 +201,20 @@ def test_architecture_report_surfaces_near_threshold_files_without_issue(
     ]
 
 
+def test_architecture_regression_gate_requires_resolved_baseline_path_removal() -> None:
+    baseline = {
+        "large_files": {
+            "tests/resolved.py": {"max_lines": 900},
+        }
+    }
+    report = {"large_files": [], "import_boundary_issues": []}
+
+    assert architecture_report.architecture_regressions(report, baseline) == [
+        "resolved baseline path must be removed: tests/resolved.py"
+    ]
+    assert architecture_report.architecture_regressions(report, {"large_files": {}}) == []
+
+
 def test_architecture_regression_gate_rejects_new_and_growing_large_files() -> None:
     report = {
         "large_files": [
@@ -200,7 +269,8 @@ def test_architecture_regression_gate_rejects_a_resolved_file_that_becomes_large
     }
 
     assert baseline["large_file_threshold"] == 800
-    assert baseline["large_files"] == {}
+    assert "src/focus_agent/engine/loop/agent.py" not in baseline["large_files"]
+    baseline["large_files"] = {}
     assert architecture_report.architecture_regressions(report, baseline) == [
         "new large file: src/focus_agent/engine/loop/agent.py (801 lines)"
     ]

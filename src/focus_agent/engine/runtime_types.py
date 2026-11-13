@@ -11,6 +11,7 @@ from ..repositories.productivity_repository import ProductivityRepository
 from ..repositories.user_repository import UserRepository
 from ..retrieval import RetrievalIndex
 from ..services.branches import BranchService
+from ..services.governance import GovernanceService
 from ..services.productivity import ProductivityService
 from ..services.users import UserService
 from ..skills import SkillRegistry
@@ -66,3 +67,4 @@ class RuntimeServices:
     branch_decision_service: BranchDecisionService
     user_service: UserService
     productivity_service: ProductivityService
+    governance_service: GovernanceService

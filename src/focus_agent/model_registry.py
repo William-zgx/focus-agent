@@ -434,43 +434,16 @@ def create_chat_model(
         settings=settings,
     )
 
-    # Resolve route metadata for observability; native and OpenAI-compatible
-    # clients below consume the same resolved endpoint and credential kwargs.
     init_kwargs: dict[str, object] = {
         **resolved.client_kwargs,
         **resolved.request_kwargs,
     }
-    try:
-        from .model_routing import resolve_route
-
-        provider_cfg = _merged_provider_configs(settings).get(resolved.provider)
-        if provider_cfg is not None:
-            env = (
-                settings.resolved_env
-                if settings is not None and getattr(settings, "resolved_env", None)
-                else os.environ
-            )
-            route = resolve_route(
-                resolved.model_id,
-                provider_cfg,
-                environ=env,
-            )
-            logger.debug(
-                "Resolved route for %s: protocol=%s endpoint=%s auth=%s framing=%s",
-                resolved.model_id,
-                route.protocol,
-                route.endpoint,
-                route.auth_type,
-                route.framing,
-            )
-            init_kwargs["_focus_model_route"] = {
-                "protocol": route.protocol,
-                "endpoint": route.endpoint,
-                "auth_type": route.auth_type,
-                "framing": route.framing,
-            }
-    except Exception as exc:  # noqa: BLE001 - never break model creation
-        logger.debug("Route resolution skipped for %s: %s", model_id, exc)
+    logger.debug(
+        "Resolved route for %s: backend_provider=%s endpoint=%s",
+        resolved.model_id,
+        resolved.backend_provider,
+        resolved.client_kwargs.get("base_url", ""),
+    )
     effective_temperature = _effective_temperature(model_id, temperature, settings=settings)
     if effective_temperature is not None:
         init_kwargs["temperature"] = effective_temperature
@@ -485,7 +458,6 @@ def create_chat_model(
     )
     if max_retries is not None:
         init_kwargs["max_retries"] = max(0, int(max_retries))
-    safe_init_kwargs = {k: v for k, v in init_kwargs.items() if not k.startswith("_focus_")}
     if resolved.backend_provider == "anthropic":
         from .providers.anthropic_channel import create_anthropic_chat_model
 
@@ -498,7 +470,7 @@ def create_chat_model(
         return create_anthropic_chat_model(
             model=resolved.model_name,
             thinking_enabled=thinking_enabled,
-            **safe_init_kwargs,
+            **init_kwargs,
         )
     if resolved.backend_provider == "openai" and (
         resolved.provider == "moonshot"
@@ -507,14 +479,14 @@ def create_chat_model(
         from .providers.reasoning_openai import ReasoningAwareChatOpenAI
 
         if resolved.provider == "moonshot":
-            safe_init_kwargs.setdefault("stream_usage", True)
+            init_kwargs.setdefault("stream_usage", True)
         return ReasoningAwareChatOpenAI(
             model=resolved.model_name,
-            **safe_init_kwargs,
+            **init_kwargs,
         )
     return init_chat_model(
         f"{resolved.backend_provider}:{resolved.model_name}",
-        **safe_init_kwargs,
+        **init_kwargs,
     )
 
 

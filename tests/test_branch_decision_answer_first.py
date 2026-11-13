@@ -9,7 +9,7 @@ from langchain.messages import AIMessage, HumanMessage
 
 from focus_agent.config import Settings
 from focus_agent.services.chat import ChatService
-from tests.test_chat_service import (
+from tests.unit.chat.support import (
     BranchActionBranchService,
     BranchRecommendationGraph,
     MultiThreadBranchActionGraph,
@@ -23,12 +23,12 @@ _SETTINGS = Settings(
 )
 
 
-def _root_chat(tmp_path: Path, graph: object, **ports: object) -> ChatService:
+def _root_chat(chat_service_factory, tmp_path: Path, graph: object, **ports: object) -> ChatService:
     repo = _repo_with_child_branch(tmp_path)
     decision_service = _branch_recommendation_service(_SETTINGS, graph)
     # Production wires the branch service (and its repo) into the decision service.
     decision_service.branch_service = SimpleNamespace(repo=repo)
-    return ChatService(
+    return chat_service_factory(
         SimpleNamespace(
             settings=_SETTINGS,
             graph=graph,
@@ -50,9 +50,11 @@ def _history_graph() -> BranchRecommendationGraph:
     )
 
 
-def test_side_question_is_answered_and_card_is_attached(tmp_path: Path) -> None:
+def test_side_question_is_answered_and_card_is_attached(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _history_graph()
-    chat = _root_chat(tmp_path, graph)
+    chat = _root_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(
         thread_id="root-1",
@@ -71,9 +73,11 @@ def test_side_question_is_answered_and_card_is_attached(tmp_path: Path) -> None:
     assert action["confidence"] < 0.86
 
 
-def test_explicit_branch_command_keeps_blocking_proposal(tmp_path: Path) -> None:
+def test_explicit_branch_command_keeps_blocking_proposal(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _history_graph()
-    chat = _root_chat(tmp_path, graph)
+    chat = _root_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(
         thread_id="root-1",
@@ -86,10 +90,12 @@ def test_explicit_branch_command_keeps_blocking_proposal(tmp_path: Path) -> None
     assert "branch switch confirmation" in payload["assistant_message"]
 
 
-def test_acknowledgement_does_not_execute_after_answer_card(tmp_path: Path) -> None:
+def test_acknowledgement_does_not_execute_after_answer_card(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _history_graph()
     branch_service = BranchActionBranchService()
-    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _root_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
@@ -105,10 +111,12 @@ def test_acknowledgement_does_not_execute_after_answer_card(tmp_path: Path) -> N
     assert graph.values["branch_action_audit"][-1]["reason"] == "superseded_by_next_turn"
 
 
-def test_move_to_branch_wording_executes_after_answer_card(tmp_path: Path) -> None:
+def test_move_to_branch_wording_executes_after_answer_card(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _history_graph()
     branch_service = BranchActionBranchService()
-    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _root_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
@@ -121,7 +129,9 @@ def test_move_to_branch_wording_executes_after_answer_card(tmp_path: Path) -> No
     assert graph.invoke_calls == 1
 
 
-def test_executing_after_answer_child_card_does_not_rerun_the_question(tmp_path: Path) -> None:
+def test_executing_after_answer_child_card_does_not_rerun_the_question(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = MultiThreadBranchActionGraph(
         {
             "root-1": {
@@ -133,7 +143,7 @@ def test_executing_after_answer_child_card_does_not_rerun_the_question(tmp_path:
         }
     )
     branch_service = BranchActionBranchService()
-    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _root_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(
         thread_id="root-1",
         user_id="owner-1",
@@ -150,7 +160,9 @@ def test_executing_after_answer_child_card_does_not_rerun_the_question(tmp_path:
     assert "messages" not in graph.values_by_thread.get("child-new", {})
 
 
-def test_executing_after_answer_sibling_card_carries_the_question(tmp_path: Path) -> None:
+def test_executing_after_answer_sibling_card_carries_the_question(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = MultiThreadBranchActionGraph(
         {
             "root-1": {"messages": [HumanMessage(content="根线程里的基础上下文。")]},
@@ -170,7 +182,7 @@ def test_executing_after_answer_sibling_card_carries_the_question(tmp_path: Path
         }
     )
     branch_service = BranchActionBranchService()
-    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _root_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(
         thread_id="child-1",
         user_id="owner-1",
@@ -188,7 +200,9 @@ def test_executing_after_answer_sibling_card_carries_the_question(tmp_path: Path
     assert [m.content for m in carried] == ["Cadence 和 Temporal 授权有区别吗？"]
 
 
-def test_card_carries_readable_reason_parent_name_and_clean_name(tmp_path: Path) -> None:
+def test_card_carries_readable_reason_parent_name_and_clean_name(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = BranchRecommendationGraph(
         {
             "messages": [
@@ -197,7 +211,7 @@ def test_card_carries_readable_reason_parent_name_and_clean_name(tmp_path: Path)
             ]
         }
     )
-    chat = _root_chat(tmp_path, graph)
+    chat = _root_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(
         thread_id="child-1",
@@ -214,9 +228,11 @@ def test_card_carries_readable_reason_parent_name_and_clean_name(tmp_path: Path)
     assert action["suggested_branch_name"] == "方案A和方案B的优缺点"
 
 
-def test_root_parent_has_no_branch_name_and_topic_name_avoids_fragments(tmp_path: Path) -> None:
+def test_root_parent_has_no_branch_name_and_topic_name_avoids_fragments(
+    chat_service_factory, tmp_path: Path
+) -> None:
     graph = _history_graph()
-    chat = _root_chat(tmp_path, graph)
+    chat = _root_chat(chat_service_factory, tmp_path, graph)
 
     payload = chat.send_message(
         thread_id="root-1",
@@ -231,6 +247,7 @@ def test_root_parent_has_no_branch_name_and_topic_name_avoids_fragments(tmp_path
 
 
 def test_execute_uses_edited_name_as_explicit_branch_name_and_runs_edited_goal(
+    chat_service_factory,
     tmp_path: Path,
 ) -> None:
     graph = MultiThreadBranchActionGraph(
@@ -244,7 +261,7 @@ def test_execute_uses_edited_name_as_explicit_branch_name_and_runs_edited_goal(
         }
     )
     branch_service = BranchActionBranchService()
-    chat = _root_chat(tmp_path, graph, branch_service=branch_service)
+    chat = _root_chat(chat_service_factory, tmp_path, graph, branch_service=branch_service)
     chat.send_message(
         thread_id="root-1",
         user_id="owner-1",

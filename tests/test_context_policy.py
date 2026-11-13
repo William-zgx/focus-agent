@@ -3,7 +3,7 @@ import json
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 import focus_agent.core.context_token_counting as token_counting_module
-from focus_agent.core.context_policy import (
+from focus_agent.core.context import (
     apply_prompt_budget_guard,
     approximate_token_count,
     assemble_context,
@@ -377,13 +377,23 @@ def test_approximate_token_count_uses_deterministic_char_budget():
 
 
 def test_approximate_token_count_prefers_tokenizer_when_available(monkeypatch):
+    class FakeTokenizer:
+        def __init__(self):
+            self.encoded_texts = []
+
+        def encode(self, text):
+            self.encoded_texts.append(text)
+            return ["one", "two", "three"]
+
+    tokenizer = FakeTokenizer()
     monkeypatch.setattr(
         token_counting_module,
-        "_estimate_with_tokenizer",
-        lambda text, tokenizer_id=None: 3 if tokenizer_id == "fake-model" and text else None,
+        "_resolve_tokenizer_detail",
+        lambda tokenizer_id: (tokenizer, tokenizer_id),
     )
 
     assert approximate_token_count("abcdef", chars_per_token=10, tokenizer_id="fake-model") == 3
+    assert tokenizer.encoded_texts == ["abcdef"]
 
 
 def test_trim_tool_observation_preserves_search_snippets_without_noise():

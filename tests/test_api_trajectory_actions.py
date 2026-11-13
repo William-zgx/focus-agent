@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -152,6 +153,15 @@ def test_trajectory_replay_action_returns_display_payload(
             },
         }
 
+    conversion_calls: list[tuple[list[dict[str, object]], dict[str, object]]] = []
+    real_convert = trajectory_actions.convert_trajectory_records
+
+    def _count_convert(records, **kwargs):
+        materialized = list(records)
+        conversion_calls.append((materialized, kwargs))
+        return real_convert(materialized, **kwargs)
+
+    monkeypatch.setattr(trajectory_actions, "convert_trajectory_records", _count_convert)
     monkeypatch.setattr(trajectory_actions, "build_promoted_dataset_payload", _fake_promote)
     monkeypatch.setattr(trajectory_actions, "run_replay_for_turn", _fake_replay)
 
@@ -170,13 +180,26 @@ def test_trajectory_replay_action_returns_display_payload(
     body = response.json()
     assert body["source_turn_id"] == "turn-1"
     assert body["model_used"] == "moonshot:kimi-k2.6"
-    assert body["replay_case"]["skill_hints"] == ["docs"]
+    assert body["replay_case"] == {
+        "id": "obs-turn-1",
+        "input": {"user_message": "Read README"},
+        "expected": {"max_tool_calls": 1},
+        "tags": ["trajectory_replay"],
+        "scene": "long_dialog_research",
+        "skill_hints": ["docs"],
+        "setup": [],
+        "judge": {"rule": True, "llm": {"enabled": False}},
+        "origin": {"trajectory_id": "turn-1"},
+    }
     assert body["replay_case_jsonl"] == '{"id":"obs-turn-1"}'
     assert body["replay_result"]["trajectory"][0]["tool"] == "read_file"
     assert body["comparison"]["tool_path_changed"] is True
-    assert captured["promote"]["case_id_prefix"] == "obs"
+    assert len(conversion_calls) == 1
+    assert conversion_calls[0][0] == [captured["promote"]["record"]]
+    assert conversion_calls[0][1]["case_id_prefix"] == "obs"
     assert captured["replay"]["model"] == "moonshot:kimi-k2.6"
-    assert captured["replay"]["copy_answer_substring"] is True
+    assert conversion_calls[0][1]["copy_answer_substring"] is True
+    assert captured["promote"]["converted_case"] is captured["replay"]["converted_case"]
 
 
 def test_trajectory_promote_action_returns_dataset_preview(
@@ -233,8 +256,63 @@ def test_trajectory_promote_action_returns_dataset_preview(
     assert body["case_id"] == "traj-turn-2"
     assert body["dataset_record"]["origin"]["trajectory_id"] == "turn-2"
     assert body["jsonl"] == '{"id":"traj-turn-2"}'
-    assert captured["promote"]["copy_answer_substring"] is True
-    assert captured["promote"]["answer_substring_chars"] == 64
+    assert captured["promote"]["converted_case"].case.id == "traj-turn-2"
+
+
+def test_promotion_dataset_record_and_unicode_jsonl_snapshot() -> None:
+    payload = trajectory_actions.build_promoted_dataset_payload(
+        {
+            "id": "turn-1",
+            "user_message": "Read 中文",
+            "scene": "long_dialog_research",
+            "trajectory": [],
+        },
+        converted_case=trajectory_actions.convert_trajectory_record(
+            {
+                "id": "turn-1",
+                "user_message": "Read 中文",
+                "scene": "long_dialog_research",
+                "trajectory": [],
+            },
+            case_id_prefix="obs",
+        ),
+    )
+
+    expected_dataset_record = {
+        "id": "obs-turn-1",
+        "input": {"user_message": "Read 中文"},
+        "expected": {},
+        "tags": ["trajectory_replay", "status:unknown"],
+        "scene": "long_dialog_research",
+        "skill_hints": [],
+        "setup": [],
+        "judge": {"rule": False, "llm": {"enabled": False}},
+        "origin": {
+            "type": "trajectory",
+            "trajectory_id": "turn-1",
+            "thread_id": None,
+            "root_thread_id": None,
+            "parent_thread_id": None,
+            "branch_id": None,
+            "branch_role": None,
+            "turn_index": None,
+            "status": "unknown",
+            "selected_model": None,
+            "selected_thinking_mode": None,
+            "task_brief": None,
+            "source_answer": None,
+            "source_error": None,
+            "source_metrics": {},
+            "source_tools": [],
+            "source_trajectory": [],
+        },
+    }
+    assert payload["source_turn_id"] == "turn-1"
+    assert payload["case_id"] == "obs-turn-1"
+    assert payload["dataset_record"] == expected_dataset_record
+    assert payload["jsonl"].encode("utf-8") == json.dumps(
+        expected_dataset_record, ensure_ascii=False
+    ).encode("utf-8")
 
 
 def test_trajectory_action_returns_404_when_turn_missing(

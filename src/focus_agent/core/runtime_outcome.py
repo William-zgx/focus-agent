@@ -174,6 +174,23 @@ def tool_outcome_from_message(
     }
 
 
+def runtime_payload_from_tool_outcome(tool_outcome: Mapping[str, Any]) -> dict[str, Any]:
+    runtime: dict[str, Any] = {
+        "tool_outcome": dict(tool_outcome),
+        "attempt_index": tool_outcome.get("attempt_index"),
+        "max_attempts": tool_outcome.get("max_attempts"),
+        "retryable": tool_outcome.get("retryable"),
+        "fallback_used": tool_outcome.get("fallback_used"),
+        "fallback_group": tool_outcome.get("fallback_group"),
+        "error_category": tool_outcome.get("error_category"),
+    }
+    if tool_outcome.get("duration_ms") is not None:
+        runtime["duration_ms"] = tool_outcome.get("duration_ms")
+    if tool_outcome.get("cache_hit") is not None:
+        runtime["cache_hit"] = tool_outcome.get("cache_hit")
+    return runtime
+
+
 def build_task_outcome(
     *,
     user_goal: str,
@@ -624,5 +641,6 @@ __all__ = [
     "build_task_outcome",
     "build_tool_outcomes_from_messages",
     "payload_failure",
+    "runtime_payload_from_tool_outcome",
     "tool_outcome_from_message",
 ]

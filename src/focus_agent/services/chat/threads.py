@@ -7,7 +7,12 @@ from typing import Any
 from langchain.messages import SystemMessage
 from pydantic import ValidationError
 
-from ...core.branch_messages import branch_fork_message_count, branch_visible_messages
+from ...core.branch_messages import (
+    append_imported_summary,
+    branch_fork_message_count,
+    branch_visible_messages,
+    render_imported_conclusion,
+)
 from ...core.branching import BranchMeta, BranchStatus, ThreadResolution
 from ...core.repo_call import (
     REPO_METHOD_ERROR,
@@ -21,10 +26,7 @@ from ...core.tool_call_protocol import repair_dangling_tool_call_messages
 from ...core.types import ConversationRecord
 from ...model_registry import default_thinking_enabled, supports_thinking_mode
 from ...observability.tracing import build_invoke_config
-from .branch_actions import (
-    normalize_branch_actions,
-    serialize_branch_actions,
-)
+from ..branches.actions import normalize_branch_actions, serialize_branch_actions
 from .serialization import (
     _turn_metadata_from_plan_meta,
     latest_final_ai_text,
@@ -174,21 +176,12 @@ class ChatThreadAccessMixin:
         branch_name = str(
             imported.get("branch_name") or imported.get("branch_id") or "unknown branch"
         ).strip()
-        lines = [f"Imported conclusion from branch '{branch_name}':", summary]
-        key_findings = [
-            str(item).strip() for item in imported.get("key_findings", []) if str(item).strip()
-        ]
-        if key_findings:
-            lines.append("")
-            lines.append("Key findings:")
-            lines.extend(f"- {item}" for item in key_findings)
-        evidence_refs = [
-            str(item).strip() for item in imported.get("evidence_refs", []) if str(item).strip()
-        ]
-        if evidence_refs:
-            lines.append("")
-            lines.append(f"Evidence refs: {', '.join(evidence_refs)}")
-        return "\n".join(lines).strip()
+        return render_imported_conclusion(
+            branch_name=branch_name,
+            summary=summary,
+            key_findings=imported.get("key_findings", []),
+            evidence_refs=imported.get("evidence_refs", []),
+        )
 
     @staticmethod
     def _append_imported_summary(existing_summary: Any, imported: dict[str, Any]) -> str:
@@ -199,13 +192,12 @@ class ChatThreadAccessMixin:
         branch_name = str(
             imported.get("branch_name") or imported.get("branch_id") or "unknown branch"
         ).strip()
-        imported_line = f"Imported from {branch_name}: {summary}"
-        if imported_line in previous:
-            return previous
-        combined = "\n".join(part for part in [previous, imported_line] if part)
-        if len(combined) > 4000:
-            combined = combined[-4000:]
-        return combined
+        return append_imported_summary(
+            previous,
+            branch_name=branch_name,
+            summary=summary,
+            deduplicate=True,
+        )
 
     def _backfill_import_records(self, *, thread_id: str, values: dict[str, Any]) -> dict[str, Any]:
         merge_queue = [item for item in values.get("merge_queue", []) if isinstance(item, dict)]

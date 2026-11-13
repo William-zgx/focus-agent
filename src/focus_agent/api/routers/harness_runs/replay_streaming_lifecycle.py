@@ -8,7 +8,9 @@ from focus_agent.harness.runtime import RunStatus
 from focus_agent.services.chat import ChatService
 
 from ...route_utils.branch_handoff_decisions import mark_branch_handoff_decision_outcome
+from .replay_finalization import _HarnessRunFinalizer
 from .replay_helpers import (
+    _close_run_stream,
     _publish_run_event,
     _record_harness_turn_and_schedule,
     _safe_chat_values,
@@ -56,6 +58,45 @@ class _RunEventPublisher:
 
 def _task_outcome_event_payload(task_outcome: Any) -> dict[str, Any]:
     return {"task_outcome": task_outcome} if task_outcome is not None else {}
+
+
+async def _publish_recovered_stream_outcome(
+    *,
+    runtime: AppRuntime,
+    run_id: str,
+    thread_id: str,
+    response: Any = None,
+    error: Exception | None = None,
+    final_values: dict[str, Any],
+) -> None:
+    publisher = _RunEventPublisher(
+        runtime=runtime,
+        run_id=run_id,
+        thread_id=thread_id,
+        default_source_node_name="harness",
+    )
+    outcome = _task_outcome_event_payload(final_values.get("task_outcome"))
+    if error is None:
+        thread_state = getattr(response, "thread_state", None)
+        await publisher(
+            "run.completed",
+            status="succeeded",
+            **({"thread_state": thread_state} if thread_state is not None else {}),
+            **outcome,
+        )
+    else:
+        await publisher(
+            "run.failed",
+            error=error.__class__.__name__,
+            message=str(error),
+            **outcome,
+        )
+    await _close_run_stream(
+        runtime=runtime,
+        run_id=run_id,
+        thread_id=thread_id,
+        sequence=publisher.sequence,
+    )
 
 
 def _is_cancel_cleanup_exception(exc: BaseException) -> bool:
@@ -149,8 +190,6 @@ async def _handle_stream_exception(
     started_at: Any,
     handoff_decision: Any = None,
     handoff_message: str | None = None,
-    safe_chat_values: SafeChatValues = _safe_chat_values,
-    safe_failed_thread_state: SafeFailedThreadState = _safe_failed_thread_state,
     record_harness_turn: RecordHarnessTurn = _record_harness_turn_and_schedule,
 ) -> bool:
     """Record a failed run and publish ``run.failed``; return True when it was an abort."""
@@ -172,37 +211,32 @@ async def _handle_stream_exception(
     if run_status is RunStatus.INTERRUPTED:
         await runtime.run_manager.set_status(run_id, run_status)
         return True
-    await runtime.run_manager.set_status(run_id, run_status, error=str(exc))
-    failed_values = safe_chat_values(chat=chat, thread_id=thread_id)
-    failed_thread_state = safe_failed_thread_state(
+    finalizer = _HarnessRunFinalizer(
+        runtime=runtime,
         chat=chat,
+        run_id=run_id,
         thread_id=thread_id,
         user_id=user_id,
+        kind=kind,
         context=context,
         branch_meta=branch_meta,
         trace_correlation=trace_correlation,
-    )
-    record_harness_turn(
-        chat=chat,
-        thread_id=thread_id,
-        user_id=user_id,
-        root_thread_id=context.root_thread_id,
-        kind=kind,
-        status="timeout" if run_status is RunStatus.TIMEOUT else "failed",
-        final_values=failed_values,
+        payload=final_payload,
         initial_message_count=initial_message_count,
         initial_llm_calls=initial_llm_calls,
         started_at=started_at,
-        branch_meta=branch_meta,
-        trace_correlation=trace_correlation,
-        payload=final_payload,
-        error=str(exc),
+        record_harness_turn=record_harness_turn,
     )
+    finalization = await finalizer.fail(exc, run_status=run_status)
     await publish(
         "run.failed",
         error=exc.__class__.__name__,
         message=str(exc),
-        **({"thread_state": failed_thread_state} if failed_thread_state is not None else {}),
-        **_task_outcome_event_payload(failed_values.get("task_outcome")),
+        **(
+            {"thread_state": finalization.thread_state}
+            if finalization.thread_state is not None
+            else {}
+        ),
+        **_task_outcome_event_payload(finalization.final_values.get("task_outcome")),
     )
     return False

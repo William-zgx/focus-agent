@@ -88,10 +88,15 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
         def __init__(self, repository):
             self.repository = repository
 
+    class _GovernanceService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     monkeypatch.setattr(runtime, "BranchService", _BranchService)
     monkeypatch.setattr(runtime, "UserService", _UserService)
     monkeypatch.setattr(runtime, "BranchDecisionService", _BranchDecisionService)
     monkeypatch.setattr(runtime, "ProductivityService", _ProductivityService)
+    monkeypatch.setattr(runtime, "GovernanceService", _GovernanceService)
     coordination_backend = SimpleNamespace()
     user_repository = object()
     productivity_repository = object()
@@ -117,6 +122,12 @@ def test_runtime_services_use_runtime_factory_and_repository_patch_seams(monkeyp
         services.branch_decision_service.kwargs["governance_repository"] == "governance-repository"
     )
     assert services.productivity_service.repository is productivity_repository
+    assert services.governance_service.kwargs == {
+        "repository": "governance-repository",
+        "skill_selection_event_log_enabled": True,
+        "retrieval_index": "retrieval-index",
+        "embedding_provider": "embedding-provider",
+    }
 
 
 def test_runtime_module_stays_within_composition_line_budget() -> None:

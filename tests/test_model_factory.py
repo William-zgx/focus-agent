@@ -11,7 +11,7 @@ from focus_agent.engine.model_factory import (
     GraphModelFactory,
     ModelInvocationTimeoutError,
 )
-from focus_agent.services.chat import streaming, turns
+from focus_agent.services.chat import streaming
 
 
 class _FakeModel:
@@ -69,7 +69,7 @@ def test_graph_model_factory_preserves_tool_binding_and_invoke_result():
 
 
 def test_graph_stream_survives_serial_model_calls_with_progress(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
     model_timeout = 0.05
     model = _FakeModel(sleep_seconds=0.04)
     factory = GraphModelFactory(
@@ -130,7 +130,7 @@ def test_graph_stream_survives_serial_model_calls_with_progress(monkeypatch):
 
 
 def test_graph_stream_still_times_out_for_single_unresponsive_model(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
     model_timeout = 0.05
     model = _FakeModel(sleep_seconds=0.2)
     factory = GraphModelFactory(

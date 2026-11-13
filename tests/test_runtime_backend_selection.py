@@ -600,6 +600,10 @@ def test_create_runtime_uses_postgres_background_jobs_only_when_opted_in(monkeyp
             runtime.coordination_backend.job_deduper, PostgresBackgroundJobDeduperBackend
         )
         assert runtime.coordination_backend.job_deduper.claim_ttl_seconds == 12.0
+        assert (
+            runtime.coordination_backend.job_deduper.connection_provider
+            is runtime.postgres_connection_provider
+        )
     finally:
         runtime.close()
 
@@ -629,6 +633,8 @@ def test_create_runtime_exposes_postgres_connection_provider(monkeypatch, tmp_pa
     try:
         provider = runtime.postgres_connection_provider
         assert provider is not None
+        assert runtime.coordination_backend.thread_turns.connection_provider is provider
+        assert runtime.coordination_backend.rate_limiter.connection_provider is provider
         snapshot = provider.snapshot()
         assert snapshot["postgres_pool_enabled"] == 0
         assert snapshot["postgres_pool_fallback_direct"] == 1

@@ -18,10 +18,9 @@ from focus_agent.services.branches.actions import (
     build_branch_action_proposal,
     explicit_branch_name_from_text,
 )
-from focus_agent.services.chat import ChatService
 from focus_agent.services.chat.branch_navigation import execute_branch_action_navigation
 from tests.test_branch_archive import FakeGraph, FakeRepo, _record
-from tests.test_chat_service import (
+from tests.unit.chat.support import (
     BranchActionBranchService,
     BranchActionGraph,
     _repo_with_child_branch,
@@ -133,11 +132,11 @@ def test_typed_branch_name_in_chat_is_explicit(message: str, name: str) -> None:
     assert explicit_branch_name_from_text(message) == name
 
 
-def test_chat_command_name_is_forked_as_explicit_name(tmp_path: Path) -> None:
+def test_chat_command_name_is_forked_as_explicit_name(chat_service_factory, tmp_path: Path) -> None:
     repo = _repo_with_child_branch(tmp_path)
     graph = BranchActionGraph({"messages": [HumanMessage(content="根线程里的基础上下文。")]})
     branch_service = BranchActionBranchService()
-    chat = ChatService(
+    chat = chat_service_factory(
         SimpleNamespace(settings=Settings(), graph=graph, repo=repo, branch_service=branch_service)
     )
 

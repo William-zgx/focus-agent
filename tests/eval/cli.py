@@ -246,7 +246,7 @@ def _execute_eval_cases(
 
     if comparison.get("regressions") and (fail_if_regression or baseline):
         return 2, results
-    return (0 if summary.failed == 0 else 1), results
+    return (0 if summary.failed == 0 and summary.environment_invalid == 0 else 1), results
 
 
 def _run_replay_command(argv: Sequence[str]) -> int:

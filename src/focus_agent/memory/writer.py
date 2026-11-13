@@ -11,11 +11,12 @@ from ..storage.namespaces import (
 )
 from .dedupe import (
     has_textual_overlap,
+    is_possible_memory_conflict,
     memory_fingerprint,
     memory_resolution_key,
     memory_semantic_key,
     merge_duplicate_records,
-    user_preference_topic,
+    should_replace_memory,
 )
 from .embedding_service import MemoryEmbeddingService
 from .models import (
@@ -27,7 +28,7 @@ from .models import (
 )
 from .policy import MemoryPolicy
 from .service import MemoryService
-from .text import has_correction_signal, normalize_memory_text
+from .text import normalize_memory_text
 
 
 class MemoryWriter:
@@ -215,7 +216,7 @@ class MemoryWriter:
             return "written", key
 
         key, current = existing
-        if self._is_possible_conflict(current, record) and not self._should_replace(
+        if is_possible_memory_conflict(current, record) and not should_replace_memory(
             current, record
         ):
             return "possible_conflict", key
@@ -302,32 +303,6 @@ class MemoryWriter:
                 best_match = (key or current.memory_id, current)
         return best_match
 
-    def _is_possible_conflict(self, existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
-        if existing.kind != incoming.kind or existing.scope != incoming.scope:
-            return False
-        if existing.scope not in {MemoryScope.USER, MemoryScope.PROJECT}:
-            return False
-        return normalize_memory_text(existing.summary or existing.content) != normalize_memory_text(
-            incoming.summary or incoming.content
-        )
-
-    def _should_replace(self, existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
-        existing_confidence = float(existing.confidence or 0.0)
-        incoming_confidence = float(incoming.confidence or 0.0)
-        if (
-            incoming.scope == MemoryScope.USER
-            and incoming.kind == MemoryKind.USER_PREFERENCE
-            and user_preference_topic(existing.summary or existing.content)
-            and user_preference_topic(existing.summary or existing.content)
-            == user_preference_topic(incoming.summary or incoming.content)
-        ):
-            return True
-        return (
-            incoming.importance > existing.importance
-            or incoming_confidence > existing_confidence
-            or has_correction_signal(incoming.summary or incoming.content)
-        )
-
     def _records_can_conflict(
         self,
         *,
@@ -339,11 +314,14 @@ class MemoryWriter:
             return memory_resolution_key(existing) == incoming_resolution_key
         if incoming.scope != MemoryScope.PROJECT:
             return False
-        if not has_correction_signal(incoming.summary or incoming.content):
-            return False
-        return has_textual_overlap(
+        overlap = has_textual_overlap(
             existing.summary or existing.content,
             incoming.summary or incoming.content,
+        )
+        return overlap and should_replace_memory(
+            existing,
+            incoming,
+            textual_overlap=overlap,
         )
 
 

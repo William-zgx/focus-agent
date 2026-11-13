@@ -14,6 +14,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ..storage.postgres import PostgresConnectionProvider
 from .contracts import AgentMessage, AgentMessageType
 
 
@@ -109,11 +110,20 @@ class InMemoryMessageStream:
 class PostgresAgentMessageBus:
     """Postgres message table publisher with NOTIFY and poll/ack streams."""
 
-    def __init__(self, database_uri: str, *, default_ttl_seconds: float = 300.0) -> None:
+    def __init__(
+        self,
+        database_uri: str,
+        *,
+        default_ttl_seconds: float = 300.0,
+        connection_provider: PostgresConnectionProvider | None = None,
+    ) -> None:
         self.database_uri = database_uri
         self.default_ttl_seconds = max(float(default_ttl_seconds or 0.0), 0.0)
+        self.connection_provider = connection_provider
 
     def _connect(self):
+        if self.connection_provider is not None:
+            return self.connection_provider.connect(row_factory=dict_row)
         return psycopg.connect(self.database_uri, row_factory=dict_row)
 
     def publish(

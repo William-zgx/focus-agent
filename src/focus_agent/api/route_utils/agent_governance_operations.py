@@ -6,16 +6,18 @@ from fastapi import HTTPException, status
 
 from focus_agent.core.governance import (
     ContextMemoryEvidence,
-    FeedbackEvent,
     SkillPreference,
     SkillSelectionEvent,
 )
 from focus_agent.core.time_utils import utc_now_iso
 from focus_agent.engine.runtime import AppRuntime
-from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.postgres_trajectory_repository import TrajectoryTurnQuery
 from focus_agent.retrieval.governance_feedback import index_governance_feedback
 from focus_agent.security.tokens import Principal
+from focus_agent.services.governance import (
+    SkillSelectionNotFoundError,
+    governance_service_for_runtime,
+)
 
 from ..contracts import (
     AgentContextEvidenceListResponse,
@@ -50,29 +52,7 @@ _PRODUCTIVITY_CAPTURE_KINDS = {"capture", "note", "notes", "productivity_capture
 
 
 def _governance_repository(runtime: AppRuntime) -> object:
-    repository = getattr(runtime, "governance_repository", None)
-    if repository is not None:
-        return repository
-    repository = getattr(runtime, "context_memory_evidence_repository", None)
-    if repository is not None:
-        return repository
-    database_uri = getattr(getattr(runtime, "settings", None), "database_uri", None)
-    if database_uri:
-        from focus_agent.repositories.postgres_governance_repository import (
-            PostgresGovernanceRepository,
-        )
-
-        repository = PostgresGovernanceRepository(
-            str(database_uri),
-            connection_provider=getattr(runtime, "postgres_connection_provider", None),
-        )
-    else:
-        repository = InMemoryGovernanceRepository()
-    try:
-        runtime.governance_repository = repository
-    except Exception:  # noqa: BLE001 - tests may use immutable runtime stubs.
-        pass
-    return repository
+    return governance_service_for_runtime(runtime).repository
 
 
 def _agent_context_explain_response(
@@ -163,17 +143,15 @@ def _persist_skill_selection_event(
     payload: AgentSkillSelectRequest,
     response: AgentSkillSelectionResponse,
 ) -> AgentSkillSelectionResponse:
-    if not bool(getattr(runtime.settings, "skill_selection_event_log_enabled", True)):
-        return response
-    repository = _governance_repository(runtime)
     event = _skill_selection_event_for_response(
         payload=payload,
         response=response,
         principal=principal,
     )
-    repository.save_skill_selection_event(event)
-    _index_governance_feedback_best_effort(runtime, event)
-    return response.model_copy(update={"selection_id": event.selection_id})
+    recorded = governance_service_for_runtime(runtime).record_skill_selection(event)
+    if recorded is None:
+        return response
+    return response.model_copy(update={"selection_id": recorded.selection_id})
 
 
 def _agent_skill_selection_events_response(
@@ -204,33 +182,20 @@ def _agent_skill_selection_feedback_response(
     selection_id: str,
     payload: AgentSkillSelectionFeedbackRequest,
 ) -> AgentSkillSelectionFeedbackResponse:
-    repository = _governance_repository(runtime)
-    existing = repository.get_skill_selection_event(selection_id)
-    if existing is None or existing.user_id not in {None, principal.user_id}:
+    try:
+        updated, feedback_event_id = governance_service_for_runtime(
+            runtime
+        ).record_skill_selection_feedback(
+            selection_id=selection_id,
+            user_id=principal.user_id,
+            feedback=payload.feedback,
+            reason=payload.reason,
+            user_override=dict(payload.user_override),
+        )
+    except SkillSelectionNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found."
-        )
-    updated = repository.update_skill_selection_feedback(
-        selection_id=selection_id,
-        feedback=payload.feedback,
-        reason=payload.reason,
-        user_override=dict(payload.user_override),
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Skill selection not found."
-        )
-    _index_governance_feedback_best_effort(runtime, updated)
-    feedback_event = FeedbackEvent(
-        user_id=principal.user_id,
-        source_kind="skill_selection",
-        source_id=selection_id,
-        sentiment=payload.feedback,
-        category="skill_feedback",
-        metadata={"reason": payload.reason, "user_override": dict(payload.user_override)},
-    )
-    feedback_event_id = repository.save_feedback_event(feedback_event)
-    _index_governance_feedback_best_effort(runtime, feedback_event)
+        ) from None
     return AgentSkillSelectionFeedbackResponse(
         item=_skill_selection_event_response(updated),
         feedback_event_id=feedback_event_id,

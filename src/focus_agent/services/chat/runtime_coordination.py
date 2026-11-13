@@ -55,17 +55,21 @@ class ChatRuntimeCoordinationMixin:
     def _submit_background_work(
         self, *, key: str, func, delay_seconds: float = 0.0, **kwargs: Any
     ) -> bool:
-        if self._background_work is None:
-            from ..background_work import BoundedBackgroundQueue
+        with self._background_work_lock:
+            if self._closed:
+                return False
+            if self._background_work is None:
+                from ..background_work import BoundedBackgroundQueue
 
-            settings = self.runtime.settings
-            self._background_work = BoundedBackgroundQueue(
-                name="chat",
-                max_concurrency=getattr(settings, "background_worker_max_concurrency", 2),
-                max_size=getattr(settings, "background_queue_max_size", 1000),
-                job_deduper=self._coordination_backend.job_deduper,
-            )
-        return self._background_work.submit(
+                settings = self.runtime.settings
+                self._background_work = BoundedBackgroundQueue(
+                    name="chat",
+                    max_concurrency=getattr(settings, "background_worker_max_concurrency", 2),
+                    max_size=getattr(settings, "background_queue_max_size", 1000),
+                    job_deduper=self._coordination_backend.job_deduper,
+                )
+            background_work = self._background_work
+        return background_work.submit(
             key=key,
             func=func,
             delay_seconds=delay_seconds,

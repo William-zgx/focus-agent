@@ -92,18 +92,17 @@ def execute_single_untraced(
                     error=validation_exc,
                 ) from validation_exc
         item_cache_key = cache_key(item=item, cache_scope_key=cache_scope_key)
-        if (
-            item_cache_key
-            and cache_store is not None
-            and cache_store.get(item_cache_key) is not None
-        ):
-            observation = cache_store.get(item_cache_key) or ""
-            trimmed_observation, trim_runtime, prompt_observation = trim_success(
+        cached_observation = (
+            cache_store.get(item_cache_key) if item_cache_key and cache_store is not None else None
+        )
+        if cached_observation is not None:
+            observation = cached_observation or ""
+            result = _build_success_result(
+                item,
                 observation,
-                tool_name=item.tool_name,
-                tool_call_id=item.tool_call_id,
                 context_budget=context_budget,
-                max_chars=item.runtime.max_observation_chars,
+                parallel_batch_size=parallel_batch_size,
+                cache_hit=True,
                 observation_saver=observation_saver,
                 observation_thread_id=observation_thread_id,
             )
@@ -112,25 +111,7 @@ def execute_single_untraced(
                 stage="cache_hit",
                 cache_scope=(cache_scope_key or "thread:default"),
             )
-            return ToolExecutionResult(
-                index=item.index,
-                cache_hit=True,
-                message=build_tool_message(
-                    content=trimmed_observation,
-                    tool_call_id=item.tool_call_id,
-                    tool_name=item.tool_name,
-                    prompt_observation=prompt_observation,
-                    status=observation_message_status(observation),
-                    runtime_info={
-                        "cache_hit": True,
-                        "fallback_used": False,
-                        "parallel_batch_size": parallel_batch_size
-                        if (parallel_batch_size or 0) > 1
-                        else None,
-                        **trim_runtime,
-                    },
-                ),
-            )
+            return result
     except Exception as exc:  # noqa: BLE001
         emit_runtime_tool_event(
             item=item,
@@ -157,33 +138,14 @@ def execute_single_untraced(
         text = str(observation)
         if item_cache_key and cache_store is not None:
             cache_store.set(item_cache_key, text)
-        trimmed_text, trim_runtime, prompt_observation = trim_success(
+        return _build_success_result(
+            item,
             text,
-            tool_name=item.tool_name,
-            tool_call_id=item.tool_call_id,
             context_budget=context_budget,
-            max_chars=item.runtime.max_observation_chars,
+            parallel_batch_size=parallel_batch_size,
+            extra_runtime_info=side_effect_runtime_info(item),
             observation_saver=observation_saver,
             observation_thread_id=observation_thread_id,
-        )
-        return ToolExecutionResult(
-            index=item.index,
-            message=build_tool_message(
-                content=trimmed_text,
-                tool_call_id=item.tool_call_id,
-                tool_name=item.tool_name,
-                prompt_observation=prompt_observation,
-                status=observation_message_status(text),
-                runtime_info={
-                    "cache_hit": False,
-                    "fallback_used": False,
-                    "parallel_batch_size": parallel_batch_size
-                    if (parallel_batch_size or 0) > 1
-                    else None,
-                    **side_effect_runtime_info(item),
-                    **trim_runtime,
-                },
-            ),
         )
     except Exception as exc:  # noqa: BLE001
         if item.runtime.fallback_handler is not None and not should_bypass_fallback(exc):
@@ -196,12 +158,12 @@ def execute_single_untraced(
                 )
                 fallback_observation = item.runtime.fallback_handler(exc, item.args)
                 fallback_text = str(fallback_observation)
-                trimmed_fallback, trim_runtime, prompt_observation = trim_success(
+                result = _build_success_result(
+                    item,
                     fallback_text,
-                    tool_name=item.tool_name,
-                    tool_call_id=item.tool_call_id,
                     context_budget=context_budget,
-                    max_chars=item.runtime.max_observation_chars,
+                    parallel_batch_size=parallel_batch_size,
+                    fallback_used=True,
                     observation_saver=observation_saver,
                     observation_thread_id=observation_thread_id,
                 )
@@ -210,25 +172,7 @@ def execute_single_untraced(
                     stage="fallback_success",
                     fallback_group=item.runtime.fallback_group,
                 )
-                return ToolExecutionResult(
-                    index=item.index,
-                    message=build_tool_message(
-                        content=trimmed_fallback,
-                        tool_call_id=item.tool_call_id,
-                        tool_name=item.tool_name,
-                        prompt_observation=prompt_observation,
-                        status=observation_message_status(fallback_text),
-                        runtime_info={
-                            "cache_hit": False,
-                            "fallback_used": True,
-                            "fallback_group": item.runtime.fallback_group,
-                            "parallel_batch_size": parallel_batch_size
-                            if (parallel_batch_size or 0) > 1
-                            else None,
-                            **trim_runtime,
-                        },
-                    ),
-                )
+                return result
             except Exception as fallback_exc:  # noqa: BLE001
                 emit_runtime_tool_event(
                     item=item,
@@ -255,6 +199,52 @@ def execute_single_untraced(
                 ),
             ),
         )
+
+
+def _build_success_result(
+    item: ToolExecutionInput,
+    observation: str,
+    *,
+    context_budget: ContextBudget,
+    parallel_batch_size: int | None,
+    cache_hit: bool = False,
+    fallback_used: bool = False,
+    extra_runtime_info: dict[str, Any] | None = None,
+    observation_saver: Callable[..., str | None] | None = None,
+    observation_thread_id: str | None = None,
+) -> ToolExecutionResult:
+    trimmed, trim_runtime, prompt_observation = trim_success(
+        observation,
+        tool_name=item.tool_name,
+        tool_call_id=item.tool_call_id,
+        context_budget=context_budget,
+        max_chars=item.runtime.max_observation_chars,
+        observation_saver=observation_saver,
+        observation_thread_id=observation_thread_id,
+    )
+    runtime_info: dict[str, Any] = {
+        "cache_hit": cache_hit,
+        "fallback_used": fallback_used,
+    }
+    if fallback_used:
+        runtime_info["fallback_group"] = item.runtime.fallback_group
+    runtime_info["parallel_batch_size"] = (
+        parallel_batch_size if (parallel_batch_size or 0) > 1 else None
+    )
+    runtime_info.update(extra_runtime_info or {})
+    runtime_info.update(trim_runtime)
+    return ToolExecutionResult(
+        index=item.index,
+        cache_hit=cache_hit,
+        message=build_tool_message(
+            content=trimmed,
+            tool_call_id=item.tool_call_id,
+            tool_name=item.tool_name,
+            prompt_observation=prompt_observation,
+            status=observation_message_status(observation),
+            runtime_info=runtime_info,
+        ),
+    )
 
 
 def trim_success(

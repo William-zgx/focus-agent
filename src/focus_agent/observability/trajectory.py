@@ -10,7 +10,7 @@ from typing import Any
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
-from ..core.runtime_outcome import tool_outcome_from_message
+from ..core.runtime_outcome import runtime_payload_from_tool_outcome, tool_outcome_from_message
 from ..core.state import (
     governance_metrics_from_record_payloads,
     governance_plan_meta_projection,
@@ -179,7 +179,7 @@ def extract_trajectory_steps(
             step_runtime = (
                 dict(runtime_info)
                 if use_actual_message
-                else _runtime_from_synthetic_tool_outcome(tool_outcome)
+                else runtime_payload_from_tool_outcome(tool_outcome)
             )
             step_runtime.setdefault("tool_outcome", tool_outcome)
             observation = (
@@ -334,23 +334,6 @@ def _tool_outcomes_by_call_id(
         if call_id:
             indexed.setdefault(call_id, []).append(dict(outcome))
     return indexed
-
-
-def _runtime_from_synthetic_tool_outcome(tool_outcome: Mapping[str, Any]) -> dict[str, Any]:
-    runtime: dict[str, Any] = {
-        "tool_outcome": dict(tool_outcome),
-        "attempt_index": tool_outcome.get("attempt_index"),
-        "max_attempts": tool_outcome.get("max_attempts"),
-        "retryable": tool_outcome.get("retryable"),
-        "fallback_used": tool_outcome.get("fallback_used"),
-        "fallback_group": tool_outcome.get("fallback_group"),
-        "error_category": tool_outcome.get("error_category"),
-    }
-    if tool_outcome.get("duration_ms") is not None:
-        runtime["duration_ms"] = tool_outcome.get("duration_ms")
-    if tool_outcome.get("cache_hit") is not None:
-        runtime["cache_hit"] = tool_outcome.get("cache_hit")
-    return runtime
 
 
 def _synthetic_observation_from_tool_outcome(tool_outcome: Mapping[str, Any]) -> str:

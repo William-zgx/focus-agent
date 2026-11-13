@@ -11,6 +11,7 @@ from focus_agent.multi_agent.resource_lock import (
     InMemoryResourceLockManager,
     PostgresResourceLockManager,
 )
+from focus_agent.storage.postgres import PostgresConnectionProvider
 
 from .coordination_memory import (
     InMemoryBackgroundJobDeduperBackend,
@@ -55,6 +56,7 @@ def create_coordination_backend(
     background_job_retry_max_delay_seconds: float = 300.0,
     multi_agent_enabled: bool = False,
     multi_agent_message_ttl_seconds: float = 300.0,
+    connection_provider: PostgresConnectionProvider | None = None,
 ) -> CoordinationBackend:
     in_memory = create_in_memory_coordination_backend()
     if not database_uri:
@@ -66,22 +68,30 @@ def create_coordination_backend(
             claim_ttl_seconds=background_job_claim_ttl_seconds,
             retry_base_delay_seconds=background_job_retry_base_delay_seconds,
             retry_max_delay_seconds=background_job_retry_max_delay_seconds,
+            connection_provider=connection_provider,
         )
     return CoordinationBackend(
-        thread_turns=PostgresThreadTurnLockBackend(database_uri),
+        thread_turns=PostgresThreadTurnLockBackend(
+            database_uri, connection_provider=connection_provider
+        ),
         job_deduper=job_backend,
-        rate_limiter=PostgresRateLimitBackend(database_uri),
-        resource_locks=PostgresResourceLockManager(database_uri)
+        rate_limiter=PostgresRateLimitBackend(
+            database_uri, connection_provider=connection_provider
+        ),
+        resource_locks=PostgresResourceLockManager(
+            database_uri, connection_provider=connection_provider
+        )
         if multi_agent_enabled
         else in_memory.resource_locks,
         message_bus=PostgresAgentMessageBus(
             database_uri,
             default_ttl_seconds=multi_agent_message_ttl_seconds,
+            connection_provider=connection_provider,
         )
         if multi_agent_enabled
         else in_memory.message_bus,
         failure_handler=in_memory.failure_handler,
-        approval_queue=PostgresApprovalQueue(database_uri)
+        approval_queue=PostgresApprovalQueue(database_uri, connection_provider=connection_provider)
         if multi_agent_enabled
         else in_memory.approval_queue,
     )

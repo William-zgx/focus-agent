@@ -324,6 +324,7 @@ class MetricSummary:
     passed: int = 0
     failed: int = 0
     errors: int = 0
+    environment_invalid: int = 0
     task_success: float = 0.0
     avg_tool_calls: float = 0.0
     avg_llm_calls: float = 0.0
@@ -361,6 +362,7 @@ class MetricSummary:
     per_capability_success: dict[str, float] = field(default_factory=dict)
     per_risk_level_success: dict[str, float] = field(default_factory=dict)
     failed_case_ids: list[str] = field(default_factory=list)
+    environment_invalid_case_ids: list[str] = field(default_factory=list)
     flaky_case_ids: list[str] = field(default_factory=list)
     failure_clusters: list[dict[str, Any]] = field(default_factory=list)
     model_matrix: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -371,6 +373,8 @@ class MetricSummary:
             "passed": self.passed,
             "failed": self.failed,
             "errors": self.errors,
+            "environment_invalid": self.environment_invalid,
+            "environment_invalid_case_ids": list(self.environment_invalid_case_ids),
             "task_success": round(self.task_success, 4),
             "avg_tool_calls": round(self.avg_tool_calls, 3),
             "avg_llm_calls": round(self.avg_llm_calls, 3),
@@ -436,12 +440,25 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
     if not results:
         return summary
 
-    summary.passed = sum(1 for r in results if bool(getattr(r, "passed", False)))
-    summary.failed = summary.total - summary.passed
-    summary.errors = sum(1 for r in results if getattr(r, "error", None))
-    summary.task_success = summary.passed / summary.total
+    invalid_results = [
+        result for result in results if getattr(result, "environment_invalid", False)
+    ]
+    valid_results = [
+        result for result in results if not getattr(result, "environment_invalid", False)
+    ]
+    summary.environment_invalid = len(invalid_results)
+    summary.environment_invalid_case_ids = [
+        str(getattr(result, "case_id", "")) for result in invalid_results
+    ]
+
+    summary.passed = sum(1 for r in valid_results if bool(getattr(r, "passed", False)))
+    summary.failed = len(valid_results) - summary.passed
+    summary.errors = sum(1 for r in valid_results if getattr(r, "error", None))
+    summary.task_success = summary.passed / len(valid_results) if valid_results else 0.0
     summary.failed_case_ids = [
-        str(getattr(r, "case_id", "")) for r in results if not bool(getattr(r, "passed", False))
+        str(getattr(r, "case_id", ""))
+        for r in valid_results
+        if not bool(getattr(r, "passed", False))
     ]
 
     summary.avg_tool_calls = _metric_mean(results, "tool_calls")
@@ -514,17 +531,17 @@ def aggregate_metrics(results: Iterable[EvalResult]) -> MetricSummary:
     summary.forbidden_tool_violation_rate = forbidden_hits / summary.total
 
     tag_buckets: dict[str, list[bool]] = {}
-    for r in results:
+    for r in valid_results:
         for tag in getattr(r, "tags", []) or []:
             tag_buckets.setdefault(str(tag), []).append(bool(getattr(r, "passed", False)))
     summary.per_tag_success = {
         tag: sum(1 for v in passes if v) / len(passes) for tag, passes in tag_buckets.items()
     }
-    summary.per_capability_success = _success_breakdown(results, "capability")
-    summary.per_risk_level_success = _success_breakdown(results, "risk_level")
-    summary.flaky_case_ids = _flaky_case_ids(results)
-    summary.failure_clusters = _failure_clusters(results)
-    summary.model_matrix = _model_matrix(results)
+    summary.per_capability_success = _success_breakdown(valid_results, "capability")
+    summary.per_risk_level_success = _success_breakdown(valid_results, "risk_level")
+    summary.flaky_case_ids = _flaky_case_ids(valid_results)
+    summary.failure_clusters = _failure_clusters(valid_results)
+    summary.model_matrix = _model_matrix(valid_results)
     return summary
 
 

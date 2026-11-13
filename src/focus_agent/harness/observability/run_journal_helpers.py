@@ -10,6 +10,7 @@ from focus_agent.core.coercion import float_or_none
 from focus_agent.core.repo_call import has_repo_method
 from focus_agent.observability.trajectory import TrajectoryStep
 
+from ..runtime.runs import is_stream_terminal_run_status
 from ..streaming import InMemoryStreamBridge, StreamEvent
 
 if TYPE_CHECKING:
@@ -73,8 +74,7 @@ async def _journal_run_is_terminal(journal: RunJournal, run_id: str) -> bool:
     run = await journal.get_run(run_id)
     if run is None:
         return False
-    status = getattr(run, "status", None)
-    return str(status) in {"success", "error", "timeout", "interrupted"}
+    return is_stream_terminal_run_status(getattr(run, "status", None))
 
 
 async def _bridge_stream_ended(bridge: InMemoryStreamBridge, run_id: str) -> bool | None:

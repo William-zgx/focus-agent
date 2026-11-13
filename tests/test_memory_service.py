@@ -357,6 +357,68 @@ def test_memory_service_treats_correction_phrasings_as_replacement(correction: s
     assert repo.records[decision.memory_id].content == correction
 
 
+def test_memory_service_marks_same_topic_user_profile_as_conflict():
+    repo = _FakeMemoryRepository()
+    service = MemoryService(repository=repo)
+    first = MemoryWriteRequest(
+        kind=MemoryKind.USER_PROFILE,
+        scope=MemoryScope.USER,
+        visibility=MemoryVisibility.SHARED,
+        namespace=user_profile_namespace("user-1"),
+        content="我的母语是中文",
+        summary="我的母语是中文",
+        user_id="user-1",
+        importance=0.8,
+        semantic_key="profile-language",
+    )
+    second = first.model_copy(
+        update={
+            "content": "工作语言为英文",
+            "summary": "工作语言为英文",
+        }
+    )
+
+    accepted = service.upsert_request(first, actor="unit-test", reason="first")
+    conflict = service.upsert_request(second, actor="unit-test", reason="profile_update")
+
+    assert accepted.status == MemoryWriteDecisionStatus.ACCEPTED
+    assert conflict.status == MemoryWriteDecisionStatus.CONFLICT
+    assert conflict.action == "possible_conflict"
+    assert repo.records[accepted.memory_id].status == MemoryStatus.CONFLICT
+    assert repo.records[accepted.memory_id].content == first.content
+    assert repo.audit_events[-1].action == "possible_conflict"
+
+
+def test_memory_service_replaces_project_fact_with_textual_overlap():
+    repo = _FakeMemoryRepository()
+    service = MemoryService(repository=repo)
+    first = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=project_memory_namespace("project-1"),
+        content="Project deploys from the release branch.",
+        summary="Project deploys from the release branch.",
+        user_id="user-1",
+        root_thread_id="root-1",
+        importance=0.7,
+        semantic_key="project-deployment-branch",
+    )
+    second = first.model_copy(
+        update={
+            "content": "Project deploys from the main branch.",
+            "summary": "Project deploys from the main branch.",
+        }
+    )
+
+    service.upsert_request(first, actor="unit-test", reason="first")
+    merged = service.upsert_request(second, actor="unit-test", reason="overlap")
+
+    assert merged.status == MemoryWriteDecisionStatus.MERGED
+    assert repo.records[merged.memory_id].status == MemoryStatus.ACTIVE
+    assert repo.records[merged.memory_id].content == second.content
+
+
 def test_memory_service_resets_ready_embedding_status_when_merged_text_changes(monkeypatch):
     monkeypatch.setenv("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "true")
     repo = _FakeMemoryRepository()

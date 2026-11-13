@@ -1,6 +1,6 @@
 # Focus Agent 项目定位与现状
 
-更新时间：2026-11-05；整体能力说明承接 `718be87`，本轮按 `simplify/repo-cleanup` 后的源码重新统计体量并校正模块路径。
+更新时间：2026-11-11；整体能力说明承接 `718be87`，本轮按当前源码重新统计体量并校正模块路径。
 
 本文是 Focus Agent **产品定位、体量、适用边界与运行主路径** 的 canonical 文档。
 根目录 README 只保留轻量入口；架构细节见 [architecture.md](architecture.md)；
@@ -70,20 +70,20 @@ merge conclusions only after review.
 
 ## 3. 当前体量（代码事实） / Scale Snapshot
 
-以下数字来自 **2026-11-08 的仓库快照**，用于校准“脚手架” vs “平台”的预期，
+以下数字来自 **2026-11-11 的仓库快照**，用于校准“脚手架” vs “平台”的预期，
 不是对外 SLA。
 
-| 维度 | 量级（2026-11-08 快照） |
+| 维度 | 量级（2026-11-11 快照） |
 |------|----------|
 | Python 包版本 | `1.0.0`（`pyproject.toml`） |
-| 后端 Python 源文件 | ~499 个（`src/focus_agent/**/*.py`） |
-| 后端 Python 行数 | ~11.3 万行 |
-| 测试 Python 文件 | ~250（`tests/**/*.py`） |
-| Web 前端 TS/TSX | ~233（`apps/web/src`） |
-| Frontend SDK TS | ~47（`frontend-sdk/src`，另含 1 个 generated types 文件） |
+| 后端 Python 源文件 | ~453 个（`src/focus_agent/**/*.py`） |
+| 后端 Python 行数 | ~10.0 万行 |
+| 测试 Python 文件 | ~245（`tests/**/*.py`） |
+| Web 前端 TS/TSX | ~225（`apps/web/src`） |
+| Frontend SDK TS | ~40（`frontend-sdk/src`，另含 1 个 generated types 文件） |
 | OpenAPI paths / schemas | 107 paths / 187 schemas（`docs/api/openapi.json`） |
-| 兼容债务 baseline | **54** 项（`docs/compat-debt-baseline.json`，`scripts/compat_report.py`） |
-| 架构债务 baseline | 非生成文件 **800 行上限**，无 grandfather 大文件 |
+| 兼容债务 baseline | **43** 项（`docs/compat-debt-baseline.json`，`scripts/compat_report.py`） |
+| 架构债务 baseline | 非生成文件 **800 行上限**；生产代码零豁免，13 个既有测试只减不增 |
 | App Postgres schema | **v19**（`SCHEMA_VERSION` in `postgres_schema.py`） |
 | CI workflows | `ci`、`browser-smoke`、`eval`、`nightly-regression`、`release-gate`、`dependency-drift` |
 
@@ -146,7 +146,7 @@ Android 与 Web 不是同一集成模型：
 
 - 决策与推荐：`branch_decision/` + [branch-decisions.md](branch-decisions.md)
 - 生命周期与 merge：`services/branches/`
-- 兼容 re-export：顶层 `src/focus_agent/branch_service.py`、`src/focus_agent/chat_service.py` 等 **shim**（计入 compat baseline）
+- Canonical 实现路径：`services/chat/`、`services/branches/`；顶层 `branch_service.py`、`chat_service.py` 等已删除的 shim 不再作为导入入口
 
 ### 5.3 Multi-Agent Coordination
 
@@ -190,7 +190,7 @@ Android 与 Web 不是同一集成模型：
 | 如何严肃地跑 Agent 应用（协议、权限、持久化、回放、发布门禁） | Agent 任务成功率、成本/延迟画像、多 Agent 结果质量门槛 |
 | 本地与 CI 可验证性 | 真实生产控制面绑定（deployment identity 不可伪造） |
 | 安全默认与 fail-closed 路径 | 企业 IdP/JWKS、跨服务 logout、长时多实例演练 |
-| 文档与 debt 计量 | 54 项兼容库存：先迁移仓库调用方，再删除；出现外部采用方后增加 telemetry 与迁移窗口 |
+| 文档与 debt 计量 | 43 项兼容库存：先迁移仓库调用方，再删除；出现外部采用方后增加 telemetry 与迁移窗口 |
 | 文本聊天、文本 Web search/fetch、路径型文本 artifact | 原生浏览器/DOM/截图、图片附件/多模态输入、通用 artifact 上传下载 |
 
 平台完备度 **高于** 结果质量证据；此外，task budget 合同目前没有接入真实 runner 的

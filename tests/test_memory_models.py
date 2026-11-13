@@ -1,3 +1,5 @@
+import pytest
+
 from focus_agent.core.types import PromptMode
 from focus_agent.memory import (
     MemoryExtractionResult,
@@ -15,6 +17,7 @@ from focus_agent.memory import (
     score_memory_hit,
     score_memory_importance,
 )
+from focus_agent.memory.dedupe import is_possible_memory_conflict, should_replace_memory
 from focus_agent.storage.namespaces import (
     branch_local_memory_namespace,
     conversation_main_namespace,
@@ -106,6 +109,125 @@ def test_memory_resolution_key_groups_same_user_preference_topic():
     )
 
     assert memory_resolution_key(first) == memory_resolution_key(second)
+
+
+def _memory_policy_pair(
+    existing_text: str,
+    incoming_text: str,
+    *,
+    kind: MemoryKind = MemoryKind.USER_PROFILE,
+    scope: MemoryScope = MemoryScope.USER,
+) -> tuple[MemoryRecord, MemoryWriteRequest]:
+    shared = {
+        "kind": kind,
+        "scope": scope,
+        "visibility": MemoryVisibility.SHARED,
+        "namespace": ("policy", "test"),
+    }
+    existing = MemoryRecord(
+        memory_id="mem-policy",
+        content=existing_text,
+        summary=existing_text,
+        confidence=0.5,
+        importance=0.5,
+        **shared,
+    )
+    incoming = MemoryWriteRequest(
+        content=incoming_text,
+        summary=incoming_text,
+        confidence=0.5,
+        importance=0.5,
+        **shared,
+    )
+    return existing, incoming
+
+
+def test_memory_replacement_policy_latest_wins_only_for_user_preferences():
+    preference, preference_update = _memory_policy_pair(
+        "请用中文回答。",
+        "请用英文回答。",
+        kind=MemoryKind.USER_PREFERENCE,
+    )
+    profile, profile_update = _memory_policy_pair(
+        "我的母语是中文",
+        "工作语言为英文",
+    )
+
+    assert is_possible_memory_conflict(preference, preference_update)
+    assert should_replace_memory(preference, preference_update)
+    assert is_possible_memory_conflict(profile, profile_update)
+    assert not should_replace_memory(profile, profile_update)
+
+
+def test_memory_replacement_policy_allows_project_overlap_only():
+    existing, incoming = _memory_policy_pair(
+        "Project deploys from the release branch.",
+        "Project deploys from the main branch.",
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+    )
+
+    assert is_possible_memory_conflict(existing, incoming)
+    assert should_replace_memory(existing, incoming)
+
+
+def test_memory_replacement_policy_preserves_unrelated_project_conflict():
+    existing, incoming = _memory_policy_pair(
+        "Release owner is platform operations.",
+        "Database migrations require review.",
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+    )
+
+    assert is_possible_memory_conflict(existing, incoming)
+    assert not should_replace_memory(existing, incoming)
+
+
+@pytest.mark.parametrize(
+    "incoming_update",
+    [
+        {"importance": 0.9},
+        {"confidence": 0.9},
+        {
+            "content": "更正：数据库迁移需要评审。",
+            "summary": "更正：数据库迁移需要评审。",
+        },
+    ],
+)
+def test_memory_replacement_policy_honors_strength_and_correction_signals(incoming_update):
+    existing, incoming = _memory_policy_pair(
+        "Release owner is platform operations.",
+        "Database migrations require review.",
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+    )
+    incoming = incoming.model_copy(update=incoming_update)
+
+    assert should_replace_memory(existing, incoming)
+
+
+def test_memory_conflict_policy_rejects_different_kind_scope_and_branch_records():
+    existing, incoming = _memory_policy_pair(
+        "Existing stable fact.",
+        "Incoming changed fact.",
+    )
+    branch_existing, branch_incoming = _memory_policy_pair(
+        "Existing branch finding.",
+        "Incoming branch finding.",
+        kind=MemoryKind.BRANCH_FINDING,
+        scope=MemoryScope.BRANCH,
+    )
+
+    assert is_possible_memory_conflict(existing, incoming)
+    assert not is_possible_memory_conflict(
+        existing,
+        incoming.model_copy(update={"kind": MemoryKind.USER_PREFERENCE}),
+    )
+    assert not is_possible_memory_conflict(
+        existing,
+        incoming.model_copy(update={"scope": MemoryScope.PROJECT}),
+    )
+    assert not is_possible_memory_conflict(branch_existing, branch_incoming)
 
 
 def test_merge_duplicate_records_preserves_history_and_merges_strength():

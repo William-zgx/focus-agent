@@ -297,6 +297,21 @@ def test_agent_feedback_trend_endpoint_summarizes_governance_signals() -> None:
     assert payload["generated_at"]
 
 
+def test_skill_selection_feedback_hides_missing_and_other_users_selections() -> None:
+    client, repository = _agent_governance_client()
+    other_user_selection_id = repository.save_skill_selection_event(
+        SkillSelectionEvent(user_id="other-user")
+    )
+
+    for selection_id in (other_user_selection_id, "missing-selection"):
+        response = client.post(
+            f"/v1/agent/skills/selections/{selection_id}/feedback",
+            json={"feedback": "useful"},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Skill selection not found."
+
+
 def test_skill_selection_event_logging_can_be_disabled() -> None:
     client, _repository = _agent_governance_client(
         settings=Settings(auth_enabled=False, skill_selection_event_log_enabled=False)

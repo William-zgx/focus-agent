@@ -8,7 +8,8 @@ from typing import Any
 from langchain.messages import AnyMessage, HumanMessage, ToolMessage
 
 from ..harness.tools import canonical_tool_schema
-from .context.budget import _prompt_budget_count, apply_prompt_budget_guard
+from .context.budget import apply_prompt_budget_guard
+from .context_prompt_budget import _prompt_budget_count
 from .context_token_counting import (
     TokenCountEstimate,
     estimate_messages_token_count,

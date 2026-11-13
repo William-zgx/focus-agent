@@ -1,6 +1,11 @@
 """Runtime lifecycle and configuration primitives for the Focus Agent harness."""
 
 from .config import HarnessConfig, RuntimeFeatures
+from .recovery import (
+    HARNESS_RUN_RECOVERY_KIND,
+    HarnessRunRecovery,
+    RunHydrationResult,
+)
 from .rollback import (
     CheckpointRollbackResult,
     CheckpointRollbackTarget,
@@ -20,8 +25,10 @@ from .runs import (
 )
 
 __all__ = [
+    "HARNESS_RUN_RECOVERY_KIND",
     "DisconnectMode",
     "HarnessConfig",
+    "HarnessRunRecovery",
     "CheckpointRollbackResult",
     "CheckpointRollbackTarget",
     "MultitaskStrategy",
@@ -29,6 +36,7 @@ __all__ = [
     "RunLifecyclePublisher",
     "RunRecord",
     "RunConflictError",
+    "RunHydrationResult",
     "RunRequest",
     "RunStatus",
     "RuntimeFeatures",

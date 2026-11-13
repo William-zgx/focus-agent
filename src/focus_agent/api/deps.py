@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Iterable
 
 from fastapi import Depends, HTTPException, Request, status
@@ -28,13 +29,54 @@ def _ensure_app_runtime(request: Request) -> AppRuntime:
     return runtime
 
 
-def _ensure_chat_service(request: Request) -> ChatService:
+async def _start_durable_background_worker(runtime: AppRuntime, chat_service: ChatService) -> None:
+    durable_check = getattr(chat_service, "_durable_background_execution_enabled", None)
+    if callable(durable_check):
+        durable = durable_check()
+    else:
+        durable = (
+            str(
+                getattr(
+                    getattr(runtime, "settings", None), "background_job_execution", "best_effort"
+                )
+            )
+            .strip()
+            .lower()
+            == "durable"
+        )
+    if not durable:
+        return
+    await runtime.run_manager.hydrate()
+    from .routers.harness_runs.replay_execution import execute_harness_run_job
+
+    def execute(payload: dict[str, object]) -> None:
+        execute_harness_run_job(runtime=runtime, chat=chat_service, payload=payload)
+
+    runtime.start_durable_background_worker(chat_service, harness_run_handler=execute)
+
+
+async def _ensure_chat_service(request: Request) -> ChatService:
     runtime = _ensure_app_runtime(request)
     chat_service = getattr(request.app.state, "chat_service", None)
-    if chat_service is None:
-        chat_service = ChatService(ChatServicePorts.from_runtime(runtime))
-        request.app.state.chat_service = chat_service
-        runtime.start_durable_background_worker(chat_service)
+    if chat_service is not None:
+        return chat_service
+    lock = getattr(request.app.state, "chat_service_init_lock", None)
+    if lock is None:
+        lock = asyncio.Lock()
+        request.app.state.chat_service_init_lock = lock
+    async with lock:
+        chat_service = getattr(request.app.state, "chat_service", None)
+        if chat_service is None:
+            candidate = ChatService(ChatServicePorts.from_runtime(runtime))
+            try:
+                await _start_durable_background_worker(runtime, candidate)
+            except Exception:
+                close = getattr(candidate, "close", None)
+                if callable(close):
+                    close()
+                raise
+            request.app.state.chat_service = candidate
+            chat_service = candidate
     return chat_service
 
 
@@ -42,8 +84,8 @@ def get_app_runtime(request: Request) -> AppRuntime:
     return _ensure_app_runtime(request)
 
 
-def get_chat_service(request: Request) -> ChatService:
-    return _ensure_chat_service(request)
+async def get_chat_service(request: Request) -> ChatService:
+    return await _ensure_chat_service(request)
 
 
 def get_user_service(runtime: AppRuntime = Depends(get_app_runtime)) -> UserService:

@@ -114,14 +114,6 @@ def estimate_text_token_count(
             estimated=False,
         )
     if tokenizer_first:
-        patched_estimate = _estimate_with_tokenizer(text, tokenizer_id=tokenizer_id)
-        if patched_estimate is not None:
-            return TokenCountEstimate(
-                tokens=patched_estimate,
-                counting_backend="tiktoken",
-                tokenizer_id=str(tokenizer_id or DEFAULT_TOKENIZER_ID),
-                estimated=False,
-            )
         tokenizer_estimate = _estimate_with_tokenizer_detail(text, tokenizer_id=tokenizer_id)
         if tokenizer_estimate is not None:
             return tokenizer_estimate
@@ -166,16 +158,6 @@ def _resolve_tokenizer_detail(tokenizer_id: str | None):
         except Exception:  # noqa: BLE001
             continue
     return None, None
-
-
-def _estimate_with_tokenizer(text: str, *, tokenizer_id: str | None) -> int | None:
-    tokenizer, _resolved_id = _resolve_tokenizer_detail(tokenizer_id)
-    if tokenizer is None:
-        return None
-    try:
-        return max(1, len(tokenizer.encode(text)))
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def _estimate_with_tokenizer_detail(

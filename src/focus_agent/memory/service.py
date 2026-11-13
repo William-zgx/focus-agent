@@ -14,24 +14,22 @@ from ..repositories.memory_repository import MemoryRepository
 from ..retrieval import RetrievalIndex
 from ..services.coordination import BackgroundJobSpec
 from .dedupe import (
-    has_textual_overlap,
+    is_possible_memory_conflict,
     memory_fingerprint,
     memory_semantic_key,
     merge_duplicate_records,
-    user_preference_topic,
+    should_replace_memory,
 )
 from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryAuditEvent,
     MemoryRecord,
-    MemoryScope,
     MemoryStatus,
     MemoryWriteDecision,
     MemoryWriteDecisionStatus,
     MemoryWriteRequest,
 )
 from .policy import MemoryPolicy
-from .text import has_correction_signal, normalize_memory_text
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +141,9 @@ class MemoryService:
                 actor=actor,
             )
 
-        if _is_possible_conflict(existing, sanitized) and not _should_replace(existing, sanitized):
+        if is_possible_memory_conflict(existing, sanitized) and not should_replace_memory(
+            existing, sanitized
+        ):
             conflict = existing.model_copy(
                 update={
                     "status": MemoryStatus.CONFLICT,
@@ -490,36 +490,6 @@ def _redact_sensitive_text(text: str) -> str:
 
 def _is_redacted_record(record: MemoryRecord) -> bool:
     return any(str(tag).casefold() == "redacted" for tag in record.tags)
-
-
-def _is_possible_conflict(existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
-    if existing.kind != incoming.kind or existing.scope != incoming.scope:
-        return False
-    if existing.scope not in {MemoryScope.USER, MemoryScope.PROJECT}:
-        return False
-    return normalize_memory_text(existing.summary or existing.content) != normalize_memory_text(
-        incoming.summary or incoming.content
-    )
-
-
-def _should_replace(existing: MemoryRecord, incoming: MemoryWriteRequest) -> bool:
-    existing_confidence = float(existing.confidence or 0.0)
-    incoming_confidence = float(incoming.confidence or 0.0)
-    if (
-        incoming.scope == MemoryScope.USER
-        and user_preference_topic(existing.summary or existing.content)
-        and user_preference_topic(existing.summary or existing.content)
-        == user_preference_topic(incoming.summary or incoming.content)
-    ):
-        return True
-    return (
-        incoming.importance > existing.importance
-        or incoming_confidence > existing_confidence
-        or has_correction_signal(incoming.summary or incoming.content)
-        or has_textual_overlap(
-            existing.summary or existing.content, incoming.summary or incoming.content
-        )
-    )
 
 
 __all__ = ["MemoryService"]

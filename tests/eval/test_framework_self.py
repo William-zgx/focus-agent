@@ -13,6 +13,8 @@ from pathlib import Path
 from langchain.messages import AIMessage
 from langchain.tools import tool as langchain_tool
 
+from focus_agent.eval.runner.harness import _build_metrics
+
 from .cli import _case_model_variants, _load_model_matrix, _write_failed_cases_dataset
 from .judges import EnvironmentJudge, RuleJudge, TrajectoryJudge
 from .metrics import aggregate_metrics, compare_baselines
@@ -23,7 +25,6 @@ from .reporting import (
     write_jsonl_results,
 )
 from .runner import build_harness_stability_runtime, load_dataset, run_case, run_suite
-from .runner.harness import _build_metrics
 from .schema import EvalCase, EvalResult, TrajectoryStep
 
 
@@ -118,6 +119,40 @@ def test_trajectory_judge_enforces_max_tool_calls():
     ]
     verdict = TrajectoryJudge().evaluate(case=case, answer="", trajectory=steps)
     assert not verdict.passed
+
+
+def test_max_tool_calls_has_one_trajectory_failure_in_default_run(eval_runtime_factory):
+    case = EvalCase.from_dict(
+        {
+            "id": "e2e_tool_limit_single_verdict",
+            "input": {"user_message": "在仓库里找 assemble_context"},
+            "expected": {
+                "must_call_tools_any_order": ["search_code"],
+                "answer_contains_any": ["graph_builder"],
+                "max_tool_calls": 0,
+            },
+        }
+    )
+
+    result = run_case(
+        case,
+        runtime=eval_runtime_factory(script=_tool_then_answer_script, tools=[search_code]),
+    )
+
+    assert not result.passed
+    rule = next(verdict for verdict in result.verdicts if verdict.kind == "rule")
+    trajectory = next(verdict for verdict in result.verdicts if verdict.kind == "trajectory")
+    assert rule.passed
+    assert "max_tool_calls" not in rule.details["checks_run"]
+    assert rule.details["failures"] == []
+    assert trajectory.details["checks_run"].count("max_tool_calls") == 1
+    failures = [
+        failure
+        for verdict in result.verdicts
+        for failure in verdict.details.get("failures", [])
+        if "max_tool_calls" in failure
+    ]
+    assert failures == ["tool_calls=1 exceeded max_tool_calls=0"]
 
 
 def test_trajectory_judge_enforces_runtime_count_expectations():

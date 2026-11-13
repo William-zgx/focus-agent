@@ -11,13 +11,12 @@ import json
 import sys
 import time
 from datetime import datetime
-from typing import List, Dict
 from functools import wraps
 
 try:
     import akshare as ak
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 except ImportError:
     print("错误: 请先安装依赖库")
     print("pip install akshare pandas numpy")
@@ -26,6 +25,7 @@ except ImportError:
 
 def retry_on_failure(max_retries: int = 3, delay: float = 1.0):
     """网络请求重试装饰器"""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -39,7 +39,9 @@ def retry_on_failure(max_retries: int = 3, delay: float = 1.0):
                         print(f"  重试 ({attempt + 1}/{max_retries})...")
                         time.sleep(delay * (attempt + 1))
             raise last_error
+
         return wrapper
+
     return decorator
 
 
@@ -48,7 +50,7 @@ INDEX_CODE_MAP = {
     "zz500": "000905",
     "zz1000": "000852",
     "cyb": "399006",
-    "kcb": "000688"
+    "kcb": "000688",
 }
 
 
@@ -58,7 +60,7 @@ class StockScreener:
     def __init__(self):
         self.all_stocks_data = None
 
-    def load_stock_data(self, scope: str = "hs300", custom_codes: List[str] = None) -> pd.DataFrame:
+    def load_stock_data(self, scope: str = "hs300", custom_codes: list[str] = None) -> pd.DataFrame:
         """加载股票数据"""
         print(f"正在加载股票数据 (范围: {scope})...")
 
@@ -90,7 +92,7 @@ class StockScreener:
     def _get_index_constituents(self, index_code: str) -> list:
         """获取指数成分股列表（带重试）"""
         df = ak.index_stock_cons(symbol=index_code)
-        return df['品种代码'].tolist()
+        return df["品种代码"].tolist()
 
     def _get_index_stocks_data(self, index_code: str) -> pd.DataFrame:
         """获取指数成分股数据"""
@@ -103,87 +105,87 @@ class StockScreener:
             # 获取实时数据
             print("  获取实时行情...")
             all_stocks = self._get_all_stocks_realtime()
-            df = all_stocks[all_stocks['代码'].isin(codes)]
+            df = all_stocks[all_stocks["代码"].isin(codes)]
             return df
         except Exception as e:
             print(f"获取指数成分股失败: {e}")
             return pd.DataFrame()
 
-    def _get_custom_stocks_data(self, codes: List[str]) -> pd.DataFrame:
+    def _get_custom_stocks_data(self, codes: list[str]) -> pd.DataFrame:
         """获取自定义股票列表数据"""
         try:
             all_stocks = self._get_all_stocks_realtime()
-            df = all_stocks[all_stocks['代码'].isin(codes)]
+            df = all_stocks[all_stocks["代码"].isin(codes)]
             return df
         except Exception as e:
             print(f"获取自定义股票数据失败: {e}")
             return pd.DataFrame()
 
-    def _apply_numeric_filter(self, df: pd.DataFrame, column: str,
-                               min_val: float = None, max_val: float = None) -> pd.DataFrame:
+    def _apply_numeric_filter(
+        self, df: pd.DataFrame, column: str, min_val: float = None, max_val: float = None
+    ) -> pd.DataFrame:
         """应用数值筛选条件"""
         if column not in df.columns:
             return df
 
-        numeric_col = pd.to_numeric(df[column], errors='coerce')
+        numeric_col = pd.to_numeric(df[column], errors="coerce")
         if min_val is not None:
             df = df[numeric_col >= min_val]
         if max_val is not None:
             df = df[numeric_col <= max_val]
         return df
 
-    def _find_column(self, df: pd.DataFrame, candidates: List[str]) -> str:
+    def _find_column(self, df: pd.DataFrame, candidates: list[str]) -> str:
         """从候选列名中找到存在的列"""
         for col in candidates:
             if col in df.columns:
                 return col
         return None
 
-    def apply_filters(self, df: pd.DataFrame, filters: Dict) -> pd.DataFrame:
+    def apply_filters(self, df: pd.DataFrame, filters: dict) -> pd.DataFrame:
         """应用筛选条件"""
         filtered = df.copy()
 
         # PE筛选
         filtered = self._apply_numeric_filter(
-            filtered, '市盈率-动态',
-            min_val=filters.get('pe_min'),
-            max_val=filters.get('pe_max')
+            filtered, "市盈率-动态", min_val=filters.get("pe_min"), max_val=filters.get("pe_max")
         )
 
         # PB筛选
         filtered = self._apply_numeric_filter(
-            filtered, '市净率',
-            min_val=filters.get('pb_min'),
-            max_val=filters.get('pb_max')
+            filtered, "市净率", min_val=filters.get("pb_min"), max_val=filters.get("pb_max")
         )
 
         # ROE筛选
-        if filters.get('roe_min') is not None:
-            roe_col = self._find_column(filtered, ['净资产收益率', 'ROE', '加权净资产收益率'])
+        if filters.get("roe_min") is not None:
+            roe_col = self._find_column(filtered, ["净资产收益率", "ROE", "加权净资产收益率"])
             if roe_col:
-                filtered = self._apply_numeric_filter(filtered, roe_col, min_val=filters['roe_min'])
+                filtered = self._apply_numeric_filter(filtered, roe_col, min_val=filters["roe_min"])
 
         # 资产负债率筛选
         filtered = self._apply_numeric_filter(
-            filtered, '资产负债率',
-            max_val=filters.get('debt_ratio_max')
+            filtered, "资产负债率", max_val=filters.get("debt_ratio_max")
         )
 
         # 总市值筛选（转换为亿）
-        if '总市值' in filtered.columns:
-            if filters.get('market_cap_min') is not None or filters.get('market_cap_max') is not None:
-                filtered['总市值_亿'] = pd.to_numeric(filtered['总市值'], errors='coerce') / 1e8
+        if "总市值" in filtered.columns:
+            if (
+                filters.get("market_cap_min") is not None
+                or filters.get("market_cap_max") is not None
+            ):
+                filtered["总市值_亿"] = pd.to_numeric(filtered["总市值"], errors="coerce") / 1e8
                 filtered = self._apply_numeric_filter(
-                    filtered, '总市值_亿',
-                    min_val=filters.get('market_cap_min'),
-                    max_val=filters.get('market_cap_max')
+                    filtered,
+                    "总市值_亿",
+                    min_val=filters.get("market_cap_min"),
+                    max_val=filters.get("market_cap_max"),
                 )
 
         return filtered
 
     def _get_numeric_value(self, row: pd.Series, column: str) -> float:
         """从行中获取数值，无效返回 NaN"""
-        return pd.to_numeric(row.get(column, np.nan), errors='coerce')
+        return pd.to_numeric(row.get(column, np.nan), errors="coerce")
 
     def calculate_score(self, row: pd.Series) -> float:
         """计算综合评分 (0-100)"""
@@ -191,7 +193,7 @@ class StockScreener:
 
         try:
             # PE评分 (越低越好, 负数除外)
-            pe = self._get_numeric_value(row, '市盈率-动态')
+            pe = self._get_numeric_value(row, "市盈率-动态")
             if not np.isnan(pe) and pe > 0:
                 if pe < 10:
                     score += 15
@@ -203,7 +205,7 @@ class StockScreener:
                     score -= 10
 
             # PB评分
-            pb = self._get_numeric_value(row, '市净率')
+            pb = self._get_numeric_value(row, "市净率")
             if not np.isnan(pb) and pb > 0:
                 if 0.5 < pb < 1.5:
                     score += 10
@@ -213,7 +215,9 @@ class StockScreener:
                     score -= 5
 
             # ROE评分
-            roe_col = self._find_column(row.index.to_frame(), ['净资产收益率', 'ROE', '加权净资产收益率'])
+            roe_col = self._find_column(
+                row.index.to_frame(), ["净资产收益率", "ROE", "加权净资产收益率"]
+            )
             if roe_col:
                 roe = self._get_numeric_value(row, roe_col)
                 if not np.isnan(roe):
@@ -227,7 +231,7 @@ class StockScreener:
                         score -= 5
 
             # 涨跌幅评分 (下跌可能是机会)
-            change = self._get_numeric_value(row, '涨跌幅')
+            change = self._get_numeric_value(row, "涨跌幅")
             if not np.isnan(change):
                 if -5 < change < 0:
                     score += 3
@@ -239,8 +243,9 @@ class StockScreener:
 
         return max(0, min(100, score))
 
-    def screen(self, scope: str = "hs300", filters: Dict = None,
-              sort_by: str = "score", top_n: int = None) -> List[Dict]:
+    def screen(
+        self, scope: str = "hs300", filters: dict = None, sort_by: str = "score", top_n: int = None
+    ) -> list[dict]:
         """执行筛选"""
         # 加载数据
         if scope.startswith("custom:"):
@@ -260,21 +265,21 @@ class StockScreener:
             return []
 
         # 计算评分
-        df['评分'] = df.apply(self.calculate_score, axis=1)
+        df["评分"] = df.apply(self.calculate_score, axis=1)
 
         # 排序
         if sort_by == "score":
-            df = df.sort_values('评分', ascending=False)
+            df = df.sort_values("评分", ascending=False)
         elif sort_by == "pe":
-            pe_col = '市盈率-动态' if '市盈率-动态' in df.columns else None
+            pe_col = "市盈率-动态" if "市盈率-动态" in df.columns else None
             if pe_col:
                 df = df.sort_values(pe_col, ascending=True)
         elif sort_by == "pb":
-            if '市净率' in df.columns:
-                df = df.sort_values('市净率', ascending=True)
+            if "市净率" in df.columns:
+                df = df.sort_values("市净率", ascending=True)
         elif sort_by == "market_cap":
-            if '总市值' in df.columns:
-                df = df.sort_values('总市值', ascending=False)
+            if "总市值" in df.columns:
+                df = df.sort_values("总市值", ascending=False)
 
         # 限制数量
         if top_n:
@@ -284,14 +289,16 @@ class StockScreener:
         results = []
         for _, row in df.iterrows():
             result = {
-                "代码": row.get('代码', ''),
-                "名称": row.get('名称', ''),
-                "最新价": row.get('最新价', ''),
-                "涨跌幅": row.get('涨跌幅', ''),
-                "市盈率": row.get('市盈率-动态', ''),
-                "市净率": row.get('市净率', ''),
-                "总市值(亿)": round(float(row.get('总市值', 0)) / 100000000, 2) if row.get('总市值') else '',
-                "评分": row.get('评分', 50)
+                "代码": row.get("代码", ""),
+                "名称": row.get("名称", ""),
+                "最新价": row.get("最新价", ""),
+                "涨跌幅": row.get("涨跌幅", ""),
+                "市盈率": row.get("市盈率-动态", ""),
+                "市净率": row.get("市净率", ""),
+                "总市值(亿)": round(float(row.get("总市值", 0)) / 100000000, 2)
+                if row.get("总市值")
+                else "",
+                "评分": row.get("评分", 50),
             }
             results.append(result)
 
@@ -300,8 +307,12 @@ class StockScreener:
 
 def main():
     parser = argparse.ArgumentParser(description="A股股票筛选器")
-    parser.add_argument("--scope", type=str, default="hs300",
-                       help="筛选范围: all/hs300/zz500/zz1000/cyb/kcb/custom:代码1,代码2")
+    parser.add_argument(
+        "--scope",
+        type=str,
+        default="hs300",
+        help="筛选范围: all/hs300/zz500/zz1000/cyb/kcb/custom:代码1,代码2",
+    )
     parser.add_argument("--pe-max", type=float, help="最大PE")
     parser.add_argument("--pe-min", type=float, help="最小PE")
     parser.add_argument("--pb-max", type=float, help="最大PB")
@@ -311,9 +322,13 @@ def main():
     parser.add_argument("--dividend-min", type=float, help="最小股息率 (%%)")
     parser.add_argument("--market-cap-min", type=float, help="最小市值 (亿)")
     parser.add_argument("--market-cap-max", type=float, help="最大市值 (亿)")
-    parser.add_argument("--sort-by", type=str, default="score",
-                       choices=["score", "pe", "pb", "market_cap"],
-                       help="排序方式")
+    parser.add_argument(
+        "--sort-by",
+        type=str,
+        default="score",
+        choices=["score", "pe", "pb", "market_cap"],
+        help="排序方式",
+    )
     parser.add_argument("--top", type=int, default=50, help="返回前N只股票")
     parser.add_argument("--output", type=str, help="输出文件路径 (JSON)")
 
@@ -321,22 +336,26 @@ def main():
 
     # 构建筛选条件
     filter_keys = [
-        'pe_max', 'pe_min', 'pb_max', 'pb_min', 'roe_min',
-        'debt_ratio_max', 'dividend_min', 'market_cap_min', 'market_cap_max'
+        "pe_max",
+        "pe_min",
+        "pb_max",
+        "pb_min",
+        "roe_min",
+        "debt_ratio_max",
+        "dividend_min",
+        "market_cap_min",
+        "market_cap_max",
     ]
     filters = {
-        k: getattr(args, k.replace('-', '_'))
+        k: getattr(args, k.replace("-", "_"))
         for k in filter_keys
-        if getattr(args, k.replace('-', '_')) is not None
+        if getattr(args, k.replace("-", "_")) is not None
     }
 
     # 执行筛选
     screener = StockScreener()
     results = screener.screen(
-        scope=args.scope,
-        filters=filters if filters else None,
-        sort_by=args.sort_by,
-        top_n=args.top
+        scope=args.scope, filters=filters if filters else None, sort_by=args.sort_by, top_n=args.top
     )
 
     # 输出结果
@@ -345,13 +364,13 @@ def main():
         "scope": args.scope,
         "filters": filters,
         "count": len(results),
-        "results": results
+        "results": results,
     }
 
     output_json = json.dumps(output, ensure_ascii=False, indent=2, default=str)
 
     if args.output:
-        with open(args.output, 'w', encoding='utf-8') as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(output_json)
         print(f"筛选结果已保存到: {args.output}")
         print(f"共筛选出 {len(results)} 只股票")

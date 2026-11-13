@@ -188,7 +188,7 @@ by the browser scripts:
 pnpm --dir apps/web smoke:observability
 pnpm --dir apps/web smoke:productivity
 make sdk-build
-node tests/test_thread_stream_frontend_regressions.mjs
+node tests/frontend/test_thread_stream_regressions.mjs
 ```
 
 The standalone Node regression imports `frontend-sdk/dist/index.js`; build the

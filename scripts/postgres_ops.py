@@ -19,7 +19,7 @@ if __package__:
         _report_sections,
         _schema_migration_lock_id,
     )
-    from scripts.release_identity import attest_release_report
+    from scripts.release_identity import write_attested_release_report
 else:
     from postgres_ops_report import (
         _expected_migration_versions,
@@ -27,7 +27,7 @@ else:
         _report_sections,
         _schema_migration_lock_id,
     )
-    from release_identity import attest_release_report
+    from release_identity import write_attested_release_report
 
 try:
     import psycopg
@@ -691,14 +691,7 @@ def build_report(
 
 
 def write_report(path: str | Path, report: dict[str, Any]) -> Path:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    payload = attest_release_report(report)
-    target.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return target
+    return write_attested_release_report(path, report)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

@@ -57,7 +57,7 @@ class _FakeGraph:
 
 def test_run_case_extracts_trajectory_and_passes_rule_judge(monkeypatch):
     monkeypatch.setattr(
-        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _FakeGraph()
+        "focus_agent.eval.runner.harness._build_isolated_graph", lambda runtime: _FakeGraph()
     )
     case = EvalCase(
         id="repo-readme",
@@ -92,7 +92,7 @@ def test_run_case_provides_thread_scope_for_tool_observations(monkeypatch):
             }
 
     monkeypatch.setattr(
-        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _ThreadScopeGraph()
+        "focus_agent.eval.runner.harness._build_isolated_graph", lambda runtime: _ThreadScopeGraph()
     )
     case = EvalCase(
         id="observation-scope",
@@ -144,7 +144,7 @@ def test_run_case_extracts_runtime_metadata_into_trajectory_and_metrics(monkeypa
             }
 
     monkeypatch.setattr(
-        "tests.eval.runner.harness._build_isolated_graph", lambda runtime: _RuntimeGraph()
+        "focus_agent.eval.runner.harness._build_isolated_graph", lambda runtime: _RuntimeGraph()
     )
     runtime = EvalRuntime(settings=Settings(), tool_registry=None)  # type: ignore[arg-type]
     case = EvalCase(
@@ -293,6 +293,30 @@ def test_eval_cli_writes_reports_and_replays(monkeypatch, capsys):
 
     assert replay_code == 0
     assert "case_id=case-1" in captured.out
+
+
+def test_eval_cli_returns_failure_for_environment_invalid_results(monkeypatch):
+    invalid = EvalResult(
+        case_id="invalid-environment",
+        passed=False,
+        answer="",
+        verdicts=[],
+        environment_invalid=True,
+        tags=["smoke"],
+    )
+    monkeypatch.setattr("tests.eval.cli.build_default_runtime", lambda **kwargs: object())
+    monkeypatch.setattr(
+        "tests.eval.cli.load_dataset",
+        lambda path: [EvalCase(id="case", input={}, expected={})],
+    )
+    monkeypatch.setattr(
+        "tests.eval.cli.run_suite",
+        lambda cases, runtime, concurrency, progress=None: [invalid],
+    )
+
+    exit_code = eval_cli_main(["--dataset", "unused.jsonl"])
+
+    assert exit_code == 1
 
 
 def test_convert_trajectory_records_builds_replayable_eval_cases():

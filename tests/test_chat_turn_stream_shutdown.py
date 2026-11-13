@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from focus_agent.core import async_threads
-from focus_agent.services.chat import streaming, turns
+from focus_agent.services.chat import streaming
 
 
 def test_stream_graph_chunks_delivers_fallback_after_model_timeout(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.1)
     model_timeout = 0.05
     fallback_delay = 0.08
 
@@ -66,7 +66,7 @@ def test_call_in_daemon_thread_marks_worker_daemon(monkeypatch):
     monkeypatch.setattr(async_threads.threading, "Thread", capture_thread)
 
     async def scenario():
-        assert await turns._call_in_daemon_thread(lambda: "ok") == "ok"
+        assert await streaming._call_in_daemon_thread(lambda: "ok") == "ok"
 
     asyncio.run(scenario())
 
@@ -75,7 +75,7 @@ def test_call_in_daemon_thread_marks_worker_daemon(monkeypatch):
 
 
 def test_close_stream_iter_does_not_hang_on_slow_async_close(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
 
     class SlowAsyncClose:
         def __init__(self):
@@ -88,7 +88,7 @@ def test_close_stream_iter_does_not_hang_on_slow_async_close(monkeypatch):
     async def scenario():
         stream = SlowAsyncClose()
         await asyncio.wait_for(
-            turns._close_stream_iter(stream_iter=stream, close_method="aclose"),
+            streaming._close_stream_iter(stream_iter=stream, close_method="aclose"),
             timeout=0.5,
         )
         assert stream.close_started.is_set()
@@ -97,7 +97,7 @@ def test_close_stream_iter_does_not_hang_on_slow_async_close(monkeypatch):
 
 
 def test_consume_graph_stream_cancel_has_bounded_shutdown(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
 
     class SlowGraphStream:
         def __init__(self):
@@ -116,10 +116,10 @@ def test_consume_graph_stream_cancel_has_bounded_shutdown(monkeypatch):
         stream = SlowGraphStream()
 
         async def collect():
-            async for _chunk in turns._consume_graph_stream(
+            async for _chunk in streaming._consume_graph_stream(
                 stream_iter=stream,
                 heartbeat_interval=0,
-                next_chunk=lambda: turns._next_graph_chunk(stream),
+                next_chunk=lambda: streaming._next_graph_chunk(stream),
                 close_method="aclose",
             ):
                 pass
@@ -136,7 +136,7 @@ def test_consume_graph_stream_cancel_has_bounded_shutdown(monkeypatch):
 
 
 def test_consume_graph_stream_sync_cancel_has_bounded_shutdown(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
 
     class StubbornSyncStream:
         def __init__(self):
@@ -147,7 +147,7 @@ def test_consume_graph_stream_sync_cancel_has_bounded_shutdown(monkeypatch):
         def __next__(self):
             self.next_started.set()
             self.release_next.wait()
-            return turns._STREAM_END
+            return streaming._STREAM_END
 
         def close(self):
             self.close_started = True
@@ -156,10 +156,12 @@ def test_consume_graph_stream_sync_cancel_has_bounded_shutdown(monkeypatch):
         stream = StubbornSyncStream()
 
         async def collect():
-            async for _chunk in turns._consume_graph_stream(
+            async for _chunk in streaming._consume_graph_stream(
                 stream_iter=stream,
                 heartbeat_interval=0,
-                next_chunk=lambda: turns._call_in_daemon_thread(next, stream, turns._STREAM_END),
+                next_chunk=lambda: streaming._call_in_daemon_thread(
+                    next, stream, streaming._STREAM_END
+                ),
                 close_method="close",
             ):
                 pass
@@ -180,7 +182,7 @@ def test_consume_graph_stream_sync_cancel_has_bounded_shutdown(monkeypatch):
 
 
 def test_consume_graph_stream_skips_close_when_next_chunk_will_not_cancel(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
 
     class StubbornGraphStream:
         def __init__(self):
@@ -203,10 +205,10 @@ def test_consume_graph_stream_skips_close_when_next_chunk_will_not_cancel(monkey
         stream = StubbornGraphStream()
 
         async def collect():
-            async for _chunk in turns._consume_graph_stream(
+            async for _chunk in streaming._consume_graph_stream(
                 stream_iter=stream,
                 heartbeat_interval=0,
-                next_chunk=lambda: turns._next_graph_chunk(stream),
+                next_chunk=lambda: streaming._next_graph_chunk(stream),
                 close_method="aclose",
             ):
                 pass
@@ -226,7 +228,7 @@ def test_consume_graph_stream_skips_close_when_next_chunk_will_not_cancel(monkey
 
 
 def test_consume_graph_stream_times_out_after_idle_deadline(monkeypatch):
-    monkeypatch.setattr(turns, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_SHUTDOWN_TIMEOUT_SECONDS", 0.01)
 
     class IdleGraphStream:
         def __init__(self):
@@ -244,11 +246,11 @@ def test_consume_graph_stream_times_out_after_idle_deadline(monkeypatch):
         stream = IdleGraphStream()
         chunks = []
         try:
-            async for chunk in turns._consume_graph_stream(
+            async for chunk in streaming._consume_graph_stream(
                 stream_iter=stream,
                 heartbeat_interval=0.005,
                 idle_timeout_seconds=0.02,
-                next_chunk=lambda: turns._next_graph_chunk(stream),
+                next_chunk=lambda: streaming._next_graph_chunk(stream),
                 close_method="aclose",
             ):
                 chunks.append(chunk)
