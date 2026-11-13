@@ -70,6 +70,7 @@ from .visible_text_stream import VisibleTextStream
 router = APIRouter(prefix="/v2", tags=["harness-runs"])
 
 _INTERNAL_MESSAGE_STREAM_NODES = frozenset({"plan", "reflect"})
+_PUBLISHER_PAYLOAD_RESERVED_FIELDS = frozenset({"event_name", "source_node_name", "namespace"})
 _task_outcome_event_payload = _streaming_lifecycle._task_outcome_event_payload
 
 
@@ -420,7 +421,15 @@ async def _produce_run_stream(
             if chunk_type == "custom":
                 mapped_event, mapped_payload = map_custom_payload_to_event(data)
                 canonical = _canonical_custom_event(mapped_event, mapped_payload)
-                await publish(canonical, source_node, **mapped_payload, namespace=namespace)
+                event_payload = mapped_payload
+                if _PUBLISHER_PAYLOAD_RESERVED_FIELDS.intersection(event_payload):
+                    event_payload = {
+                        key: value
+                        for key, value in event_payload.items()
+                        if key not in _PUBLISHER_PAYLOAD_RESERVED_FIELDS
+                    }
+                    event_payload["payload"] = mapped_payload
+                await publish(canonical, source_node, **event_payload, namespace=namespace)
                 continue
             if chunk_type == "updates":
                 for item in extract_tool_requests_from_updates(data):
