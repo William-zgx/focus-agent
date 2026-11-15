@@ -3,7 +3,7 @@ import type {
 	FocusAgentAttentionSnapshot,
 } from "@focus-agent/web-sdk";
 import { FocusAgentRequestError } from "@focus-agent/web-sdk";
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import type { ThreadLinks } from "@/entities/messages/message-branch-import-card";
 import { branchActionCardDomId } from "@/entities/messages/message-list-branch-action-card";
 import { Badge, Button } from "@/shared/ui/primitives";
@@ -103,6 +103,10 @@ function ThreadAttentionPanelComponent({
 	);
 
 	const changed = data ? hasDiff(data) : false;
+	const initialDiffRef = useRef<boolean | null>(null);
+	if (data && initialDiffRef.current === null) {
+		initialDiffRef.current = changed;
+	}
 	const hasResumeValue = Boolean(
 		data &&
 			(data.resume.goal ||
@@ -117,15 +121,20 @@ function ThreadAttentionPanelComponent({
 		data &&
 			shouldDisplay &&
 			(data.policy.level !== "quiet" ||
-				changed ||
+				(initialDiffRef.current && changed) ||
 				data.resume.decisions.length ||
 				data.resume.open_items.length),
 	);
-	const shouldForceOpen = changed || data?.policy.level !== "quiet";
+	const shouldForceOpen =
+		data?.diff.frontier_missing ||
+		data?.diff.new_failed_outcome_count ||
+		data?.diff.action_transition_count ||
+		data?.policy.level !== "quiet";
 	const attentionRevision = data
 		? [
 				data.policy.level,
-				data.current_cursor.last_message_id,
+				data.diff.new_failed_outcome_count,
+				data.diff.action_transition_count,
 				data.diff.frontier_missing,
 				...data.resume.open_items.map(
 					(item) => `${item.kind}:${item.source_id}`,
