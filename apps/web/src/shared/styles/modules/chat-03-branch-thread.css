@@ -9,6 +9,13 @@
 	list-style: none;
 }
 
+.fa-toolbar-text {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .fa-branch-action-card-header::-webkit-details-marker,
 .fa-chat-header-actions.is-compact
 	[data-compact-button="true"]
@@ -477,13 +484,6 @@
 .fa-chat-toolbar-button:disabled,
 .fa-chat-toolbar-pill:disabled {
 	opacity: 0.56;
-}
-
-.fa-toolbar-text {
-	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .fa-conversation-icon-button {

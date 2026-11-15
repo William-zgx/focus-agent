@@ -32,6 +32,9 @@ jobs:
       - name: Install Python dependencies
         run: make install-openai
 
+      - name: Install Web dependencies
+        run: make web-install
+
       - name: Show upgraded packages
         run: git diff --stat uv.lock
 

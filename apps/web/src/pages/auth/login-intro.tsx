@@ -73,8 +73,7 @@ export function LoginIntro() {
 		"--fa-login-teal-chip": `url(#${tealChipId})`,
 	} as CSSProperties;
 	const hasWorkspace =
-		appEnv.features.agentMemory ||
-		appEnv.features.observability;
+		appEnv.features.agentMemory || appEnv.features.observability;
 	const introTitle = hasWorkspace
 		? "分支优先的 Agent 工作台"
 		: "对话与管理优先的 Focus Agent";

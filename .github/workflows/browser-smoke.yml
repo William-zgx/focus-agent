@@ -84,7 +84,7 @@ jobs:
       - name: Install Google Chrome with Playwright
         run: |
           set -euo pipefail
-          pnpm dlx playwright@1.55.0 install --with-deps chrome
+          pnpm dlx playwright@1.55.0 install --with-deps chromium
           chrome_path=""
           for candidate in \
             "$(command -v google-chrome || true)" \
@@ -97,7 +97,15 @@ jobs:
             fi
           done
           if [ -z "$chrome_path" ]; then
-            echo "Playwright installed Chrome, but no supported executable was found." >&2
+            chrome_path="$(find "$HOME/.cache/ms-playwright" -type f \
+              \( -path '*/chrome-linux/chrome' \
+              -o -path '*/chrome-linux64/chrome' \
+              -o -path '*/chrome-linux/headless_shell' \
+              -o -path '*/chrome-linux64/headless_shell' \) \
+              -perm -u+x 2>/dev/null | sort -Vr | head -n 1)"
+          fi
+          if [ -z "$chrome_path" ]; then
+            echo "Playwright installed Chromium, but no supported executable was found." >&2
             exit 1
           fi
           test -x "$chrome_path"

@@ -1,10 +1,10 @@
-import { useRouter, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	FocusAgentAskUserQuestionAnswer,
 	FocusAgentAskUserQuestionInterrupt,
 	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
+import { useRouter, useRouterState } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useShellUi } from "@/app/shell/shell-ui-context";
 import {
@@ -16,11 +16,11 @@ import {
 	usePreviewThreadContext,
 } from "@/features/thread/use-thread-context";
 import { useThreadState } from "@/features/thread/use-thread-state";
+import type { SendMessageResult } from "@/features/thread-stream/stream-entry-state";
 import {
 	type SendMessageOverrides,
 	useThreadStream,
 } from "@/features/thread-stream/use-thread-stream";
-import type { SendMessageResult } from "@/features/thread-stream/stream-entry-state";
 
 import { ThreadPageContent } from "./thread-page-content";
 import { useThreadTranscriptViewModel } from "./thread-transcript-view-model";
@@ -117,9 +117,6 @@ export function ThreadPage() {
 		askUserQuestionInterrupts,
 		branchActions,
 		hasTranscriptContent,
-		lastTranscriptMessage,
-		streamToolCallCount,
-		streamToolEventCount,
 		toolApprovalInterrupts,
 		transcriptMessages,
 	} = useThreadTranscriptViewModel({

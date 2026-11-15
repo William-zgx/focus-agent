@@ -67,9 +67,12 @@ def test_browser_smoke_workflow_installs_chrome_and_runs_real_interactions() -> 
         step for step in steps if step["name"] == "Start built application and wait for health"
     )
 
-    assert "playwright@1.55.0 install --with-deps chrome" in chrome_step["run"]
+    assert "playwright@1.55.0 install --with-deps chromium" in chrome_step["run"]
     assert "command -v google-chrome" in chrome_step["run"]
     assert "/opt/google/chrome/chrome" in chrome_step["run"]
+    assert 'find "$HOME/.cache/ms-playwright"' in chrome_step["run"]
+    assert "chrome-linux/chrome" in chrome_step["run"]
+    assert "headless_shell" in chrome_step["run"]
     assert 'if [ -z "$chrome_path" ]' in chrome_step["run"]
     assert "CHROME_PATH" in chrome_step["run"]
     assert "make web-build" in source

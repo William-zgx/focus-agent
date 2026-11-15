@@ -18,6 +18,9 @@ importers:
       '@capacitor/cli':
         specifier: 8.3.4
         version: 8.3.4
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
 
   apps/web:
     dependencies:
