@@ -4099,6 +4099,69 @@
       }
     },
     {
+      "method": "GET",
+      "operation_id": "get_thread_attention_v1_threads__thread_id__attention_get",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/attention",
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AttentionSnapshot"
+        },
+        "403": null,
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        },
+        "503": null
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "review_thread_attention_v1_threads__thread_id__attention_reviewed_post",
+      "parameters": [
+        {
+          "content": null,
+          "deprecated": false,
+          "explode": null,
+          "in": "path",
+          "name": "thread_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "style": null
+        }
+      ],
+      "path": "/v1/threads/{thread_id}/attention/reviewed",
+      "request": {
+        "$ref": "#/components/schemas/AttentionReviewRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/AttentionCursor"
+        },
+        "403": null,
+        "409": null,
+        "422": {
+          "$ref": "#/components/schemas/HTTPValidationError"
+        },
+        "503": null
+      }
+    },
+    {
       "method": "POST",
       "operation_id": "dismiss_thread_branch_action_v1_threads__thread_id__branch_actions__action_id__dismiss_post",
       "parameters": [
@@ -7550,6 +7613,244 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "AttentionCursor": {
+      "properties": {
+        "action_statuses": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 512,
+          "type": "object"
+        },
+        "last_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seen_outcome_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 512,
+          "type": "array"
+        },
+        "version": {
+          "const": 1,
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AttentionDiff": {
+      "properties": {
+        "action_transition_count": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "first_visit": {
+          "type": "boolean"
+        },
+        "frontier_missing": {
+          "default": false,
+          "type": "boolean"
+        },
+        "highlights": {
+          "items": {
+            "$ref": "#/components/schemas/AttentionItem"
+          },
+          "maxItems": 12,
+          "type": "array"
+        },
+        "new_failed_outcome_count": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "new_message_count": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "new_outcome_count": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "first_visit"
+      ],
+      "type": "object"
+    },
+    "AttentionEvidence": {
+      "properties": {
+        "action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "kind",
+        "thread_id"
+      ],
+      "type": "object"
+    },
+    "AttentionItem": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "previous_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "status": {
+          "default": "",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 800,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "AttentionPolicy": {
+      "properties": {
+        "level": {
+          "enum": [
+            "quiet",
+            "notify",
+            "ask"
+          ],
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/components/schemas/AttentionReason"
+          },
+          "maxItems": 32,
+          "type": "array"
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "type": "object"
+    },
+    "AttentionReason": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
+    "AttentionReviewRequest": {
+      "properties": {
+        "cursor": {
+          "$ref": "#/components/schemas/AttentionCursor"
+        }
+      },
+      "required": [
+        "cursor"
+      ],
+      "type": "object"
+    },
+    "AttentionSnapshot": {
+      "properties": {
+        "current_cursor": {
+          "$ref": "#/components/schemas/AttentionCursor"
+        },
+        "diff": {
+          "$ref": "#/components/schemas/AttentionDiff"
+        },
+        "policy": {
+          "$ref": "#/components/schemas/AttentionPolicy"
+        },
+        "resume": {
+          "$ref": "#/components/schemas/ResumePacket"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread_id",
+        "policy",
+        "resume",
+        "diff",
+        "current_cursor"
+      ],
       "type": "object"
     },
     "AuditEventListResponse": {
@@ -11645,6 +11946,47 @@
       "required": [
         "user_id"
       ],
+      "type": "object"
+    },
+    "ResumePacket": {
+      "properties": {
+        "decisions": {
+          "items": {
+            "$ref": "#/components/schemas/AttentionItem"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/components/schemas/AttentionEvidence"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "goal": {
+          "default": "",
+          "maxLength": 1200,
+          "type": "string"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AttentionItem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "open_items": {
+          "items": {
+            "$ref": "#/components/schemas/AttentionItem"
+          },
+          "maxItems": 32,
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "RevokeUserSessionRequest": {

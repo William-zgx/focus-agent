@@ -59,6 +59,17 @@ from .contract_models.agent import (
     AgentToolsetListResponse,
     AgentToolsetResponse,
 )
+from .contract_models.attention import (
+    AttentionCursor,
+    AttentionDiff,
+    AttentionEvidence,
+    AttentionItem,
+    AttentionPolicy,
+    AttentionReason,
+    AttentionReviewRequest,
+    AttentionSnapshot,
+    ResumePacket,
+)
 from .contract_models.auth_admin import (
     AdminResetPasswordRequest,
     AuditEventListResponse,
@@ -174,6 +185,15 @@ from .contract_models.observability import (
 )
 
 __all__ = [
+    "AttentionCursor",
+    "AttentionDiff",
+    "AttentionEvidence",
+    "AttentionItem",
+    "AttentionPolicy",
+    "AttentionReason",
+    "AttentionReviewRequest",
+    "AttentionSnapshot",
+    "ResumePacket",
     "AgentSkillSelectRequest",
     "AgentSkillSemanticCandidateResponse",
     "AgentSkillSelectionResponse",

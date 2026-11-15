@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from ..core.request_context import RequestContext
 
@@ -31,6 +32,23 @@ def branch_local_memory_namespace(root_thread_id: str, branch_id: str) -> tuple[
 
 def branch_promoted_memory_namespace(root_thread_id: str, branch_id: str) -> tuple[str, ...]:
     return ("conversation", root_thread_id, "branch", branch_id, "promoted_memory")
+
+
+def _attention_label(prefix: str, value: str) -> str:
+    return f"{prefix}_{quote(value, safe='').replace('.', '%2E')}"
+
+
+def attention_cursor_namespace(
+    tenant_id: str,
+    user_id: str,
+    thread_id: str,
+) -> tuple[str, ...]:
+    return (
+        "attention",
+        _attention_label("t", tenant_id),
+        _attention_label("u", user_id),
+        _attention_label("th", thread_id),
+    )
 
 
 def project_memory_namespace(project_id: str) -> tuple[str, ...]:

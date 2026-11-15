@@ -2,7 +2,7 @@ import type {
 	FocusAgentBranchDecisionEvent,
 	FocusAgentBranchDecisionSummary,
 } from "@focus-agent/web-sdk";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 import {
 	branchDecisionAuditOnlyText,
@@ -19,6 +19,15 @@ import {
 	useBranchDecisionConfig,
 } from "./use-branch-decisions";
 
+const ATTENTION_FAILURE_STATUSES = new Set([
+	"failed",
+	"error",
+	"interrupted",
+	"reconciliation_required",
+	"timeout",
+	"timed_out",
+]);
+
 type BranchDecisionSummaryPanelProps = {
 	isChineseUi: boolean;
 	isReadOnly: boolean;
@@ -27,7 +36,7 @@ type BranchDecisionSummaryPanelProps = {
 	threadId: string;
 };
 
-export function BranchDecisionSummaryPanel({
+function BranchDecisionSummaryPanelComponent({
 	isChineseUi,
 	isReadOnly,
 	rootThreadId,
@@ -57,6 +66,13 @@ export function BranchDecisionSummaryPanel({
 	const isBranchHandoff = decision ? isBranchHandoffDecision(decision) : false;
 	const showAuditNote = auditOnly && !isBranchHandoff;
 	const diagnostic = isBranchHandoff ? "" : rawDiagnostic;
+	const handoffRunStatus = decision ? branchHandoffRunStatus(decision) : "";
+	const hasAttentionFailure = Boolean(
+		decision &&
+			(decision.error ||
+				ATTENTION_FAILURE_STATUSES.has(decision.status) ||
+				ATTENTION_FAILURE_STATUSES.has(handoffRunStatus)),
+	);
 
 	if (
 		!decision ||
@@ -92,6 +108,9 @@ export function BranchDecisionSummaryPanel({
 	return (
 		<section
 			className="fa-branch-decision-summary"
+			data-attention-level={
+				actionable || hasAttentionFailure ? "action" : "ambient"
+			}
 			id={`branch-decision-${decision.decision_id}`}
 		>
 			<fieldset
@@ -438,3 +457,7 @@ function decisionStatusLabel(
 			};
 	return labels[decision.status] ?? decision.status;
 }
+
+export const BranchDecisionSummaryPanel = memo(
+	BranchDecisionSummaryPanelComponent,
+);

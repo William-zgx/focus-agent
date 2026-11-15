@@ -20,6 +20,17 @@ from .agent import (
     AgentToolsetListResponse,
     AgentToolsetResponse,
 )
+from .attention import (
+    AttentionCursor,
+    AttentionDiff,
+    AttentionEvidence,
+    AttentionItem,
+    AttentionPolicy,
+    AttentionReason,
+    AttentionReviewRequest,
+    AttentionSnapshot,
+    ResumePacket,
+)
 from .auth_admin import (
     AdminResetPasswordRequest,
     AuditEventListResponse,
@@ -133,6 +144,15 @@ from .observability import (
 )
 
 __all__ = [
+    "AttentionCursor",
+    "AttentionDiff",
+    "AttentionEvidence",
+    "AttentionItem",
+    "AttentionPolicy",
+    "AttentionReason",
+    "AttentionReviewRequest",
+    "AttentionSnapshot",
+    "ResumePacket",
     "AgentSkillSelectRequest",
     "AgentSkillSemanticCandidateResponse",
     "AgentSkillSelectionResponse",

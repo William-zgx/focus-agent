@@ -3,6 +3,9 @@ import type { EndpointClientConstructor, FocusAgentEndpointContext, FocusAgentEn
 import type {
   FocusAgentApplyMergeDecisionRequest,
   FocusAgentApplyMergeDecisionResponse,
+  FocusAgentAttentionCursor,
+  FocusAgentAttentionReviewRequest,
+  FocusAgentAttentionSnapshot,
   FocusAgentBranchActionExecuteRequest,
   FocusAgentBranchActionExecuteResponse,
   FocusAgentBranchRecord,
@@ -81,6 +84,21 @@ async function getThreadState(this: FocusAgentEndpointContext, threadId: string)
   return this.requestJson<ThreadStateResponse>(`/v1/threads/${encodeURIComponent(threadId)}`, {
     method: "GET",
     headers: {},
+  }, true);
+}
+
+async function getThreadAttention(this: FocusAgentEndpointContext, threadId: string): Promise<FocusAgentAttentionSnapshot> {
+  return this.requestJson<FocusAgentAttentionSnapshot>(`/v1/threads/${encodeURIComponent(threadId)}/attention`, {
+    method: "GET",
+    headers: {},
+  }, true);
+}
+
+async function markThreadAttentionReviewed(this: FocusAgentEndpointContext, threadId: string, request: FocusAgentAttentionReviewRequest): Promise<FocusAgentAttentionCursor> {
+  return this.requestJson<FocusAgentAttentionCursor>(`/v1/threads/${encodeURIComponent(threadId)}/attention/reviewed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
   }, true);
 }
 
@@ -232,6 +250,8 @@ export interface ThreadBranchEndpoints {
   archiveConversation: OmitThisParameter<typeof archiveConversation>;
   activateConversation: OmitThisParameter<typeof activateConversation>;
   getThreadState: OmitThisParameter<typeof getThreadState>;
+  getThreadAttention: OmitThisParameter<typeof getThreadAttention>;
+  markThreadAttentionReviewed: OmitThisParameter<typeof markThreadAttentionReviewed>;
   getThreadResolution: OmitThisParameter<typeof getThreadResolution>;
   previewThreadContext: OmitThisParameter<typeof previewThreadContext>;
   compactThreadContext: OmitThisParameter<typeof compactThreadContext>;
@@ -253,6 +273,8 @@ const threadBranchEndpoints: FocusAgentEndpointMethodMap<ThreadBranchEndpoints> 
   archiveConversation,
   activateConversation,
   getThreadState,
+  getThreadAttention,
+  markThreadAttentionReviewed,
   getThreadResolution,
   previewThreadContext,
   compactThreadContext,

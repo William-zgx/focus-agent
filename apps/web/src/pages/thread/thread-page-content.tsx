@@ -9,10 +9,15 @@ import type {
 	FocusAgentStreamState,
 	FocusAgentToolApprovalInterrupt,
 } from "@focus-agent/web-sdk";
+import { useEffect, useState } from "react";
 import type { StickToBottomInstance } from "use-stick-to-bottom";
 
 import type { ThreadLinks } from "@/entities/messages/message-branch-import-card";
 import { MessageList } from "@/entities/messages/message-list";
+import {
+	type AttentionView,
+	ThreadAttentionPanel,
+} from "@/features/attention/thread-attention-panel";
 import { BranchDecisionSummaryPanel } from "@/features/branch-decisions/branch-decision-summary-panel";
 import { MessageComposer } from "@/features/thread-stream/message-composer";
 import type { SendMessageResult } from "@/features/thread-stream/stream-entry-state";
@@ -144,6 +149,23 @@ export function ThreadPageContent({
 	const composerContextUsage =
 		previewContextUsage ?? contextUsage ?? threadContextUsage ?? null;
 	const contextUsageError = previewContextError || compactContextError;
+	const [attentionView, setAttentionView] = useState<AttentionView>(() => {
+		try {
+			return window.localStorage.getItem("focus-agent-attention-view") ===
+				"audit"
+				? "audit"
+				: "focus";
+		} catch {
+			return "focus";
+		}
+	});
+	useEffect(() => {
+		try {
+			window.localStorage.setItem("focus-agent-attention-view", attentionView);
+		} catch {
+			// The selected view still applies for this page when storage is unavailable.
+		}
+	}, [attentionView]);
 	const messageListProps = {
 		assistantMessage,
 		isReadOnly: isMergedReadOnlyThread,
@@ -178,12 +200,20 @@ export function ThreadPageContent({
 	};
 
 	return (
-		<div className="fa-thread-layout">
+		<div className="fa-thread-layout" data-attention-view={attentionView}>
 			<h1 className="sr-only">
 				{isChineseUi ? "Focus Agent 对话" : "Focus Agent conversation"}
 			</h1>
 			<div className="fa-transcript-panel">
 				<section className="fa-chat-transcript">
+					<ThreadAttentionPanel
+						key={threadId}
+						attentionView={attentionView}
+						isChineseUi={isChineseUi}
+						onAttentionViewChange={setAttentionView}
+						threadId={threadId}
+						threadLinks={threadLinks}
+					/>
 					<BranchDecisionSummaryPanel
 						isChineseUi={isChineseUi}
 						isReadOnly={isMergedReadOnlyThread}

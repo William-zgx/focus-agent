@@ -64,6 +64,7 @@ flowchart LR
 | 方案探索与决策 Agent：首期范围、技术契约与多 Agent 开发分工（待实施） | [technical-plan.md](plans/2026-09-29-decision-workspace/technical-plan.md) |
 | 全面验收口径 | [validation-runbook.md](validation-runbook.md) |
 | 最新项目质量、真实模型复杂任务与环境缺口 | [2026-10-03-mr-quality.md](validation/2026-10-03-mr-quality.md) |
+| Attention Workbench 实现、真实浏览器与配对投影验证 | [2026-11-15-attention-workbench.md](validation/2026-11-15-attention-workbench.md) |
 
 ## Quick Use / 快速使用
 
@@ -91,6 +92,7 @@ flowchart LR
 ## Core Topics / 核心专题
 
 - [branch-decisions.md](branch-decisions.md)：BranchDecisionEvent、发送前分支推荐、用户确认的 Branch Action、配置、API/SDK surface 和验证口径。
+- [attention-workbench.md](attention-workbench.md)：确定性低打扰策略、Resume Packet、Attention Diff、按展示快照已读的游标、权限边界和配对评估口径。
 - [productivity-system.md](productivity-system.md)：生产力工作台（笔记 + 任务）的 API、持久化、来源追踪、路由接入和验证口径。
 - [auth-access.md](auth-access.md)：登录、注册、Bearer/Demo token、refresh session、disabled-user 即时失效、Cookie mutation CSRF、账号自助页面、ownership 和生产鉴权边界。
 - [admin-console.md](admin-console.md)：设置中心、能力管理、Skill 启停、管理员用户目录、详情抽屉、状态/角色/会话/密码操作、审计事件、权限边界和验证口径。

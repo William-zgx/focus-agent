@@ -1530,6 +1530,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/threads/{thread_id}/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thread Attention */
+        get: operations["get_thread_attention_v1_threads__thread_id__attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/threads/{thread_id}/attention/reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Thread Attention */
+        post: operations["review_thread_attention_v1_threads__thread_id__attention_reviewed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/threads/{thread_id}/branch-actions/{action_id}/dismiss": {
         parameters: {
             query?: never;
@@ -3141,6 +3175,119 @@ export interface components {
             imported?: components["schemas"]["ImportedConclusion"] | null;
             /** Target Thread Id */
             target_thread_id?: string | null;
+        };
+        /** AttentionCursor */
+        AttentionCursor: {
+            /** Action Statuses */
+            action_statuses?: {
+                [key: string]: string;
+            };
+            /** Last Message Id */
+            last_message_id?: string | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Seen Outcome Ids */
+            seen_outcome_ids?: string[];
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+        };
+        /** AttentionDiff */
+        AttentionDiff: {
+            /**
+             * Action Transition Count
+             * @default 0
+             */
+            action_transition_count: number;
+            /** First Visit */
+            first_visit: boolean;
+            /**
+             * Frontier Missing
+             * @default false
+             */
+            frontier_missing: boolean;
+            /** Highlights */
+            highlights?: components["schemas"]["AttentionItem"][];
+            /**
+             * New Failed Outcome Count
+             * @default 0
+             */
+            new_failed_outcome_count: number;
+            /**
+             * New Message Count
+             * @default 0
+             */
+            new_message_count: number;
+            /**
+             * New Outcome Count
+             * @default 0
+             */
+            new_outcome_count: number;
+        };
+        /** AttentionEvidence */
+        AttentionEvidence: {
+            /** Action Id */
+            action_id?: string | null;
+            /** Kind */
+            kind: string;
+            /** Run Id */
+            run_id?: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Thread Id */
+            thread_id: string;
+        };
+        /** AttentionItem */
+        AttentionItem: {
+            /** Kind */
+            kind: string;
+            /** Previous Status */
+            previous_status?: string | null;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /** AttentionPolicy */
+        AttentionPolicy: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "quiet" | "notify" | "ask";
+            /** Reasons */
+            reasons?: components["schemas"]["AttentionReason"][];
+        };
+        /** AttentionReason */
+        AttentionReason: {
+            /** Code */
+            code: string;
+            /** Source Ids */
+            source_ids?: string[];
+        };
+        /** AttentionReviewRequest */
+        AttentionReviewRequest: {
+            cursor: components["schemas"]["AttentionCursor"];
+        };
+        /** AttentionSnapshot */
+        AttentionSnapshot: {
+            current_cursor: components["schemas"]["AttentionCursor"];
+            diff: components["schemas"]["AttentionDiff"];
+            policy: components["schemas"]["AttentionPolicy"];
+            resume: components["schemas"]["ResumePacket"];
+            /** Thread Id */
+            thread_id: string;
         };
         /** AuditEventListResponse */
         AuditEventListResponse: {
@@ -4831,6 +4978,21 @@ export interface components {
             user?: components["schemas"]["UserResponse"] | null;
             /** User Id */
             user_id: string;
+        };
+        /** ResumePacket */
+        ResumePacket: {
+            /** Decisions */
+            decisions?: components["schemas"]["AttentionItem"][];
+            /** Evidence */
+            evidence?: components["schemas"]["AttentionEvidence"][];
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
+            next_action?: components["schemas"]["AttentionItem"] | null;
+            /** Open Items */
+            open_items?: components["schemas"]["AttentionItem"][];
         };
         /** RevokeUserSessionRequest */
         RevokeUserSessionRequest: {
@@ -9258,6 +9420,107 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_thread_attention_v1_threads__thread_id__attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionSnapshot"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Thread state unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    review_thread_attention_v1_threads__thread_id__attention_reviewed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttentionReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionCursor"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Presented cursor conflicts with current thread state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Thread state unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

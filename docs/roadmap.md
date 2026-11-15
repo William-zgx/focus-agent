@@ -43,6 +43,12 @@ flowchart LR
 - memory forget/tombstone 与 embedding worker 已使用条件更新保护，不允许
   forgotten/deleted memory 被异步任务复活；schema v18 增加
   `embedding_status` 列。
+- Attention Workbench 已在 server-backed Web 主路径实现确定性 quiet/notify/ask
+  策略、低打扰呈现、Resume Packet、Attention Diff 和按展示快照已读；
+  游标复用现有 store，无数据库迁移。真实 Chromium 已覆盖恢复、差分、
+  待审批、并发已读和重启；Android local runtime 保持原体验。配对离线评估只报告
+  review-unit 代理指标，不宣称已测得真实注意力时间收益，详见
+  [attention-workbench.md](attention-workbench.md)。
 - PostgreSQL app schema **v19** 的既有表与 Alembic migration 保持不变；
   删除产品面不删除数据库表或历史迁移。
 

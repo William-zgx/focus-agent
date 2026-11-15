@@ -3196,6 +3196,279 @@
         "title": "ApplyMergeDecisionResponse",
         "type": "object"
       },
+      "AttentionCursor": {
+        "properties": {
+          "action_statuses": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 512,
+            "title": "Action Statuses",
+            "type": "object"
+          },
+          "last_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Id"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "seen_outcome_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 512,
+            "title": "Seen Outcome Ids",
+            "type": "array"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "AttentionCursor",
+        "type": "object"
+      },
+      "AttentionDiff": {
+        "properties": {
+          "action_transition_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Action Transition Count",
+            "type": "integer"
+          },
+          "first_visit": {
+            "title": "First Visit",
+            "type": "boolean"
+          },
+          "frontier_missing": {
+            "default": false,
+            "title": "Frontier Missing",
+            "type": "boolean"
+          },
+          "highlights": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionItem"
+            },
+            "maxItems": 12,
+            "title": "Highlights",
+            "type": "array"
+          },
+          "new_failed_outcome_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "New Failed Outcome Count",
+            "type": "integer"
+          },
+          "new_message_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "New Message Count",
+            "type": "integer"
+          },
+          "new_outcome_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "New Outcome Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "first_visit"
+        ],
+        "title": "AttentionDiff",
+        "type": "object"
+      },
+      "AttentionEvidence": {
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "thread_id"
+        ],
+        "title": "AttentionEvidence",
+        "type": "object"
+      },
+      "AttentionItem": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Status"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 800,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "kind"
+        ],
+        "title": "AttentionItem",
+        "type": "object"
+      },
+      "AttentionPolicy": {
+        "properties": {
+          "level": {
+            "enum": [
+              "quiet",
+              "notify",
+              "ask"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionReason"
+            },
+            "maxItems": 32,
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "AttentionPolicy",
+        "type": "object"
+      },
+      "AttentionReason": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "AttentionReason",
+        "type": "object"
+      },
+      "AttentionReviewRequest": {
+        "properties": {
+          "cursor": {
+            "$ref": "#/components/schemas/AttentionCursor"
+          }
+        },
+        "required": [
+          "cursor"
+        ],
+        "title": "AttentionReviewRequest",
+        "type": "object"
+      },
+      "AttentionSnapshot": {
+        "properties": {
+          "current_cursor": {
+            "$ref": "#/components/schemas/AttentionCursor"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/AttentionDiff"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AttentionPolicy"
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ResumePacket"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "policy",
+          "resume",
+          "diff",
+          "current_cursor"
+        ],
+        "title": "AttentionSnapshot",
+        "type": "object"
+      },
       "AuditEventListResponse": {
         "properties": {
           "count": {
@@ -7860,6 +8133,52 @@
           "user_id"
         ],
         "title": "PrincipalResponse",
+        "type": "object"
+      },
+      "ResumePacket": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionItem"
+            },
+            "maxItems": 32,
+            "title": "Decisions",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionEvidence"
+            },
+            "maxItems": 64,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "goal": {
+            "default": "",
+            "maxLength": 1200,
+            "title": "Goal",
+            "type": "string"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttentionItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "open_items": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionItem"
+            },
+            "maxItems": 32,
+            "title": "Open Items",
+            "type": "array"
+          }
+        },
+        "title": "ResumePacket",
         "type": "object"
       },
       "RevokeUserSessionRequest": {
@@ -17316,6 +17635,119 @@
           }
         ],
         "summary": "Get Thread Snapshot"
+      }
+    },
+    "/v1/threads/{thread_id}/attention": {
+      "get": {
+        "operationId": "get_thread_attention_v1_threads__thread_id__attention_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "Thread state unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Thread Attention"
+      }
+    },
+    "/v1/threads/{thread_id}/attention/reviewed": {
+      "post": {
+        "operationId": "review_thread_attention_v1_threads__thread_id__attention_reviewed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttentionReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionCursor"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Presented cursor conflicts with current thread state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "Thread state unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Thread Attention"
       }
     },
     "/v1/threads/{thread_id}/branch-actions/{action_id}/dismiss": {

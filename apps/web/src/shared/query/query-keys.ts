@@ -4,6 +4,8 @@ export const queryKeys = {
 	models: ["models"] as const,
 	conversations: ["conversations"] as const,
 	thread: (threadId: string) => ["thread", threadId] as const,
+	threadAttention: (threadId: string) =>
+		["thread-attention", threadId] as const,
 	branchDecisionConfig: ["branch-decision-config"] as const,
 	threadBranchDecisions: (threadId: string) =>
 		["thread-branch-decisions", threadId] as const,

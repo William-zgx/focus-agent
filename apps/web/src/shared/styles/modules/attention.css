@@ -1,0 +1,219 @@
+.fa-attention-workbench {
+	position: absolute;
+	top: 12px;
+	right: 16px;
+	z-index: 9;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: calc(100% - 32px);
+}
+
+.fa-attention-resume-trigger,
+.fa-attention-view-toggle {
+	background: var(--fa-panel);
+	box-shadow: var(--fa-shadow-sm);
+}
+
+.fa-attention-unread {
+	width: 6px;
+	height: 6px;
+	border-radius: var(--fa-radius-pill);
+	background: var(--fa-accent);
+}
+
+.fa-attention-load-error {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid color-mix(in srgb, var(--fa-warning) 36%, var(--fa-border));
+	border-radius: var(--fa-radius-pill);
+	background: var(--fa-panel);
+	padding: 3px 8px;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-attention-panel {
+	position: absolute;
+	top: 12px;
+	right: 16px;
+	left: 16px;
+	z-index: 7;
+	display: grid;
+	gap: 12px;
+	max-height: min(68%, 560px);
+	overflow: auto;
+	border: 1px solid var(--fa-border);
+	border-left: 3px solid var(--fa-accent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--fa-panel-1) 97%, transparent);
+	box-shadow: var(--fa-shadow-lg);
+	padding: 14px 16px;
+	color: var(--fa-text);
+}
+
+.fa-attention-panel.is-ask {
+	border-left-color: var(--fa-warning);
+}
+
+.fa-attention-panel.is-notify {
+	border-left-color: var(--fa-danger);
+}
+
+.fa-attention-panel-header,
+.fa-attention-header-actions,
+.fa-attention-panel-footer,
+.fa-attention-evidence {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.fa-attention-panel-header > div:first-child {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.fa-attention-panel-header strong {
+	font-size: 15px;
+	line-height: 1.4;
+}
+
+.fa-attention-policy-label,
+.fa-attention-goal > span,
+.fa-attention-next-action > span,
+.fa-attention-item-kind {
+	color: var(--fa-text-muted);
+	font-size: 12px;
+}
+
+.fa-attention-goal {
+	display: grid;
+	grid-template-columns: 64px minmax(0, 1fr);
+	gap: 10px;
+	border-bottom: 1px solid var(--fa-border-subtle);
+	padding-bottom: 10px;
+}
+
+.fa-attention-goal p {
+	margin: 0;
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+}
+
+.fa-attention-diff-metrics {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.fa-attention-next-action {
+	display: grid;
+	grid-template-columns: 64px minmax(0, 1fr);
+	gap: 10px;
+	border-left: 2px solid var(--fa-accent);
+	padding: 4px 0 4px 10px;
+}
+
+.fa-attention-next-action strong {
+	font-weight: 600;
+	line-height: 1.5;
+}
+
+.fa-attention-section h2 {
+	margin: 0 0 5px;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.fa-attention-items {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fa-attention-items li {
+	display: grid;
+	grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+	gap: 10px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.fa-attention-evidence {
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	border-top: 1px solid var(--fa-border-subtle);
+	padding-top: 8px;
+}
+
+.fa-attention-notice {
+	margin: 0;
+	color: var(--fa-text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.fa-attention-notice.is-danger {
+	color: var(--fa-danger);
+}
+
+.fa-attention-panel-footer {
+	justify-content: flex-end;
+	border-top: 1px solid var(--fa-border-subtle);
+	padding-top: 10px;
+}
+
+.fa-thread-layout[data-attention-view="focus"]
+	.fa-branch-decision-summary[data-attention-level="ambient"]:not(:target) {
+	display: none;
+}
+
+.fa-thread-layout[data-attention-view="focus"]
+	.fa-branch-decision-summary[data-attention-level="ambient"]:not(:target)
+	+ .fa-conversation-viewport
+	.fa-chat-history {
+	padding-bottom: 0;
+}
+
+@media (max-width: 720px) {
+	.fa-attention-workbench {
+		top: 8px;
+		right: 10px;
+	}
+
+	.fa-attention-panel {
+		top: 8px;
+		right: 8px;
+		left: 8px;
+		max-height: 72%;
+		padding: 12px;
+	}
+
+	.fa-attention-panel-header {
+		align-items: flex-start;
+	}
+
+	.fa-attention-header-actions {
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+
+	.fa-attention-goal,
+	.fa-attention-next-action {
+		grid-template-columns: 1fr;
+		gap: 4px;
+	}
+
+	.fa-attention-items li {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+}

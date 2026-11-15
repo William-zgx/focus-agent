@@ -24,6 +24,10 @@ function scorePercent(score: number) {
 	return `${Math.round(score * 100)}%`;
 }
 
+export function branchActionCardDomId(actionId: string) {
+	return `branch-action-${actionId}`;
+}
+
 function branchActionFocusMetric({
 	action,
 	isChineseUi,
@@ -200,6 +204,8 @@ export function BranchActionCard({
 				</div>
 				<details
 					className={`fa-message-bubble is-assistant fa-branch-action-card is-${action.status}`}
+					id={branchActionCardDomId(action.action_id)}
+					tabIndex={-1}
 					onToggle={(event) =>
 						setIsExpanded((event.currentTarget as HTMLDetailsElement).open)
 					}
