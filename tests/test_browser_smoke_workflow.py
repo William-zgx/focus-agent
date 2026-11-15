@@ -45,7 +45,7 @@ def test_browser_smoke_workflow_is_an_unfiltered_stable_required_check() -> None
     assert "paths" not in triggers["push"]
     assert triggers["pull_request"] is None
     assert job["name"] == "Real Chrome browser smoke"
-    assert job["runs-on"] == "ubuntu-latest"
+    assert job["runs-on"] == "ubuntu-24.04"
     assert job["timeout-minutes"] == 30
     assert "if" not in job
     assert "needs" not in job
