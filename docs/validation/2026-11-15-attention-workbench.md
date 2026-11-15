@@ -21,21 +21,19 @@ Canonical design: `docs/attention-workbench.md`.
 
 ## Automated verification
 
-- Full Python suite: **2495 passed, 11 skipped**.
+- Full Python suite: **2507 passed, 11 skipped**.
 - Frontend stream/state regressions: **70 passed**.
-- Attention service/API tests: **15 passed**.
-- Offline attention projection evaluation: **17 passed**.
+- Attention service/API/eval tests: **43 passed**.
 - Web and SDK typechecks, Web production build, CSS governance, architecture,
   and API/SDK contract checks passed.
 - Android local-runtime smoke passed.
 - Final correctness and simplify reviews: clean.
 
-`make ci` completed its Python/Ruff/architecture/compat/SDK stages but did not
-finish green: `web:format:check:full` still rejects the unchanged pre-existing
-`apps/web/src/pages/auth/login-intro.tsx` formatting. The full frontend lint also
-reports three unused variables and one pre-existing CSS specificity warning.
-These files were not rewritten to hide that unrelated boundary in this feature
-branch.
+`make ci` is green after the CI repairs: Playwright Chromium installation uses a
+supported Ubuntu 24.04 runner with cache fallback, Dependency Drift installs
+Node/pnpm and Web dependencies, `psycopg[binary]` is declared, and the root
+TypeScript dependency is pinned to 5.9. A PostgreSQL `focus_background_jobs`
+VALUES arity bug was also fixed with a dedicated regression test.
 
 ## Real isolated Chromium acceptance
 
