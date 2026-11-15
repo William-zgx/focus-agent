@@ -137,7 +137,7 @@ class PostgresRunJournal(PostgresMixin):
                         idempotency_key, created_at, updated_at, metadata
                     )
                     VALUES (%s, %s, %s, now(), 2, 'skip', 'running', 0, %s, %s, %s, NULL,
-                            NULL, NULL, NULL, NULL, %s, now(), now(), '{}'::jsonb)
+                            NULL, NULL, NULL, %s, now(), now(), '{}'::jsonb)
                     ON CONFLICT (job_key) DO NOTHING
                     """,
                     (

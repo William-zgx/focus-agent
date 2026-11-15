@@ -280,18 +280,6 @@ jobs:
           tail -n 200 reports/browser-smoke/api.log
           exit 1
 
-      - name: Log background job schema for diagnosis
-        run: |
-          .venv/bin/python - <<'PY'
-          import os
-          import psycopg
-          with psycopg.connect(os.environ["DATABASE_URI"]) as conn:
-              rows = conn.execute(
-                  "SELECT column_name FROM information_schema.columns WHERE table_name = 'focus_background_jobs' ORDER BY ordinal_position"
-              ).fetchall()
-              print("background_job_columns", [row[0] for row in rows])
-          PY
-
       - name: Run real Chrome interaction smoke gates
         run: |
           set +e
