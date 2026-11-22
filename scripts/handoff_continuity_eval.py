@@ -17,7 +17,6 @@ from focus_agent.eval.handoff import (
     synthetic_handoff_cases,
 )
 from focus_agent.eval.runner.harness import EvalRuntime
-from focus_agent.providers.anthropic_channel import create_anthropic_chat_model
 
 
 def main() -> int:
@@ -94,6 +93,8 @@ def main() -> int:
 
 def _anthropic_factory(args: argparse.Namespace) -> Any:
     def factory(*_args: Any, **_kwargs: Any) -> Any:
+        from focus_agent.providers.anthropic_channel import create_anthropic_chat_model
+
         kwargs: dict[str, Any] = {
             "model": args.model,
             "temperature": args.temperature,
