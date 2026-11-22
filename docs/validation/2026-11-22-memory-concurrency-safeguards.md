@@ -57,10 +57,11 @@ embedding completion, retrieval cleanup, and API forget wiring.
 - libpq-compatible `options` encoding for isolated schemas.
 
 The local machine has no usable PostgreSQL binaries and denies Docker socket
-access, so these four tests are skipped locally. Browser Smoke uses the pinned
+access, so these five tests are skipped locally. Browser Smoke uses the pinned
 `pgvector/pgvector:0.8.0-pg16-bookworm` service and sets
 `FOCUS_AGENT_REQUIRE_REAL_POSTGRES=1`, which turns a missing URI into a failure
 rather than a skip. The application itself still runs with embeddings disabled.
+Remote Browser Smoke `45020790273` executed all five tests successfully.
 
 Real-Postgres evidence is therefore a **remote required gate**, not a local
 success claim.
