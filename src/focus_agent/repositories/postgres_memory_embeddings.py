@@ -11,6 +11,8 @@ from .memory_repository import (
     MemoryEmbeddingMetadata,
     MemoryEmbeddingRecord,
     MemoryEmbeddingSearchHit,
+    MemoryRecordProtectedError,
+    MemoryRecordStaleError,
 )
 from .postgres_memory_mappers import (
     coalesce_int,
@@ -42,6 +44,7 @@ class PostgresMemoryEmbeddingMixin:
         status: str = "active",
         content_hash: str | None = None,
         metadata: Mapping[str, object] | None = None,
+        expected_fingerprint: str | None = None,
         **extra: object,
     ) -> str:
         if (
@@ -64,6 +67,11 @@ class PostgresMemoryEmbeddingMixin:
             content_hash = coalesce_text(payload.get("content_hash"), content_hash)
             metadata = coerce_metadata(payload.get("metadata"))
             extra = {**{str(key): value for key, value in payload.items()}, **extra}
+            expected_fingerprint = coalesce_text(
+                payload.get("expected_fingerprint"),
+                payload.get("fingerprint"),
+                expected_fingerprint,
+            )
             created_at = payload.get("created_at")
             updated_at = payload.get("updated_at")
         elif isinstance(record, MemoryEmbeddingRecord):
@@ -104,6 +112,34 @@ class PostgresMemoryEmbeddingMixin:
         }
         now = datetime.now(UTC)
         with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
+                    SELECT fingerprint, status, deleted_at,
+                        EXISTS (
+                            SELECT 1
+                            FROM focus_memory_tombstones
+                            WHERE memory_id = focus_memories.memory_id
+                        ) AS tombstoned
+                    FROM focus_memories
+                    WHERE memory_id = %(memory_id)s
+                    FOR SHARE
+                    """,
+                {"memory_id": memory_id},
+            )
+            parent = cur.fetchone()
+            if (
+                parent is None
+                or parent["status"] == "forgotten"
+                or parent["deleted_at"] is not None
+                or parent["tombstoned"]
+            ):
+                raise MemoryRecordProtectedError(memory_id)
+            if (
+                expected_fingerprint
+                and parent["fingerprint"]
+                and parent["fingerprint"] != expected_fingerprint
+            ):
+                raise MemoryRecordStaleError(memory_id)
             cur.execute(
                 """
                     UPDATE focus_memory_embeddings

@@ -19,6 +19,7 @@ from focus_agent.storage.postgres import PostgresConnectionProvider
 from ._postgres_base import PostgresMixin
 from .memory_repository import (
     MemoryListQuery,
+    MemoryMutationResult,
     MemoryRepository,
 )
 from .postgres_memory_embeddings import PostgresMemoryEmbeddingMixin
@@ -168,6 +169,84 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
     def upsert_record_if_not_tombstoned(self, record: MemoryRecord) -> bool:
         return self._upsert_record_unless_protected(record)
 
+    def update_record_if_current(
+        self,
+        record: MemoryRecord,
+        *,
+        expected_updated_at: datetime,
+    ) -> MemoryMutationResult:
+        if expected_updated_at.tzinfo is None:
+            raise ValueError("expected_updated_at must be timezone-aware")
+        payload = record.model_dump(mode="json")
+        params = {
+            **record_params(record, payload=payload),
+            "expected_updated_at": expected_updated_at.astimezone(UTC),
+        }
+        with self._cursor(dict_row=True) as cur:
+            cur.execute(
+                """
+                    UPDATE focus_memories
+                    SET
+                        namespace = %(namespace)s,
+                        kind = %(kind)s,
+                        scope = %(scope)s,
+                        visibility = %(visibility)s,
+                        status = %(status)s,
+                        embedding_status = %(embedding_status)s,
+                        user_id = %(user_id)s,
+                        root_thread_id = %(root_thread_id)s,
+                        source_thread_id = %(source_thread_id)s,
+                        source_branch_id = %(source_branch_id)s,
+                        semantic_key = %(semantic_key)s,
+                        fingerprint = %(fingerprint)s,
+                        confidence = %(confidence)s,
+                        importance = %(importance)s,
+                        summary = %(summary)s,
+                        content = %(content)s,
+                        promoted_to_main = %(promoted_to_main)s,
+                        updated_at = %(updated_at)s,
+                        deleted_at = %(deleted_at)s,
+                        data_json = %(data_json)s
+                    WHERE memory_id = %(memory_id)s
+                      AND updated_at = %(expected_updated_at)s
+                      AND status <> 'forgotten'
+                      AND deleted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM focus_memory_tombstones
+                          WHERE memory_id = focus_memories.memory_id
+                      )
+                    """,
+                params,
+            )
+            if cur.rowcount > 0:
+                return MemoryMutationResult.APPLIED
+            cur.execute(
+                """
+                    SELECT
+                        status,
+                        deleted_at,
+                        EXISTS (
+                            SELECT 1
+                            FROM focus_memory_tombstones
+                            WHERE memory_id = %(memory_id)s
+                        ) AS tombstoned
+                    FROM focus_memories
+                    WHERE memory_id = %(memory_id)s
+                    """,
+                {"memory_id": record.memory_id},
+            )
+            current = cur.fetchone()
+        if current is None:
+            return MemoryMutationResult.MISSING
+        if (
+            current["status"] == "forgotten"
+            or current["deleted_at"] is not None
+            or current["tombstoned"]
+        ):
+            return MemoryMutationResult.PROTECTED
+        return MemoryMutationResult.STALE
+
     def _upsert_record_unless_protected(self, record: MemoryRecord) -> bool:
         payload = record.model_dump(mode="json")
         with self._cursor(dict_row=True) as cur:
@@ -234,20 +313,24 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
         status: str,
         model_id: str | None,
         updated_at: datetime,
+        expected_fingerprint: str | None = None,
     ) -> bool:
         embedding_payload = {
             "embedding_status": status,
             "embedding_model_id": model_id,
             "embedding_updated_at": updated_at.isoformat(),
-            "updated_at": updated_at.isoformat(),
         }
+        revision_clause = (
+            "AND (fingerprint IS NULL OR fingerprint = %(expected_fingerprint)s)"
+            if expected_fingerprint
+            else ""
+        )
         with self._cursor(dict_row=True) as cur:
             cur.execute(
-                """
+                f"""
                     UPDATE focus_memories
                     SET
                         embedding_status = %(embedding_status)s,
-                        updated_at = %(updated_at)s,
                         data_json = data_json || %(embedding_payload)s
                     WHERE memory_id = %(memory_id)s
                       AND status <> 'forgotten'
@@ -257,12 +340,13 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
                           FROM focus_memory_tombstones
                           WHERE memory_id = focus_memories.memory_id
                       )
+                      {revision_clause}
                     """,
                 {
                     "memory_id": memory_id,
                     "embedding_status": status,
-                    "updated_at": updated_at,
                     "embedding_payload": Jsonb(embedding_payload),
+                    "expected_fingerprint": expected_fingerprint,
                 },
             )
             rowcount = cur.rowcount
@@ -281,6 +365,7 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
             "namespace = %(namespace)s",
             "status != 'forgotten'",
             "deleted_at IS NULL",
+            "NOT EXISTS (SELECT 1 FROM focus_memory_tombstones WHERE memory_id = focus_memories.memory_id)",
             "(fingerprint = %(fingerprint)s OR semantic_key = %(semantic_key)s)",
         ]
         params: dict[str, Any] = {
@@ -297,7 +382,7 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
         with self._cursor(dict_row=True) as cur:
             cur.execute(
                 f"""
-                    SELECT data_json
+                    SELECT data_json, updated_at
                     FROM focus_memories
                     WHERE {" AND ".join(clauses)}
                     ORDER BY updated_at DESC
@@ -308,7 +393,9 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
             row = cur.fetchone()
         if row is None:
             return None
-        return record_from_payload(row["data_json"])
+        return record_from_payload(row["data_json"]).model_copy(
+            update={"updated_at": row["updated_at"]}
+        )
 
     def search(
         self,
@@ -377,11 +464,16 @@ class PostgresMemoryRepository(PostgresMemoryEmbeddingMixin, PostgresMixin, Memo
 
     def get_record(self, memory_id: str) -> MemoryRecord | None:
         with self._cursor(dict_row=True) as cur:
-            cur.execute("SELECT data_json FROM focus_memories WHERE memory_id = %s", (memory_id,))
+            cur.execute(
+                "SELECT data_json, updated_at FROM focus_memories WHERE memory_id = %s",
+                (memory_id,),
+            )
             row = cur.fetchone()
         if row is None:
             return None
-        return record_from_payload(row["data_json"])
+        return record_from_payload(row["data_json"]).model_copy(
+            update={"updated_at": row["updated_at"]}
+        )
 
     def get_records(self, memory_ids: list[str]) -> dict[str, MemoryRecord]:
         if not memory_ids:

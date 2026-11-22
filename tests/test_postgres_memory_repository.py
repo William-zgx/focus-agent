@@ -23,6 +23,8 @@ from focus_agent.repositories.postgres_schema import (
     rebuild_memory_embedding_index_on_connection,
 )
 
+from .memory_repository_fake_support import existing_memory_row, memory_record_row, parent_guard
+
 
 class _FakePostgresMemoryDB:
     def __init__(self) -> None:
@@ -57,29 +59,14 @@ class _FakeCursor:
             row["data_json"] = payload
             self.db.memories[str(params["memory_id"])] = row
             return
-        if normalized.startswith("SELECT data_json FROM focus_memories WHERE memory_id = %s"):
-            row = self.db.memories.get(str(params[0]))
-            self._fetchone = {"data_json": row["data_json"]} if row else None
+        if normalized.startswith("SELECT fingerprint, status, deleted_at"):
+            self._fetchone = parent_guard(self.db, params)
             return
-        if (
-            normalized.startswith("SELECT data_json FROM focus_memories")
-            and "fingerprint" in normalized
-        ):
-            matches = [
-                row
-                for row in self.db.memories.values()
-                if row["namespace"] == params["namespace"]
-                and row["status"] != MemoryStatus.FORGOTTEN.value
-                and row["deleted_at"] is None
-                and (
-                    row["fingerprint"] == params["fingerprint"]
-                    or row["semantic_key"] == params["semantic_key"]
-                )
-                and (not params.get("kind") or row["kind"] == params["kind"])
-                and (not params.get("scope") or row["scope"] == params["scope"])
-            ]
-            matches.sort(key=lambda row: row["updated_at"], reverse=True)
-            self._fetchone = {"data_json": matches[0]["data_json"]} if matches else None
+        if normalized.startswith("SELECT data_json") and "WHERE memory_id = %s" in normalized:
+            self._fetchone = memory_record_row(self.db, params)
+            return
+        if normalized.startswith("SELECT data_json") and "fingerprint" in normalized:
+            self._fetchone = existing_memory_row(self.db, params)
             return
         if normalized.startswith("SELECT data_json, CASE"):
             query = str(params["query"] or "").casefold()
@@ -705,6 +692,16 @@ def test_postgres_memory_repository_embedding_payload_aliases(monkeypatch):
         lambda uri, row_factory=None: _FakeConnection(db),
     )
     repo = PostgresMemoryRepository("postgresql://example")
+    repo.upsert_record(
+        _memory_record(
+            memory_id="mem-1",
+            namespace=("conversation", "root-1", "main"),
+            summary="parent memory",
+            content="parent memory",
+            fingerprint="fp-parent",
+            semantic_key="sk-parent",
+        )
+    )
 
     assert (
         repo.upsert_memory_embedding(

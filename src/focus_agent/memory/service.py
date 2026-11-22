@@ -7,10 +7,12 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from psycopg.errors import UniqueViolation
+
 from ..config_parts.env import env_bool
 from ..core.repo_call import has_repo_method
 from ..core.request_context import RequestContext
-from ..repositories.memory_repository import MemoryRepository
+from ..repositories.memory_repository import MemoryMutationResult, MemoryRepository
 from ..retrieval import RetrievalIndex
 from ..services.coordination import BackgroundJobSpec
 from .dedupe import (
@@ -20,6 +22,7 @@ from .dedupe import (
     merge_duplicate_records,
     should_replace_memory,
 )
+from .embedding_cleanup import delete_embedding_artifacts
 from .embedding_service import MemoryEmbeddingService
 from .models import (
     MemoryAuditEvent,
@@ -119,61 +122,128 @@ class MemoryService:
         reason: str = "upsert",
     ) -> MemoryWriteDecision:
         sanitized = _sanitize_request(request)
-        record = _record_from_request(sanitized)
-        existing = self.repository.find_existing(
-            namespace=record.namespace,
-            fingerprint=record.fingerprint or memory_fingerprint(record),
-            semantic_key=record.semantic_key or memory_semantic_key(record),
-            kind=record.kind.value,
-            scope=record.scope.value,
-        )
-        if existing is None:
-            self.repository.upsert_record(record)
-            if _is_redacted_record(record):
-                self._record_redaction_audit(record, request=sanitized, actor=actor)
-            self._write_embedding_best_effort(record)
+        had_existing = False
+        for attempt in range(3):
+            record = _record_from_request(sanitized)
+            existing = self.repository.find_existing(
+                namespace=record.namespace,
+                fingerprint=record.fingerprint or memory_fingerprint(record),
+                semantic_key=record.semantic_key or memory_semantic_key(record),
+                kind=record.kind.value,
+                scope=record.scope.value,
+            )
+            if existing is None and had_existing:
+                return self._decision(
+                    status=MemoryWriteDecisionStatus.SKIPPED,
+                    action="protected",
+                    reason="protected",
+                    request=sanitized,
+                    actor=actor,
+                )
+            if existing is None:
+                try:
+                    self.repository.upsert_record(record)
+                except UniqueViolation:
+                    if attempt < 2:
+                        continue
+                    raise
+                if _is_redacted_record(record):
+                    self._record_redaction_audit(record, request=sanitized, actor=actor)
+                self._write_embedding_best_effort(record)
+                return self._decision(
+                    status=MemoryWriteDecisionStatus.ACCEPTED,
+                    action="written",
+                    reason=reason,
+                    request=sanitized,
+                    record=record,
+                    actor=actor,
+                )
+            had_existing = True
+            is_conflict = is_possible_memory_conflict(
+                existing, sanitized
+            ) and not should_replace_memory(existing, sanitized)
+            updated = (
+                existing.model_copy(
+                    update={
+                        "status": MemoryStatus.CONFLICT,
+                        "updated_at": datetime.now(UTC),
+                    }
+                )
+                if is_conflict
+                else merge_duplicate_records(existing, sanitized).model_copy(
+                    update={"status": MemoryStatus.ACTIVE}
+                )
+            )
+            mutation = self._update_existing_if_current(
+                updated,
+                expected_updated_at=existing.updated_at,
+            )
+            if mutation is None:
+                return self._decision(
+                    status=MemoryWriteDecisionStatus.SKIPPED,
+                    action="conditional_write_unavailable",
+                    reason="conditional_write_unavailable",
+                    request=sanitized,
+                    actor=actor,
+                )
+            if mutation == MemoryMutationResult.STALE:
+                continue
+            if mutation in {MemoryMutationResult.PROTECTED, MemoryMutationResult.MISSING}:
+                return self._decision(
+                    status=MemoryWriteDecisionStatus.SKIPPED,
+                    action=mutation.value,
+                    reason=mutation.value,
+                    request=sanitized,
+                    actor=actor,
+                )
+            if is_conflict:
+                return self._decision(
+                    status=MemoryWriteDecisionStatus.CONFLICT,
+                    action="possible_conflict",
+                    reason="possible_conflict",
+                    request=sanitized,
+                    record=updated,
+                    actor=actor,
+                )
+            if _is_redacted_record(updated):
+                self._record_redaction_audit(updated, request=sanitized, actor=actor)
+            self._write_embedding_best_effort(updated)
             return self._decision(
-                status=MemoryWriteDecisionStatus.ACCEPTED,
-                action="written",
+                status=MemoryWriteDecisionStatus.MERGED,
+                action="merged",
                 reason=reason,
                 request=sanitized,
-                record=record,
+                record=updated,
                 actor=actor,
             )
-
-        if is_possible_memory_conflict(existing, sanitized) and not should_replace_memory(
-            existing, sanitized
-        ):
-            conflict = existing.model_copy(
-                update={
-                    "status": MemoryStatus.CONFLICT,
-                    "updated_at": datetime.now(UTC),
-                }
-            )
-            self.repository.upsert_record(conflict)
-            return self._decision(
-                status=MemoryWriteDecisionStatus.CONFLICT,
-                action="possible_conflict",
-                reason="possible_conflict",
-                request=sanitized,
-                record=conflict,
-                actor=actor,
-            )
-
-        merged = merge_duplicate_records(existing, sanitized)
-        merged = merged.model_copy(update={"status": MemoryStatus.ACTIVE})
-        self.repository.upsert_record(merged)
-        if _is_redacted_record(merged):
-            self._record_redaction_audit(merged, request=sanitized, actor=actor)
-        self._write_embedding_best_effort(merged)
         return self._decision(
-            status=MemoryWriteDecisionStatus.MERGED,
-            action="merged",
-            reason=reason,
+            status=MemoryWriteDecisionStatus.CONFLICT,
+            action="stale_revision",
+            reason="stale_revision",
             request=sanitized,
-            record=merged,
+            record=existing,
             actor=actor,
         )
+
+    def _update_existing_if_current(
+        self,
+        record: MemoryRecord,
+        *,
+        expected_updated_at: datetime,
+    ) -> MemoryMutationResult | None:
+        if has_repo_method(self.repository, "update_record_if_current"):
+            return self.repository.update_record_if_current(
+                record,
+                expected_updated_at=expected_updated_at,
+            )
+        if has_repo_method(self.repository, "upsert_record_if_not_tombstoned"):
+            applied = self.repository.upsert_record_if_not_tombstoned(record)
+            return MemoryMutationResult.APPLIED if applied else MemoryMutationResult.PROTECTED
+        if has_repo_method(self.repository, "upsert_record"):
+            logger.debug("using legacy memory merge without revision check")
+            self.repository.upsert_record(record)
+            return MemoryMutationResult.APPLIED
+        return None
 
     def forget(
         self,
@@ -240,10 +310,12 @@ class MemoryService:
             return
         try:
             result = self.embedding_service.ensure_embedding(record)
-            if isinstance(result, dict) and str(result.get("status") or "") in {
-                "written",
-                "skipped",
-            }:
+            result_status = str(result.get("status") or "") if isinstance(result, dict) else ""
+            if result_status == "stale":
+                return
+            if result_status == "rejected":
+                return
+            if result_status in {"written", "skipped"}:
                 self._mark_embedding_ready(record)
         except Exception:  # noqa: BLE001
             self._mark_embedding_failed(record, reason="embedding_failed")
@@ -314,20 +386,69 @@ class MemoryService:
         *,
         reason: str | None = None,
     ) -> None:
-        if not has_repo_method(self.repository, "upsert_record"):
+        if not has_repo_method(self.repository, "update_record_embedding_status"):
+            current = (
+                self.repository.get_record(record.memory_id)
+                if has_repo_method(self.repository, "get_record")
+                else record
+            ) or record
+            if current.status == MemoryStatus.FORGOTTEN or current.deleted_at is not None:
+                self._delete_embedding_artifacts(record.memory_id)
+                return
+            provider = getattr(self.embedding_service, "provider", None)
+            now = datetime.now(UTC)
+            self.repository.upsert_record(
+                current.model_copy(
+                    update={
+                        "embedding_status": status,
+                        "embedding_model_id": getattr(provider, "model_id", None),
+                        "embedding_updated_at": now,
+                        "updated_at": now,
+                    }
+                )
+            )
             return
         provider = getattr(self.embedding_service, "provider", None)
-        now = datetime.now(UTC)
-        self.repository.upsert_record(
-            record.model_copy(
-                update={
-                    "embedding_status": status,
-                    "embedding_model_id": getattr(provider, "model_id", None),
-                    "embedding_updated_at": now,
-                    "updated_at": now,
-                }
+        try:
+            updated = self.repository.update_record_embedding_status(
+                memory_id=record.memory_id,
+                status=status,
+                model_id=getattr(provider, "model_id", None),
+                updated_at=datetime.now(UTC),
+                expected_fingerprint=record.fingerprint or memory_fingerprint(record),
             )
+        except TypeError:
+            updated = self.repository.update_record_embedding_status(
+                memory_id=record.memory_id,
+                status=status,
+                model_id=getattr(provider, "model_id", None),
+                updated_at=datetime.now(UTC),
+            )
+        if not updated:
+            self._handle_embedding_status_rejected(record)
+
+    def _handle_embedding_status_rejected(self, record: MemoryRecord) -> None:
+        current = (
+            self.repository.get_record(record.memory_id)
+            if has_repo_method(self.repository, "get_record")
+            else None
         )
+        if (
+            current is None
+            or current.status == MemoryStatus.FORGOTTEN
+            or current.deleted_at is not None
+        ):
+            self._delete_embedding_artifacts(record.memory_id)
+
+    def _delete_embedding_artifacts(self, memory_id: str) -> None:
+        try:
+            delete_embedding_artifacts(
+                self.repository,
+                memory_id,
+                retrieval_index=self.retrieval_index,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("failed to clean memory embedding artifacts", exc_info=True)
 
     def _record_redaction_audit(
         self,

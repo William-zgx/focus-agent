@@ -23,6 +23,7 @@ from focus_agent.memory.models import (
 from focus_agent.repositories.governance_repository import InMemoryGovernanceRepository
 from focus_agent.repositories.memory_repository import MemoryListQuery
 from focus_agent.repositories.user_repository import InMemoryUserRepository
+from focus_agent.retrieval import InMemoryRetrievalIndex, RetrievalDocument
 from focus_agent.security.tokens import create_access_token
 from focus_agent.services.auth import AuthService
 from focus_agent.services.users import UserService
@@ -229,6 +230,7 @@ def _client(
     users: dict[str, list[str]] | None = None,
     branch_repo: _BranchAccessRepository | None = None,
     governance_repo: InMemoryGovernanceRepository | None = None,
+    retrieval_index=None,
 ) -> tuple[TestClient, Settings]:
     settings = Settings(
         auth_enabled=True,
@@ -249,6 +251,7 @@ def _client(
         user_repository=user_repo,
         user_service=user_service,
         auth_service=AuthService(user_repo, settings=settings),
+        retrieval_index=retrieval_index,
     )
     return TestClient(app), settings
 
@@ -313,6 +316,31 @@ def test_memory_api_hides_detail_and_forget_for_other_users() -> None:
     assert forgotten_detail.json()["item"]["payload_redacted"] is True
     assert forgotten_list.status_code == 200
     assert forgotten_list.json()["items"][0]["content"] == ""
+
+
+def test_forget_deletes_runtime_retrieval_document() -> None:
+    repo = _MemoryApiRepository()
+    repo.records = {"mem-owner": _record("mem-owner", user_id="owner-1")}
+    index = InMemoryRetrievalIndex()
+    index.upsert(
+        RetrievalDocument(
+            collection="focus_memory",
+            doc_id="memory:mem-owner",
+            source_id="mem-owner",
+            text="synthetic forgotten text",
+            fields={"namespace": repo.records["mem-owner"].namespace, "status": "active"},
+        )
+    )
+    client, settings = _client(
+        repo,
+        users={"owner-1": ["member"]},
+        retrieval_index=index,
+    )
+
+    response = client.post("/v1/memory/mem-owner/forget", headers=_headers(settings, "owner-1"))
+
+    assert response.status_code == 200
+    assert index.search(collection="focus_memory", query="synthetic", limit=5, filters={}) == []
 
 
 def test_memory_usage_lists_access_checked_context_evidence() -> None:

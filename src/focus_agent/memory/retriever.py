@@ -10,7 +10,7 @@ from ..core.types import FindingItem, Plan, PromptMode
 from ..repositories.memory_repository import MemoryListQuery
 from ..retrieval import RetrievalIndex
 from .branch_visibility import branch_origin_visible, visible_branch_ids
-from .dedupe import memory_resolution_key, memory_semantic_key
+from .dedupe import memory_fingerprint, memory_resolution_key, memory_semantic_key
 from .models import (
     MemoryRecord,
     MemoryRetrievalPlan,
@@ -366,6 +366,11 @@ class MemoryRetriever:
             if record is None or tuple(record.namespace) != namespace:
                 continue
             if getattr(record.status, "value", record.status) != "active":
+                continue
+            document_fingerprint = hit.fields.get("fingerprint")
+            if document_fingerprint and document_fingerprint != (
+                record.fingerprint or memory_fingerprint(record)
+            ):
                 continue
             normalized.append(
                 MemorySearchHit(
