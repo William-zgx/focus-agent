@@ -144,13 +144,23 @@ def _highlights(*, financial_analysis_path: Path, valuation_path: Path) -> dict[
     financial = _read_json(financial_analysis_path)
     valuation = _read_json(valuation_path)
     if isinstance(financial, dict):
-        for key in ("overall_score", "rating", "summary", "assessment"):
-            if key in financial:
-                highlights[f"financial_{key}"] = financial[key]
-    if isinstance(valuation, dict):
-        for key in ("recommendation", "margin_of_safety", "intrinsic_value", "current_price"):
-            if key in valuation:
-                highlights[f"valuation_{key}"] = valuation[key]
+        if (score := financial.get("score")) is not None:
+            highlights["financial_score"] = score
+        for section, key, output_key in (
+            ("anomalies", "risk_level", "financial_risk_level"),
+            ("profitability", "assessment", "financial_profitability_assessment"),
+        ):
+            section_value = financial.get(section)
+            if isinstance(section_value, dict) and (value := section_value.get(key)) is not None:
+                highlights[output_key] = value
+    if isinstance(valuation, dict) and isinstance(summary := valuation.get("summary"), dict):
+        for key, output_key in (
+            ("平均内在价值", "valuation_intrinsic_value"),
+            ("当前价格", "valuation_current_price"),
+            ("投资结论", "valuation_recommendation"),
+        ):
+            if (value := summary.get(key)) is not None:
+                highlights[output_key] = value
     return highlights
 
 
