@@ -11,7 +11,7 @@ from ..core.types import ContextBudget
 from ..observability.tracing import start_trace_span
 from .tool_cache import ToolResultCacheStore, cache_key
 from .tool_events import emit_runtime_tool_event
-from .tool_execution_types import ToolExecutionInput, ToolExecutionResult
+from .tool_execution_types import ToolExecutionInput, ToolExecutionResult, operation_fingerprint
 from .tool_invocation import (
     ToolParameterValidationError,
     error_event_payload,
@@ -38,6 +38,7 @@ def execute_single(
     observation_thread_id: str | None = None,
 ) -> ToolExecutionResult:
     started_at = time.perf_counter()
+    fingerprint = operation_fingerprint(item.tool_name, item.args, item.runtime)
     if item.runtime.side_effect:
         emit_runtime_tool_event(
             item=item,
@@ -68,6 +69,17 @@ def execute_single(
             {
                 **span.runtime_payload(),
                 "duration_ms": round(duration_ms, 3),
+                "operation_fingerprint": fingerprint,
+                "operation_fingerprint_redacted_args": bool(fingerprint),
+            },
+            harness_operation_metadata={
+                key: value
+                for key, value in {
+                    "operation_id": item.runtime.operation_id,
+                    "execution_version": item.runtime.execution_version,
+                    "superseded_by": item.runtime.superseded_by,
+                }.items()
+                if value
             },
         )
         return result

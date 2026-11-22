@@ -26,12 +26,36 @@ export interface FocusAgentAttentionEvidence {
 	run_id?: string | null;
 }
 
+export interface FocusAgentCompletedOperation {
+  outcome_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  status: string;
+  turn_id: string;
+  operation_fingerprint?: string | null;
+  operation_fingerprint_redacted_args: boolean;
+  operation_id?: string | null;
+  execution_version?: string | null;
+  superseded_by?: string | null;
+  cache_hit: boolean;
+  deduplicated: boolean;
+}
+
+export interface FocusAgentResumeExecution {
+	version: string;
+	operation_id?: string | null;
+	superseded_versions: string[];
+}
+
 export interface FocusAgentResumePacket {
 	goal: string;
 	decisions: FocusAgentAttentionItem[];
 	open_items: FocusAgentAttentionItem[];
 	next_action?: FocusAgentAttentionItem | null;
 	evidence: FocusAgentAttentionEvidence[];
+	completed_operations?: FocusAgentCompletedOperation[];
+	completed_operations_total?: number;
+	execution?: FocusAgentResumeExecution | null;
 }
 
 export interface FocusAgentAttentionDiff {

@@ -86,6 +86,66 @@ def build_tool_approval_interrupt_id(item: ToolExecutionInput) -> str:
     return f"tool-approval:{item.tool_call_id}:{digest}"
 
 
+def operation_fingerprint(
+    tool_name: str,
+    args: dict[str, Any],
+    runtime: ToolRuntimeMeta,
+) -> str | None:
+    name = str(tool_name or "").strip()
+    if not name or name == "unknown_tool" or not isinstance(args, dict):
+        return None
+    if str(getattr(runtime, "redaction_policy", "") or "mask").strip().lower() == "none":
+        return None
+    if not _json_shape_supported(args):
+        return None
+    payload = {
+        "v": 1,
+        "tool": name,
+        "args": redact_tool_args(args, runtime),
+    }
+    try:
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _json_shape_supported(value: Any) -> bool:
+    pending = [(value, 0, False)]
+    active: set[int] = set()
+    visited = 0
+    while pending:
+        visited += 1
+        if visited > 10_000:
+            return False
+        current, level, exiting = pending.pop()
+        if not isinstance(current, (dict, list, tuple)):
+            if current is not None and not isinstance(current, (str, int, float, bool)):
+                return False
+            continue
+        identity = id(current)
+        if exiting:
+            active.discard(identity)
+            continue
+        if level > 64 or identity in active:
+            return False
+        active.add(identity)
+        pending.append((current, level, True))
+        if isinstance(current, dict):
+            if not all(isinstance(key, str) for key in current):
+                return False
+            pending.extend((nested, level + 1, False) for nested in current.values())
+        else:
+            pending.extend((nested, level + 1, False) for nested in current)
+    return True
+
+
 def redact_tool_args(args: dict[str, Any], runtime: ToolRuntimeMeta) -> dict[str, Any]:
     sensitive_args = {
         str(item).strip()
@@ -165,7 +225,7 @@ def _redact_arg_value(
             )
             for nested_key, nested_value in value.items()
         }
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [
             _redact_arg_value(
                 key=key,

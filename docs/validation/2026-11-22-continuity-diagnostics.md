@@ -107,9 +107,11 @@ a rate estimate.
 
 - Resume Packet is not currently injected into production agent context. The
   suite renders it only for controlled comparison.
-- A canonical completed-operation/argument identity and execution-version
-  contract is still absent. Raw tool arguments or outputs must not be copied
-  into Resume Packet as a shortcut.
+- At the time of this earlier evaluation, Resume Packet lacked a canonical
+  completed-operation/argument identity and execution-version contract. The
+  follow-up [handoff execution contract validation](2026-11-22-handoff-execution-contract.md)
+  adds those optional contracts and explains their production boundaries. Raw
+  tool arguments or outputs must not be copied as a shortcut.
 - Brand-new keyless writes after an explicitly keyed record remain outside the
   three-update regression; no new content-based repository lookup is claimed.
 - Process-isolated continuation is not persistent checkpoint recovery. A real

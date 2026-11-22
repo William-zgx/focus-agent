@@ -145,9 +145,11 @@ per-arm behavioral evidence.
 
 - Three synthetic cases with one run per cell are diagnostic, not statistical
   evidence. Full history is a reference arm, not an infallible oracle.
-- Resume Packet currently lacks a canonical completed-operation/argument ledger
-  and execution-version contract. Raw tool arguments or outputs must not be
-  copied into it as a shortcut.
+- Resume Packet now has optional completed-operation and execution-version
+  contracts, with [validation evidence](../validation/2026-11-22-handoff-execution-contract.md).
+  Production prompt injection and side-effect fencing are still not implemented;
+  raw tool arguments or outputs must not be copied as a shortcut.
+- Real lease/restart evidence remains a separate next slice.
 - Memory diagnostics distinguish repository and legacy-store paths. They do
   not claim a live PostgreSQL concurrency test unless one is separately run.
 - The [human recovery-pilot protocol](../plans/2026-11-22-attention-recovery-pilot.md)

@@ -7,6 +7,7 @@ from langchain.messages import AIMessage, ToolMessage
 from focus_agent.core.runtime_outcome import (
     build_task_outcome,
     build_tool_outcomes_from_messages,
+    runtime_payload_from_tool_outcome,
     tool_outcome_from_message,
 )
 
@@ -83,6 +84,77 @@ def test_tool_outcome_classifies_stdout_business_error_as_failed():
     assert outcome["status"] == "failed"
     assert outcome["error_category"] == "business_error"
     assert outcome["error_message"] == "symbol unsupported"
+
+
+def test_tool_outcome_preserves_harness_operation_metadata():
+    outcome = tool_outcome_from_message(
+        ToolMessage(
+            content=json.dumps({"status": "completed"}),
+            tool_call_id="call-1",
+            artifact={
+                "runtime": {
+                    "operation_fingerprint": "a" * 64,
+                    "operation_fingerprint_redacted_args": True,
+                    "operation_id": "update_address",
+                    "execution_version": "v1",
+                    "superseded_by": "v2",
+                }
+            },
+        )
+    )
+
+    assert outcome["operation_fingerprint"] == "a" * 64
+    assert outcome["operation_fingerprint_redacted_args"] is True
+    assert outcome["operation_id"] == "update_address"
+    assert outcome["execution_version"] == "v1"
+    assert outcome["superseded_by"] == "v2"
+    assert "args" not in outcome
+
+
+def test_operation_metadata_rejects_overlong_versions_instead_of_truncating():
+    outcome = tool_outcome_from_message(
+        ToolMessage(
+            content=json.dumps({"status": "completed"}),
+            tool_call_id="call-long-version",
+            artifact={"runtime": {"execution_version": "v" + "x" * 128}},
+        )
+    )
+
+    assert outcome["execution_version"] is None
+
+
+def test_runtime_payload_preserves_dedup_and_operation_metadata():
+    payload = runtime_payload_from_tool_outcome(
+        {
+            "operation_fingerprint": "a" * 64,
+            "operation_fingerprint_redacted_args": True,
+            "operation_id": "update_address",
+            "execution_version": "v1",
+            "superseded_by": "v2",
+            "deduplicated": True,
+            "side_effect_serialized": True,
+        }
+    )
+
+    assert payload["operation_fingerprint"] == "a" * 64
+    assert payload["operation_id"] == "update_address"
+    assert payload["execution_version"] == "v1"
+    assert payload["superseded_by"] == "v2"
+    assert payload["deduplicated"] is True
+    assert payload["side_effect_serialized"] is True
+
+
+def test_task_outcome_omits_absent_or_mistyped_execution_metadata():
+    outcome = build_task_outcome(
+        user_goal="goal",
+        execution_contract={"superseded_execution_versions": "v1"},
+        answer_verification={"status": "verified"},
+        final_answer="done",
+    )
+
+    assert "operation_id" not in outcome
+    assert "execution_version" not in outcome
+    assert "superseded_execution_versions" not in outcome
 
 
 def test_tool_outcome_attempt_index_is_per_tool_call_id():

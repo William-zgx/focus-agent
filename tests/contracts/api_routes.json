@@ -9618,6 +9618,85 @@
       ],
       "type": "object"
     },
+    "CompletedOperation": {
+      "properties": {
+        "cache_hit": {
+          "default": false,
+          "type": "boolean"
+        },
+        "deduplicated": {
+          "default": false,
+          "type": "boolean"
+        },
+        "execution_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_fingerprint_redacted_args": {
+          "default": false,
+          "type": "boolean"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_call_id": {
+          "default": "",
+          "type": "string"
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "turn_id": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome_id",
+        "tool_name",
+        "status"
+      ],
+      "type": "object"
+    },
     "ContextUsageResponse": {
       "properties": {
         "configured_token_limit": {
@@ -11948,8 +12027,48 @@
       ],
       "type": "object"
     },
+    "ResumeExecution": {
+      "properties": {
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "superseded_versions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "type": "object"
+    },
     "ResumePacket": {
       "properties": {
+        "completed_operations": {
+          "items": {
+            "$ref": "#/components/schemas/CompletedOperation"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "completed_operations_total": {
+          "default": 0,
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "decisions": {
           "items": {
             "$ref": "#/components/schemas/AttentionItem"
@@ -11963,6 +12082,16 @@
           },
           "maxItems": 64,
           "type": "array"
+        },
+        "execution": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResumeExecution"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "goal": {
           "default": "",

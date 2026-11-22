@@ -155,6 +155,13 @@ def tool_outcome_from_message(
         "outcome_id": outcome_id,
         "tool_call_id": tool_call_id,
         "tool_name": tool_name,
+        "operation_fingerprint": _operation_fingerprint(runtime_info),
+        "operation_fingerprint_redacted_args": bool(
+            runtime_info.get("operation_fingerprint_redacted_args")
+        ),
+        "operation_id": _operation_metadata_value(runtime_info, "operation_id"),
+        "execution_version": _operation_metadata_value(runtime_info, "execution_version"),
+        "superseded_by": _operation_metadata_value(runtime_info, "superseded_by"),
         "status": status,
         "turn_id": resolved_turn_id,
         "human_turn_index": resolved_human_turn_index,
@@ -171,7 +178,24 @@ def tool_outcome_from_message(
         "evidence_role": _evidence_role(tool_name=tool_name, status=status),
         "duration_ms": float_or_none(runtime_info.get("duration_ms")),
         "cache_hit": bool(runtime_info.get("cache_hit", False)),
+        "deduplicated": bool(runtime_info.get("deduplicated", False)),
+        "side_effect_serialized": bool(runtime_info.get("side_effect_serialized", False)),
     }
+
+
+def _operation_fingerprint(runtime_info: Mapping[str, Any]) -> str | None:
+    value = runtime_info.get("operation_fingerprint")
+    if not isinstance(value, str):
+        return None
+    return value if re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+
+def _operation_metadata_value(runtime_info: Mapping[str, Any], key: str) -> str | None:
+    value = runtime_info.get(key)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if value and len(value) <= 128 else None
 
 
 def runtime_payload_from_tool_outcome(tool_outcome: Mapping[str, Any]) -> dict[str, Any]:
@@ -188,6 +212,18 @@ def runtime_payload_from_tool_outcome(tool_outcome: Mapping[str, Any]) -> dict[s
         runtime["duration_ms"] = tool_outcome.get("duration_ms")
     if tool_outcome.get("cache_hit") is not None:
         runtime["cache_hit"] = tool_outcome.get("cache_hit")
+    if tool_outcome.get("deduplicated") is not None:
+        runtime["deduplicated"] = tool_outcome.get("deduplicated")
+    for key in (
+        "operation_fingerprint",
+        "operation_fingerprint_redacted_args",
+        "operation_id",
+        "execution_version",
+        "superseded_by",
+        "side_effect_serialized",
+    ):
+        if tool_outcome.get(key) is not None:
+            runtime[key] = tool_outcome.get(key)
     return runtime
 
 
@@ -258,6 +294,21 @@ def build_task_outcome(
             failed_outcomes=failed_outcomes,
         ),
         "evidence_count": evidence_count,
+        **(
+            {"operation_id": contract["operation_id"]}
+            if contract.get("operation_id") is not None
+            else {}
+        ),
+        **(
+            {"execution_version": contract["execution_version"]}
+            if contract.get("execution_version") is not None
+            else {}
+        ),
+        **(
+            {"superseded_execution_versions": list(contract["superseded_execution_versions"])}
+            if isinstance(contract.get("superseded_execution_versions"), list)
+            else {}
+        ),
         "tool_outcome_ids": [
             str(item.get("outcome_id") or item.get("tool_call_id") or "")
             for item in current_tool_outcomes

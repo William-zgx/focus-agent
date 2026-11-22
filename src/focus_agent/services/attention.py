@@ -15,6 +15,8 @@ from focus_agent.core.attention import (
     AttentionPolicy,
     AttentionReason,
     AttentionSnapshot,
+    CompletedOperation,
+    ResumeExecution,
     ResumePacket,
 )
 from focus_agent.storage.namespaces import attention_cursor_namespace
@@ -26,6 +28,7 @@ _MAX_HIGHLIGHTS = 12
 _MAX_OPEN_ITEMS = 32
 _MAX_DECISIONS = 32
 _MAX_EVIDENCE = 64
+_MAX_COMPLETED_OPERATIONS = 32
 _FAILURE_STATUSES = {"blocked", "error", "errored", "failed", "failure", "timed_out", "timeout"}
 _DEGRADED_STATUSES = {"degraded", "degraded_answer", "partial"}
 _SUCCESS_STATUSES = {"complete", "completed", "done", "ok", "recovered", "succeeded", "success"}
@@ -399,6 +402,87 @@ def _record_text(record: Any, fallback: str) -> str:
     )
 
 
+def _flag(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _completed_operations(state: Any) -> tuple[list[CompletedOperation], int]:
+    completed: list[CompletedOperation] = []
+    seen: set[tuple[str, str]] = set()
+    for outcome in reversed(_outcomes(state)):
+        status = _status(outcome)
+        if status not in _SUCCESS_STATUSES:
+            continue
+        operation_id = _operation_metadata_text(_get(outcome, "operation_id"))
+        execution_version = _operation_metadata_text(_get(outcome, "execution_version"))
+        if not _flag(_get(outcome, "side_effect_serialized")) and not (
+            operation_id or execution_version
+        ):
+            continue
+        fingerprint = _operation_fingerprint(outcome)
+        logical_key = (
+            operation_id or "",
+            execution_version or fingerprint or _outcome_id(outcome),
+        )
+        if logical_key in seen:
+            continue
+        seen.add(logical_key)
+        if len(completed) >= _MAX_COMPLETED_OPERATIONS:
+            continue
+        completed.append(
+            CompletedOperation(
+                outcome_id=_outcome_id(outcome),
+                tool_call_id=_identifier(outcome, "tool_call_id"),
+                tool_name=_text(_get(outcome, "tool_name"), 120) or "unknown_tool",
+                status=status,
+                turn_id=_text(_get(outcome, "turn_id"), 128),
+                operation_fingerprint=fingerprint,
+                operation_fingerprint_redacted_args=_flag(
+                    _get(outcome, "operation_fingerprint_redacted_args")
+                ),
+                operation_id=operation_id,
+                execution_version=execution_version,
+                superseded_by=_operation_metadata_text(_get(outcome, "superseded_by")),
+                cache_hit=_flag(_get(outcome, "cache_hit")),
+                deduplicated=_flag(_get(outcome, "deduplicated")),
+            )
+        )
+    return completed, len(seen)
+
+
+def _operation_fingerprint(outcome: Any) -> str | None:
+    value = _get(outcome, "operation_fingerprint")
+    if not isinstance(value, str) or len(value) != 64:
+        return None
+    return value if all(character in "0123456789abcdef" for character in value) else None
+
+
+def _operation_metadata_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if value and len(value) <= 128 else None
+
+
+def _resume_execution(state: Any) -> ResumeExecution | None:
+    task = _state_value(state, "task_outcome", {})
+    version = _operation_metadata_text(_get(task, "execution_version"))
+    if version is None:
+        return None
+    superseded = []
+    for value in _records(_get(task, "superseded_execution_versions", [])):
+        normalized = _operation_metadata_text(value)
+        if normalized:
+            superseded.append(normalized)
+    return ResumeExecution(
+        version=version,
+        operation_id=_operation_metadata_text(_get(task, "operation_id")),
+        superseded_versions=superseded[:32],
+    )
+
+
 def _resume_and_policy(thread_id: str, state: Any) -> tuple[ResumePacket, AttentionPolicy]:
     decisions: list[AttentionItem] = []
     open_items: list[AttentionItem] = []
@@ -578,12 +662,16 @@ def _resume_and_policy(thread_id: str, state: Any) -> tuple[ResumePacket, Attent
         for code, source_ids in [*ask_reasons.items(), *notify_reasons.items()]
     ]
     level = "ask" if ask_reasons else "notify" if notify_reasons else "quiet"
+    completed_operations, completed_operations_total = _completed_operations(state)
     resume = ResumePacket(
         goal=_goal(state),
         decisions=decisions[:_MAX_DECISIONS],
         open_items=open_items[:_MAX_OPEN_ITEMS],
         next_action=(ask_items or open_items)[0] if open_items else None,
         evidence=evidence[:_MAX_EVIDENCE],
+        completed_operations=completed_operations,
+        completed_operations_total=completed_operations_total,
+        execution=_resume_execution(state),
     )
     return resume, AttentionPolicy(level=level, reasons=reasons[:32])
 
