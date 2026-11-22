@@ -99,19 +99,16 @@ def test_model_prompt_contains_the_intended_arm_history_and_summary(eval_runtime
             assert "Apply update_address exactly once at v1." not in prompt
 
 
-def test_projection_characterizes_resume_completed_operation_and_version_gaps():
+def test_resume_completed_operation_and_execution_version_contracts():
     completed, decision, version = synthetic_handoff_cases()
     recent = project_handoff_arm(completed, "recent").eval_case.input["initial_state"]
     full = project_handoff_arm(completed, "full_history").eval_case.input["initial_state"]
     resume = project_handoff_arm(completed, "resume_packet").eval_case.input["initial_state"]
     assert "completed-1" not in {message.id for message in recent["messages"]}
     assert "completed-1" in {message.id for message in full["messages"]}
-    assert "update_address" not in resume["rolling_summary"]
-    assert set(project_handoff_arm(completed, "resume_packet").missing_state_markers) == {
-        "update_address",
-        "v1",
-        "succeeded",
-    }
+    assert "update_address" in resume["rolling_summary"]
+    assert "succeeded" in resume["rolling_summary"]
+    assert not project_handoff_arm(completed, "resume_packet").missing_state_markers
 
     decision_resume = project_handoff_arm(decision, "resume_packet").eval_case.input[
         "initial_state"
@@ -120,8 +117,9 @@ def test_projection_characterizes_resume_completed_operation_and_version_gaps():
     assert not project_handoff_arm(decision, "resume_packet").missing_state_markers
 
     version_resume = project_handoff_arm(version, "resume_packet").eval_case.input["initial_state"]
-    assert "publish_report@v2" not in version_resume["rolling_summary"]
-    assert "v2" in project_handoff_arm(version, "resume_packet").missing_state_markers
+    assert '"version": "v2"' in version_resume["rolling_summary"]
+    assert '"superseded_versions": ["v1"]' in version_resume["rolling_summary"]
+    assert not project_handoff_arm(version, "resume_packet").missing_state_markers
 
 
 def test_oversized_full_history_fails_loudly_instead_of_becoming_recent():

@@ -104,16 +104,33 @@ def copy_result_for_tool_call(
     )
 
 
-def annotate_tool_result_runtime(result: ToolExecutionResult, runtime_info: dict[str, Any]) -> None:
+def annotate_tool_result_runtime(
+    result: ToolExecutionResult,
+    runtime_info: dict[str, Any],
+    *,
+    harness_operation_metadata: dict[str, str] | None = None,
+) -> None:
     clean_runtime_info = {key: value for key, value in runtime_info.items() if value is not None}
-    if not clean_runtime_info:
-        return
     artifact = getattr(result.message, "artifact", None)
     if not isinstance(artifact, dict):
         artifact = {}
     existing_runtime = artifact.get("runtime")
     merged_runtime = dict(existing_runtime or {}) if isinstance(existing_runtime, dict) else {}
+    for restricted_key in (
+        "operation_id",
+        "execution_version",
+        "superseded_by",
+        "operation_fingerprint",
+        "operation_fingerprint_redacted_args",
+    ):
+        merged_runtime.pop(restricted_key, None)
     for key, value in clean_runtime_info.items():
-        merged_runtime.setdefault(key, value)
+        if key in {"operation_fingerprint", "operation_fingerprint_redacted_args"}:
+            merged_runtime[key] = value
+        elif key not in {"operation_id", "execution_version", "superseded_by"}:
+            merged_runtime.setdefault(key, value)
+    for key, value in (harness_operation_metadata or {}).items():
+        if key in {"operation_id", "execution_version", "superseded_by"}:
+            merged_runtime[key] = value
     artifact["runtime"] = merged_runtime
     result.message.artifact = artifact

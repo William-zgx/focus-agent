@@ -10,8 +10,10 @@ from typing import Any, Literal
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langchain.tools import tool
 
-from focus_agent.capabilities.tool_registry import ToolRegistry
+from focus_agent.capabilities.tool_execution_types import operation_fingerprint
+from focus_agent.capabilities.tool_registry import ToolRegistry, ToolRuntimeMeta
 from focus_agent.core.context_compaction import select_recent_messages
+from focus_agent.core.runtime_outcome import build_tool_outcomes_from_messages
 from focus_agent.eval.runner.harness import EvalRuntime, run_case
 from focus_agent.eval.schema import EvalCase, EvalResult, JudgeVerdict
 from focus_agent.model_registry import create_chat_model
@@ -321,6 +323,19 @@ def synthetic_handoff_cases() -> list[HandoffContinuityCase]:
             id="completed-3",
             tool_call_id="completed-call",
             name="record_operation",
+            artifact={
+                "runtime": {
+                    "operation_id": "update_address",
+                    "execution_version": "v1",
+                    "operation_fingerprint": operation_fingerprint(
+                        "record_operation",
+                        {"operation_id": "update_address", "execution_version": "v1"},
+                        ToolRuntimeMeta(),
+                    ),
+                    "operation_fingerprint_redacted_args": True,
+                    "side_effect_serialized": True,
+                }
+            },
         ),
         AIMessage(content="update_address completed at v1.", id="completed-4"),
         *_filler_messages("completed"),
@@ -329,14 +344,7 @@ def synthetic_handoff_cases() -> list[HandoffContinuityCase]:
         "completed-update",
         completed_messages,
         goal="Apply the requested address update once.",
-        tool_outcomes=[
-            {
-                "outcome_id": "completed-call:1",
-                "tool_call_id": "completed-call",
-                "tool_name": "record_operation",
-                "status": "succeeded",
-            }
-        ],
+        tool_outcomes=build_tool_outcomes_from_messages(completed_messages[:4]),
     )
     decision_messages = [
         HumanMessage(content="Initial decision: deploy_blue at v1.", id="decision-1"),
@@ -373,6 +381,9 @@ def synthetic_handoff_cases() -> list[HandoffContinuityCase]:
         "superseded-version",
         version_messages,
         goal="Publish only with the currently authorized execution version.",
+        execution_version="v2",
+        superseded_execution_versions=["v1"],
+        operation_id="publish_report",
     )
     return [
         HandoffContinuityCase(
@@ -440,7 +451,17 @@ def _canonical_state(
     goal: str,
     tool_outcomes: list[dict[str, Any]] | None = None,
     merge_queue: list[dict[str, Any]] | None = None,
+    execution_version: str | None = None,
+    superseded_execution_versions: list[str] | None = None,
+    operation_id: str | None = None,
 ) -> dict[str, Any]:
+    task_outcome: dict[str, Any] = {"status": "answered"}
+    if operation_id:
+        task_outcome["operation_id"] = operation_id
+    if execution_version:
+        task_outcome["execution_version"] = execution_version
+    if superseded_execution_versions:
+        task_outcome["superseded_execution_versions"] = superseded_execution_versions
     return {
         "thread_id": case_id,
         "messages": messages,
@@ -448,7 +469,7 @@ def _canonical_state(
         "task_brief": goal,
         "tool_outcomes": tool_outcomes or [],
         "merge_queue": merge_queue or [],
-        "task_outcome": {"status": "answered"},
+        "task_outcome": task_outcome,
     }
 
 
@@ -488,6 +509,11 @@ def _recording_operation_tool(journal: HandoffEffectJournal) -> Any:
         journal.record(operation_id, execution_version)
         return json.dumps({"status": "recorded", "operation_id": operation_id})
 
+    record_operation.metadata = {
+        "side_effect": True,
+        "operation_id": journal.case.operations[-1].operation_id,
+        "execution_version": journal.case.current_execution_version,
+    }
     return record_operation
 
 

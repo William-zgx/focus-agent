@@ -4031,6 +4031,48 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** CompletedOperation */
+        CompletedOperation: {
+            /**
+             * Cache Hit
+             * @default false
+             */
+            cache_hit: boolean;
+            /**
+             * Deduplicated
+             * @default false
+             */
+            deduplicated: boolean;
+            /** Execution Version */
+            execution_version?: string | null;
+            /** Operation Fingerprint */
+            operation_fingerprint?: string | null;
+            /**
+             * Operation Fingerprint Redacted Args
+             * @default false
+             */
+            operation_fingerprint_redacted_args: boolean;
+            /** Operation Id */
+            operation_id?: string | null;
+            /** Outcome Id */
+            outcome_id: string;
+            /** Status */
+            status: string;
+            /** Superseded By */
+            superseded_by?: string | null;
+            /**
+             * Tool Call Id
+             * @default
+             */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
+            /**
+             * Turn Id
+             * @default
+             */
+            turn_id: string;
+        };
         /** ContextUsageResponse */
         ContextUsageResponse: {
             /**
@@ -4979,12 +5021,29 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** ResumeExecution */
+        ResumeExecution: {
+            /** Operation Id */
+            operation_id?: string | null;
+            /** Superseded Versions */
+            superseded_versions?: string[];
+            /** Version */
+            version: string;
+        };
         /** ResumePacket */
         ResumePacket: {
+            /** Completed Operations */
+            completed_operations?: components["schemas"]["CompletedOperation"][];
+            /**
+             * Completed Operations Total
+             * @default 0
+             */
+            completed_operations_total: number;
             /** Decisions */
             decisions?: components["schemas"]["AttentionItem"][];
             /** Evidence */
             evidence?: components["schemas"]["AttentionEvidence"][];
+            execution?: components["schemas"]["ResumeExecution"] | null;
             /**
              * Goal
              * @default

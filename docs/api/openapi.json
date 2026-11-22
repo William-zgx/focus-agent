@@ -5487,6 +5487,98 @@
         "title": "CaptureTaskRequest",
         "type": "object"
       },
+      "CompletedOperation": {
+        "properties": {
+          "cache_hit": {
+            "default": false,
+            "title": "Cache Hit",
+            "type": "boolean"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
+          "execution_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Version"
+          },
+          "operation_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Fingerprint"
+          },
+          "operation_fingerprint_redacted_args": {
+            "default": false,
+            "title": "Operation Fingerprint Redacted Args",
+            "type": "boolean"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "outcome_id": {
+            "title": "Outcome Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "turn_id": {
+            "default": "",
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome_id",
+          "tool_name",
+          "status"
+        ],
+        "title": "CompletedOperation",
+        "type": "object"
+      },
       "ContextUsageResponse": {
         "properties": {
           "configured_token_limit": {
@@ -8135,8 +8227,54 @@
         "title": "PrincipalResponse",
         "type": "object"
       },
+      "ResumeExecution": {
+        "properties": {
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "superseded_versions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Superseded Versions",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ResumeExecution",
+        "type": "object"
+      },
       "ResumePacket": {
         "properties": {
+          "completed_operations": {
+            "items": {
+              "$ref": "#/components/schemas/CompletedOperation"
+            },
+            "maxItems": 32,
+            "title": "Completed Operations",
+            "type": "array"
+          },
+          "completed_operations_total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Completed Operations Total",
+            "type": "integer"
+          },
           "decisions": {
             "items": {
               "$ref": "#/components/schemas/AttentionItem"
@@ -8152,6 +8290,16 @@
             "maxItems": 64,
             "title": "Evidence",
             "type": "array"
+          },
+          "execution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeExecution"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "goal": {
             "default": "",

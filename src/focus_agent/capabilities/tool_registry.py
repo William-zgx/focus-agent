@@ -110,6 +110,9 @@ class ToolRuntimeMeta:
     output_summary_contract: str | None = None
     sensitive_args: tuple[str, ...] = ()
     redaction_policy: str = "mask"
+    operation_id: str | None = None
+    execution_version: str | None = None
+    superseded_by: str | None = None
     provider_id: str | None = None
     max_concurrent_calls: int = 4
     max_memory_mb: int | None = None
@@ -196,6 +199,21 @@ class ToolRuntimeMeta:
                 str(arg) for arg in (normalized.get("sensitive_args") or ()) if str(arg)
             ),
             redaction_policy=str(normalized.get("redaction_policy") or "mask"),
+            operation_id=(
+                str(normalized["operation_id"])
+                if normalized.get("operation_id") is not None
+                else None
+            ),
+            execution_version=(
+                str(normalized["execution_version"])
+                if normalized.get("execution_version") is not None
+                else None
+            ),
+            superseded_by=(
+                str(normalized["superseded_by"])
+                if normalized.get("superseded_by") is not None
+                else None
+            ),
             provider_id=(str(normalized["provider_id"]) if normalized.get("provider_id") else None),
             max_concurrent_calls=max(1, int(normalized.get("max_concurrent_calls") or 4)),
             max_memory_mb=(
