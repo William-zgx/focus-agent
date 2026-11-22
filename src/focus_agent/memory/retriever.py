@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 import logging
 
+from pydantic import ValidationError
+
 from ..core.request_context import RequestContext
 from ..core.types import FindingItem, Plan, PromptMode
 from ..repositories.memory_repository import MemoryListQuery
@@ -226,6 +228,8 @@ class MemoryRetriever:
                 "kind": value.get("kind", value.get("type", "turn_summary")),
                 "scope": value.get("scope", "root_thread"),
                 "visibility": value.get("visibility", "private"),
+                "status": value.get("status", "active"),
+                "deleted_at": value.get("deleted_at"),
                 "namespace": tuple(value.get("namespace") or getattr(raw, "namespace", namespace)),
                 "content": value.get("content") or value.get("summary") or str(value),
                 "summary": value.get("summary") or value.get("content") or "",
@@ -247,7 +251,12 @@ class MemoryRetriever:
                 payload["created_at"] = created_at
             if updated_at is not None:
                 payload["updated_at"] = updated_at
-            record = MemoryRecord.model_validate(payload)
+            try:
+                record = MemoryRecord.model_validate(payload)
+            except ValidationError:
+                continue
+            if record.status.value != "active" or record.deleted_at is not None:
+                continue
             matched_terms = _matched_terms(query, record)
             retrieval_score = float(getattr(raw, "score", 0.0) or 0.0)
             # Some unindexed stores return recent records even for unrelated queries.

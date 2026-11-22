@@ -124,6 +124,84 @@ def test_scoped_render_drops_unmerged_branch_records_on_main():
     assert "branch-only claim" in branch_block
 
 
+def test_scoped_render_rejects_foreign_owner_and_root_records():
+    own = _turn_summary("current owner decision", branch_id=None).model_dump(mode="json")
+    own["memory_id"] = "own-memory"
+    foreign_user = {**own, "user_id": "user-2", "summary": "foreign user secret"}
+    foreign_user["memory_id"] = "foreign-user-memory"
+    foreign_root = {**own, "root_thread_id": "root-2", "summary": "foreign root secret"}
+    foreign_root["memory_id"] = "foreign-root-memory"
+    state = {
+        "retrieved_memories": [own, foreign_user, foreign_root],
+        "branch_meta": {},
+    }
+
+    block = render_scoped_context_memories(
+        state,
+        prompt_mode=PromptMode.EXPLORE,
+        represented_lines=[],
+        fallback="",
+        user_id="user-1",
+        root_thread_id=ROOT,
+    )
+
+    assert "current owner decision" in block
+    assert "foreign user secret" not in block
+    assert "foreign root secret" not in block
+
+
+def test_scoped_render_keeps_legacy_records_with_missing_owner_fields():
+    legacy = _turn_summary("legacy namespace-scoped memory", branch_id=None).model_dump(mode="json")
+    legacy["memory_id"] = "legacy-memory"
+    legacy["user_id"] = None
+    legacy["root_thread_id"] = None
+
+    block = render_scoped_context_memories(
+        {"retrieved_memories": [legacy]},
+        prompt_mode=PromptMode.EXPLORE,
+        represented_lines=[],
+        fallback="",
+        user_id="user-1",
+        root_thread_id=ROOT,
+    )
+
+    assert "legacy namespace-scoped memory" in block
+
+
+def test_scoped_render_rejects_foreign_namespace_and_deleted_records():
+    foreign_namespace = _turn_summary("foreign namespace secret", branch_id=None).model_dump(
+        mode="json"
+    )
+    foreign_namespace.update(
+        {
+            "memory_id": "foreign-namespace",
+            "namespace": ["conversation", "root-2", "main"],
+            "user_id": None,
+            "root_thread_id": None,
+        }
+    )
+    deleted = _turn_summary("deleted secret", branch_id=None).model_dump(mode="json")
+    deleted.update(
+        {
+            "memory_id": "deleted-memory",
+            "status": "active",
+            "deleted_at": "2026-11-22T00:00:00+00:00",
+        }
+    )
+
+    block = render_scoped_context_memories(
+        {"retrieved_memories": [foreign_namespace, deleted]},
+        prompt_mode=PromptMode.EXPLORE,
+        represented_lines=[],
+        fallback="",
+        user_id="user-1",
+        root_thread_id=ROOT,
+    )
+
+    assert "foreign namespace secret" not in block
+    assert "deleted secret" not in block
+
+
 def test_hidden_branch_memories_do_not_take_main_thread_recall_slots(tmp_path):
     store = PersistentInMemoryStore(tmp_path / "store.pkl")
     writer = MemoryWriter(store=store)

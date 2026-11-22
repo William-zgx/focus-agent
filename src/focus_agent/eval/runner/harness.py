@@ -390,7 +390,16 @@ def _last_ai_text(messages: list[Any]) -> str:
         if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
             content = msg.content
             if isinstance(content, list):
-                return " ".join(str(c) for c in content)
+                visible_parts = []
+                for block in content:
+                    if isinstance(block, str):
+                        visible_parts.append(block)
+                    elif isinstance(block, Mapping) and block.get("type") in {
+                        "text",
+                        "output_text",
+                    }:
+                        visible_parts.append(str(block.get("text") or block.get("content") or ""))
+                return " ".join(part for part in visible_parts if part).strip()
             return str(content)
     return ""
 

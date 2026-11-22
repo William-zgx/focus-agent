@@ -419,6 +419,56 @@ def test_memory_service_replaces_project_fact_with_textual_overlap():
     assert repo.records[merged.memory_id].content == second.content
 
 
+def test_memory_service_keeps_explicit_semantic_key_across_three_replacements():
+    repo = _FakeMemoryRepository()
+    service = MemoryService(repository=repo)
+    request = MemoryWriteRequest(
+        kind=MemoryKind.PROJECT_FACT,
+        scope=MemoryScope.PROJECT,
+        visibility=MemoryVisibility.SHARED,
+        namespace=project_memory_namespace("project-1"),
+        content="Decision: deploy the blue build.",
+        summary="Decision: deploy the blue build.",
+        user_id="user-1",
+        root_thread_id="root-1",
+        importance=0.5,
+        semantic_key="project-release-decision",
+    )
+
+    first = service.upsert_request(request, actor="unit-test", reason="first")
+    second = service.upsert_request(
+        request.model_copy(
+            update={
+                "content": "Decision: deploy the green build.",
+                "summary": "Decision: deploy the green build.",
+                "importance": 0.6,
+            }
+        ),
+        actor="unit-test",
+        reason="second",
+    )
+    third = service.upsert_request(
+        request.model_copy(
+            update={
+                "content": "Decision: do not deploy; roll back.",
+                "summary": "Decision: do not deploy; roll back.",
+                "importance": 0.7,
+            }
+        ),
+        actor="unit-test",
+        reason="third",
+    )
+
+    assert first.status == MemoryWriteDecisionStatus.ACCEPTED
+    assert second.status == MemoryWriteDecisionStatus.MERGED
+    assert third.status == MemoryWriteDecisionStatus.MERGED
+    assert third.memory_id == first.memory_id
+    assert len(repo.records) == 1
+    stored = repo.records[third.memory_id]
+    assert stored.content == "Decision: do not deploy; roll back."
+    assert stored.semantic_key == "project-release-decision"
+
+
 def test_memory_service_resets_ready_embedding_status_when_merged_text_changes(monkeypatch):
     monkeypatch.setenv("FOCUS_AGENT_MEMORY_EMBED_ASYNC", "true")
     repo = _FakeMemoryRepository()

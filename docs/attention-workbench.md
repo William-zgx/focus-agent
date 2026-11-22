@@ -136,7 +136,10 @@ models, tools, and initial state. Report separately:
 - rollback/correction time and verification accuracy.
 
 Browser dwell time is only a proxy and must be calibrated with a small human
-study. A shorter review with worse correctness is a failure, not a win.
+study. A shorter review with worse correctness is a failure, not a win. The
+[proposed recovery-pilot protocol](plans/2026-11-22-attention-recovery-pilot.md)
+defines a future review gate only; it does not authorize recruitment, participant
+contact, telemetry collection, or execution.
 
 ### Offline paired projection evaluation
 

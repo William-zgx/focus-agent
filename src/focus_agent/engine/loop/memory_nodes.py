@@ -109,6 +109,8 @@ def make_assemble_context_node(
                 "_available_skills_block": available_skills_block,
             },
             prompt_mode,
+            memory_user_id=runtime.context.user_id,
+            memory_root_thread_id=runtime.context.root_thread_id,
         )
         task_brief = state.get("task_brief")
         if not task_brief and latest_user:

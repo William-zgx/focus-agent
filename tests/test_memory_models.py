@@ -258,6 +258,7 @@ def test_merge_duplicate_records_preserves_history_and_merges_strength():
         promoted_to_main=True,
     )
 
+    existing.semantic_key = memory_semantic_key(existing)
     merged = merge_duplicate_records(existing, incoming)
 
     assert merged.memory_id == "mem-1"
@@ -268,7 +269,8 @@ def test_merge_duplicate_records_preserves_history_and_merges_strength():
     assert merged.importance == 0.8
     assert merged.promoted_to_main is True
     assert merged.fingerprint
-    assert merged.semantic_key
+    assert merged.semantic_key == memory_semantic_key(merged)
+    assert merged.semantic_key != existing.semantic_key
 
 
 def test_memory_scoring_reflects_mode_and_write_context():
