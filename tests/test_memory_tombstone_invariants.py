@@ -97,6 +97,7 @@ def test_postgres_embedding_status_update_is_conditional_and_field_scoped(
     assert " SET status =" not in update_clause
     assert ", status =" not in update_clause
     assert "deleted_at =" not in update_clause
+    assert "updated_at = %(updated_at)s" not in update_clause
     assert "status <> 'forgotten'" in where_clause
     assert "deleted_at IS NULL" in where_clause
     assert "focus_memory_tombstones" in where_clause
@@ -106,7 +107,6 @@ def test_postgres_embedding_status_update_is_conditional_and_field_scoped(
         "embedding_status": "ready",
         "embedding_model_id": "embedding-model",
         "embedding_updated_at": embedding_payload["embedding_updated_at"],
-        "updated_at": embedding_payload["updated_at"],
     }
 
 
@@ -157,6 +157,7 @@ def test_embedding_worker_does_not_embed_already_forgotten_memory() -> None:
     assert embedding_service.calls == []
     assert repository.full_upserts == []
     assert repository.conditional_updates == []
+    assert repository.deleted_embedding_ids == [forgotten.memory_id]
 
 
 def test_embedding_worker_preserves_active_record_during_conditional_status_update() -> None:
@@ -235,8 +236,15 @@ class _ConcurrentMemoryRepository:
         status: str,
         model_id: str | None,
         updated_at: datetime,
+        expected_fingerprint: str | None = None,
     ) -> bool:
         self.conditional_updates.append((memory_id, status, model_id))
+        if (
+            expected_fingerprint
+            and self.record.fingerprint
+            and self.record.fingerprint != expected_fingerprint
+        ):
+            return False
         if (
             self.record.memory_id != memory_id
             or self.record.status == MemoryStatus.FORGOTTEN

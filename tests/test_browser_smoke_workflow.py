@@ -86,6 +86,15 @@ def test_browser_smoke_workflow_installs_chrome_and_runs_real_interactions() -> 
     assert 'if [ "$ui_status" -ne 0 ] || [ "$observability_status" -ne 0 ]' in smoke_step["run"]
 
 
+def test_browser_smoke_runs_real_postgres_memory_mutations() -> None:
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["browser-smoke"]["steps"]
+
+    step = next(step for step in steps if step["name"] == "Run real Postgres memory mutation tests")
+    assert step["env"]["FOCUS_AGENT_REQUIRE_REAL_POSTGRES"] == "1"
+    assert "tests/test_postgres_memory_mutation_real.py" in step["run"]
+
+
 def test_browser_smoke_workflow_is_secret_free_and_fail_closed_with_diagnostics() -> None:
     workflow = _load_workflow()
     job = workflow["jobs"]["browser-smoke"]
@@ -102,7 +111,7 @@ def test_browser_smoke_workflow_is_secret_free_and_fail_closed_with_diagnostics(
     assert "secrets." not in job_source
     assert job["env"]["OPENAI_BASE_URL"] == "http://127.0.0.1:18080/v1"
     assert job["env"]["DATABASE_URI"].startswith("postgresql://focus_agent:")
-    assert job["services"]["postgres"]["image"] == "postgres:16-bookworm"
+    assert job["services"]["postgres"]["image"] == "pgvector/pgvector:0.8.0-pg16-bookworm"
     assert "/v1/chat/completions" in fixture_step["run"]
     assert '"stream":' not in fixture_step["run"]
     assert 'request.get("stream")' in fixture_step["run"]

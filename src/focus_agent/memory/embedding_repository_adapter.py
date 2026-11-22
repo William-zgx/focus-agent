@@ -15,6 +15,7 @@ class MemoryEmbeddingPayload:
     content_hash: str
     embedding: list[float]
     metadata: dict[str, object]
+    fingerprint: str | None = None
 
 
 def _existing_memory_embedding_content_hash(
@@ -73,34 +74,62 @@ def _existing_memory_embedding_content_hash(
 
 def _upsert_memory_embedding(repository: object, payload: MemoryEmbeddingPayload) -> bool:
     if has_repo_method(repository, "upsert_embedding"):
-        repository.upsert_embedding(
-            memory_id=payload.memory_id,
-            namespace=payload.namespace,
-            embedding=payload.embedding,
-            provider_id=payload.provider_id,
-            model_id=payload.model_id,
-            dimensions=payload.dimensions,
-            content_hash=payload.content_hash,
-            metadata={
-                **payload.metadata,
-            },
-        )
+        try:
+            repository.upsert_embedding(
+                memory_id=payload.memory_id,
+                namespace=payload.namespace,
+                embedding=payload.embedding,
+                provider_id=payload.provider_id,
+                model_id=payload.model_id,
+                dimensions=payload.dimensions,
+                content_hash=payload.content_hash,
+                metadata={
+                    **payload.metadata,
+                },
+                expected_fingerprint=payload.fingerprint,
+            )
+        except TypeError:
+            repository.upsert_embedding(
+                memory_id=payload.memory_id,
+                namespace=payload.namespace,
+                embedding=payload.embedding,
+                provider_id=payload.provider_id,
+                model_id=payload.model_id,
+                dimensions=payload.dimensions,
+                content_hash=payload.content_hash,
+                metadata={
+                    **payload.metadata,
+                },
+            )
         return True
 
     if has_repo_method(repository, "upsert_memory_embedding"):
         try:
             repository.upsert_memory_embedding(payload)
         except TypeError:
-            repository.upsert_memory_embedding(
-                memory_id=payload.memory_id,
-                namespace=payload.namespace,
-                provider_id=payload.provider_id,
-                model_id=payload.model_id,
-                dimensions=payload.dimensions,
-                content_hash=payload.content_hash,
-                embedding=payload.embedding,
-                metadata=payload.metadata,
-            )
+            try:
+                repository.upsert_memory_embedding(
+                    memory_id=payload.memory_id,
+                    namespace=payload.namespace,
+                    provider_id=payload.provider_id,
+                    model_id=payload.model_id,
+                    dimensions=payload.dimensions,
+                    content_hash=payload.content_hash,
+                    embedding=payload.embedding,
+                    metadata=payload.metadata,
+                    expected_fingerprint=payload.fingerprint,
+                )
+            except TypeError:
+                repository.upsert_memory_embedding(
+                    memory_id=payload.memory_id,
+                    namespace=payload.namespace,
+                    provider_id=payload.provider_id,
+                    model_id=payload.model_id,
+                    dimensions=payload.dimensions,
+                    content_hash=payload.content_hash,
+                    embedding=payload.embedding,
+                    metadata=payload.metadata,
+                )
         return True
 
     return False

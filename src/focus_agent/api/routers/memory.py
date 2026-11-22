@@ -308,7 +308,10 @@ def forget_memory(
         runtime=runtime,
     )
     request = payload or ForgetMemoryRecordRequest()
-    decision = MemoryService(repository=repository).forget(
+    decision = MemoryService(
+        repository=repository,
+        retrieval_index=getattr(runtime, "retrieval_index", None),
+    ).forget(
         memory_id=memory_id,
         namespace=_parse_namespace(request.namespace),
         actor=auth.principal.user_id,

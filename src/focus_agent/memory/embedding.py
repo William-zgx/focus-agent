@@ -4,7 +4,10 @@ import hashlib
 from typing import Any
 
 from ..core.repo_call import has_repo_method
+from ..repositories.memory_repository import MemoryRecordProtectedError, MemoryRecordStaleError
 from ..retrieval import RetrievalDocument, RetrievalIndex
+from .dedupe import memory_fingerprint
+from .embedding_cleanup import delete_embedding_artifacts
 from .embedding_factory import (
     _create_auto_memory_embedding_provider,
     _create_ollama_embedding_provider,
@@ -114,7 +117,7 @@ class MemoryEmbeddingService:
             provider_id=self.provider.provider_id,
             model_id=self.provider.model_id,
         )
-        if existing_hash == content_hash:
+        if existing_hash == content_hash and self.retrieval_index is None:
             return {
                 "memory_id": record.memory_id,
                 "status": "skipped",
@@ -130,9 +133,6 @@ class MemoryEmbeddingService:
             }
 
         vector = self.embed_text(text)
-        retrieval_written = self._upsert_retrieval_index_best_effort(
-            record, text, vector, content_hash
-        )
         payload = MemoryEmbeddingPayload(
             memory_id=record.memory_id,
             namespace=record.namespace,
@@ -145,8 +145,32 @@ class MemoryEmbeddingService:
                 "text_hash": content_hash,
                 "source": "memory_embedding_service",
             },
+            fingerprint=record.fingerprint or memory_fingerprint(record),
         )
-        embedding_written = _upsert_memory_embedding(self.repository, payload)
+        try:
+            embedding_written = _upsert_memory_embedding(self.repository, payload)
+        except MemoryRecordStaleError:
+            return {
+                "memory_id": record.memory_id,
+                "status": "stale",
+                "content_hash": content_hash,
+                "reason": "memory_revision_changed",
+            }
+        except MemoryRecordProtectedError:
+            delete_embedding_artifacts(
+                self.repository,
+                record.memory_id,
+                retrieval_index=self.retrieval_index,
+            )
+            return {
+                "memory_id": record.memory_id,
+                "status": "rejected",
+                "content_hash": content_hash,
+                "reason": "memory_protected",
+            }
+        retrieval_written = self._upsert_retrieval_index_best_effort(
+            record, text, vector, content_hash
+        )
         if not embedding_written:
             return {
                 "memory_id": record.memory_id,
@@ -226,6 +250,7 @@ class MemoryEmbeddingService:
                         "provider_id": self.provider.provider_id,
                         "model_id": self.provider.model_id,
                         "content_hash": content_hash,
+                        "fingerprint": record.fingerprint or memory_fingerprint(record),
                     },
                 )
             )

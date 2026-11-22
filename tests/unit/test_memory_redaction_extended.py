@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from focus_agent.memory.embedding_worker import MemoryEmbeddingWorker
@@ -129,6 +131,34 @@ class _FakeMemoryRepository:
 
     def get_record(self, memory_id: str) -> MemoryRecord | None:
         return self.records.get(memory_id)
+
+    def update_record_embedding_status(
+        self,
+        *,
+        memory_id: str,
+        status: str,
+        model_id: str | None,
+        updated_at: datetime,
+        expected_fingerprint: str | None = None,
+    ) -> bool:
+        record = self.records.get(memory_id)
+        if record is None or record.status == MemoryStatus.FORGOTTEN or record.deleted_at:
+            return False
+        if (
+            expected_fingerprint
+            and record.fingerprint
+            and record.fingerprint != expected_fingerprint
+        ):
+            return False
+        self.records[memory_id] = record.model_copy(
+            update={
+                "embedding_status": status,
+                "embedding_model_id": model_id,
+                "embedding_updated_at": updated_at,
+                "updated_at": updated_at,
+            }
+        )
+        return True
 
     def find_existing(
         self,

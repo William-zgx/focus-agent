@@ -25,7 +25,7 @@ from focus_agent.memory.models import (
     MemoryWriteRequest,
 )
 from focus_agent.memory.service import MemoryService
-from focus_agent.repositories.memory_repository import MemoryListQuery
+from focus_agent.repositories.memory_repository import MemoryListQuery, MemoryMutationResult
 from focus_agent.storage.namespaces import project_memory_namespace, user_profile_namespace
 
 
@@ -43,6 +43,57 @@ class _FakeMemoryRepository:
         self.records[record.memory_id] = record
         return record.memory_id
 
+    def update_record_if_current(
+        self,
+        record: MemoryRecord,
+        *,
+        expected_updated_at: datetime,
+    ) -> MemoryMutationResult:
+        current = self.records.get(record.memory_id)
+        if current is None:
+            return MemoryMutationResult.MISSING
+        if (
+            current.status == MemoryStatus.FORGOTTEN
+            or current.deleted_at is not None
+            or record.memory_id in self.tombstones
+        ):
+            return MemoryMutationResult.PROTECTED
+        if current.updated_at != expected_updated_at:
+            return MemoryMutationResult.STALE
+        self.records[record.memory_id] = record
+        return MemoryMutationResult.APPLIED
+
+    def update_record_embedding_status(
+        self,
+        *,
+        memory_id: str,
+        status: str,
+        model_id: str | None,
+        updated_at: datetime,
+        expected_fingerprint: str | None = None,
+    ) -> bool:
+        current = self.records.get(memory_id)
+        if current is None or current.status == MemoryStatus.FORGOTTEN or current.deleted_at:
+            return False
+        if (
+            expected_fingerprint
+            and current.fingerprint
+            and current.fingerprint != expected_fingerprint
+        ):
+            return False
+        self.records[memory_id] = current.model_copy(
+            update={
+                "embedding_status": status,
+                "embedding_model_id": model_id,
+                "embedding_updated_at": updated_at,
+                "updated_at": updated_at,
+            }
+        )
+        return True
+
+    def delete_embedding(self, memory_id: str) -> bool:
+        return True
+
     def find_existing(
         self,
         *,
@@ -56,6 +107,8 @@ class _FakeMemoryRepository:
             if record.namespace != namespace:
                 continue
             if record.status == MemoryStatus.FORGOTTEN or record.deleted_at is not None:
+                continue
+            if record.memory_id in self.tombstones:
                 continue
             if kind and record.kind.value != kind:
                 continue

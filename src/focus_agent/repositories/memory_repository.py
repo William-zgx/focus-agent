@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol
 
 from focus_agent.memory.models import (
@@ -83,6 +84,21 @@ class MemoryEmbeddingSearchHit:
     status: str
     content_hash: str | None
     metadata: dict[str, object]
+
+
+class MemoryMutationResult(StrEnum):
+    APPLIED = "applied"
+    STALE = "stale"
+    PROTECTED = "protected"
+    MISSING = "missing"
+
+
+class MemoryRecordProtectedError(RuntimeError):
+    pass
+
+
+class MemoryRecordStaleError(RuntimeError):
+    pass
 
 
 class MemoryRepository(Protocol):
@@ -233,5 +249,8 @@ __all__ = [
     "MemoryEmbeddingRecord",
     "MemoryEmbeddingSearchHit",
     "MemoryListQuery",
+    "MemoryMutationResult",
+    "MemoryRecordProtectedError",
+    "MemoryRecordStaleError",
     "MemoryRepository",
 ]
