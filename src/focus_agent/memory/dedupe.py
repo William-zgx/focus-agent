@@ -89,7 +89,12 @@ def merge_duplicate_records(existing: MemoryRecord, incoming: MemoryWriteRequest
             **embedding_update,
         }
     )
-    merged.semantic_key = memory_semantic_key(merged)
+    if incoming.semantic_key:
+        merged.semantic_key = incoming.semantic_key
+    elif existing.semantic_key and existing.semantic_key != memory_semantic_key(existing):
+        merged.semantic_key = existing.semantic_key
+    else:
+        merged.semantic_key = memory_semantic_key(merged)
     merged.fingerprint = memory_fingerprint(merged)
     return merged
 

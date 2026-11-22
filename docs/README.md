@@ -65,6 +65,7 @@ flowchart LR
 | 全面验收口径 | [validation-runbook.md](validation-runbook.md) |
 | 最新项目质量、真实模型复杂任务与环境缺口 | [2026-10-03-mr-quality.md](validation/2026-10-03-mr-quality.md) |
 | Attention Workbench 实现、真实浏览器与配对投影验证 | [2026-11-15-attention-workbench.md](validation/2026-11-15-attention-workbench.md) |
+| 真人中断恢复试点方案、遥测和隐私边界（未批准、未执行） | [2026-11-22-attention-recovery-pilot.md](plans/2026-11-22-attention-recovery-pilot.md) |
 
 ## Quick Use / 快速使用
 
@@ -73,7 +74,7 @@ flowchart LR
 - [quick-start.md](quick-start.md) / [quick-start.zh-CN.md](quick-start.zh-CN.md)：本地初始化、`make` 托管 repo-local PostgreSQL、直接 API 启动时的 SQLite app-state/checkpoint/store、SQLite/legacy pickle 迁移、Vite 开发模式和本地鉴权。
 - [development.md](development.md) / [development.zh-CN.md](development.zh-CN.md)：日常开发命令、验证矩阵、真实 Chrome smoke、Android CI 和常见工作流。
 - [validation-runbook.md](validation-runbook.md)：跨运行时、沙箱、Skill、SDK、真实 Chrome、Android 模拟器/设备、Observability 和 release-health 的全面验证口径。
-- [agent-evaluation.md](agent-evaluation.md)：Agent / model eval 分层、case taxonomy、judges、reports、CI 策略和并行开发 ownership。
+- [agent-evaluation.md](agent-evaluation.md)：Agent / model eval 分层、case taxonomy、judges、reports、CI 策略和并行开发 ownership；合成 handoff 与 Memory 分层诊断见 [continuity-diagnostics.md](eval/continuity-diagnostics.md)。
 - [android.md](android.md)：Capacitor Android 包、App 内本地 runtime、secure storage、有界可取消 HTTP、cold/hot deep link 单次投递、CI 和模拟器/设备 smoke。
 
 ## Understand The System / 理解系统

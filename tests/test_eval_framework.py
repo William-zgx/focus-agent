@@ -7,12 +7,24 @@ from pathlib import Path
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 from focus_agent.config import Settings
+from focus_agent.eval.runner.harness import _last_ai_text
 from tests.eval.cli import main as eval_cli_main
 from tests.eval.metrics import aggregate_metrics, compare_baselines
 from tests.eval.reporting import load_result_records
 from tests.eval.runner.harness import EvalRuntime, load_dataset, run_case
 from tests.eval.schema import EvalCase, EvalResult, JudgeVerdict, TrajectoryStep
 from tests.eval.trajectory_replay import build_replay_comparison, convert_trajectory_records
+
+
+def test_last_ai_text_excludes_reasoning_blocks():
+    message = AIMessage(
+        content=[
+            {"type": "thinking", "thinking": "private reasoning", "signature": "sig"},
+            {"type": "text", "text": "final visible answer"},
+        ]
+    )
+
+    assert _last_ai_text([message]) == "final visible answer"
 
 
 class _FakeGraph:

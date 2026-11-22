@@ -52,7 +52,9 @@ jobs:
             find tests/eval -maxdepth 1 -type f \( \
               -name 'test_*framework*.py' -o \
               -name 'test_model_matrix*.py' -o \
-              -name 'test_trajectory_failures*.py' \
+              -name 'test_trajectory_failures*.py' -o \
+              -name 'test_handoff_continuity_suite.py' -o \
+              -name 'test_memory_layered_suite.py' \
             \) | sort
           )
           uv run pytest tests/test_eval_framework.py "${discovered_tests[@]}"

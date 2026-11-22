@@ -77,6 +77,10 @@ uv run python -m tests.eval --suite smoke \
   --emit-failures-dataset reports/eval/failed-smoke.jsonl
 ```
 
+For synthetic four-arm handoff and Memory write-retrieval-use diagnostics, see
+[continuity-diagnostics.md](eval/continuity-diagnostics.md). These are non-human
+continuity checks with independent state and side-effect oracles.
+
 ## Reports
 
 JSON and HTML reports include:

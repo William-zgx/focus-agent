@@ -79,7 +79,13 @@ class ContextSlice:
         return "\n\n".join(section_map[key] for key in ordered_keys if section_map.get(key))
 
 
-def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSlice:
+def assemble_context(
+    state: dict[str, Any],
+    mode: PromptMode | str,
+    *,
+    memory_user_id: str | None = None,
+    memory_root_thread_id: str | None = None,
+) -> ContextSlice:
     normalized = normalize_agent_state(state)
     prompt_mode = _coerce_prompt_mode(mode or normalized.get("prompt_mode"))
     budget = ContextBudget.coerce(normalized.get("context_budget"))
@@ -177,6 +183,8 @@ def assemble_context(state: dict[str, Any], mode: PromptMode | str) -> ContextSl
             prompt_mode=prompt_mode,
             represented_lines=[*imported_lines, *local_finding_lines],
             fallback=memory_block,
+            user_id=memory_user_id,
+            root_thread_id=memory_root_thread_id,
         )
 
     system_instructions = "\n\n".join(
