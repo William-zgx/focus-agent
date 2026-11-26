@@ -137,6 +137,17 @@ def _tool_content_text(message: dict) -> str:
     return json.dumps(content, ensure_ascii=False)
 
 
+def _response_supports_line_count(response: str, total_lines: int) -> bool:
+    count = re.escape(str(total_lines))
+    return any(
+        re.search(pattern, response, flags=re.IGNORECASE)
+        for pattern in (
+            rf"(?<![\d.]){count}(?![\d.])\s*[-–—]?\s*(?:lines?|行)",
+            rf"total_lines\s*[=:]\s*{count}(?!\d)(?!\.\d)",
+        )
+    )
+
+
 def assert_read_file_summary_evidence(
     state: dict,
     response: str,
@@ -145,28 +156,35 @@ def assert_read_file_summary_evidence(
     start_line: int,
     end_line: int,
     total_lines: int,
-) -> list[dict]:
-    calls = _matching_tool_calls(
-        state,
-        "read_file",
-        {"path": filename, "start_line": start_line, "end_line": end_line},
-    )
+) -> dict:
+    calls = [
+        call
+        for call in _matching_tool_calls(
+            state,
+            "read_file",
+            {"path": filename, "end_line": end_line},
+        )
+        if call.get("args", {}).get("start_line", 1) == start_line
+    ]
     if not calls:
         raise AssertionError("missing read_file tool call; model text is not file evidence")
     results = _successful_tool_results(state, calls)
     if not results:
         raise AssertionError("read_file returned no successful tool result")
-    for result in results:
-        try:
-            payload = json.loads(_tool_content_text(result))
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and payload.get("total_lines") == total_lines:
-            if not re.search(rf"(?<![\d.]){re.escape(str(total_lines))}(?![\d.])", response):
-                raise AssertionError(
-                    "final response is not supported by the read_file line-count result"
-                )
-            return calls
+    for call in reversed(calls):
+        for result in results:
+            if result.get("tool_call_id") != call.get("id"):
+                continue
+            try:
+                payload = json.loads(_tool_content_text(result))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict) and payload.get("total_lines") == total_lines:
+                if not _response_supports_line_count(response, total_lines):
+                    raise AssertionError(
+                        "final response is not supported by the read_file line-count result"
+                    )
+                return call
     raise AssertionError(f"read_file tool result does not support the {total_lines}-line summary")
 
 
@@ -391,7 +409,7 @@ def run(args: argparse.Namespace) -> int:
                     client, f"return JSON.stringify(await qa.send({json.dumps(prompt)}));"
                 )
                 try:
-                    calls = assert_read_file_summary_evidence(
+                    call = assert_read_file_summary_evidence(
                         first["state"],
                         first["response"],
                         filename=filename,
@@ -402,7 +420,6 @@ def run(args: argparse.Namespace) -> int:
                 except AssertionError as exc:
                     record("read-large-file", first, error=str(exc))
                 record("read-large-file", first)
-                call = calls[-1]
                 raw = json.dumps(
                     {
                         "path": filename,

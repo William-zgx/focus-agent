@@ -94,6 +94,71 @@ def test_read_file_summary_rejects_longer_number_containing_expected_count():
         )
 
 
+def test_read_file_summary_allows_default_start_line():
+    state = _read_file_state()
+    del state["messages"][0]["tool_calls"][0]["args"]["start_line"]
+
+    smoke.assert_read_file_summary_evidence(
+        state,
+        "The file contains 300 lines.",
+        filename="evidence.txt",
+        start_line=1,
+        end_line=300,
+        total_lines=300,
+    )
+
+
+def test_read_file_summary_rejects_range_mention_instead_of_count():
+    with pytest.raises(AssertionError, match="final response is not supported"):
+        smoke.assert_read_file_summary_evidence(
+            _read_file_state(),
+            "Read lines 1-300; the file has 301 lines.",
+            filename="evidence.txt",
+            start_line=1,
+            end_line=300,
+            total_lines=300,
+        )
+
+
+def test_read_file_summary_returns_call_whose_result_supports_claim():
+    state = _read_file_state()
+    good_call = state["messages"][0]["tool_calls"][0]
+    good_result = state["messages"][1]
+    bad_call = {**good_call, "id": "read-bad"}
+    bad_result = {
+        **good_result,
+        "tool_call_id": "read-bad",
+        "content": json.dumps({"total_lines": 299}),
+    }
+    state["messages"].extend(
+        [
+            {"type": "ai", "tool_calls": [bad_call]},
+            bad_result,
+        ]
+    )
+
+    call = smoke.assert_read_file_summary_evidence(
+        state,
+        "The file contains 300 lines.",
+        filename="evidence.txt",
+        start_line=1,
+        end_line=300,
+        total_lines=300,
+    )
+    assert call["id"] == "read-1"
+
+
+def test_read_file_summary_accepts_structured_total_lines_claim():
+    smoke.assert_read_file_summary_evidence(
+        _read_file_state(),
+        "Read completed with total_lines=300.",
+        filename="evidence.txt",
+        start_line=1,
+        end_line=300,
+        total_lines=300,
+    )
+
+
 def test_read_file_summary_rejects_model_self_report_without_tool_call():
     with pytest.raises(AssertionError, match="missing read_file tool call"):
         smoke.assert_read_file_summary_evidence(

@@ -10,18 +10,20 @@ Model-authored text is never accepted as file or artifact evidence by itself.
 
 New deterministic coverage is in `tests/test_context_ui_smoke_evidence.py`.
 Before the assertion helpers were implemented, the initial seven tests failed.
-Kimi prefilter then identified a substring false pass (`300` matching `3000`);
-that regression also failed before its fix. Final results:
+Kimi prefilter then identified a substring false pass (`300` matching `3000`),
+and Opus follow-up found default-argument and response-claim edge cases; their
+regressions also failed before the respective fixes. Final results:
 
-- `tests/test_context_ui_smoke_evidence.py`: **8 passed**.
-- That file plus `tests/test_ui_smoke_script.py`: **11 passed**.
+- `tests/test_context_ui_smoke_evidence.py`: **12 passed**.
+- That file plus `tests/test_ui_smoke_script.py`: **15 passed**.
 - Ruff lint/format and direct script `--help`: passed.
 
 The checks require:
 
-- an exact `read_file` call and a successful matching tool result whose
-  `total_lines` supports the claimed line-count summary, with a standalone
-  numeric match so `3000` cannot satisfy a 300-line claim;
+- an exact `read_file` call (including the tool's default `start_line=1`) and a
+  successful matching tool result whose `total_lines` supports a line-count-specific
+  response claim, rejecting both `3000` and a range mention paired with a
+  contradictory count; the returned artifact reference uses the verified call;
 - an exact `artifact_read` call with the requested artifact ID, offset, and
   limit;
 - a successful matching artifact result containing the required marker;
