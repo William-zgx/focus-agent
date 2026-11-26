@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -108,6 +109,92 @@ def response_json(text: str) -> dict:
     return json.loads(text[text.index("{") : text.rindex("}") + 1])
 
 
+def _matching_tool_calls(state: dict, tool_name: str, expected_args: dict) -> list[dict]:
+    return [
+        call
+        for message in state.get("messages", [])
+        for call in message.get("tool_calls") or []
+        if call.get("name") == tool_name
+        and all(call.get("args", {}).get(key) == value for key, value in expected_args.items())
+    ]
+
+
+def _successful_tool_results(state: dict, calls: list[dict]) -> list[dict]:
+    call_ids = {str(call.get("id")) for call in calls}
+    return [
+        message
+        for message in state.get("messages", [])
+        if message.get("type") == "tool"
+        and message.get("tool_call_id") in call_ids
+        and message.get("status") != "error"
+    ]
+
+
+def _tool_content_text(message: dict) -> str:
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    return json.dumps(content, ensure_ascii=False)
+
+
+def assert_read_file_summary_evidence(
+    state: dict,
+    response: str,
+    *,
+    filename: str,
+    start_line: int,
+    end_line: int,
+    total_lines: int,
+) -> list[dict]:
+    calls = _matching_tool_calls(
+        state,
+        "read_file",
+        {"path": filename, "start_line": start_line, "end_line": end_line},
+    )
+    if not calls:
+        raise AssertionError("missing read_file tool call; model text is not file evidence")
+    results = _successful_tool_results(state, calls)
+    if not results:
+        raise AssertionError("read_file returned no successful tool result")
+    for result in results:
+        try:
+            payload = json.loads(_tool_content_text(result))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("total_lines") == total_lines:
+            if not re.search(rf"(?<![\d.]){re.escape(str(total_lines))}(?![\d.])", response):
+                raise AssertionError(
+                    "final response is not supported by the read_file line-count result"
+                )
+            return calls
+    raise AssertionError(f"read_file tool result does not support the {total_lines}-line summary")
+
+
+def assert_artifact_readback_evidence(
+    state: dict,
+    response: str,
+    *,
+    artifact_id: str,
+    offset: int,
+    limit: int,
+    marker: str,
+) -> None:
+    calls = _matching_tool_calls(
+        state,
+        "artifact_read",
+        {"artifact_id": artifact_id, "offset": offset, "limit": limit},
+    )
+    if not calls:
+        raise AssertionError("missing artifact_read tool call; model text is not artifact evidence")
+    results = _successful_tool_results(state, calls)
+    if not results:
+        raise AssertionError("artifact_read returned no successful tool result")
+    if not any(marker in _tool_content_text(result) for result in results):
+        raise AssertionError("artifact_read tool result does not contain the required marker")
+    if marker not in response:
+        raise AssertionError("final response is not supported by the artifact_read tool result")
+
+
 def run(args: argparse.Namespace) -> int:
     out = args.out_dir
     out.mkdir(parents=True, exist_ok=True)
@@ -120,7 +207,7 @@ def run(args: argparse.Namespace) -> int:
         "steps": [],
     }
 
-    def record(name: str, result: dict) -> None:
+    def record(name: str, result: dict, *, error: str | None = None) -> None:
         diagnostics = collect_browser_diagnostics(client)
         result["browser_errors"] = diagnostics.get("errors", [])
         result["console_errors"] = diagnostics.get("console", [])
@@ -129,12 +216,21 @@ def run(args: argparse.Namespace) -> int:
             for item in diagnostics.get("fetches", [])
             if item.get("stage") == "error" or (item.get("stage") == "end" and not item.get("ok"))
         ]
-        if result["browser_errors"] or result["failed_fetches"] or result["console_errors"]:
+        if error is None and (
+            result["browser_errors"] or result["failed_fetches"] or result["console_errors"]
+        ):
             raise AssertionError(f"Browser error or failed HTTP request at {name}")
-        report["steps"].append({"name": name, **result})
+        step = {"name": name, **result}
+        if error is not None:
+            step["status"] = "failed"
+            step["evidence_error"] = error
+        report["steps"].append(step)
         (out / "context-ui.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         )
+        if error is not None:
+            print(name, "failed:", error, flush=True)
+            raise AssertionError(error)
         print(name, "passed", flush=True)
 
     ensure_health(args.health_url)
@@ -294,18 +390,18 @@ def run(args: argparse.Namespace) -> int:
                 first = evaluate(
                     client, f"return JSON.stringify(await qa.send({json.dumps(prompt)}));"
                 )
+                try:
+                    calls = assert_read_file_summary_evidence(
+                        first["state"],
+                        first["response"],
+                        filename=filename,
+                        start_line=1,
+                        end_line=300,
+                        total_lines=300,
+                    )
+                except AssertionError as exc:
+                    record("read-large-file", first, error=str(exc))
                 record("read-large-file", first)
-                calls = [
-                    call
-                    for message in first["state"]["messages"]
-                    for call in message.get("tool_calls") or []
-                    if call.get("name") == "read_file"
-                    and call.get("args", {}).get("path") == filename
-                    and call.get("args", {}).get("start_line", 1) == 1
-                    and call.get("args", {}).get("end_line") == 300
-                ]
-                if not calls:
-                    raise AssertionError("Provider did not read the requested full range")
                 call = calls[-1]
                 raw = json.dumps(
                     {
@@ -327,25 +423,17 @@ def run(args: argparse.Namespace) -> int:
                 second = evaluate(
                     client, f"return JSON.stringify(await qa.send({json.dumps(prompt)}));"
                 )
-                readbacks = [
-                    call
-                    for message in second["state"]["messages"]
-                    for call in message.get("tool_calls") or []
-                    if call.get("name") == "artifact_read"
-                    and call["args"].get("artifact_id") == reference
-                    and call["args"].get("offset") == offset
-                    and call["args"].get("limit") == 300
-                ]
-                if not readbacks or marker not in second["response"]:
-                    raise AssertionError("Provider did not retrieve and report the requested page")
-                readback_ids = {call["id"] for call in readbacks}
-                if not any(
-                    message.get("tool_call_id") in readback_ids
-                    and marker in str(message.get("content", ""))
-                    and message.get("status") != "error"
-                    for message in second["state"]["messages"]
-                ):
-                    raise AssertionError("No successful tool result contains the verification code")
+                try:
+                    assert_artifact_readback_evidence(
+                        second["state"],
+                        second["response"],
+                        artifact_id=reference,
+                        offset=offset,
+                        limit=300,
+                        marker=marker,
+                    )
+                except AssertionError as exc:
+                    record("read-observation-page", second, error=str(exc))
                 record("read-observation-page", second)
                 save_screenshot(client, out / "tool-readback.png")
                 report["scenario"] = "tool_observation_readback"
